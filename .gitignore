@@ -1,0 +1,16 @@
+node_modules/
+backend/node_modules/
+app/node_modules/
+
+.DS_Store
+
+.env
+.env.local
+.env.*.local
+
+.git.broken-*/
+app/.git.broken-*/
+
+app/.expo/
+app/dist/
+app/web-build/
