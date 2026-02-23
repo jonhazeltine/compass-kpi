@@ -32,13 +32,22 @@ export function AdminAuthzProvider({ children }: { children: React.ReactNode }) 
         return;
       }
 
+      if (!cancelled) {
+        // Reset stale role/error state when token changes so loading/error UI stays accurate.
+        setBackendRole(null);
+        setBackendRoleError(null);
+      }
+
       try {
         const response = await fetch(`${API_URL}/me`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
 
         if (!response.ok) {
-          if (!cancelled) setBackendRoleError(`GET /me failed (${response.status})`);
+          if (!cancelled) {
+            setBackendRole(null);
+            setBackendRoleError(`GET /me failed (${response.status})`);
+          }
           return;
         }
 
@@ -49,6 +58,7 @@ export function AdminAuthzProvider({ children }: { children: React.ReactNode }) 
         }
       } catch (error) {
         if (!cancelled) {
+          setBackendRole(null);
           setBackendRoleError(error instanceof Error ? error.message : 'GET /me failed');
         }
       }

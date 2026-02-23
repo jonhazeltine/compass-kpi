@@ -162,6 +162,7 @@ export default function AdminShellScreen() {
   const [showUpcomingRoutes, setShowUpcomingRoutes] = useState(false);
   const [devRolePreview, setDevRolePreview] = useState<'live' | 'super_admin' | 'admin' | 'agent'>('live');
   const [unknownAdminPath, setUnknownAdminPath] = useState<string | null>(null);
+  const [lastNavPushPath, setLastNavPushPath] = useState<string | null>(null);
 
   const effectiveRoles = useMemo(() => {
     if (!__DEV__ || devRolePreview === 'live') return resolvedRoles;
@@ -196,7 +197,14 @@ export default function AdminShellScreen() {
       }
 
       const match = getAdminRouteByPath(pathname);
-      if (!match) return;
+      if (!match) {
+        if (pathname.startsWith('/admin')) {
+          setUnknownAdminPath(pathname);
+        } else {
+          setUnknownAdminPath(null);
+        }
+        return;
+      }
       setUnknownAdminPath(null);
       setActiveRouteKey((prev) => (prev === match.key ? prev : match.key));
     };
@@ -233,8 +241,12 @@ export default function AdminShellScreen() {
         ? ADMIN_NOT_FOUND_PATH
         : route.path;
     if (window.location.pathname === nextPath) return;
+    if (lastNavPushPath && nextPath === lastNavPushPath) {
+      setLastNavPushPath(null);
+      return;
+    }
     window.history.replaceState({}, '', nextPath);
-  }, [activeRouteKey, canOpenActiveRoute, effectiveHasAdminAccess, unknownAdminPath]);
+  }, [activeRouteKey, canOpenActiveRoute, effectiveHasAdminAccess, lastNavPushPath, unknownAdminPath]);
 
   const checklistItems = [
     { label: 'Admin shell layout + navigation scaffold', status: 'done' },
@@ -301,6 +313,13 @@ export default function AdminShellScreen() {
                   ]}
                   onPress={() => {
                     setUnknownAdminPath(null);
+                    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                      const nextPath = route.path;
+                      if (window.location.pathname !== nextPath) {
+                        window.history.pushState({}, '', nextPath);
+                        setLastNavPushPath(nextPath);
+                      }
+                    }
                     setActiveRouteKey(route.key);
                   }}
                   accessibilityRole="button"

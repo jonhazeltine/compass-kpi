@@ -64,3 +64,18 @@ Out of scope:
 ## Notes
 - Frontend authz is UX gating only; backend remains the security enforcement layer.
 - A1 uses backend `GET /me` as fallback role source when Supabase session metadata lacks role fields.
+
+## Results (2026-02-23)
+- Status: partial pass (agent-validated + user-assisted review), final click-through signoff still pending
+
+Validated during this thread:
+- `GET /me` fallback role flow works after promoting local user to `super_admin` in `public.users`
+- Unauthorized (`403`) state renders for non-admin preview and exposes one-click reset to live role
+- Scroll clipping bug in admin content panel was reproduced (user screenshot) and fixed
+- Web path sync supports `/admin/unauthorized` and unknown `/admin/*` -> `/admin/not-found` shell state handling
+- Pure-function authz unit tests added and passing (`npm run test:unit`)
+
+Still recommended for final signoff (manual browser clicks):
+- Live role path checks for `/admin`, `/admin/authz`, `/admin/users`
+- Browser back/forward navigation after toggling between valid/unauthorized/not-found states
+- Upcoming-route toggle behavior on current browser/session after latest changes
