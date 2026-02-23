@@ -1,0 +1,32 @@
+{
+  "total_files": 270,
+  "unique_files": 157,
+  "duplicate_files": 113,
+  "categories": {
+    "device_chrome": {
+      "total": 60,
+      "unique": 46,
+      "duplicate": 14
+    },
+    "icon": {
+      "total": 24,
+      "unique": 15,
+      "duplicate": 9
+    },
+    "uncategorized": {
+      "total": 4,
+      "unique": 4,
+      "duplicate": 0
+    },
+    "chart_widget": {
+      "total": 51,
+      "unique": 26,
+      "duplicate": 25
+    },
+    "raw_fragment": {
+      "total": 131,
+      "unique": 66,
+      "duplicate": 65
+    }
+  }
+}

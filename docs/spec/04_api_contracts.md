@@ -1,0 +1,309 @@
+# 04 API Contracts
+
+## Contract Principles
+- Server-side role/tier enforcement is mandatory for protected routes.
+- Keep request/response schemas explicit and versionable.
+- Preserve non-negotiables in payload design (PC vs Actual separation).
+
+## Auth
+- Preferred pattern in current codebase: bearer token auth (Supabase JWT).
+- Protected endpoints require:
+  - `Authorization: Bearer <token>`
+- Unauthorized/expired token should return `401`.
+
+## Endpoints (Initial Surface)
+
+### User-Facing
+- `GET /health`
+  - Purpose: service health check.
+- `GET /me`
+  - Purpose: validate auth and return current user context.
+- `PATCH /me` (implemented baseline)
+  - Purpose: update current user profile/goals metadata and persist calculation-critical financial inputs to `users` table.
+  - On first complete onboarding payload, backend seeds one-time weekly historical projection logs and onboarding pipeline anchors.
+- `POST /kpi-logs` (implemented baseline)
+  - Purpose: ingest KPI log events (including offline sync batches in future).
+- `DELETE /kpi-logs/{id}` (implemented baseline)
+  - Purpose: remove a previously logged KPI event owned by the caller.
+- `POST /kpi-logs/batch` (implemented baseline)
+  - Purpose: ingest offline/batched KPI logs with per-entry idempotency handling.
+- `GET /dashboard` (implemented baseline)
+  - Purpose: return composed dashboard payload (PC, GP, VP, Actuals, confidence).
+- `POST /api/forecast-confidence/snapshot` (implemented baseline)
+  - Purpose: compute and persist confidence snapshot from recency/accuracy/anchor inputs (display layer only).
+- `GET /challenges` (implemented baseline)
+  - Purpose: list available/active challenges.
+- `POST /challenge-participants` (implemented baseline)
+  - Purpose: join challenge.
+  - Modification: support optional `sponsored_challenge_id`.
+- `POST /teams` (implemented baseline)
+  - Purpose: create team and seed leader membership.
+- `GET /teams/{id}` (implemented baseline)
+  - Purpose: return team details and membership for authorized members.
+- `POST /teams/{id}/members` (implemented baseline)
+  - Purpose: leader-managed team membership updates.
+- `GET /api/channels` (implemented baseline)
+  - Purpose: list channels for current user with unread summary.
+- `POST /api/channels` (implemented baseline)
+  - Purpose: create channel and seed creator membership.
+- `GET /api/channels/{id}/messages` (implemented baseline)
+  - Purpose: list messages for a channel (membership required).
+- `POST /api/channels/{id}/messages` (implemented baseline)
+  - Purpose: create channel message (membership required).
+- `GET /api/messages/unread-count` (implemented baseline)
+  - Purpose: aggregate unread count for current user.
+- `POST /api/messages/mark-seen` (implemented baseline)
+  - Purpose: mark channel unread count as seen/reset.
+- `POST /api/channels/{id}/broadcast` (implemented baseline)
+  - Purpose: send role-gated broadcast message with audit + throttle.
+- `POST /api/push-tokens` (implemented baseline)
+  - Purpose: register push token for notification routing.
+- `POST /api/notifications/enqueue` (implemented baseline)
+  - Purpose: enqueue notification jobs for dispatch queue.
+- `GET /api/notifications/queue` (implemented baseline)
+  - Purpose: read notification queue state for operations.
+- `POST /api/notifications/{id}/dispatch` (implemented baseline)
+  - Purpose: record dispatch success/failure outcomes with retry metadata.
+- `GET /api/coaching/journeys` (implemented baseline)
+  - Purpose: list active coaching journeys with per-user completion summary.
+- `GET /api/coaching/journeys/{id}` (implemented baseline)
+  - Purpose: return journey milestones/lessons with caller progress status.
+- `POST /api/coaching/lessons/{id}/progress` (implemented baseline)
+  - Purpose: upsert lesson progress status for caller.
+- `GET /api/coaching/progress` (implemented baseline)
+  - Purpose: return caller coaching progress aggregates.
+- `POST /api/coaching/broadcast` (implemented baseline)
+  - Purpose: role-gated coaching broadcast write with scope audit trail.
+- `POST /api/ai/suggestions` (implemented baseline)
+  - Purpose: create approval-gated AI suggestion (advisory only).
+- `GET /api/ai/suggestions` (implemented baseline)
+  - Purpose: list AI suggestions (admin: all, non-admin: own/targeted only).
+- `POST /api/ai/suggestions/{id}/approve` (implemented baseline)
+  - Purpose: admin-only approval transition for pending suggestion.
+- `POST /api/ai/suggestions/{id}/reject` (implemented baseline)
+  - Purpose: admin-only rejection transition for pending suggestion.
+- `GET /ops/summary/sprint1` (implemented baseline)
+  - Purpose: read-only aggregate health + integrity summary for Sprint 1 delivery.
+- `GET /ops/summary/sprint2` (implemented baseline)
+  - Purpose: read-only aggregate health + integrity summary for Sprint 2 delivery.
+- `GET /ops/summary/sprint3` (implemented baseline)
+  - Purpose: read-only aggregate health + integrity summary for Sprint 3 delivery.
+- `GET /ops/summary/policy` (implemented baseline)
+  - Purpose: admin-only policy/integrity summary across confidence/sponsor/admin/notification checks.
+- `GET /sponsored-challenges`
+  - Purpose: list active sponsored challenges for end users.
+- `GET /sponsored-challenges/{id}`
+  - Purpose: detail view payload for sponsored challenge.
+
+### Admin
+- KPI Catalog
+  - `GET /admin/kpis`
+  - `POST /admin/kpis`
+  - `GET /admin/kpis/{kpiId}`
+  - `PUT /admin/kpis/{kpiId}`
+  - `PATCH /admin/kpis/{kpiId}/status`
+  - `DELETE /admin/kpis/{kpiId}`
+- Challenge Templates
+  - `GET /admin/challenge-templates`
+  - `POST /admin/challenge-templates`
+  - `GET /admin/challenge-templates/{templateId}`
+  - `PUT /admin/challenge-templates/{templateId}`
+  - `PATCH /admin/challenge-templates/{templateId}/status`
+  - `DELETE /admin/challenge-templates/{templateId}`
+- Sponsors + Sponsored Challenges
+  - `GET /admin/sponsors`
+  - `POST /admin/sponsors`
+  - `PUT /admin/sponsors/{id}`
+  - `PATCH /admin/sponsors/{id}/status`
+  - `DELETE /admin/sponsors/{id}`
+  - `GET /admin/sponsored-challenges`
+  - `POST /admin/sponsored-challenges`
+  - `PUT /admin/sponsored-challenges/{id}`
+  - `PATCH /admin/sponsored-challenges/{id}/status`
+  - `DELETE /admin/sponsored-challenges/{id}`
+- Analytics + User Ops
+  - `GET /admin/analytics/overview`
+  - `GET /admin/analytics/detailed-reports`
+  - `GET /admin/users` (implemented baseline)
+  - `POST /admin/users`
+  - `GET /admin/users/{userId}`
+  - `PUT /admin/users/{userId}/role` (implemented baseline)
+  - `PUT /admin/users/{userId}/tier` (implemented baseline)
+  - `PUT /admin/users/{userId}/status` (implemented baseline)
+  - `GET /admin/users/{userId}/kpi-calibration` (implemented baseline)
+  - `PATCH /admin/users/{userId}/kpi-calibration/{kpiId}` (implemented baseline)
+  - `POST /admin/users/{userId}/kpi-calibration/reset` (implemented baseline)
+  - `POST /admin/users/{userId}/kpi-calibration/reinitialize-from-onboarding` (implemented baseline)
+  - `GET /admin/users/{userId}/kpi-calibration/events` (implemented baseline)
+  - `POST /admin/data-exports`
+
+## Payload Notes (Initial)
+- KPI log payload should include:
+  - `kpi_id`
+  - `event_timestamp`
+  - `logged_value` (optional, required for certain KPI types)
+  - `idempotency_key` (optional, recommended for offline-safe retries)
+  - challenge context (`challenge_instance_id`, optional `sponsored_challenge_id`)
+- Admin KPI payloads for `PC` types should include:
+  - `pc_weight`
+  - `decay_days`
+  - TTC timing, using one of:
+    - `ttc_definition` (`X-Y days` or `Z days`), or
+    - explicit `delay_days` + `hold_days`, or
+    - backward-compatible `ttc_days`
+- Admin KPI payloads support canonical catalog metadata:
+  - `slug` (stable key used across onboarding/profile metadata mapping)
+  - `gp_value` for `GP` KPIs
+  - `vp_value` for `VP` KPIs
+- Dashboard response should include separate objects:
+  - `projection`: PC totals/line/confidence display inputs
+  - `projection.bump_context`: GP/VP tier and total bump percentage applied to displayed future projection
+  - `projection.calibration_diagnostics`:
+    - `rolling_error_ratio`
+    - `rolling_abs_pct_error`
+    - `calibration_sample_size`
+    - `calibration_quality_band` (`low|medium|high`)
+  - `projection.required_pipeline_anchors`: latest persisted anchor rows for user context (include `kpi_id`, `anchor_type`, `anchor_value`, `updated_at`)
+  - `actuals`: actual_gci, deals_closed
+  - `points`: gp, vp
+  - `activity`: engagement counters used for unlock display (`total_logs`, `active_days`)
+  - `loggable_kpis`: active KPI catalog entries for mobile quick-log surfaces, including:
+    - identity: `id`, `name`, `slug`, `type`
+    - behavior: `requires_direct_value_input`
+    - spec metadata: `pc_weight`, `ttc_definition`, `delay_days`, `hold_days`, `decay_days`, `gp_value`, `vp_value`
+  - `chart`:
+    - `past_actual_6m`: 6-point monthly actual GCI series (backend-computed)
+    - `future_projected_12m`: 12-point monthly projected series (backend-computed)
+    - `confidence_band_by_month`: confidence display band per projected point
+    - `boundary_index`: past/future split index for renderer
+  - `confidence.components`: explainability components (`historical_accuracy_score`, `pipeline_health_score`, `inactivity_score`, plus supporting metrics)
+- KPI selection surfaces (onboarding + KPI management) must:
+  - expose selectable KPI catalog entries intended for add/remove logging surfaces
+  - exclude operational `Actual` (`Deal Closed`) and `Pipeline_Anchor` entries from selectable catalog results
+  - keep tier-restricted selectable entries visible as locked metadata (not silently hidden)
+  - treat KPI payout/value/weight metadata as read-only for member-facing clients
+  - allow KPI payout/value/weight mutation only through platform-admin KPI catalog management routes (for example `/admin/kpis/*`)
+- Profile update behavior:
+  - `PATCH /me` accepts member-facing profile/goals fields (for example `full_name`, `average_price_point`, `commission_rate_percent`, annual goal fields).
+  - Onboarding payload support:
+    - `selected_kpis`
+    - `kpi_weekly_inputs` (per KPI: `historicalWeeklyAverage`, `targetWeeklyCount`)
+    - `pipeline_listings_pending`
+    - `pipeline_buyers_uc`
+  - `average_price_point` and `commission_rate_percent` must write-through to `public.users` immediately so subsequent KPI log calculations use updated inputs.
+
+### Baseline Behavior Notes (Current Sprint)
+- `POST /kpi-logs`
+  - Enforces auth (`401` on missing/invalid bearer token).
+  - Enforces `event_timestamp` and `kpi_id` payload validation.
+  - Enforces required `logged_value` when KPI requires direct input.
+  - Supports optional idempotency via `idempotency_key`; duplicate key for same user returns previously created log with `status: duplicate`.
+  - Preserves non-negotiables:
+    - `GP/VP` logs do not generate PC.
+    - `Actual` logs update actual deltas only (no PC generation).
+    - `PC` logs compute and store projection contribution fields.
+    - `PC` logs persist applied weight snapshots (`pc_base_weight_applied`, `pc_user_multiplier_applied`, `pc_effective_weight_applied`) for deterministic replay.
+    - `PC` logs persist applied timing snapshots (`payoff_start_date`, `delay_days_applied`, `hold_days_applied`, `decay_days_applied`) so future KPI definition edits do not mutate historical event timing.
+    - `Pipeline_Anchor` logs update anchor status context.
+- `DELETE /kpi-logs/{id}`
+  - Enforces auth and ownership (`404` if not found for caller).
+  - Deletes one KPI log event and removes its effects from subsequent dashboard aggregates.
+  - For `Pipeline_Anchor` logs, anchor status is recalculated from latest remaining anchor log (or cleared when none remain).
+- `POST /kpi-logs/batch`
+  - Accepts `logs: KPIWritePayload[]` with max batch size guard.
+  - Processes entries sequentially and returns per-entry `created|duplicate|failed` status plus summary counts.
+  - Reuses single-write idempotency semantics per user + `idempotency_key`.
+- `GET /dashboard`
+  - Returns separated `projection`, `actuals`, and `points` objects.
+  - `projection` includes summary rollups for UI cards: `pc_90d`, `pc_next_365`, `projected_gci_ytd`.
+  - `actuals` includes summary rollups for UI cards: `actual_gci`, `actual_gci_last_365`, `actual_gci_ytd`, `deals_closed`.
+  - Returns confidence as a display layer object only, with explainability components.
+  - Returns pipeline anchor context as forecast-required input metadata.
+  - Returns activity counters (`total_logs`, `active_days`) for UI unlock messaging.
+  - Returns active loggable KPI metadata for quick-log rendering and direct-value modal routing.
+  - Returns chart-ready backend projection/actual series; frontend should render these directly without client-side projection math.
+- `POST /teams`
+  - Creates a team and auto-creates creator membership with `team_leader` role.
+- `POST /teams/{id}/members`
+  - Enforces leader-only member management.
+- `POST /challenge-participants`
+  - Supports self-join and leader-enrollment of other users for team challenges.
+  - Applies explicit late-join policy via `include_prior_logs` override or challenge default.
+- `GET /challenges`
+  - Returns challenge list with caller participation summary and leaderboard baseline payload.
+- `GET /api/channels`
+  - Returns only channels where caller is a member.
+- `POST /api/channels/{id}/messages`
+  - Enforces membership checks and updates unread counters for other members.
+- `POST /api/channels/{id}/broadcast`
+  - Requires channel admin, team leader, or platform admin permissions.
+  - Enforces baseline 24h throttle and writes `broadcast_log` audit records.
+- `POST /api/messages/mark-seen`
+  - Resets unread count for caller in specified channel.
+- `GET /api/coaching/journeys`
+  - Returns active journeys enriched with milestone/lesson totals plus user completion percent.
+- `POST /api/coaching/lessons/{id}/progress`
+  - Supports `status: not_started | in_progress | completed` with upsert semantics.
+- `POST /api/coaching/broadcast`
+  - Enforces scope permissions:
+    - `team`: team leader or platform admin
+    - `journey`: requires `scope_id`
+    - `global`: platform admin only
+- `POST /api/ai/suggestions`
+  - Always creates records in `pending` status; no outbound send side effects.
+  - Cross-user creation is restricted to platform admins or team leaders targeting users on their own team.
+- `POST /api/ai/suggestions/{id}/approve` and `/reject`
+  - Admin-only transitions from `pending`; non-pending transitions return `422`.
+- `GET /api/coaching/journeys` and `GET /api/coaching/journeys/{id}`
+  - Team-scoped journeys are visible only to team members (or platform admins).
+- `POST /api/coaching/lessons/{id}/progress`
+  - Team-scoped lessons can be updated only by team members (or platform admins).
+- `GET /sponsored-challenges` and `GET /sponsored-challenges/{id}`
+  - Enforce active window and `required_tier` access checks.
+  - Return sponsor branding metadata plus CTA/disclaimer fields for eligible users.
+- `POST /api/forecast-confidence/snapshot`
+  - Persists confidence snapshot metadata with algorithm parity components (HA/PH/IN) and weighted score.
+  - Confidence computation remains display-layer; does not mutate KPI base values.
+- `GET /ops/summary/policy`
+  - Admin-only read path for policy-oriented integrity counters.
+- `GET /admin/kpis`, `POST /admin/kpis`, `PUT /admin/kpis/{id}`, `DELETE /admin/kpis/{id}`
+  - Platform-admin-only access.
+  - Delete route performs safe deactivation (`is_active=false`) for backward-safe behavior.
+- `GET /admin/challenge-templates`, `POST /admin/challenge-templates`, `PUT /admin/challenge-templates/{id}`, `DELETE /admin/challenge-templates/{id}`
+  - Platform-admin-only access.
+  - Delete route performs safe deactivation (`is_active=false`).
+- `GET /admin/users`, `PUT /admin/users/{id}/role`, `PUT /admin/users/{id}/tier`, `PUT /admin/users/{id}/status`
+  - Platform-admin-only access with auditable write path.
+- `GET /admin/users/{id}/kpi-calibration`
+  - Platform-admin-only read path for per-user KPI multipliers + diagnostics.
+- `PATCH /admin/users/{id}/kpi-calibration/{kpiId}`
+  - Platform-admin-only explicit multiplier override (bounded) for super admin control.
+- `POST /admin/users/{id}/kpi-calibration/reset`
+  - Platform-admin-only reset of multipliers/diagnostics to neutral baseline.
+- `POST /admin/users/{id}/kpi-calibration/reinitialize-from-onboarding`
+  - Platform-admin-only recompute of baseline multipliers from onboarding historical inputs.
+- `GET /admin/users/{id}/kpi-calibration/events`
+  - Platform-admin-only audit/event history for deal-close calibration passes.
+- `POST /api/notifications/enqueue`, `GET /api/notifications/queue`, `POST /api/notifications/{id}/dispatch`
+  - Platform-admin-only operations for notification queue lifecycle.
+  - Dispatch endpoint records attempt counts and sent/failed transitions.
+- `GET /ops/summary/sprint1`, `GET /ops/summary/sprint2`, and `GET /ops/summary/sprint3`
+  - Read-only diagnostics for no-UI verification; no writes, no mutations.
+
+## Error Model
+- Legacy routes continue using status/error payloads.
+- Sprint 8+ routes may return standardized error envelope:
+  - `{ "error": { "code": string, "message": string, "request_id": string } }`
+- Status semantics:
+  - `400 Bad Request`: validation/schema errors.
+  - `401 Unauthorized`: missing/invalid token.
+  - `403 Forbidden`: role/tier not allowed.
+  - `404 Not Found`: missing resource.
+  - `409 Conflict`: duplicate join/log conflict.
+  - `422 Unprocessable Entity`: semantically invalid request.
+  - `500 Internal Server Error`: unexpected server failure.
+
+## Open API Decisions
+- Versioning strategy (`/v1` prefix or header-based).
+- Bulk offline log sync endpoint shape.
+- Standardized error envelope fields (`code`, `message`, `details`, `request_id`).

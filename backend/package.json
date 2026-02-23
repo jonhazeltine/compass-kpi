@@ -6,24 +6,39 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:sprint1": "npm run build && node scripts/sprint1_acceptance.js",
+    "test:sprint2": "npm run test:sprint1 && npm run build && node scripts/sprint2_acceptance.js",
+    "test:sprint3": "npm run test:sprint2 && npm run build && node scripts/sprint3_acceptance.js",
+    "test:sprint4": "npm run test:sprint3 && npm run build && node scripts/sprint4_acceptance.js",
+    "test:sprint5": "npm run test:sprint4 && npm run build && node scripts/sprint5_acceptance.js",
+    "test:sprint6": "npm run test:sprint5 && npm run build && node scripts/sprint6_acceptance.js",
+    "test:sprint7": "npm run test:sprint6 && npm run build && node scripts/sprint7_acceptance.js",
+    "test:sprint8": "npm run test:sprint7 && npm run build && node scripts/sprint8_acceptance.js",
+    "test:sprint9": "npm run test:sprint8 && npm run build && node scripts/sprint9_acceptance.js",
+    "test:sprint10": "npm run test:sprint9 && npm run build && node scripts/sprint10_acceptance.js",
+    "test:backend-mvp": "npm run test:sprint10",
+    "test:release": "npm run test:backend-mvp",
+    "ops:summary": "npm run build && node scripts/ops_summaries.js",
+    "test:algorithms": "npm run build && node scripts/algorithm_acceptance.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.48.0",
+    "cors": "^2.8.5",
     "dotenv": "^16.4.0",
     "express": "^4.19.0",
-    "cors": "^2.8.5",
     "morgan": "^1.10.0",
-    "@supabase/supabase-js": "^2.48.0",
     "pg": "^8.12.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
+    "@types/morgan": "^1.9.10",
     "@types/node": "^22.0.0",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.6.0",
-    "eslint": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0"
+    "eslint": "^9.0.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.6.0"
   }
 }
-

@@ -1,0 +1,387 @@
+{
+  "file_key": "ebEWgwdjIZywvK2b4zf0ek",
+  "buckets": {
+    "core_buttons_v1": [
+      {
+        "id": "173-13614",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Challenges / body / section / div / button"
+      },
+      {
+        "id": "173-13616",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Challenges / body / section / div / button"
+      },
+      {
+        "id": "173-13618",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Challenges / body / section / div / button"
+      },
+      {
+        "id": "173-13720",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Challenges / footer / button"
+      },
+      {
+        "id": "173-13979",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Join Challenge / body / div / main / footer / div / button"
+      },
+      {
+        "id": "173-14179",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Challenge Details / body / footer / div / button"
+      },
+      {
+        "id": "173-14186",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Challenge Details / body / footer / div / button"
+      },
+      {
+        "id": "173-14293",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Upgrade to Unlock / body / div / footer / div / button"
+      },
+      {
+        "id": "173-14528",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / 30-Day Listing Challenge / footer / div / button"
+      },
+      {
+        "id": "173-14564",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Leaderboard / body / div / main / section / div / button"
+      },
+      {
+        "id": "173-14566",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Leaderboard / body / div / main / section / div / button"
+      },
+      {
+        "id": "173-15013",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Invite Teammates / body / div / main / section / div / div / button"
+      }
+    ],
+    "core_inputs_v1": [
+      {
+        "id": "173-15001",
+        "name": "input",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Invite Teammates / body / div / main / section / div / div / input"
+      },
+      {
+        "id": "173-15206",
+        "name": "input",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Invite a Friend / body / div / main / section / div / div / input"
+      },
+      {
+        "id": "173-15572",
+        "name": "input",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 1 / body / div / main / section / div / input"
+      },
+      {
+        "id": "173-15605",
+        "name": "input",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 1 / body / div / main / section / div / div / input"
+      },
+      {
+        "id": "173-15618",
+        "name": "input",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 1 / body / div / main / section / div / div / input"
+      },
+      {
+        "id": "173-15835",
+        "name": "input",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 3 / body / div / main / section / div / div / input"
+      },
+      {
+        "id": "173-15840",
+        "name": "input",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 3 / body / div / main / section / div / div / input"
+      },
+      {
+        "id": "173-15862",
+        "name": "input",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 3 / body / div / main / section / div / div / input"
+      },
+      {
+        "id": "173-15867",
+        "name": "input",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 3 / body / div / main / section / div / div / input"
+      },
+      {
+        "id": "173-15915",
+        "name": "input",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 4 / body / div / main / section / div / input"
+      },
+      {
+        "id": "173-16725",
+        "name": "input",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Invite Member / body / main / div / section / div / div / input"
+      },
+      {
+        "id": "173-17735",
+        "name": "input",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Help & Support / body / main / div / section / div / input"
+      }
+    ],
+    "core_tabs_chips_v1": [
+      {
+        "id": "173-13614",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Challenges / body / section / div / button"
+      },
+      {
+        "id": "173-13616",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Challenges / body / section / div / button"
+      },
+      {
+        "id": "173-13618",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Challenges / body / section / div / button"
+      },
+      {
+        "id": "173-15636",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 1 / footer / div / button"
+      },
+      {
+        "id": "173-15642",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 1 / footer / div / button"
+      },
+      {
+        "id": "173-15780",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 2 / footer / div / button"
+      },
+      {
+        "id": "173-15786",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 2 / footer / div / button"
+      },
+      {
+        "id": "173-15880",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 3 / footer / div / button"
+      },
+      {
+        "id": "173-15886",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 3 / footer / div / button"
+      },
+      {
+        "id": "173-16160",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 4 / footer / div / button"
+      },
+      {
+        "id": "173-16166",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 4 / footer / div / button"
+      },
+      {
+        "id": "173-16339",
+        "name": "button",
+        "type": "FRAME",
+        "path": "Document / Extra / New Files / Step 5 / body / div / footer / div / button"
+      }
+    ],
+    "core_cards_v1": [
+      {
+        "id": "1-205",
+        "name": "Outline/General/Card",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/General/Card"
+      },
+      {
+        "id": "1-718",
+        "name": "Solid/General/Card",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Solid  / Solid/General/Card"
+      },
+      {
+        "id": "387-6021",
+        "name": "Log Activities",
+        "type": "FRAME",
+        "path": "Document / Page 1 / Dashboard and KPI / Log Activities"
+      },
+      {
+        "id": "387-6940",
+        "name": "Log Activities",
+        "type": "FRAME",
+        "path": "Document / Page 1 / Dashboard and KPI / Log Activities"
+      },
+      {
+        "id": "387-8304",
+        "name": "Edit Profile",
+        "type": "FRAME",
+        "path": "Document / Page 1 / Profile / Edit Profile"
+      },
+      {
+        "id": "387-8354",
+        "name": "Edit Profile",
+        "type": "FRAME",
+        "path": "Document / Page 1 / Profile / Edit Profile"
+      }
+    ],
+    "core_icons_v1": [
+      {
+        "id": "635-4272",
+        "name": "Solid/Communication/Envelope",
+        "type": "COMPONENT",
+        "path": "Document / Page 1 / Sponsered Challenges / Inbox / Group 1171276412 / Frame 1171278685 / Group 1171276387 / Solid/Communication/Envelope"
+      },
+      {
+        "id": "1-6",
+        "name": "Outline/Status/Eye",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Eye"
+      },
+      {
+        "id": "1-8",
+        "name": "Outline/Status/Lock",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Lock"
+      },
+      {
+        "id": "1-10",
+        "name": "Outline/Status/Unlock",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Unlock"
+      },
+      {
+        "id": "1-12",
+        "name": "Outline/Status/Star",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Star"
+      },
+      {
+        "id": "1-14",
+        "name": "Outline/Status/Heart",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Heart"
+      },
+      {
+        "id": "1-16",
+        "name": "Outline/Status/Eye-closed",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Eye-closed"
+      },
+      {
+        "id": "1-18",
+        "name": "Outline/Status/Checked-box",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Checked-box"
+      },
+      {
+        "id": "1-20",
+        "name": "Outline/Status/Info-rect",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Info-rect"
+      },
+      {
+        "id": "1-22",
+        "name": "Outline/Status/Key",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Key"
+      },
+      {
+        "id": "1-24",
+        "name": "Outline/Status/Shield",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Shield"
+      },
+      {
+        "id": "1-26",
+        "name": "Outline/Status/Pin",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Pin"
+      },
+      {
+        "id": "1-28",
+        "name": "Outline/Status/Notification",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Notification"
+      },
+      {
+        "id": "1-30",
+        "name": "Outline/Status/Notification-on",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Notification-on"
+      },
+      {
+        "id": "1-32",
+        "name": "Outline/Status/Notification-off",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Notification-off"
+      },
+      {
+        "id": "1-34",
+        "name": "Outline/Status/Sand-watch",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Sand-watch"
+      },
+      {
+        "id": "1-36",
+        "name": "Outline/Status/Lightning",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Lightning"
+      },
+      {
+        "id": "1-38",
+        "name": "Outline/Status/Info-circle",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Info-circle"
+      },
+      {
+        "id": "1-40",
+        "name": "Outline/Status/Info-triangle",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Info-triangle"
+      },
+      {
+        "id": "1-42",
+        "name": "Outline/Status/Power-button",
+        "type": "COMPONENT",
+        "path": "Document / Extra / Outline  / Outline/Status/Power-button"
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+---
+description: Compass KPI project-wide architecture governance
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# Project Rules
+
+Before proposing or making any changes, consult:
+- `/architecture/ARCHITECTURE.md`
+- `/architecture/NON_NEGOTIABLES.md`
+- `/architecture/CURRENT_SPRINT.md`
+
+Mandatory behavior:
+1. Do not violate `/architecture/NON_NEGOTIABLES.md`.
+2. If a request conflicts with non-negotiables, stop and propose compliant alternatives.
+3. If work is outside `/architecture/CURRENT_SPRINT.md`, stop and request explicit approval.
+4. If structural changes are made (folders, schema, API boundaries), update `/architecture/DECISIONS_LOG.md` in the same change set.
+5. Prefer concise, readable docs and practical implementation.

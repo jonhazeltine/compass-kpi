@@ -1,111 +1,165 @@
-import React, { useEffect, useState } from 'react';
-import {
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
-} from 'react-native';
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors, space } from '../theme/tokens';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase, API_URL } from '../lib/supabase';
+import KPIDashboardScreen from './KPIDashboardScreen';
+import ProfileSettingsScreen from './ProfileSettingsScreen';
 
 export default function HomeScreen() {
-  const { session, signOut } = useAuth();
-  const [meData, setMeData] = useState<{ id: string; email: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchMe = async () => {
-      const token = session?.access_token;
-      if (!token) return;
-      try {
-        const res = await fetch(`${API_URL}/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? 'Request failed');
-        setMeData(data);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'Failed to fetch /me');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchMe();
-  }, [session?.access_token]);
+  const { signOut } = useAuth();
+  const [showProfile, setShowProfile] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const handleSignOut = async () => {
+    setMenuOpen(false);
     await signOut();
   };
 
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>CompassKPI</Text>
-      {error ? (
-        <Text style={styles.error}>{error}</Text>
-      ) : meData ? (
-        <View style={styles.card}>
-          <Text style={styles.label}>Logged in via backend /me</Text>
-          <Text style={styles.value}>{meData.email}</Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.headerGreeting}>
+          <Text style={styles.headerHello}>Hi, Jonathan</Text>
+          <Text style={styles.headerWelcome}>Welcome back</Text>
         </View>
+        <TouchableOpacity
+          onPress={() => setMenuOpen((v) => !v)}
+          style={styles.avatarBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Open account menu"
+        >
+          <Text style={styles.avatarText}>JS</Text>
+        </TouchableOpacity>
+      </View>
+
+      {menuOpen ? (
+        <>
+          <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
+          <View style={styles.menuCard}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowProfile(false);
+                setMenuOpen(false);
+              }}
+            >
+              <Text style={styles.menuText}>Dashboard</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowProfile(true);
+                setMenuOpen(false);
+              }}
+            >
+              <Text style={styles.menuText}>Profile & Goals</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={handleSignOut}>
+              <Text style={styles.menuDangerText}>Sign out</Text>
+            </TouchableOpacity>
+          </View>
+        </>
       ) : null}
-      <TouchableOpacity style={styles.button} onPress={handleSignOut}>
-        <Text style={styles.buttonText}>Sign Out</Text>
-      </TouchableOpacity>
-    </View>
+
+      <View style={styles.body}>
+        {showProfile ? (
+          <ProfileSettingsScreen onBack={() => setShowProfile(false)} showHeader />
+        ) : (
+          <KPIDashboardScreen onOpenProfile={() => setShowProfile(true)} />
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    padding: 24,
-    justifyContent: 'center',
+    backgroundColor: colors.bg,
+  },
+  header: {
+    paddingHorizontal: space.xl,
+    paddingTop: space.md,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e8edf3',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
   },
-  title: {
-    fontSize: 28,
+  headerGreeting: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  headerHello: {
+    fontSize: 22,
+    color: '#2f3442',
     fontWeight: '700',
-    marginBottom: 24,
   },
-  card: {
-    padding: 16,
-    marginBottom: 24,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
+  headerWelcome: {
+    marginTop: 2,
+    fontSize: 13,
+    color: '#8a93a3',
   },
-  label: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
+  avatarBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#dfeafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#b8cbef',
+    marginTop: -2,
   },
-  value: {
-    fontSize: 16,
+  avatarText: {
+    fontSize: 13,
+    color: '#254888',
+    fontWeight: '700',
+  },
+  menuBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 19,
+  },
+  menuCard: {
+    position: 'absolute',
+    top: 64,
+    right: space.xl,
+    width: 180,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e4e9f2',
+    zIndex: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eef2f8',
+  },
+  menuText: {
+    fontSize: 15,
+    color: colors.textPrimary,
     fontWeight: '600',
   },
-  error: {
-    color: '#c00',
-    marginBottom: 24,
-  },
-  button: {
-    backgroundColor: '#333',
-    borderRadius: 8,
-    padding: 16,
-    paddingHorizontal: 32,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
+  menuDangerText: {
+    fontSize: 15,
+    color: '#c13a3a',
     fontWeight: '600',
+  },
+  body: {
+    flex: 1,
   },
 });
