@@ -530,6 +530,7 @@ The canonical catalog supersedes ad hoc KPI examples in this document for implem
 | New Client Logged | 1.25% | $1,250 | 30–90 days | 180 days |  |
 | Text/DM Conversation | 0.01% | $10 | 90–120 days | 180 days |  |
 | Open House Logged | 0.2% | $200 | 60–120 days | 180 days |  |
+| Biz Post | 0.02% | $20 | 120–180 days | 180 days | Low-value, long-tail nurture touchpoint |
 
 **Actuals & Pipeline Anchors (Status Tracking for Forecasting):**
 

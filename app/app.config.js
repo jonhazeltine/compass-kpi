@@ -22,6 +22,7 @@ module.exports = ({ config }) => ({
   ...config,
   name: 'CompassKPI',
   slug: 'compass-kpi',
+  plugins: Array.from(new Set([...(config.plugins || []), 'expo-audio'])),
   extra: {
     ...(config.extra || {}),
     supabaseUrl,

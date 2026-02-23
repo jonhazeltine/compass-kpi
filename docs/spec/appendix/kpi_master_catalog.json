@@ -117,7 +117,7 @@
     "vp_value": null,
     "icon_file": "pc_conversations_held_v1.png",
     "enabled": true,
-    "notes": "(New)"
+    "notes": ""
   },
   {
     "name": "Listing Taken",
@@ -207,7 +207,7 @@
     "vp_value": null,
     "icon_file": "pc_seasonal_check_in_call_v1.png",
     "enabled": true,
-    "notes": "Added as PC (sphere nurture). Suggested range 0.08%\u20130.15%."
+    "notes": ""
   },
   {
     "name": "Pop-By Delivered",
@@ -222,7 +222,7 @@
     "vp_value": null,
     "icon_file": "pc_pop_by_delivered_v1.png",
     "enabled": true,
-    "notes": "Added as PC (sphere nurture). Suggested range 0.05%\u20130.12%."
+    "notes": ""
   },
   {
     "name": "Holiday Card Sent",
@@ -237,7 +237,22 @@
     "vp_value": null,
     "icon_file": "pc_holiday_card_sent_v1.png",
     "enabled": true,
-    "notes": "Added as PC (sphere nurture). Suggested range 0.02%\u20130.06%."
+    "notes": ""
+  },
+  {
+    "name": "Biz Post",
+    "slug": "biz_post",
+    "type": "PC",
+    "pc_weight": 0.02,
+    "ttc": "120\u2013180 days",
+    "delay": null,
+    "hold": "120\u2013180 days",
+    "decay": 180,
+    "gp_value": null,
+    "vp_value": null,
+    "icon_file": "pc_biz_post_v1.png",
+    "enabled": true,
+    "notes": "Added PC KPI. Low value, long TTC. Suggested weight range 0.01%\u20130.04%."
   },
   {
     "name": "Deal Closed",
@@ -656,6 +671,96 @@
     "gp_value": null,
     "vp_value": null,
     "icon_file": "gp_training_module_completed_v1.png",
+    "enabled": true,
+    "notes": "GP_Value TBD."
+  },
+  {
+    "name": "Instagram Post Shared",
+    "slug": "instagram_post_shared",
+    "type": "GP",
+    "pc_weight": null,
+    "ttc": null,
+    "delay": null,
+    "hold": null,
+    "decay": null,
+    "gp_value": null,
+    "vp_value": null,
+    "icon_file": "gp_instagram_post_shared_v1.png",
+    "enabled": true,
+    "notes": "GP_Value TBD."
+  },
+  {
+    "name": "Facebook Post Shared",
+    "slug": "facebook_post_shared",
+    "type": "GP",
+    "pc_weight": null,
+    "ttc": null,
+    "delay": null,
+    "hold": null,
+    "decay": null,
+    "gp_value": null,
+    "vp_value": null,
+    "icon_file": "gp_facebook_post_shared_v1.png",
+    "enabled": true,
+    "notes": "GP_Value TBD."
+  },
+  {
+    "name": "TikTok Post Shared",
+    "slug": "tiktok_post_shared",
+    "type": "GP",
+    "pc_weight": null,
+    "ttc": null,
+    "delay": null,
+    "hold": null,
+    "decay": null,
+    "gp_value": null,
+    "vp_value": null,
+    "icon_file": "gp_tiktok_post_shared_v1.png",
+    "enabled": true,
+    "notes": "GP_Value TBD."
+  },
+  {
+    "name": "X Post Shared",
+    "slug": "x_post_shared",
+    "type": "GP",
+    "pc_weight": null,
+    "ttc": null,
+    "delay": null,
+    "hold": null,
+    "decay": null,
+    "gp_value": null,
+    "vp_value": null,
+    "icon_file": "gp_x_post_shared_v1.png",
+    "enabled": true,
+    "notes": "GP_Value TBD."
+  },
+  {
+    "name": "LinkedIn Post Shared",
+    "slug": "linkedin_post_shared",
+    "type": "GP",
+    "pc_weight": null,
+    "ttc": null,
+    "delay": null,
+    "hold": null,
+    "decay": null,
+    "gp_value": null,
+    "vp_value": null,
+    "icon_file": "gp_linkedin_post_shared_v1.png",
+    "enabled": true,
+    "notes": "GP_Value TBD."
+  },
+  {
+    "name": "YouTube Short Posted",
+    "slug": "youtube_short_posted",
+    "type": "GP",
+    "pc_weight": null,
+    "ttc": null,
+    "delay": null,
+    "hold": null,
+    "decay": null,
+    "gp_value": null,
+    "vp_value": null,
+    "icon_file": "gp_youtube_short_posted_v1.png",
     "enabled": true,
     "notes": "GP_Value TBD."
   },

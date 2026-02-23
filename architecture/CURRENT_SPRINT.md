@@ -67,6 +67,7 @@ Parallel staffing assumption: Mobile-first priority; Admin stream starts once M3
 | M1 Core Infrastructure + Auth UI Parity | 1: KPI Core | `docs/spec/01_system_overview.md`, `docs/spec/04_api_contracts.md`, `docs/spec/appendix/FIGMA_BUILD_MAPPING.md` | #1, #3, #8 | #1, E2 | no |
 | M2 Onboarding + Profile/Goals | 1: KPI Core | `docs/spec/appendix/Master Spec.md`, `docs/spec/04_api_contracts.md`, `docs/spec/appendix/FIGMA_BUILD_MAPPING.md` | #1, #8 | scenario 1 profile/onboarding UI roundtrip + state coverage | no |
 | M3 KPI System + Dashboard Foundation | 1: KPI Core | `docs/spec/03_engines.md`, `docs/spec/04_api_contracts.md`, `docs/spec/appendix/Master Spec.md` | #1, #2, #3, #4, #6 | #2, #3, #4, #5, #6, E3 | no |
+| M3b Dashboard Gamification + Interaction Polish (Scope Exception, Time-Boxed) | 1: KPI Core (UX Polish Exception) | `docs/spec/appendix/Master Spec.md`, `docs/spec/appendix/M3B_ANIMATION_AUDIO_CHECKLIST.md` | #1, #2, #3, #4, #8, #9 | dashboard gameplay-loop UX checks + M3 regressions remain green | yes |
 | M4 Challenge System + Gamification | 2: Team + Challenge | `docs/spec/04_api_contracts.md`, `docs/spec/appendix/Master Spec.md` | #1, #2, #8 | #7, #8, #9, E6 | no |
 | M5 Team Management + Collaboration | 3: Communication Integration | `docs/spec/04_api_contracts.md`, `docs/spec/appendix/Master Spec.md` | #8 | #11, #12, #13 | no |
 | M6 Advanced Features + Notifications + Coaching + AI | 4: Coaching + AI Assist | `docs/spec/04_api_contracts.md`, `docs/spec/appendix/Master Spec.md` | #1, #3, #8 | #14, #15, #16, #17, #18, #20, E1 | no |
@@ -127,3 +128,4 @@ Parallel staffing assumption: Mobile-first priority; Admin stream starts once M3
 - Backend now owns chart series generation and confidence explainability payloads; frontend consumes render-ready series.
 - Deterministic algorithm validation command added: `cd backend && npm run test:algorithms`.
 - Approved scope exception track: adaptive per-user PC weighting calibration (onboarding initialization + deal-close self-correction + admin calibration controls).
+- Approved scope exception track (time-boxed): `M3b Dashboard Gamification + Interaction Polish`, tracked in `docs/spec/appendix/M3B_ANIMATION_AUDIO_CHECKLIST.md`.

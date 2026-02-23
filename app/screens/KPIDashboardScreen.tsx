@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Easing,
   Image,
   Modal,
   PanResponder,
@@ -15,7 +16,17 @@ import {
   View,
 } from 'react-native';
 import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
+import LottieSlot from '../components/LottieSlot';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  getFeedbackConfig,
+  playFeedbackCueAsync,
+  playKpiTypeCueAsync,
+  preloadFeedbackCuesAsync,
+  primeFeedbackAudioAsync,
+  setFeedbackConfig,
+  triggerHapticAsync,
+} from '../lib/feedback';
 import { API_URL } from '../lib/supabase';
 import { colors, radii } from '../theme/tokens';
 
@@ -63,8 +74,16 @@ type DashboardPayload = {
   loggable_kpis: Array<{
     id: string;
     name: string;
+    slug?: string;
     type: 'PC' | 'GP' | 'VP' | 'Actual' | 'Pipeline_Anchor' | 'Custom';
     requires_direct_value_input: boolean;
+    pc_weight?: number;
+    ttc_definition?: string;
+    delay_days?: number;
+    hold_days?: number;
+    decay_days?: number;
+    gp_value?: number | null;
+    vp_value?: number | null;
   }>;
   recent_logs?: Array<{
     id: string;
@@ -86,6 +105,7 @@ type DashboardPayload = {
 type MePayload = {
   user_metadata?: {
     selected_kpis?: string[];
+    favorite_kpis?: string[];
   };
 };
 
@@ -107,6 +127,28 @@ const KPI_TYPE_SORT_ORDER: Record<'PC' | 'GP' | 'VP', number> = {
   GP: 1,
   VP: 2,
 };
+const PC_PRIORITY_SLUG_ORDER = [
+  'listing_taken',
+  'buyer_contract_signed',
+  'new_client_logged',
+  'appointment_set_buyer',
+  'appointment_set_seller',
+  'biz_post',
+] as const;
+const GP_BOTTOM_SLUG_GROUP = [
+  'instagram_post_shared',
+  'facebook_post_shared',
+  'tiktok_post_shared',
+  'x_post_shared',
+  'linkedin_post_shared',
+  'youtube_short_posted',
+] as const;
+const PC_PRIORITY_SLUG_INDEX: Record<string, number> = Object.fromEntries(
+  PC_PRIORITY_SLUG_ORDER.map((slug, idx) => [slug, idx])
+);
+const GP_BOTTOM_SLUG_INDEX: Record<string, number> = Object.fromEntries(
+  GP_BOTTOM_SLUG_GROUP.map((slug, idx) => [slug, idx])
+);
 
 const HOME_PANEL_ORDER: HomePanel[] = ['Quick', 'PC', 'GP', 'VP'];
 const HOME_PANEL_LABELS: Record<HomePanel, string> = {
@@ -127,6 +169,8 @@ const GAMEPLAY_MODE_GAP = 6;
 const GAMEPLAY_MODE_LOOP_CYCLES = 3;
 const MODE_RAIL_LOOP_CYCLES = 15;
 const MODE_RAIL_MIDDLE_CYCLE = Math.floor(MODE_RAIL_LOOP_CYCLES / 2);
+const GP_LOTTIE_SOURCE: object | number | null = null;
+const VP_LOTTIE_SOURCE: object | number | null = null;
 
 function fmtUsd(v: number) {
   const safe = Number.isFinite(v) ? v : 0;
@@ -205,6 +249,7 @@ const KPI_ICON_ASSETS = {
   seasonal_check_in_call: require('../assets/figma/kpi_icon_bank/pc_seasonal_check_in_call_v1.png'),
   pop_by_delivered: require('../assets/figma/kpi_icon_bank/pc_pop_by_delivered_v1.png'),
   holiday_card_sent: require('../assets/figma/kpi_icon_bank/pc_holiday_card_sent_v1.png'),
+  biz_post: require('../assets/figma/kpi_icon_bank/pc_biz_post_v1.png'),
   time_blocks_honored: require('../assets/figma/kpi_icon_bank/gp_time_blocks_honored_v1.png'),
   social_posts_shared: require('../assets/figma/kpi_icon_bank/gp_social_posts_shared_v1.png'),
   crm_tag_applied: require('../assets/figma/kpi_icon_bank/gp_crm_tag_applied_v1.png'),
@@ -230,6 +275,12 @@ const KPI_ICON_ASSETS = {
   weekly_scorecard_review: require('../assets/figma/kpi_icon_bank/gp_weekly_scorecard_review_v1.png'),
   coaching_session_attended: require('../assets/figma/kpi_icon_bank/gp_coaching_session_attended_v1.png'),
   training_module_completed: require('../assets/figma/kpi_icon_bank/gp_training_module_completed_v1.png'),
+  instagram_post_shared: require('../assets/figma/kpi_icon_bank/gp_instagram_post_shared_v1.png'),
+  facebook_post_shared: require('../assets/figma/kpi_icon_bank/gp_facebook_post_shared_v1.png'),
+  tiktok_post_shared: require('../assets/figma/kpi_icon_bank/gp_tiktok_post_shared_v1.png'),
+  x_post_shared: require('../assets/figma/kpi_icon_bank/gp_x_post_shared_v1.png'),
+  linkedin_post_shared: require('../assets/figma/kpi_icon_bank/gp_linkedin_post_shared_v1.png'),
+  youtube_short_posted: require('../assets/figma/kpi_icon_bank/gp_youtube_short_posted_v1.png'),
   gratitude_entry: require('../assets/figma/kpi_icon_bank/vp_gratitude_entry_v1.png'),
   good_night_of_sleep: require('../assets/figma/kpi_icon_bank/vp_good_night_of_sleep_v1.png'),
   exercise_session: require('../assets/figma/kpi_icon_bank/vp_exercise_session_v1.png'),
@@ -263,6 +314,7 @@ const KPI_ICON_BY_NORMALIZED_NAME = {
   seasonal_check_in_call: KPI_ICON_ASSETS.seasonal_check_in_call,
   pop_by_delivered: KPI_ICON_ASSETS.pop_by_delivered,
   holiday_card_sent: KPI_ICON_ASSETS.holiday_card_sent,
+  biz_post: KPI_ICON_ASSETS.biz_post,
   time_blocks_honored: KPI_ICON_ASSETS.time_blocks_honored,
   social_posts_shared: KPI_ICON_ASSETS.social_posts_shared,
   crm_tag_applied: KPI_ICON_ASSETS.crm_tag_applied,
@@ -288,6 +340,12 @@ const KPI_ICON_BY_NORMALIZED_NAME = {
   weekly_scorecard_review: KPI_ICON_ASSETS.weekly_scorecard_review,
   coaching_session_attended: KPI_ICON_ASSETS.coaching_session_attended,
   training_module_completed: KPI_ICON_ASSETS.training_module_completed,
+  instagram_post_shared: KPI_ICON_ASSETS.instagram_post_shared,
+  facebook_post_shared: KPI_ICON_ASSETS.facebook_post_shared,
+  tiktok_post_shared: KPI_ICON_ASSETS.tiktok_post_shared,
+  x_post_shared: KPI_ICON_ASSETS.x_post_shared,
+  linkedin_post_shared: KPI_ICON_ASSETS.linkedin_post_shared,
+  youtube_short_posted: KPI_ICON_ASSETS.youtube_short_posted,
   gratitude_entry: KPI_ICON_ASSETS.gratitude_entry,
   good_night_of_sleep: KPI_ICON_ASSETS.good_night_of_sleep,
   exercise_session: KPI_ICON_ASSETS.exercise_session,
@@ -313,6 +371,45 @@ function normalizeKpiIdentifier(input: string) {
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .replace(/_+/g, '_');
+}
+
+function kpiSortSlug(kpi: DashboardPayload['loggable_kpis'][number]) {
+  return normalizeKpiIdentifier(String(kpi.slug || kpi.name || ''));
+}
+
+function compareKpisForSelectionOrder(
+  a: DashboardPayload['loggable_kpis'][number],
+  b: DashboardPayload['loggable_kpis'][number]
+) {
+  const typeDelta =
+    (KPI_TYPE_SORT_ORDER[a.type as 'PC' | 'GP' | 'VP'] ?? 99) -
+    (KPI_TYPE_SORT_ORDER[b.type as 'PC' | 'GP' | 'VP'] ?? 99);
+  if (typeDelta !== 0) return typeDelta;
+
+  const aSlug = kpiSortSlug(a);
+  const bSlug = kpiSortSlug(b);
+
+  if (a.type === 'PC' && b.type === 'PC') {
+    const aIdx = PC_PRIORITY_SLUG_INDEX[aSlug];
+    const bIdx = PC_PRIORITY_SLUG_INDEX[bSlug];
+    const aPinned = aIdx !== undefined;
+    const bPinned = bIdx !== undefined;
+    if (aPinned && bPinned) return aIdx - bIdx;
+    if (aPinned) return -1;
+    if (bPinned) return 1;
+  }
+
+  if (a.type === 'GP' && b.type === 'GP') {
+    const aIdx = GP_BOTTOM_SLUG_INDEX[aSlug];
+    const bIdx = GP_BOTTOM_SLUG_INDEX[bSlug];
+    const aPinned = aIdx !== undefined;
+    const bPinned = bIdx !== undefined;
+    if (aPinned && bPinned) return aIdx - bIdx;
+    if (aPinned) return 1;
+    if (bPinned) return -1;
+  }
+
+  return a.name.localeCompare(b.name);
 }
 
 function hashString(input: string) {
@@ -425,11 +522,7 @@ function renderKpiIcon(kpi: DashboardPayload['loggable_kpis'][number]) {
 function sortSelectableKpis(
   kpis: DashboardPayload['loggable_kpis']
 ): DashboardPayload['loggable_kpis'] {
-  return [...kpis].sort((a, b) => {
-    const typeDelta = (KPI_TYPE_SORT_ORDER[a.type as 'PC' | 'GP' | 'VP'] ?? 99) - (KPI_TYPE_SORT_ORDER[b.type as 'PC' | 'GP' | 'VP'] ?? 99);
-    if (typeDelta !== 0) return typeDelta;
-    return a.name.localeCompare(b.name);
-  });
+  return [...kpis].sort(compareKpisForSelectionOrder);
 }
 
 function normalizeManagedKpiIds(
@@ -606,6 +699,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submittingKpiId, setSubmittingKpiId] = useState<string | null>(null);
   const [segment, setSegment] = useState<Segment>('PC');
   const [homePanel, setHomePanel] = useState<HomePanel>('Quick');
   const [viewMode, setViewMode] = useState<ViewMode>('home');
@@ -613,12 +707,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('All');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
+  const [favoriteKpiIds, setFavoriteKpiIds] = useState<string[]>([]);
   const [pendingDirectLog, setPendingDirectLog] = useState<PendingDirectLog | null>(null);
   const [directValue, setDirectValue] = useState('');
   const [refreshingConfidence, setRefreshingConfidence] = useState(false);
   const [showConfidenceTooltip, setShowConfidenceTooltip] = useState(false);
   const confidenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chartScrollRef = useRef<ScrollView | null>(null);
+  const screenRootRef = useRef<View | null>(null);
   const [chartViewportWidth, setChartViewportWidth] = useState(0);
   const [selectedLogDateIso, setSelectedLogDateIso] = useState<string | null>(null);
   const [homeVisualViewportWidth, setHomeVisualViewportWidth] = useState(0);
@@ -626,17 +722,48 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [hudActiveIndex, setHudActiveIndex] = useState(0);
   const [modeRailViewportWidth, setModeRailViewportWidth] = useState(0);
   const [modeRailActiveCycle, setModeRailActiveCycle] = useState(MODE_RAIL_MIDDLE_CYCLE);
+  const [confirmedKpiTileIds, setConfirmedKpiTileIds] = useState<Record<string, true>>({});
+  const [feedbackMuted, setFeedbackMuted] = useState(!getFeedbackConfig().audioEnabled);
+  const [feedbackVolume, setFeedbackVolume] = useState(getFeedbackConfig().volume);
   const homePanelAnim = useRef(new Animated.Value(HOME_PANEL_ORDER.length + HOME_PANEL_ORDER.indexOf('Quick'))).current;
   const modeRailScrollRef = useRef<ScrollView | null>(null);
   const modeRailVirtualIndexRef = useRef(MODE_RAIL_MIDDLE_CYCLE * HOME_PANEL_ORDER.length + HOME_PANEL_ORDER.indexOf('Quick'));
   const homePanelVirtualIndexRef = useRef(HOME_PANEL_ORDER.length + HOME_PANEL_ORDER.indexOf('Quick'));
   const homePanelDirectionRef = useRef<-1 | 0 | 1>(0);
+  const kpiTileScaleByIdRef = useRef<Record<string, Animated.Value>>({});
+  const kpiTileConfirmTimeoutByIdRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const kpiTileSuccessAnimByIdRef = useRef<Record<string, Animated.Value>>({});
+  const kpiTileCircleRefById = useRef<Record<string, View | null>>({});
+  const chartReactionAnim = useRef(new Animated.Value(0)).current;
+  const chartImpactLineAnim = useRef(new Animated.Value(0)).current;
+  const boostPulseAnim = useRef(new Animated.Value(0)).current;
+  const modeLanePulseAnim = useRef(new Animated.Value(0)).current;
+  const chartScrollXRef = useRef(0);
+  const chartPinnedScrollXRef = useRef<number | null>(null);
+  const preservePinnedChartScrollRef = useRef(false);
+  const chartScrollableRef = useRef<View | null>(null);
+  const homePanelSwipeActiveRef = useRef(false);
+  const homePanelSwipeSuppressTapUntilRef = useRef(0);
+  const pendingQuickTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingQuickTapKpiIdRef = useRef<string | null>(null);
+  const pendingQuickTapFiredRef = useRef(false);
+  const flightAnim = useRef(new Animated.Value(0)).current;
+  const [flightFx, setFlightFx] = useState<{
+    key: number;
+    startX: number;
+    startY: number;
+    deltaX: number;
+    deltaY: number;
+    arcLift: number;
+  } | null>(null);
+  const [chartImpactLineX, setChartImpactLineX] = useState<number | null>(null);
+  const [chartImpactLineValue, setChartImpactLineValue] = useState(0);
 
   const gpUnlocked = (payload?.activity.active_days ?? 0) >= 3 || (payload?.activity.total_logs ?? 0) >= 20;
   const vpUnlocked = (payload?.activity.active_days ?? 0) >= 7 || (payload?.activity.total_logs ?? 0) >= 40;
 
-  const saveManagedKpis = useCallback(
-    async (nextIds: string[]) => {
+  const saveKpiPreferences = useCallback(
+    async (nextSelectedIds: string[], nextFavoriteIds: string[]) => {
       const token = session?.access_token;
       if (!token) return;
       try {
@@ -646,7 +773,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ selected_kpis: nextIds }),
+          body: JSON.stringify({
+            selected_kpis: nextSelectedIds,
+            favorite_kpis: nextFavoriteIds,
+          }),
         });
       } catch {
         // keep local behavior even if persistence fails
@@ -685,16 +815,24 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         const fromProfile = Array.isArray(meBody?.user_metadata?.selected_kpis)
           ? meBody.user_metadata.selected_kpis.filter((id): id is string => typeof id === 'string')
           : [];
+        const favoriteFromProfile = Array.isArray(meBody?.user_metadata?.favorite_kpis)
+          ? meBody.user_metadata.favorite_kpis.filter((id): id is string => typeof id === 'string')
+          : [];
         const validIds = new Set(dashPayload.loggable_kpis.map((kpi) => kpi.id));
         const sortedSelectable = sortSelectableKpis(
           dashPayload.loggable_kpis.filter((kpi) => kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP')
         );
         const profileValid = fromProfile.filter((id) => validIds.has(id));
         if (profileValid.length > 0) {
-          setManagedKpiIds(normalizeManagedKpiIds(profileValid, sortedSelectable));
+          const normalizedSelected = normalizeManagedKpiIds(profileValid, sortedSelectable);
+          setManagedKpiIds(normalizedSelected);
+          setFavoriteKpiIds(
+            favoriteFromProfile.filter((id) => normalizedSelected.includes(id)).slice(0, 6)
+          );
         } else {
           const defaults = normalizeManagedKpiIds(sortedSelectable.map((kpi) => kpi.id), sortedSelectable);
           setManagedKpiIds(defaults);
+          setFavoriteKpiIds(defaults.slice(0, 6));
         }
       }
 
@@ -716,6 +854,49 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   }, [fetchDashboard, state]);
 
   React.useEffect(() => {
+    void primeFeedbackAudioAsync();
+    void preloadFeedbackCuesAsync();
+  }, []);
+
+  React.useEffect(() => {
+    const boostLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(boostPulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(boostPulseAnim, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ])
+    );
+    const laneLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(modeLanePulseAnim, { toValue: 1, duration: 720, useNativeDriver: true }),
+        Animated.timing(modeLanePulseAnim, { toValue: 0, duration: 720, useNativeDriver: true }),
+      ])
+    );
+    boostLoop.start();
+    laneLoop.start();
+    return () => {
+      boostLoop.stop();
+      laneLoop.stop();
+    };
+  }, [boostPulseAnim, modeLanePulseAnim]);
+
+  React.useEffect(() => {
+    const sub = chartImpactLineAnim.addListener(({ value }) => {
+      setChartImpactLineValue(value);
+    });
+    return () => {
+      chartImpactLineAnim.removeListener(sub);
+    };
+  }, [chartImpactLineAnim]);
+
+  React.useEffect(
+    () => () => {
+      Object.values(kpiTileConfirmTimeoutByIdRef.current).forEach(clearTimeout);
+      if (pendingQuickTapTimerRef.current) clearTimeout(pendingQuickTapTimerRef.current);
+    },
+    []
+  );
+
+  React.useEffect(() => {
     if (state !== 'ready') return;
     void refreshConfidenceSnapshot();
 
@@ -734,11 +915,257 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     };
   }, [state]);
 
+  React.useEffect(() => {
+    if (viewMode === 'home') return;
+    preservePinnedChartScrollRef.current = false;
+    chartPinnedScrollXRef.current = null;
+  }, [viewMode]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchDashboard();
     setRefreshing(false);
   };
+
+  const getKpiTileScale = useCallback((kpiId: string) => {
+    if (!kpiTileScaleByIdRef.current[kpiId]) {
+      kpiTileScaleByIdRef.current[kpiId] = new Animated.Value(1);
+    }
+    return kpiTileScaleByIdRef.current[kpiId];
+  }, []);
+
+  const animateKpiTilePress = useCallback(
+    (kpiId: string, pressed: boolean) => {
+      Animated.spring(getKpiTileScale(kpiId), {
+        toValue: pressed ? 0.95 : 1,
+        friction: 7,
+        tension: 220,
+        useNativeDriver: true,
+      }).start();
+    },
+    [getKpiTileScale]
+  );
+
+  const flashKpiTileConfirm = useCallback((kpiId: string) => {
+    setConfirmedKpiTileIds((prev) => ({ ...prev, [kpiId]: true }));
+    const existing = kpiTileConfirmTimeoutByIdRef.current[kpiId];
+    if (existing) clearTimeout(existing);
+    kpiTileConfirmTimeoutByIdRef.current[kpiId] = setTimeout(() => {
+      setConfirmedKpiTileIds((prev) => {
+        const next = { ...prev };
+        delete next[kpiId];
+        return next;
+      });
+      delete kpiTileConfirmTimeoutByIdRef.current[kpiId];
+    }, 220);
+  }, []);
+
+  const getKpiTileSuccessAnim = useCallback((kpiId: string) => {
+    if (!kpiTileSuccessAnimByIdRef.current[kpiId]) {
+      kpiTileSuccessAnimByIdRef.current[kpiId] = new Animated.Value(0);
+    }
+    return kpiTileSuccessAnimByIdRef.current[kpiId];
+  }, []);
+
+  const animateKpiTileSuccess = useCallback(
+    (kpiId: string) => {
+      const anim = getKpiTileSuccessAnim(kpiId);
+      anim.stopAnimation();
+      anim.setValue(0);
+      Animated.sequence([
+        Animated.timing(anim, {
+          toValue: 1,
+          duration: 120,
+          useNativeDriver: true,
+        }),
+        Animated.timing(anim, {
+          toValue: 0,
+          duration: 260,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    },
+    [getKpiTileSuccessAnim]
+  );
+
+  const animateChartReaction = useCallback(() => {
+    chartReactionAnim.stopAnimation();
+    chartReactionAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(chartReactionAnim, { toValue: 1, duration: 140, useNativeDriver: true }),
+      Animated.timing(chartReactionAnim, { toValue: 0, duration: 380, useNativeDriver: true }),
+    ]).start();
+  }, [chartReactionAnim]);
+
+  const animateChartImpactLine = useCallback((x: number) => {
+    setChartImpactLineX(x);
+    chartImpactLineAnim.stopAnimation();
+    setChartImpactLineValue(1.22);
+    chartImpactLineAnim.setValue(1.22);
+    return new Promise<void>((resolve) => {
+      Animated.timing(chartImpactLineAnim, {
+        toValue: 0,
+        duration: 1320,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start(() => {
+        setChartImpactLineX((prev) => (prev === x ? null : prev));
+        setChartImpactLineValue(0);
+        resolve();
+      });
+    });
+  }, [chartImpactLineAnim]);
+
+  const measureInWindowAsync = useCallback(
+    (node: { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void } | null) =>
+      new Promise<{ x: number; y: number; width: number; height: number } | null>((resolve) => {
+        if (!node?.measureInWindow) {
+          resolve(null);
+          return;
+        }
+        node.measureInWindow((x, y, width, height) => {
+          resolve({ x, y, width, height });
+        });
+      }),
+    []
+  );
+
+  const getProjectionImpactPointForDate = useCallback((payoffStartIso: string) => {
+    const series = chartFromPayload(payload);
+    const rows = payload?.chart?.future_projected_12m ?? [];
+    if (!rows.length) return null;
+    const targetDate = new Date(payoffStartIso);
+    if (Number.isNaN(targetDate.getTime())) return null;
+
+    const splitX = series.step * (series.splitBaseIndex + series.splitOffsetFraction);
+    const currentValue = series.pastActual[series.splitBaseIndex] ?? 0;
+    const currentY = yForValue(currentValue, 170, series.min, series.max);
+    const nowMs = Date.now();
+    const targetMs = targetDate.getTime();
+
+    const monthXs = series.futureProjected.map(
+      (_, idx) => series.step * (series.firstFutureIndex + idx)
+    );
+    const monthDates = rows.map((row) => new Date(String(row.month_start ?? '')).getTime());
+
+    if (targetMs <= monthDates[0]) {
+      const denom = Math.max(1, monthDates[0] - nowMs);
+      const t = Math.max(0, Math.min(1, (targetMs - nowMs) / denom));
+      const endX = monthXs[0] ?? splitX;
+      const endY = yForValue(series.futureProjected[0] ?? currentValue, 170, series.min, series.max);
+      return {
+        x: splitX + (endX - splitX) * t,
+        y: currentY + (endY - currentY) * t,
+        chartWidth: series.chartWidth,
+      };
+    }
+
+    for (let i = 0; i < monthDates.length - 1; i += 1) {
+      const a = monthDates[i];
+      const b = monthDates[i + 1];
+      if (!(targetMs >= a && targetMs < b)) continue;
+      const t = Math.max(0, Math.min(1, (targetMs - a) / Math.max(1, b - a)));
+      const x1 = monthXs[i] ?? splitX;
+      const x2 = monthXs[i + 1] ?? x1;
+      const y1 = yForValue(series.futureProjected[i] ?? currentValue, 170, series.min, series.max);
+      const y2 = yForValue(series.futureProjected[i + 1] ?? series.futureProjected[i] ?? currentValue, 170, series.min, series.max);
+      return { x: x1 + (x2 - x1) * t, y: y1 + (y2 - y1) * t, chartWidth: series.chartWidth };
+    }
+
+    const lastIdx = Math.max(0, monthXs.length - 1);
+    return {
+      x: monthXs[lastIdx] ?? splitX,
+      y: yForValue(series.futureProjected[lastIdx] ?? currentValue, 170, series.min, series.max),
+      chartWidth: series.chartWidth,
+    };
+  }, [payload]);
+
+  const launchProjectionFlightFx = useCallback(async (kpiId: string, payoffStartIso: string) => {
+    if (viewMode !== 'home') return;
+    const impact = getProjectionImpactPointForDate(payoffStartIso);
+    if (!impact) return;
+    if (chartScrollRef.current && chartViewportWidth > 0) {
+      const maxScroll = Math.max(0, impact.chartWidth - chartViewportWidth);
+      const targetScrollX = Math.min(maxScroll, Math.max(0, impact.x - chartViewportWidth / 2));
+      chartPinnedScrollXRef.current = targetScrollX;
+      preservePinnedChartScrollRef.current = true;
+      chartScrollRef.current.scrollTo({ x: targetScrollX, animated: false });
+      chartScrollXRef.current = targetScrollX;
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    const sourceNode = kpiTileCircleRefById.current[kpiId];
+    const chartViewportNode = chartScrollRef.current;
+    const rootNode = screenRootRef.current;
+    const [sourceBox, chartBox] = await Promise.all([
+      measureInWindowAsync(sourceNode),
+      measureInWindowAsync(chartViewportNode as unknown as View | null),
+    ]);
+    const rootBox = await measureInWindowAsync(rootNode);
+    if (!sourceBox || !chartBox || !rootBox) return;
+
+    const projectileHalf = 14;
+    const startX = sourceBox.x - rootBox.x + sourceBox.width / 2 - projectileHalf;
+    const startY = sourceBox.y - rootBox.y + sourceBox.height / 2 - projectileHalf;
+    const endX = chartBox.x - rootBox.x + impact.x - chartScrollXRef.current - projectileHalf;
+    const endY = chartBox.y - rootBox.y + 12 + impact.y - projectileHalf;
+    setFlightFx({
+      key: Date.now(),
+      startX,
+      startY,
+      deltaX: endX - startX,
+      deltaY: endY - startY,
+      arcLift: Math.max(42, Math.min(86, Math.abs(endX - startX) * 0.14)),
+    });
+    flightAnim.stopAnimation();
+    flightAnim.setValue(0);
+    const FLIGHT_DURATION_MS = 430;
+    const IMPACT_PROGRESS_TRIGGER = 0.76;
+    let impactStarted = false;
+    let impactPromise: Promise<void> | null = null;
+    const maybeStartImpact = () => {
+      if (impactStarted) return;
+      impactStarted = true;
+      impactPromise = animateChartImpactLine(impact.x);
+    };
+    const flightSub = flightAnim.addListener(({ value }) => {
+      if (value >= IMPACT_PROGRESS_TRIGGER) {
+        maybeStartImpact();
+      }
+    });
+
+    await new Promise<void>((resolve) => {
+      Animated.timing(flightAnim, {
+        toValue: 1,
+        duration: FLIGHT_DURATION_MS,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }).start(() => {
+        setFlightFx(null);
+        resolve();
+      });
+    });
+    flightAnim.removeListener(flightSub);
+    if (!impactStarted) maybeStartImpact();
+    if (impactPromise) {
+      await impactPromise;
+    }
+  }, [animateChartImpactLine, chartViewportWidth, flightAnim, getProjectionImpactPointForDate, measureInWindowAsync, viewMode]);
+
+  const toggleFeedbackMuted = useCallback(() => {
+    setFeedbackMuted((prev) => {
+      const next = !prev;
+      setFeedbackConfig({ audioEnabled: !next });
+      return next;
+    });
+  }, []);
+
+  const cycleFeedbackVolume = useCallback(() => {
+    const levels = [0.35, 0.6, 0.85] as const;
+    const idx = levels.findIndex((level) => Math.abs(level - feedbackVolume) < 0.02);
+    const next = levels[(idx + 1 + levels.length) % levels.length];
+    setFeedbackVolume(next);
+    setFeedbackConfig({ volume: next });
+  }, [feedbackVolume]);
 
   const allSelectableKpis = useMemo(
     () =>
@@ -766,8 +1193,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   );
 
   const homeQuickLog = useMemo(
-    () => managedKpis.slice(0, 6),
-    [managedKpis]
+    () => {
+      const byId = new Map(managedKpis.map((kpi) => [kpi.id, kpi]));
+      const favorites = favoriteKpiIds.map((id) => byId.get(id)).filter(Boolean) as DashboardPayload['loggable_kpis'];
+      const used = new Set(favorites.map((kpi) => kpi.id));
+      const fill = managedKpis.filter((kpi) => !used.has(kpi.id));
+      return [...favorites, ...fill].slice(0, 6);
+    },
+    [favoriteKpiIds, managedKpis]
   );
 
   const homePanelKpis = useMemo(() => {
@@ -836,9 +1269,24 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
   React.useEffect(() => {
     if (!chartViewportWidth || !chartScrollRef.current || viewMode !== 'home') return;
+    const maxX = Math.max(0, chartSeries.dataWidth - chartViewportWidth + 24);
+    if (preservePinnedChartScrollRef.current && chartPinnedScrollXRef.current != null) {
+      const pinned = Math.min(maxX, Math.max(0, chartPinnedScrollXRef.current));
+      chartPinnedScrollXRef.current = pinned;
+      const runPinned = () => {
+        chartScrollXRef.current = pinned;
+        chartScrollRef.current?.scrollTo({ x: pinned, animated: false });
+      };
+      runPinned();
+      const tPinned = setTimeout(runPinned, 80);
+      const tPinned2 = setTimeout(runPinned, 180);
+      return () => {
+        clearTimeout(tPinned);
+        clearTimeout(tPinned2);
+      };
+    }
     const currentX = chartSplitX;
     const targetX = Math.max(0, currentX - chartViewportWidth / 3);
-    const maxX = Math.max(0, chartSeries.dataWidth - chartViewportWidth + 24);
     const clampedX = Math.min(maxX, targetX);
     const run = () => chartScrollRef.current?.scrollTo({ x: clampedX, animated: false });
     run();
@@ -922,7 +1370,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
     Animated.timing(homePanelAnim, {
       toValue: nextVirtual,
-      duration: 220,
+      duration: 180,
       useNativeDriver: true,
     }).start(() => {
       const normalized = panelCount + (((nextVirtual ?? baseTarget) % panelCount) + panelCount) % panelCount;
@@ -969,7 +1417,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     modeRailScrollRef.current.scrollTo({ x: target, animated: true });
   }, [homePanel, modeRailViewportWidth]);
 
-  const sendLog = async (kpiId: string, direct?: number) => {
+  const sendLog = async (
+    kpiId: string,
+    direct?: number,
+    options?: {
+      kpiType?: DashboardPayload['loggable_kpis'][number]['type'];
+      skipSuccessBadge?: boolean;
+      skipProjectionFlight?: boolean;
+    }
+  ) => {
     const token = session?.access_token;
     if (!token) {
       Alert.alert('Not authenticated', 'Please sign in again.');
@@ -977,6 +1433,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
 
     setSubmitting(true);
+    setSubmittingKpiId(kpiId);
     try {
       const response = await fetch(`${API_URL}/kpi-logs`, {
         method: 'POST',
@@ -993,17 +1450,34 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? 'Failed to log KPI');
+      void playFeedbackCueAsync('logSuccess');
+      if (!options?.skipSuccessBadge) {
+        animateKpiTileSuccess(kpiId);
+      }
+      animateChartReaction();
+      const payoffStartDate = String((body as { log?: { payoff_start_date?: unknown } })?.log?.payoff_start_date ?? '');
+      if (!options?.skipProjectionFlight && (options?.kpiType ?? 'PC') === 'PC' && payoffStartDate) {
+        await launchProjectionFlightFx(kpiId, payoffStartDate);
+      }
       await fetchDashboard();
       void refreshConfidenceSnapshot();
     } catch (e: unknown) {
+      void triggerHapticAsync('error');
+      void playFeedbackCueAsync('logError');
       Alert.alert('Log failed', e instanceof Error ? e.message : 'Failed to log KPI');
     } finally {
       setSubmitting(false);
+      setSubmittingKpiId(null);
     }
   };
 
-  const onTapQuickLog = async (kpi: DashboardPayload['loggable_kpis'][number]) => {
+  const onTapQuickLog = async (
+    kpi: DashboardPayload['loggable_kpis'][number],
+    options?: { skipTapFeedback?: boolean }
+  ) => {
     if ((kpi.type === 'GP' && !gpUnlocked) || (kpi.type === 'VP' && !vpUnlocked)) {
+      void triggerHapticAsync('warning');
+      void playFeedbackCueAsync('locked');
       Alert.alert(
         'Category Locked',
         kpi.type === 'GP'
@@ -1013,19 +1487,80 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       return;
     }
 
+    if (!options?.skipTapFeedback) {
+      void triggerHapticAsync('tap');
+      void playKpiTypeCueAsync(kpi.type);
+      flashKpiTileConfirm(kpi.id);
+    }
+
     if (kpi.requires_direct_value_input) {
       setDirectValue('');
       setPendingDirectLog({ kpiId: kpi.id, name: kpi.name, type: kpi.type });
       return;
     }
 
-    await sendLog(kpi.id);
+    animateKpiTileSuccess(kpi.id);
+
+    let launchedOptimisticProjection = false;
+    if (kpi.type === 'PC') {
+      const delayDays = Math.max(0, Number(kpi.delay_days ?? 0));
+      const optimisticPayoffStartIso = new Date(Date.now() + delayDays * 24 * 60 * 60 * 1000).toISOString();
+      launchedOptimisticProjection = true;
+      void launchProjectionFlightFx(kpi.id, optimisticPayoffStartIso);
+    }
+
+    await sendLog(kpi.id, undefined, {
+      kpiType: kpi.type,
+      skipSuccessBadge: true,
+      skipProjectionFlight: launchedOptimisticProjection,
+    });
   };
+
+  const cancelPendingQuickTap = useCallback(() => {
+    if (pendingQuickTapTimerRef.current) {
+      clearTimeout(pendingQuickTapTimerRef.current);
+      pendingQuickTapTimerRef.current = null;
+    }
+    pendingQuickTapKpiIdRef.current = null;
+    pendingQuickTapFiredRef.current = false;
+  }, []);
+
+  const firePendingQuickTapNow = useCallback(
+    (kpi: DashboardPayload['loggable_kpis'][number]) => {
+      const now = Date.now();
+      if (homePanelSwipeActiveRef.current || now < homePanelSwipeSuppressTapUntilRef.current) {
+        cancelPendingQuickTap();
+        return;
+      }
+      if (pendingQuickTapFiredRef.current || pendingQuickTapKpiIdRef.current !== kpi.id) return;
+      pendingQuickTapFiredRef.current = true;
+      if (pendingQuickTapTimerRef.current) {
+        clearTimeout(pendingQuickTapTimerRef.current);
+        pendingQuickTapTimerRef.current = null;
+      }
+      void onTapQuickLog(kpi, { skipTapFeedback: true });
+    },
+    [cancelPendingQuickTap, onTapQuickLog]
+  );
+
+  const scheduleQuickTap = useCallback(
+    (kpi: DashboardPayload['loggable_kpis'][number]) => {
+      cancelPendingQuickTap();
+      pendingQuickTapKpiIdRef.current = kpi.id;
+      pendingQuickTapFiredRef.current = false;
+      pendingQuickTapTimerRef.current = setTimeout(() => {
+        pendingQuickTapTimerRef.current = null;
+        firePendingQuickTapNow(kpi);
+      }, 75);
+    },
+    [cancelPendingQuickTap, firePendingQuickTapNow]
+  );
 
   const submitDirectLog = async () => {
     if (submitting || !pendingDirectLog) return;
     const parsed = Number(directValue.replace(/,/g, '').trim());
     if (!Number.isFinite(parsed) || parsed < 0) {
+      void triggerHapticAsync('warning');
       Alert.alert('Invalid value', 'Enter a valid amount.');
       return;
     }
@@ -1034,18 +1569,38 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     const normalizedValue = current.type === 'Actual' ? parsed : Math.round(parsed);
     setPendingDirectLog(null);
     setDirectValue('');
-    await sendLog(current.kpiId, normalizedValue);
+    await sendLog(current.kpiId, normalizedValue, { kpiType: current.type });
   };
 
-  const renderChartVisualPanel = () => (
+  const renderChartVisualPanel = (options?: { attachLiveChartRefs?: boolean }) => (
     <View style={styles.chartWrap}>
       <View pointerEvents="none" style={styles.chartBoostOverlay}>
-        <View style={[styles.chartBoostChip, styles.chartBoostChipPink, !gpBoostActive && styles.boostInactive]}>
+        <Animated.View
+          style={[
+            styles.chartBoostChip,
+            styles.chartBoostChipPink,
+            !gpBoostActive && styles.boostInactive,
+            !gpBoostActive && {
+              opacity: boostPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.56, 0.84] }),
+              transform: [{ scale: boostPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.03] }) }],
+            },
+          ]}
+        >
           <Text style={styles.chartBoostChipText}>{gpBoostActive ? 'GP Boost Active' : 'GP Boost Locked'}</Text>
-        </View>
-        <View style={[styles.chartBoostChip, styles.chartBoostChipGold, !vpBoostActive && styles.boostInactive]}>
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.chartBoostChip,
+            styles.chartBoostChipGold,
+            !vpBoostActive && styles.boostInactive,
+            !vpBoostActive && {
+              opacity: boostPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.54, 0.8] }),
+              transform: [{ scale: boostPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.025] }) }],
+            },
+          ]}
+        >
           <Text style={styles.chartBoostChipText}>{vpBoostActive ? 'VP Boost Active' : 'VP Boost Locked'}</Text>
-        </View>
+        </Animated.View>
       </View>
       <View style={styles.chartRow}>
         <View style={styles.yAxisCol}>
@@ -1056,12 +1611,47 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           ))}
         </View>
         <ScrollView
-          ref={chartScrollRef}
+          ref={options?.attachLiveChartRefs ? chartScrollRef : undefined}
           horizontal
           showsHorizontalScrollIndicator={false}
-          onLayout={(e) => setChartViewportWidth(e.nativeEvent.layout.width)}
+          onLayout={
+            options?.attachLiveChartRefs
+              ? (e) => {
+                  const width = e.nativeEvent.layout.width;
+                  setChartViewportWidth(width);
+                  if (preservePinnedChartScrollRef.current && chartPinnedScrollXRef.current != null) {
+                    const maxScroll = Math.max(0, chartSeries.chartWidth - width);
+                    const pinned = Math.min(maxScroll, Math.max(0, chartPinnedScrollXRef.current));
+                    chartScrollXRef.current = pinned;
+                    requestAnimationFrame(() => {
+                      chartScrollRef.current?.scrollTo({ x: pinned, animated: false });
+                    });
+                    setTimeout(() => {
+                      chartScrollRef.current?.scrollTo({ x: pinned, animated: false });
+                    }, 80);
+                  }
+                }
+              : undefined
+          }
+          onScroll={
+            options?.attachLiveChartRefs
+              ? (e) => {
+                  chartScrollXRef.current = e.nativeEvent.contentOffset.x;
+                }
+              : undefined
+          }
+          scrollEventThrottle={16}
         >
-          <View style={styles.chartScrollable}>
+          <View
+            ref={
+              options?.attachLiveChartRefs
+                ? (node) => {
+                    chartScrollableRef.current = node;
+                  }
+                : undefined
+            }
+            style={styles.chartScrollable}
+          >
             <Svg width={chartSeries.chartWidth} height="190">
               {[0, 1, 2, 3, 4].map((i) => {
                 const y = 12 + i * 42;
@@ -1127,6 +1717,18 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
 
                     {(() => {
+                      const deformLineY = (x: number, y: number) => {
+                        if (chartImpactLineX == null) return y;
+                        const spread = 56;
+                        const distance = Math.abs(x - chartImpactLineX);
+                        const normalized = distance / Math.max(1, spread);
+                        const primary = Math.exp(-(normalized * normalized) * 1.6);
+                        const rippleEnvelope = Math.exp(-(normalized * normalized) * 0.7);
+                        const ripple = Math.cos(normalized * Math.PI * 2.2) * 0.28 * rippleEnvelope;
+                        const influence = Math.max(-0.12, primary + ripple);
+                        const amplitude = 38;
+                        return y - chartImpactLineValue * amplitude * influence;
+                      };
                       const monthTargetXs = chartSeries.futureProjected.map(
                         (_, idx) => chartSeries.step * (chartSeries.firstFutureIndex + idx)
                       );
@@ -1135,24 +1737,35 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       return chartSeries.futureProjected.map((nextValue, idx) => {
                         const nextX = monthTargetXs[idx] ?? prevX;
                         if (nextX <= splitX) return null;
-                        const nextY = yForValue(nextValue, 170, chartSeries.min, chartSeries.max);
+                        const nextYBase = yForValue(nextValue, 170, chartSeries.min, chartSeries.max);
+                        const drawPrevY = deformLineY(prevX, prevY);
+                        const drawNextY = deformLineY(nextX, nextYBase);
                         const band =
                           chartSeries.futureBands[idx] ?? payload?.projection.confidence.band ?? 'yellow';
-                        const segment = (
-                          <Line
-                            key={`future-segment-${idx}`}
-                            x1={String(prevX)}
-                            y1={String(prevY)}
-                            x2={String(nextX)}
-                            y2={String(nextY)}
-                            stroke={confidenceColor(band)}
-                            strokeWidth="4"
-                            strokeLinecap="round"
-                          />
-                        );
+                        const subdivisions = 16;
+                        const pieces = Array.from({ length: subdivisions }, (_, subIdx) => {
+                          const t1 = subIdx / subdivisions;
+                          const t2 = (subIdx + 1) / subdivisions;
+                          const xA = prevX + (nextX - prevX) * t1;
+                          const xB = prevX + (nextX - prevX) * t2;
+                          const yABase = prevY + (nextYBase - prevY) * t1;
+                          const yBBase = prevY + (nextYBase - prevY) * t2;
+                          return (
+                            <Line
+                              key={`future-segment-${idx}-${subIdx}`}
+                              x1={String(xA)}
+                              y1={String(deformLineY(xA, yABase))}
+                              x2={String(xB)}
+                              y2={String(deformLineY(xB, yBBase))}
+                              stroke={confidenceColor(band)}
+                              strokeWidth="4"
+                              strokeLinecap="round"
+                            />
+                          );
+                        });
                         prevX = nextX;
-                        prevY = nextY;
-                        return segment;
+                        prevY = nextYBase;
+                        return pieces;
                       });
                     })()}
 
@@ -1177,6 +1790,32 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 );
               })()}
             </Svg>
+            {(() => {
+              const splitX = chartSeries.step * (chartSeries.splitBaseIndex + chartSeries.splitOffsetFraction);
+              const currentValue = chartSeries.pastActual[chartSeries.splitBaseIndex] ?? 0;
+              const currentY = yForValue(currentValue, 170, chartSeries.min, chartSeries.max);
+              return (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.chartMarkerPulse,
+                    {
+                      left: splitX - 12,
+                      top: 12 + currentY - 12,
+                      opacity: chartReactionAnim.interpolate({
+                        inputRange: [0, 0.12, 1],
+                        outputRange: [0, 0.42, 0],
+                      }),
+                      transform: [
+                        {
+                          scale: chartReactionAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 2] }),
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              );
+            })()}
             <View style={styles.monthRow}>
               {chartSeries.labels.map((label, idx) => (
                 <Text
@@ -1305,10 +1944,21 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   >
                     {isActive ? (
                       <>
-                        <View
+                        <Animated.View
                           style={[
                             styles.gameplaySegmentLane,
                             { backgroundColor: item === 'Quick' ? '#ffffff' : 'rgba(255,255,255,0.92)' },
+                            {
+                              opacity: modeLanePulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }),
+                              transform: [
+                                {
+                                  scaleX: modeLanePulseAnim.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [1, 1.06],
+                                  }),
+                                },
+                              ],
+                            },
                           ]}
                         />
                         <Text style={[styles.gameplaySegmentText, styles.gameplaySegmentTextActive]}>
@@ -1323,6 +1973,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               })}
             </ScrollView>
           </View>
+          <TouchableOpacity
+            style={[styles.panelSfxBtn, feedbackMuted && styles.panelSfxBtnMuted]}
+            onPress={toggleFeedbackMuted}
+            onLongPress={cycleFeedbackVolume}
+            delayLongPress={260}
+            accessibilityLabel="Toggle sound effects; long press to cycle volume"
+          >
+            <Text style={[styles.panelSfxText, feedbackMuted && styles.panelSfxTextMuted]}>
+              {feedbackMuted ? 'SFX OFF' : `SFX ${Math.round(feedbackVolume * 100)}`}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.panelGearBtn} onPress={openAddNewDrawer} accessibilityLabel="Edit log setup">
             <Text style={styles.panelGearText}>⚙︎</Text>
           </TouchableOpacity>
@@ -1334,7 +1995,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const renderHomeVisualPlaceholder = (kind: 'GP' | 'VP') => (
     <View style={styles.chartWrap}>
       <View style={styles.visualPlaceholder}>
-        <Text style={styles.visualPlaceholderEmoji}>{kind === 'GP' ? '🏙️' : '🌳'}</Text>
+        <LottieSlot
+          source={kind === 'GP' ? GP_LOTTIE_SOURCE : VP_LOTTIE_SOURCE}
+          size={132}
+          fallbackEmoji={kind === 'GP' ? '🏙️' : '🌳'}
+        />
         <Text style={styles.visualPlaceholderTitle}>
           {kind === 'GP' ? 'Business Growth Visual' : 'Vitality Visual'}
         </Text>
@@ -1347,7 +2012,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     </View>
   );
 
-  const renderHomeGridPanel = (panel: HomePanel) => {
+  const renderHomeGridPanel = (panel: HomePanel, options?: { attachLiveTileRefs?: boolean }) => {
     const locked = (panel === 'GP' && !gpUnlocked) || (panel === 'VP' && !vpUnlocked);
     const panelKpis =
       panel === 'Quick' ? homeQuickLog : managedKpis.filter((kpi) => kpi.type === panel).slice(0, 6);
@@ -1366,31 +2031,91 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
     return (
       <View style={styles.gridWrap}>
-        {panelKpis.map((kpi) => (
-          <TouchableOpacity
-            key={kpi.id}
-            style={[styles.gridItem, submitting && styles.disabled]}
-            onPress={() => void onTapQuickLog(kpi)}
-            onLongPress={() =>
-              Alert.alert('Remove from Quick Log?', `${kpi.name} will be removed from your quick log set.`, [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Remove', style: 'destructive', onPress: () => removeManagedKpi(kpi.id) },
-              ])
-            }
-            delayLongPress={280}
-            disabled={submitting}
-          >
-            <View style={styles.gridCircle}>{renderKpiIcon(kpi)}</View>
-            <Text style={styles.gridLabel}>{kpi.name}</Text>
-          </TouchableOpacity>
-        ))}
+        {panelKpis.map((kpi) => {
+          const successAnim = getKpiTileSuccessAnim(kpi.id);
+          const successOpacity = successAnim.interpolate({
+            inputRange: [0, 0.12, 1],
+            outputRange: [0, 1, 0],
+          });
+          const successTranslateY = successAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, -14],
+          });
+          const successScale = successAnim.interpolate({
+            inputRange: [0, 0.2, 1],
+            outputRange: [0.8, 1.02, 0.96],
+          });
+          return (
+            <TouchableOpacity
+              key={kpi.id}
+              style={[styles.gridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
+              onPress={undefined}
+              disabled={submitting}
+              onPressIn={() => {
+                animateKpiTilePress(kpi.id, true);
+                if (!submitting) {
+                  scheduleQuickTap(kpi);
+                }
+              }}
+              onPressOut={() => {
+                animateKpiTilePress(kpi.id, false);
+                if (pendingQuickTapKpiIdRef.current === kpi.id && !pendingQuickTapFiredRef.current) {
+                  firePendingQuickTapNow(kpi);
+                }
+              }}
+            >
+              <Animated.View style={[styles.gridTileAnimatedWrap, { transform: [{ scale: getKpiTileScale(kpi.id) }] }]}>
+                <View
+                  ref={
+                    options?.attachLiveTileRefs
+                      ? (node) => {
+                          kpiTileCircleRefById.current[kpi.id] = node;
+                        }
+                      : undefined
+                  }
+                  style={styles.gridCircleWrap}
+                >
+                  <View
+                    style={[
+                      styles.gridCircle,
+                      confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed,
+                    ]}
+                  >
+                    {renderKpiIcon(kpi)}
+                  </View>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.gridSuccessBadge,
+                      {
+                        opacity: successOpacity,
+                        transform: [{ translateY: successTranslateY }, { scale: successScale }],
+                      },
+                    ]}
+                  >
+                    <Text style={styles.gridSuccessBadgeText}>+1</Text>
+                  </Animated.View>
+                </View>
+                <Text style={[styles.gridLabel, confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed]}>{kpi.name}</Text>
+              </Animated.View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     );
   };
 
   const visualPageWidth = Math.max(homeVisualViewportWidth, 1);
   const gridPageWidth = Math.max(homeGridViewportWidth, 1);
-  const visualTranslateX = Animated.multiply(homePanelAnim, -visualPageWidth);
+  const visualParallaxOffset = Math.max(10, Math.round(visualPageWidth * 0.035));
+  const visualTranslateBaseX = Animated.multiply(homePanelAnim, -visualPageWidth);
+  const visualTranslateX = Animated.add(
+    visualTranslateBaseX,
+    homePanelAnim.interpolate({
+      inputRange: [0, 1000],
+      outputRange: [0, visualParallaxOffset],
+    })
+  );
   const gridTranslateX = Animated.multiply(homePanelAnim, -gridPageWidth);
   const homePanelLoopItems = Array.from({ length: GAMEPLAY_MODE_LOOP_CYCLES }).flatMap((_, cycleIdx) =>
     HOME_PANEL_ORDER.map((panel) => ({ panel, cycleIdx }))
@@ -1479,7 +2204,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         Alert.alert('Category limit reached', `You can only keep up to 6 ${kpi.type} KPIs active.`);
         return prev;
       }
-      void saveManagedKpis(next);
+      setFavoriteKpiIds((prevFav) => {
+        const nextFav = prevFav.filter((id) => next.includes(id)).slice(0, 6);
+        void saveKpiPreferences(next, nextFav);
+        return nextFav;
+      });
       return next;
     });
   };
@@ -1488,29 +2217,25 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     setManagedKpiIds((prev) => {
       if (!prev.includes(kpiId)) return prev;
       const next = prev.filter((id) => id !== kpiId);
-      void saveManagedKpis(next);
+      setFavoriteKpiIds((prevFav) => {
+        const nextFav = prevFav.filter((id) => id !== kpiId);
+        void saveKpiPreferences(next, nextFav);
+        return nextFav;
+      });
       return next;
     });
   };
 
   const toggleFavoriteKpi = (kpiId: string) => {
-    setManagedKpiIds((prev) => {
-      if (!prev.includes(kpiId)) return prev;
-      const favoriteIds = prev.slice(0, 6);
-      const isFavorite = favoriteIds.includes(kpiId);
-      if (isFavorite) {
-        const without = prev.filter((id) => id !== kpiId);
-        const favWithout = favoriteIds.filter((id) => id !== kpiId);
-        const rest = without.filter((id) => !favWithout.includes(id));
-        const replacement = rest[0];
-        const nextFav = replacement ? [...favWithout, replacement] : favWithout;
-        const next = [...nextFav, ...without.filter((id) => !nextFav.includes(id))];
-        void saveManagedKpis(next);
-        return next;
+    if (!managedKpiIds.includes(kpiId)) return;
+    setFavoriteKpiIds((prev) => {
+      const isFavorite = prev.includes(kpiId);
+      const next = isFavorite ? prev.filter((id) => id !== kpiId) : [...prev, kpiId];
+      if (!isFavorite && next.length > 6) {
+        Alert.alert('Favorites full', 'You can star up to 6 Quick Log favorites.');
+        return prev;
       }
-      const without = prev.filter((id) => id !== kpiId);
-      const next = [kpiId, ...without];
-      void saveManagedKpis(next);
+      void saveKpiPreferences(managedKpiIds, next);
       return next;
     });
   };
@@ -1532,8 +2257,32 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const homePanelPanResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 16 && Math.abs(gesture.dy) < 20,
+        onMoveShouldSetPanResponderCapture: (_, gesture) => {
+          const should = Math.abs(gesture.dx) > 16 && Math.abs(gesture.dy) < 20;
+          if (should) {
+            homePanelSwipeActiveRef.current = true;
+            homePanelSwipeSuppressTapUntilRef.current = Date.now() + 220;
+            cancelPendingQuickTap();
+          }
+          return should;
+        },
+        onMoveShouldSetPanResponder: (_, gesture) => {
+          const should = Math.abs(gesture.dx) > 16 && Math.abs(gesture.dy) < 20;
+          if (should) {
+            homePanelSwipeActiveRef.current = true;
+            homePanelSwipeSuppressTapUntilRef.current = Date.now() + 220;
+            cancelPendingQuickTap();
+          }
+          return should;
+        },
+        onPanResponderGrant: () => {
+          homePanelSwipeActiveRef.current = true;
+          homePanelSwipeSuppressTapUntilRef.current = Date.now() + 220;
+          cancelPendingQuickTap();
+        },
         onPanResponderRelease: (_, gesture) => {
+          homePanelSwipeActiveRef.current = false;
+          homePanelSwipeSuppressTapUntilRef.current = Date.now() + 180;
           if (gesture.dx <= -24) {
             shiftHomePanel(1);
             return;
@@ -1542,8 +2291,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             shiftHomePanel(-1);
           }
         },
+        onPanResponderTerminate: () => {
+          homePanelSwipeActiveRef.current = false;
+          homePanelSwipeSuppressTapUntilRef.current = Date.now() + 180;
+          cancelPendingQuickTap();
+        },
       }),
-    []
+    [cancelPendingQuickTap]
   );
 
   const onBottomTabPress = (tab: BottomTab) => {
@@ -1564,17 +2318,70 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const vpBoostActive = false;
 
   const drawerCatalogKpis = useMemo(() => {
+    const metric = (kpi: DashboardPayload['loggable_kpis'][number]) => {
+      if (kpi.type === 'PC') return Number(kpi.pc_weight ?? 0) || 0;
+      if (kpi.type === 'GP') return Number(kpi.gp_value ?? 0) || 0;
+      if (kpi.type === 'VP') return Number(kpi.vp_value ?? 0) || 0;
+      return 0;
+    };
     const ordered = [...allSelectableKpis].sort((a, b) => {
-      const aIndex = managedKpiIds.indexOf(a.id);
-      const bIndex = managedKpiIds.indexOf(b.id);
-      if (aIndex >= 0 && bIndex >= 0) return aIndex - bIndex;
-      if (aIndex >= 0) return -1;
-      if (bIndex >= 0) return 1;
-      return a.name.localeCompare(b.name);
+      const orderedDelta = compareKpisForSelectionOrder(a, b);
+      if (orderedDelta !== 0) return orderedDelta;
+      const metricDelta = metric(a) - metric(b);
+      if (Math.abs(metricDelta) > 0.000001) return metricDelta;
+      return 0;
     });
     if (drawerFilter === 'All') return ordered;
     return ordered.filter((kpi) => kpi.type === drawerFilter);
-  }, [allSelectableKpis, managedKpiIds, drawerFilter]);
+  }, [allSelectableKpis, drawerFilter]);
+
+  const selectedCountsByType = useMemo(() => {
+    const byId = new Map(allSelectableKpis.map((kpi) => [kpi.id, kpi]));
+    const counts: Record<'PC' | 'GP' | 'VP', number> = { PC: 0, GP: 0, VP: 0 };
+    for (const id of managedKpiIds) {
+      const kpi = byId.get(id);
+      if (!kpi) continue;
+      if (kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP') counts[kpi.type] += 1;
+    }
+    return counts;
+  }, [allSelectableKpis, managedKpiIds]);
+
+  const sessionUserMeta = (session?.user?.user_metadata ?? {}) as Record<string, unknown>;
+  const estAveragePricePoint = Number(sessionUserMeta.average_price_point ?? 300000) || 300000;
+  const estCommissionRatePct = Number(sessionUserMeta.commission_rate_percent ?? 3) || 3;
+  const estCommissionRate = estCommissionRatePct / 100;
+
+  const recentPcGeneratedByKpiId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const log of [...(payload?.recent_logs ?? [])].reverse()) {
+      const id = String(log.kpi_id ?? '');
+      if (!id || map.has(id)) continue;
+      const pc = Number(log.pc_generated ?? 0);
+      if (pc > 0) map.set(id, pc);
+    }
+    return map;
+  }, [payload?.recent_logs]);
+
+  const formatDrawerKpiMeta = useCallback((kpi: DashboardPayload['loggable_kpis'][number]) => {
+    if (kpi.type === 'PC') {
+      const recentPc = recentPcGeneratedByKpiId.get(kpi.id);
+      const weight = Number(kpi.pc_weight ?? 0);
+      const estPc = recentPc != null && recentPc > 0 ? recentPc : estAveragePricePoint * estCommissionRate * weight;
+      const delay = Number(kpi.delay_days ?? 0);
+      const hold = Number(kpi.hold_days ?? 0);
+      const ttcLabel = (kpi.ttc_definition || '').trim() || `${delay + hold}d`;
+      return `PC ${fmtUsd(estPc)} • TTC ${ttcLabel}`;
+    }
+    if (kpi.type === 'GP') {
+      const pts = Number(kpi.gp_value ?? 1) || 1;
+      return `GP +${fmtNum(pts)} pt${pts === 1 ? '' : 's'}`;
+    }
+    if (kpi.type === 'VP') {
+      const pts = Number(kpi.vp_value ?? 1) || 1;
+      return `VP +${fmtNum(pts)} pt${pts === 1 ? '' : 's'}`;
+    }
+    return kpi.requires_direct_value_input ? 'Manual value input' : 'Tap to log';
+  }, [estAveragePricePoint, estCommissionRate, recentPcGeneratedByKpiId]);
 
   if (state === 'loading') {
     return (
@@ -1597,7 +2404,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   }
 
   return (
-    <>
+    <View
+      ref={(node) => {
+        screenRootRef.current = node;
+      }}
+      style={styles.screenRoot}
+    >
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -1623,7 +2435,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   {homePanelLoopItems.map(({ panel, cycleIdx }) => (
                     <View key={`visual-${cycleIdx}-${panel}`} style={[styles.homePanelPage, { width: visualPageWidth }]}>
                       {panel === 'Quick' || panel === 'PC'
-                        ? renderChartVisualPanel()
+                        ? renderChartVisualPanel({
+                            attachLiveChartRefs: cycleIdx === 1 && homePanel === panel,
+                          })
                         : renderHomeVisualPlaceholder(panel as 'GP' | 'VP')}
                     </View>
                   ))}
@@ -1649,7 +2463,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               >
                 {homePanelLoopItems.map(({ panel, cycleIdx }) => (
                   <View key={`grid-${cycleIdx}-${panel}`} style={[styles.homePanelPage, { width: gridPageWidth }]}>
-                    {renderHomeGridPanel(panel)}
+                    {renderHomeGridPanel(panel, {
+                      attachLiveTileRefs: cycleIdx === 1 && homePanel === panel,
+                    })}
                   </View>
                 ))}
               </Animated.View>
@@ -1764,26 +2580,73 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               </View>
             ) : (
               <View style={styles.gridWrap}>
-                {quickLogKpis.map((kpi, idx) => (
-                  <TouchableOpacity
-                    key={kpi.id}
-                    style={[styles.gridItem, submitting && styles.disabled]}
-                    onPress={() => void onTapQuickLog(kpi)}
-                    onLongPress={() =>
-                      Alert.alert('Remove from Quick Log?', `${kpi.name} will be removed from your quick log set.`, [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Remove', style: 'destructive', onPress: () => removeManagedKpi(kpi.id) },
-                      ])
-                    }
-                    delayLongPress={280}
-                    disabled={submitting}
-                  >
-                    <View style={styles.gridCircle}>
-                      {renderKpiIcon(kpi)}
-                    </View>
-                    <Text style={styles.gridLabel}>{kpi.name}</Text>
-                  </TouchableOpacity>
-                ))}
+                {quickLogKpis.map((kpi, idx) => {
+                  const successAnim = getKpiTileSuccessAnim(kpi.id);
+                  const successOpacity = successAnim.interpolate({
+                    inputRange: [0, 0.12, 1],
+                    outputRange: [0, 1, 0],
+                  });
+                  const successTranslateY = successAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -14],
+                  });
+                  const successScale = successAnim.interpolate({
+                    inputRange: [0, 0.2, 1],
+                    outputRange: [0.8, 1.02, 0.96],
+                  });
+                  return (
+                    <TouchableOpacity
+                      key={kpi.id}
+                      style={[styles.gridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
+                      onPress={() => void onTapQuickLog(kpi)}
+                      onLongPress={() =>
+                        Alert.alert('Remove from Quick Log?', `${kpi.name} will be removed from your quick log set.`, [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Remove', style: 'destructive', onPress: () => removeManagedKpi(kpi.id) },
+                        ])
+                      }
+                      delayLongPress={280}
+                      disabled={submitting}
+                      onPressIn={() => animateKpiTilePress(kpi.id, true)}
+                      onPressOut={() => animateKpiTilePress(kpi.id, false)}
+                    >
+                      <Animated.View
+                        style={[styles.gridTileAnimatedWrap, { transform: [{ scale: getKpiTileScale(kpi.id) }] }]}
+                      >
+                        <View
+                          ref={(node) => {
+                            kpiTileCircleRefById.current[kpi.id] = node;
+                          }}
+                          style={styles.gridCircleWrap}
+                        >
+                          <View
+                            style={[
+                              styles.gridCircle,
+                              confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed,
+                            ]}
+                          >
+                            {renderKpiIcon(kpi)}
+                          </View>
+                          <Animated.View
+                            pointerEvents="none"
+                            style={[
+                              styles.gridSuccessBadge,
+                              {
+                                opacity: successOpacity,
+                                transform: [{ translateY: successTranslateY }, { scale: successScale }],
+                              },
+                            ]}
+                          >
+                            <Text style={styles.gridSuccessBadgeText}>+1</Text>
+                          </Animated.View>
+                        </View>
+                        <Text style={[styles.gridLabel, confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed]}>
+                          {kpi.name}
+                        </Text>
+                      </Animated.View>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
 
@@ -1824,6 +2687,59 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         )}
       </ScrollView>
 
+      {flightFx ? (
+        <>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.fxProjectile,
+              {
+                left: flightFx.startX,
+                top: flightFx.startY,
+                opacity: flightAnim.interpolate({ inputRange: [0, 0.06, 0.95, 1], outputRange: [0, 1, 1, 0] }),
+                transform: [
+                  { translateX: flightAnim.interpolate({ inputRange: [0, 1], outputRange: [0, flightFx.deltaX] }) },
+                  {
+                    translateY: flightAnim.interpolate({
+                      inputRange: [0, 0.45, 1],
+                      outputRange: [0, -flightFx.arcLift, flightFx.deltaY],
+                    }),
+                  },
+                  { rotate: '-8deg' },
+                  { scale: flightAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.9, 1.08, 0.96] }) },
+                ],
+              },
+            ]}
+          >
+            <Text style={styles.fxProjectileText}>$</Text>
+          </Animated.View>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.fxProjectile,
+              {
+                left: flightFx.startX - 8,
+                top: flightFx.startY + 6,
+                opacity: flightAnim.interpolate({ inputRange: [0, 0.12, 0.9, 1], outputRange: [0, 0.85, 0.85, 0] }),
+                transform: [
+                  { translateX: flightAnim.interpolate({ inputRange: [0, 1], outputRange: [0, flightFx.deltaX + 12] }) },
+                  {
+                    translateY: flightAnim.interpolate({
+                      inputRange: [0, 0.4, 1],
+                      outputRange: [0, -Math.max(24, flightFx.arcLift * 0.72), flightFx.deltaY + 4],
+                    }),
+                  },
+                  { rotate: '10deg' },
+                  { scale: flightAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.75, 0.95, 0.8] }) },
+                ],
+              },
+            ]}
+          >
+            <Text style={[styles.fxProjectileText, styles.fxProjectileTextAlt]}>$</Text>
+          </Animated.View>
+        </>
+      ) : null}
+
       <View style={styles.bottomNav}>
         {([
           { key: 'home', icon: '⌂', label: 'Home' },
@@ -1834,11 +2750,25 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         ] as const).map((tab) => (
           <TouchableOpacity
             key={tab.key}
-            style={styles.bottomItem}
+            style={[styles.bottomItem, activeTab === tab.key && styles.bottomItemActivePill]}
             onPress={() => onBottomTabPress(tab.key)}
           >
-            <Text style={[styles.bottomIcon, activeTab === tab.key && styles.bottomActive]}>{tab.icon}</Text>
-            <Text style={[styles.bottomLabel, activeTab === tab.key && styles.bottomActive]}>{tab.label}</Text>
+            <Animated.View
+              style={
+                activeTab === tab.key
+                  ? {
+                      transform: [
+                        {
+                          scale: modeLanePulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] }),
+                        },
+                      ],
+                    }
+                  : undefined
+              }
+            >
+              <Text style={[styles.bottomIcon, activeTab === tab.key && styles.bottomActive]}>{tab.icon}</Text>
+              <Text style={[styles.bottomLabel, activeTab === tab.key && styles.bottomActive]}>{tab.label}</Text>
+            </Animated.View>
           </TouchableOpacity>
         ))}
       </View>
@@ -1856,20 +2786,31 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   onPress={() => setDrawerFilter(filter)}
                 >
                   <Text style={[styles.drawerFilterChipText, drawerFilter === filter && styles.drawerFilterChipTextActive]}>
-                    {filter}
+                    {filter === 'All' ? 'All' : `${filter} ${selectedCountsByType[filter]}/6`}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <ScrollView style={styles.drawerGridScroll} contentContainerStyle={styles.drawerGrid}>
-              {drawerCatalogKpis.map((kpi, idx) => {
+            <ScrollView style={styles.drawerGridScroll} contentContainerStyle={styles.drawerList}>
+              {drawerCatalogKpis.map((kpi) => {
                 const locked = (kpi.type === 'GP' && !gpUnlocked) || (kpi.type === 'VP' && !vpUnlocked);
                 const selected = managedKpiIdSet.has(kpi.id);
-                const isFavorite = managedKpiIds.slice(0, 6).includes(kpi.id);
+                const isFavorite = favoriteKpiIds.includes(kpi.id);
+                const favoriteRank = favoriteKpiIds.indexOf(kpi.id);
+                const categoryFull =
+                  (kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP') &&
+                  selectedCountsByType[kpi.type] >= 6 &&
+                  !selected;
+                const selectionDisabled = locked || categoryFull;
                 return (
                 <TouchableOpacity
                   key={kpi.id}
-                  style={[styles.drawerItem, locked && styles.disabled]}
+                  style={[
+                    styles.drawerListRow,
+                    selectionDisabled && styles.disabled,
+                    selected && styles.drawerListRowSelected,
+                    categoryFull && styles.drawerListRowCapReached,
+                  ]}
                   onPress={() => {
                     if (locked) {
                       Alert.alert(
@@ -1880,14 +2821,38 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       );
                       return;
                     }
+                    if (categoryFull) {
+                      Alert.alert('Category Full', `You already have 6 ${kpi.type} KPIs selected. Turn one off first.`);
+                      return;
+                    }
                     toggleManagedKpi(kpi.id);
                   }}
                 >
-                  <View style={[styles.drawerCircle, { backgroundColor: kpiTypeTint(kpi.type) }]}>
-                    {renderKpiIcon(kpi)}
+                  <View style={[styles.drawerListIconWrap, { backgroundColor: kpiTypeTint(kpi.type) }]}>
+                    <View style={styles.drawerListIconInner}>
+                      {renderKpiIcon(kpi)}
+                    </View>
                   </View>
-                  <Text style={styles.drawerLabel}>{kpi.name}</Text>
-                  <View style={styles.drawerActionRow}>
+                  <View style={styles.drawerListMain}>
+                    <View style={styles.drawerListTitleRow}>
+                      <Text numberOfLines={1} style={styles.drawerListLabel}>{kpi.name}</Text>
+                      <View style={[styles.drawerTypeBadge, { backgroundColor: kpiTypeTint(kpi.type) }]}>
+                        <Text style={[styles.drawerTypeBadgeText, { color: kpiTypeAccent(kpi.type) }]}>{kpi.type}</Text>
+                      </View>
+                    </View>
+                    <Text numberOfLines={1} style={styles.drawerListMeta}>{formatDrawerKpiMeta(kpi)}</Text>
+                    <View style={styles.drawerStateRow}>
+                      <View style={[styles.drawerStateChip, selected ? styles.drawerStateChipOn : styles.drawerStateChipOff]}>
+                        <Text style={styles.drawerStateChipText}>{selected ? 'Selected' : 'Not Selected'}</Text>
+                      </View>
+                      {categoryFull ? (
+                        <View style={[styles.drawerStateChip, styles.drawerStateChipCap]}>
+                          <Text style={styles.drawerStateChipText}>Type Full (6/6)</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                  <View style={styles.drawerActionCol}>
                     <View style={[styles.drawerActionPill, selected ? styles.drawerActionRemove : styles.drawerActionAdd]}>
                       <Text style={styles.drawerActionText}>{selected ? 'On' : 'Off'}</Text>
                     </View>
@@ -1899,7 +2864,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         toggleFavoriteKpi(kpi.id);
                       }}
                     >
-                      <Text style={styles.drawerActionText}>{isFavorite ? 'Fav' : '☆'}</Text>
+                      <Text style={styles.drawerActionText}>{isFavorite ? `★${favoriteRank + 1}` : '☆'}</Text>
                     </TouchableOpacity>
                   </View>
                 </TouchableOpacity>
@@ -1938,11 +2903,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           </View>
         </View>
       </Modal>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screenRoot: {
+    flex: 1,
+  },
   content: {
     paddingHorizontal: 16,
     paddingTop: 12,
@@ -2223,6 +3191,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  panelSfxBtn: {
+    minHeight: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d7dde8',
+    backgroundColor: '#eef5ff',
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  panelSfxBtnMuted: {
+    backgroundColor: '#f4f5f7',
+    borderColor: '#dfe3ea',
+  },
+  panelSfxText: {
+    color: '#1f5fe2',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  panelSfxTextMuted: {
+    color: '#6f7888',
+  },
   panelGearText: {
     color: '#384154',
     fontSize: 16,
@@ -2331,6 +3322,15 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#664a2f',
     fontWeight: '700',
+  },
+  chartMarkerPulse: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: '#4c79e6',
+    backgroundColor: 'rgba(76, 121, 230, 0.08)',
   },
   homePanelViewport: {
     overflow: 'hidden',
@@ -2768,12 +3768,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 2,
   },
+  gridTileAnimatedWrap: {
+    alignItems: 'center',
+    gap: 2,
+    width: '100%',
+  },
   gridCircle: {
     width: 96,
     height: 96,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
+    borderRadius: 48,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  gridCircleWrap: {
+    width: 96,
+    height: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridCircleConfirmed: {
+    borderColor: 'rgba(31, 95, 226, 0.28)',
+    backgroundColor: 'rgba(31, 95, 226, 0.045)',
+    shadowColor: '#1f5fe2',
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
   },
   gridIcon: {
     fontSize: 38,
@@ -2796,6 +3818,34 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     textAlign: 'center',
     marginTop: -2,
+  },
+  gridLabelConfirmed: {
+    color: '#1f5fe2',
+    fontWeight: '700',
+  },
+  gridSuccessBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 2,
+    minWidth: 28,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: '#2f9f56',
+    borderWidth: 1,
+    borderColor: '#d8f4df',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    shadowColor: '#1e7a41',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  gridSuccessBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    lineHeight: 12,
+    fontWeight: '800',
   },
   emptyPanel: {
     backgroundColor: '#fff',
@@ -2820,6 +3870,36 @@ const styles = StyleSheet.create({
   bottomItem: {
     alignItems: 'center',
     gap: 2,
+    minWidth: 58,
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  bottomItemActivePill: {
+    backgroundColor: '#eef4ff',
+  },
+  fxProjectile: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 40,
+    elevation: 40,
+  },
+  fxProjectileText: {
+    color: '#2f9f56',
+    fontSize: 24,
+    lineHeight: 24,
+    fontWeight: '900',
+    textShadowColor: 'rgba(33, 88, 213, 0.16)',
+    textShadowRadius: 5,
+    textShadowOffset: { width: 0, height: 1 },
+  },
+  fxProjectileTextAlt: {
+    color: '#4c79e6',
+    fontSize: 19,
+    lineHeight: 19,
   },
   bottomIcon: {
     color: '#a0a8b7',
@@ -2842,7 +3922,7 @@ const styles = StyleSheet.create({
   },
   drawerCard: {
     width: '100%',
-    maxWidth: 360,
+    maxWidth: 420,
     backgroundColor: '#fff',
     borderRadius: 0,
     padding: 16,
@@ -2884,46 +3964,114 @@ const styles = StyleSheet.create({
   drawerFilterChipTextActive: {
     color: '#fff',
   },
-  drawerGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 14,
+  drawerList: {
+    gap: 8,
+    paddingBottom: 4,
   },
   drawerGridScroll: {
-    maxHeight: 420,
+    maxHeight: 500,
   },
-  drawerItem: {
-    width: '31%',
+  drawerListRow: {
+    minHeight: 72,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e7ecf4',
+    backgroundColor: '#fbfcfe',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
   },
-  drawerCircle: {
-    width: 60,
-    height: 60,
+  drawerListRowSelected: {
+    borderColor: '#d4e2fb',
+    backgroundColor: '#f5f9ff',
+  },
+  drawerListRowCapReached: {
+    borderColor: '#efe2be',
+    backgroundColor: '#fffaf0',
+  },
+  drawerListIconWrap: {
+    width: 42,
+    height: 42,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
-  drawerLabel: {
-    color: '#4b5262',
-    fontSize: 11,
-    lineHeight: 14,
-    textAlign: 'center',
+  drawerListIconInner: {
+    transform: [{ scale: 0.48 }],
   },
-  drawerMeta: {
-    fontSize: 10,
-    color: '#7d8797',
+  drawerListMain: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
   },
-  drawerActionPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  drawerActionRow: {
+  drawerListTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  drawerListLabel: {
+    flex: 1,
+    color: '#334055',
+    fontSize: 14,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  drawerListMeta: {
+    color: '#6d7889',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  drawerTypeBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  drawerTypeBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  drawerStateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 1,
+    flexWrap: 'wrap',
+  },
+  drawerStateChip: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  drawerStateChipOn: {
+    backgroundColor: '#dcf4de',
+  },
+  drawerStateChipOff: {
+    backgroundColor: '#eef2f8',
+  },
+  drawerStateChipFav: {
+    backgroundColor: '#ffe9bc',
+  },
+  drawerStateChipCap: {
+    backgroundColor: '#fff0cf',
+  },
+  drawerStateChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#415064',
+  },
+  drawerActionCol: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  drawerActionPill: {
+    borderRadius: 999,
+    minWidth: 42,
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   drawerActionAdd: {
     backgroundColor: '#dfeafb',

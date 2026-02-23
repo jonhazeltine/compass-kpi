@@ -48,9 +48,24 @@ app.get("/me", async (req, res) => {
         if (!auth.ok) {
             return res.status(auth.status).json({ error: auth.error });
         }
+        let userRow = null;
+        if (dataClient) {
+            await ensureUserRow(auth.user.id);
+            const { data } = await dataClient
+                .from("users")
+                .select("role,tier,account_status")
+                .eq("id", auth.user.id)
+                .maybeSingle();
+            if (data) {
+                userRow = data;
+            }
+        }
         return res.json({
             id: auth.user.id,
             email: auth.user.email,
+            role: userRow?.role ?? null,
+            tier: userRow?.tier ?? null,
+            account_status: userRow?.account_status ?? null,
             user_metadata: auth.user.user_metadata,
         });
     }
@@ -4329,6 +4344,10 @@ async function writeKpiLogForUser(userId, payload) {
         userProfile: profile.userProfile,
         userPcMultiplier,
     });
+    const isPcLog = kpi.type === "PC";
+    const delayDaysAppliedForInsert = isPcLog ? Math.max(0, toNumberOrZero(calc.delayDaysApplied)) : null;
+    const holdDaysAppliedForInsert = isPcLog ? Math.max(0, toNumberOrZero(calc.holdDaysApplied)) : null;
+    const decayDaysAppliedForInsert = isPcLog ? Math.max(1, toNumberOrZero(calc.decayDaysApplied) || 1) : null;
     const { data: insertedLog, error: insertError } = await dataClient
         .from("kpi_logs")
         .insert({
@@ -4343,9 +4362,9 @@ async function writeKpiLogForUser(userId, payload) {
         ttc_end_date: calc.ttcEndDate,
         decay_end_date: calc.decayEndDate,
         payoff_start_date: calc.payoffStartDate,
-        delay_days_applied: calc.delayDaysApplied,
-        hold_days_applied: calc.holdDaysApplied,
-        decay_days_applied: calc.decayDaysApplied,
+        delay_days_applied: delayDaysAppliedForInsert,
+        hold_days_applied: holdDaysAppliedForInsert,
+        decay_days_applied: decayDaysAppliedForInsert,
         points_generated: calc.pointsGenerated,
         actual_gci_delta: calc.actualGciDelta,
         deals_closed_delta: calc.dealsClosedDelta,
@@ -4357,6 +4376,24 @@ async function writeKpiLogForUser(userId, payload) {
         .select("id,user_id,kpi_id,event_timestamp,logged_value,idempotency_key,pc_generated,points_generated,actual_gci_delta,deals_closed_delta,payoff_start_date,delay_days_applied,hold_days_applied,decay_days_applied,pc_base_weight_applied,pc_user_multiplier_applied,pc_effective_weight_applied")
         .single();
     if (insertError) {
+        // eslint-disable-next-line no-console
+        console.error("writeKpiLogForUser insert failed", {
+            userId,
+            kpiId: payload.kpi_id,
+            eventTimestamp: payload.event_timestamp,
+            loggedValue: payload.logged_value ?? null,
+            insertError,
+            calcSnapshot: {
+                pcGenerated: calc.pcGenerated,
+                pointsGenerated: calc.pointsGenerated,
+                actualGciDelta: calc.actualGciDelta,
+                dealsClosedDelta: calc.dealsClosedDelta,
+                payoffStartDate: calc.payoffStartDate,
+                delayDaysApplied: delayDaysAppliedForInsert,
+                holdDaysApplied: holdDaysAppliedForInsert,
+                decayDaysApplied: decayDaysAppliedForInsert,
+            },
+        });
         return { ok: false, status: 500, error: "Failed to write KPI log" };
     }
     const { error: touchError } = await dataClient
