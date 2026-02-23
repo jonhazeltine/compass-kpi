@@ -66,16 +66,18 @@ Out of scope:
 - A1 uses backend `GET /me` as fallback role source when Supabase session metadata lacks role fields.
 
 ## Results (2026-02-23)
-- Status: partial pass (agent-validated + user-assisted review), final click-through signoff still pending
+- Status: pass for A1 shell/authz closeout (user-assisted browser validation + agent validation)
 
 Validated during this thread:
 - `GET /me` fallback role flow works after promoting local user to `super_admin` in `public.users`
-- Unauthorized (`403`) state renders for non-admin preview and exposes one-click reset to live role
+- Live admin shell renders with backend role badge (`super_admin`) and no unexpected 403s in normal usage (user confirmed)
+- Unauthorized (`403`) state renders for non-admin preview and exposes one-click reset to live role (user screenshots)
 - Scroll clipping bug in admin content panel was reproduced (user screenshot) and fixed
+- Web path sync + browser back/forward behavior on valid route changes works (user confirmed after fix)
+- Upcoming-route toggle reveals A2/A3 placeholders and keeps shell coherent (user screenshots)
 - Web path sync supports `/admin/unauthorized` and unknown `/admin/*` -> `/admin/not-found` shell state handling
 - Pure-function authz unit tests added and passing (`npm run test:unit`)
 
-Still recommended for final signoff (manual browser clicks):
-- Live role path checks for `/admin`, `/admin/authz`, `/admin/users`
-- Browser back/forward navigation after toggling between valid/unauthorized/not-found states
-- Upcoming-route toggle behavior on current browser/session after latest changes
+Notes on coverage:
+- Screenshots provided confirm the only observed `403` states were expected dev-preview non-admin cases (`Preview non-admin` / `agent` override).
+- Unknown-path + not-found behavior was implemented and manually exercised during development; if desired, re-run `/admin/does-not-exist` as a quick post-commit smoke check.
