@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -15,6 +17,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AdminRouteGuard from '../components/AdminRouteGuard';
 import { useAdminAuthz } from '../contexts/AdminAuthzContext';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  createAdminChallengeTemplate,
+  createAdminKpi,
+  deactivateAdminChallengeTemplate,
+  deactivateAdminKpi,
+  fetchAdminChallengeTemplates,
+  fetchAdminKpis,
+  updateAdminChallengeTemplate,
+  updateAdminKpi,
+  type AdminChallengeTemplateRow,
+  type AdminChallengeTemplateWritePayload,
+  type AdminKpiRow,
+  type AdminKpiWritePayload,
+} from '../lib/adminCatalogApi';
 import {
   ADMIN_ROUTES,
   AdminRouteDefinition,
@@ -97,6 +113,717 @@ function NotFoundState({ requestedPath }: { requestedPath: string }) {
   );
 }
 
+function formatDateShort(value?: string | null) {
+  if (!value) return 'n/a';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'n/a';
+  return date.toLocaleDateString();
+}
+
+async function confirmDangerAction(message: string): Promise<boolean> {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return window.confirm(message);
+  }
+  return new Promise((resolve) => {
+    Alert.alert('Confirm Action', message, [
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+      { text: 'Confirm', style: 'destructive', onPress: () => resolve(true) },
+    ]);
+  });
+}
+
+function sortRowsByUpdatedDesc<T extends { updated_at?: string | null; created_at?: string | null }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => {
+    const aTime = new Date(a.updated_at ?? a.created_at ?? 0).getTime();
+    const bTime = new Date(b.updated_at ?? b.created_at ?? 0).getTime();
+    return bTime - aTime;
+  });
+}
+
+function formatKpiRange(row: Pick<AdminKpiRow, 'delay_days' | 'hold_days' | 'ttc_definition' | 'ttc_days'>): string {
+  if (row.delay_days != null && row.hold_days != null) {
+    const start = row.delay_days;
+    const end = row.delay_days + row.hold_days;
+    return `${start}-${end}d`;
+  }
+  if (row.ttc_definition?.trim()) return row.ttc_definition.trim();
+  if (row.ttc_days != null) return `${row.ttc_days}d`;
+  return '-';
+}
+
+function getKpiTypeHelp(type: KpiFormDraft['type']) {
+  switch (type) {
+    case 'PC':
+      return 'Projected contribution KPI. Requires PC weight, TTC days, and decay days.';
+    case 'GP':
+      return 'Gamification points input only. GP does not generate PC.';
+    case 'VP':
+      return 'Value-points/input KPI only. VP does not generate PC.';
+    case 'Actual':
+      return 'Realized outcome KPI (kept separate from projected contribution values).';
+    case 'Pipeline_Anchor':
+      return 'Forecast anchor input. Supports forecast interpretation, not direct PC generation.';
+    case 'Custom':
+      return 'Flexible KPI row for custom tracking/admin use.';
+    default:
+      return '';
+  }
+}
+
+type KpiFormDraft = {
+  id?: string;
+  name: string;
+  slug: string;
+  type: AdminKpiWritePayload['type'];
+  requiresDirectValueInput: boolean;
+  isActive: boolean;
+  pcWeight: string;
+  delayDays: string;
+  holdDays: string;
+  ttcDays: string;
+  decayDays: string;
+  gpValue: string;
+  vpValue: string;
+};
+
+type TemplateFormDraft = {
+  id?: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+};
+
+function emptyKpiDraft(): KpiFormDraft {
+  return {
+    name: '',
+    slug: '',
+    type: 'Custom',
+    requiresDirectValueInput: false,
+    isActive: true,
+    pcWeight: '',
+    delayDays: '',
+    holdDays: '',
+    ttcDays: '',
+    decayDays: '',
+    gpValue: '',
+    vpValue: '',
+  };
+}
+
+function kpiDraftFromRow(row: AdminKpiRow): KpiFormDraft {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug ?? '',
+    type: (row.type as KpiFormDraft['type']) ?? 'Custom',
+    requiresDirectValueInput: Boolean(row.requires_direct_value_input),
+    isActive: row.is_active,
+    pcWeight: row.pc_weight == null ? '' : String(row.pc_weight),
+    delayDays: row.delay_days == null ? '' : String(row.delay_days),
+    holdDays: row.hold_days == null ? '' : String(row.hold_days),
+    ttcDays: row.ttc_days == null ? '' : String(row.ttc_days),
+    decayDays: row.decay_days == null ? '' : String(row.decay_days),
+    gpValue: row.gp_value == null ? '' : String(row.gp_value),
+    vpValue: row.vp_value == null ? '' : String(row.vp_value),
+  };
+}
+
+function emptyTemplateDraft(): TemplateFormDraft {
+  return { name: '', description: '', isActive: true };
+}
+
+function templateDraftFromRow(row: AdminChallengeTemplateRow): TemplateFormDraft {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? '',
+    isActive: row.is_active,
+  };
+}
+
+function parseOptionalNumber(text: string): number | null | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return undefined;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
+}
+
+function buildKpiPayloadFromDraft(draft: KpiFormDraft): { payload?: AdminKpiWritePayload; error?: string } {
+  if (!draft.name.trim()) return { error: 'Name is required' };
+  const payload: AdminKpiWritePayload = {
+    name: draft.name.trim(),
+    type: draft.type,
+    requires_direct_value_input: draft.requiresDirectValueInput,
+    is_active: draft.isActive,
+  };
+  if (draft.slug.trim()) payload.slug = draft.slug.trim();
+
+  if (draft.type === 'PC') {
+    const pcWeight = parseOptionalNumber(draft.pcWeight);
+    const delayDays = parseOptionalNumber(draft.delayDays);
+    const holdDays = parseOptionalNumber(draft.holdDays);
+    const ttcDays = parseOptionalNumber(draft.ttcDays);
+    const decayDays = parseOptionalNumber(draft.decayDays);
+    if (pcWeight == null) return { error: 'PC KPI requires numeric pc_weight' };
+    if (delayDays == null) return { error: 'PC KPI requires numeric delay_days' };
+    if (holdDays == null) return { error: 'PC KPI requires numeric hold_days' };
+    if (decayDays == null) return { error: 'PC KPI requires numeric decay_days' };
+    payload.pc_weight = pcWeight;
+    payload.delay_days = delayDays;
+    payload.hold_days = holdDays;
+    payload.ttc_days = delayDays + holdDays;
+    if (ttcDays != null && ttcDays !== delayDays + holdDays) {
+      payload.ttc_days = ttcDays;
+    }
+    payload.decay_days = decayDays;
+  }
+
+  if (draft.type === 'GP') {
+    const gpValue = parseOptionalNumber(draft.gpValue);
+    if (gpValue === null) return { error: 'GP value must be numeric' };
+    if (gpValue !== undefined) payload.gp_value = gpValue;
+  }
+
+  if (draft.type === 'VP') {
+    const vpValue = parseOptionalNumber(draft.vpValue);
+    if (vpValue === null) return { error: 'VP value must be numeric' };
+    if (vpValue !== undefined) payload.vp_value = vpValue;
+  }
+
+  return { payload };
+}
+
+function buildTemplatePayloadFromDraft(
+  draft: TemplateFormDraft
+): { payload?: AdminChallengeTemplateWritePayload; error?: string } {
+  if (!draft.name.trim()) return { error: 'Name is required' };
+  return {
+    payload: {
+      name: draft.name.trim(),
+      description: draft.description,
+      is_active: draft.isActive,
+    },
+  };
+}
+
+function AdminKpiCatalogPanel({
+  rows,
+  loading,
+  error,
+  searchQuery,
+  onSearchQueryChange,
+  statusFilter,
+  onStatusFilterChange,
+  typeFilter,
+  onTypeFilterChange,
+  draft,
+  onDraftChange,
+  onSelectRow,
+  onResetDraft,
+  onSubmitCreate,
+  onSubmitUpdate,
+  onDeactivate,
+  saving,
+  saveError,
+  successMessage,
+}: {
+  rows: AdminKpiRow[];
+  loading: boolean;
+  error: string | null;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  statusFilter: 'all' | 'active' | 'inactive';
+  onStatusFilterChange: (value: 'all' | 'active' | 'inactive') => void;
+  typeFilter: 'all' | AdminKpiWritePayload['type'];
+  onTypeFilterChange: (value: 'all' | AdminKpiWritePayload['type']) => void;
+  draft: KpiFormDraft;
+  onDraftChange: (patch: Partial<KpiFormDraft>) => void;
+  onSelectRow: (row: AdminKpiRow) => void;
+  onResetDraft: () => void;
+  onSubmitCreate: () => void;
+  onSubmitUpdate: () => void;
+  onDeactivate: () => void;
+  saving: boolean;
+  saveError: string | null;
+  successMessage: string | null;
+}) {
+  const editing = Boolean(draft.id);
+  const filteredRows = rows.filter((row) => {
+    const q = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      row.name.toLowerCase().includes(q) ||
+      (row.slug ?? '').toLowerCase().includes(q) ||
+      row.type.toLowerCase().includes(q);
+    const matchesStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'active' ? row.is_active : !row.is_active);
+    const matchesType = typeFilter === 'all' || row.type === typeFilter;
+    return matchesSearch && matchesStatus && matchesType;
+  });
+  return (
+    <View style={styles.panel}>
+      <View style={styles.panelTopRow}>
+        <View style={styles.panelTitleBlock}>
+          <Text style={styles.eyebrow}>/admin/kpis</Text>
+          <Text style={styles.panelTitle}>KPI Catalog</Text>
+        </View>
+        <View style={[styles.stagePill, { backgroundColor: '#EEF3FF', borderColor: '#CEDBFF' }]}>
+          <Text style={[styles.stagePillText, { color: '#204ECF' }]}>A2 Later</Text>
+        </View>
+      </View>
+      <Text style={styles.panelBody}>
+        A2 KPI catalog baseline wired to existing admin endpoints with create/edit/deactivate controls.
+      </Text>
+      <View style={styles.filterBar}>
+        <View style={[styles.formField, styles.formFieldWide]}>
+          <Text style={styles.formLabel}>Search</Text>
+          <TextInput
+            value={searchQuery}
+            onChangeText={onSearchQueryChange}
+            style={styles.input}
+            placeholder="Search name, slug, type"
+          />
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Status</Text>
+          <View style={styles.inlineToggleRow}>
+            {(['all', 'active', 'inactive'] as const).map((value) => {
+              const selected = statusFilter === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => onStatusFilterChange(value)}
+                  style={[styles.toggleChip, selected && styles.toggleChipOn]}
+                >
+                  <Text style={[styles.toggleChipText, selected && styles.toggleChipTextOn]}>
+                    {value}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+        <View style={[styles.formField, styles.formFieldWide]}>
+          <Text style={styles.formLabel}>Type Filter</Text>
+          <View style={styles.chipRow}>
+            {(['all', 'PC', 'GP', 'VP', 'Actual', 'Pipeline_Anchor', 'Custom'] as const).map((value) => {
+              const selected = typeFilter === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => onTypeFilterChange(value)}
+                  style={[styles.formChip, selected && styles.formChipSelected]}
+                >
+                  <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>
+                    {value}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+      <View style={styles.formCard}>
+        <View style={styles.formHeaderRow}>
+          <Text style={styles.formTitle}>{editing ? 'Edit KPI' : 'Create KPI'}</Text>
+          <TouchableOpacity style={styles.smallGhostButton} onPress={onResetDraft}>
+            <Text style={styles.smallGhostButtonText}>{editing ? 'New KPI' : 'Clear'}</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.formGrid}>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Name</Text>
+            <TextInput value={draft.name} onChangeText={(name) => onDraftChange({ name })} style={styles.input} />
+          </View>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Slug</Text>
+            <TextInput value={draft.slug} onChangeText={(slug) => onDraftChange({ slug })} style={styles.input} />
+          </View>
+          <View style={[styles.formField, styles.formFieldWide]}>
+            <Text style={styles.formLabel}>Type</Text>
+            <View style={styles.chipRow}>
+              {(['PC', 'GP', 'VP', 'Actual', 'Pipeline_Anchor', 'Custom'] as const).map((type) => {
+                const selected = draft.type === type;
+                return (
+                  <Pressable
+                    key={type}
+                    onPress={() => onDraftChange({ type })}
+                    style={[styles.formChip, selected && styles.formChipSelected]}
+                    accessibilityRole="button"
+                    accessibilityHint={getKpiTypeHelp(type)}
+                  >
+                    <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>{type}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.fieldHelpText}>{getKpiTypeHelp(draft.type)}</Text>
+          </View>
+          <View style={[styles.formField, styles.formFieldWide]}>
+            <Text style={styles.formLabel}>Options</Text>
+            <View style={styles.inlineToggleRow}>
+              <Pressable
+                onPress={() => onDraftChange({ isActive: !draft.isActive })}
+                style={[styles.toggleChip, draft.isActive && styles.toggleChipOn]}
+              >
+                <Text style={[styles.toggleChipText, draft.isActive && styles.toggleChipTextOn]}>
+                  {draft.isActive ? 'Active' : 'Inactive'}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() =>
+                  onDraftChange({ requiresDirectValueInput: !draft.requiresDirectValueInput })
+                }
+                style={[styles.toggleChip, draft.requiresDirectValueInput && styles.toggleChipOn]}
+              >
+                <Text
+                  style={[
+                    styles.toggleChipText,
+                    draft.requiresDirectValueInput && styles.toggleChipTextOn,
+                  ]}
+                >
+                  Direct Value Input
+                </Text>
+              </Pressable>
+            </View>
+            <Text style={styles.fieldHelpText}>
+              `Direct Value Input` means users enter the numeric value for this KPI event directly (not just a count/tap).
+            </Text>
+          </View>
+          {draft.type === 'PC' ? (
+            <>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>PC Weight</Text>
+                <TextInput
+                  value={draft.pcWeight}
+                  onChangeText={(pcWeight) => onDraftChange({ pcWeight })}
+                  style={styles.input}
+                  keyboardType="numeric"
+                />
+                <Text style={styles.fieldHelpText}>
+                  Decimal weight. Match the scale used by existing PC KPIs in this catalog (for example `0.05` to `0.15`, not `0.35`).
+                </Text>
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Delay Days</Text>
+                <TextInput
+                  value={draft.delayDays}
+                  onChangeText={(delayDays) => onDraftChange({ delayDays })}
+                  style={styles.input}
+                  keyboardType="numeric"
+                  placeholder="30"
+                />
+                <Text style={styles.fieldHelpText}>
+                  Days before projected credit starts applying.
+                </Text>
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Hold Days</Text>
+                <TextInput
+                  value={draft.holdDays}
+                  onChangeText={(holdDays) => onDraftChange({ holdDays })}
+                  style={styles.input}
+                  keyboardType="numeric"
+                  placeholder="30"
+                />
+                <Text style={styles.fieldHelpText}>
+                  Duration of the credit window before decay begins.
+                </Text>
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Decay Days</Text>
+                <TextInput
+                  value={draft.decayDays}
+                  onChangeText={(decayDays) => onDraftChange({ decayDays })}
+                  style={styles.input}
+                  keyboardType="numeric"
+                />
+                <Text style={styles.fieldHelpText}>Number of days for projected effect to decay after TTC/hold timing.</Text>
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Total TTC (derived)</Text>
+                <View style={styles.readonlyValueBox}>
+                  <Text style={styles.readonlyValueText}>
+                    {(() => {
+                      const d = Number(draft.delayDays);
+                      const h = Number(draft.holdDays);
+                      if (!Number.isFinite(d) || !Number.isFinite(h)) return 'Enter delay + hold';
+                      return `${Math.max(0, d + h)} days`;
+                    })()}
+                  </Text>
+                </View>
+                <Text style={styles.fieldHelpText}>
+                  Range view is `delay to delay+hold`. Example: `30` + `30` = range `30-60 days`.
+                </Text>
+              </View>
+            </>
+          ) : null}
+          {draft.type === 'GP' ? (
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>GP Value</Text>
+              <TextInput
+                value={draft.gpValue}
+                onChangeText={(gpValue) => onDraftChange({ gpValue })}
+                style={styles.input}
+                keyboardType="numeric"
+              />
+            </View>
+          ) : null}
+          {draft.type === 'VP' ? (
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>VP Value</Text>
+              <TextInput
+                value={draft.vpValue}
+                onChangeText={(vpValue) => onDraftChange({ vpValue })}
+                style={styles.input}
+                keyboardType="numeric"
+              />
+            </View>
+          ) : null}
+        </View>
+        {saveError ? <Text style={[styles.metaRow, styles.errorText]}>Error: {saveError}</Text> : null}
+        {successMessage ? <Text style={[styles.metaRow, styles.successText]}>{successMessage}</Text> : null}
+        <View style={styles.formActionsRow}>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={editing ? onSubmitUpdate : onSubmitCreate}
+            disabled={saving}
+          >
+            <Text style={styles.primaryButtonText}>
+              {saving ? 'Saving...' : editing ? 'Save Changes' : 'Create KPI'}
+            </Text>
+          </TouchableOpacity>
+          {editing ? (
+            <TouchableOpacity
+              style={styles.warnButton}
+              onPress={onDeactivate}
+              disabled={saving}
+            >
+              <Text style={styles.warnButtonText}>{saving ? 'Working...' : 'Deactivate'}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+      {loading ? <Text style={styles.metaRow}>Loading KPI catalog...</Text> : null}
+      {error ? <Text style={[styles.metaRow, styles.errorText]}>Error: {error}</Text> : null}
+      {!loading && !error ? (
+        <>
+          <Text style={styles.metaRow}>Rows shown: {filteredRows.length} of {rows.length}</Text>
+          <View style={styles.tableWrap}>
+            <View style={styles.tableHeaderRow}>
+              <Text style={[styles.tableHeaderCell, styles.colWide]}>KPI</Text>
+              <Text style={[styles.tableHeaderCell, styles.colMd]}>Type</Text>
+              <Text style={[styles.tableHeaderCell, styles.colSm]}>PC Wt</Text>
+              <Text style={[styles.tableHeaderCell, styles.colMd]}>Range</Text>
+              <Text style={[styles.tableHeaderCell, styles.colSm]}>TTC</Text>
+              <Text style={[styles.tableHeaderCell, styles.colSm]}>Decay</Text>
+              <Text style={[styles.tableHeaderCell, styles.colSm]}>Status</Text>
+              <Text style={[styles.tableHeaderCell, styles.colSm]}>Updated</Text>
+            </View>
+            {filteredRows.slice(0, 12).map((row) => (
+              <Pressable key={row.id} style={styles.tableDataRow} onPress={() => onSelectRow(row)}>
+                <View style={[styles.tableCell, styles.colWide]}>
+                  <Text style={styles.tablePrimary}>{row.name}</Text>
+                  <Text style={styles.tableSecondary}>{row.slug ?? row.id}</Text>
+                </View>
+                <Text style={[styles.tableCellText, styles.colMd]}>{row.type}</Text>
+                <Text style={[styles.tableCellText, styles.colSm]}>
+                  {row.pc_weight == null ? '-' : String(row.pc_weight)}
+                </Text>
+                <Text style={[styles.tableCellText, styles.colMd]}>{formatKpiRange(row)}</Text>
+                <Text style={[styles.tableCellText, styles.colSm]}>
+                  {row.ttc_days != null ? `${row.ttc_days}d` : '-'}
+                </Text>
+                <Text style={[styles.tableCellText, styles.colSm]}>
+                  {row.decay_days == null ? '-' : `${row.decay_days}d`}
+                </Text>
+                <Text style={[styles.tableCellText, styles.colSm]}>{row.is_active ? 'active' : 'inactive'}</Text>
+                <Text style={[styles.tableCellText, styles.colSm]}>{formatDateShort(row.updated_at)}</Text>
+              </Pressable>
+            ))}
+            {filteredRows.length > 12 ? <Text style={styles.tableFootnote}>Showing first 12 filtered rows for A2 baseline UI (pagination later).</Text> : null}
+          </View>
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+function AdminChallengeTemplatesPanel({
+  rows,
+  loading,
+  error,
+  searchQuery,
+  onSearchQueryChange,
+  statusFilter,
+  onStatusFilterChange,
+  draft,
+  onDraftChange,
+  onSelectRow,
+  onResetDraft,
+  onSubmitCreate,
+  onSubmitUpdate,
+  onDeactivate,
+  saving,
+  saveError,
+  successMessage,
+}: {
+  rows: AdminChallengeTemplateRow[];
+  loading: boolean;
+  error: string | null;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  statusFilter: 'all' | 'active' | 'inactive';
+  onStatusFilterChange: (value: 'all' | 'active' | 'inactive') => void;
+  draft: TemplateFormDraft;
+  onDraftChange: (patch: Partial<TemplateFormDraft>) => void;
+  onSelectRow: (row: AdminChallengeTemplateRow) => void;
+  onResetDraft: () => void;
+  onSubmitCreate: () => void;
+  onSubmitUpdate: () => void;
+  onDeactivate: () => void;
+  saving: boolean;
+  saveError: string | null;
+  successMessage: string | null;
+}) {
+  const editing = Boolean(draft.id);
+  const filteredRows = rows.filter((row) => {
+    const q = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      row.name.toLowerCase().includes(q) ||
+      (row.description ?? '').toLowerCase().includes(q);
+    const matchesStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'active' ? row.is_active : !row.is_active);
+    return matchesSearch && matchesStatus;
+  });
+  return (
+    <View style={styles.panel}>
+      <View style={styles.panelTopRow}>
+        <View style={styles.panelTitleBlock}>
+          <Text style={styles.eyebrow}>/admin/challenge-templates</Text>
+          <Text style={styles.panelTitle}>Challenge Templates</Text>
+        </View>
+        <View style={[styles.stagePill, { backgroundColor: '#EEF3FF', borderColor: '#CEDBFF' }]}>
+          <Text style={[styles.stagePillText, { color: '#204ECF' }]}>A2 Later</Text>
+        </View>
+      </View>
+      <Text style={styles.panelBody}>
+        A2 challenge template baseline wired to existing admin endpoints with create/edit/deactivate controls.
+      </Text>
+      <View style={styles.filterBar}>
+        <View style={[styles.formField, styles.formFieldWide]}>
+          <Text style={styles.formLabel}>Search</Text>
+          <TextInput
+            value={searchQuery}
+            onChangeText={onSearchQueryChange}
+            style={styles.input}
+            placeholder="Search name or description"
+          />
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Status</Text>
+          <View style={styles.inlineToggleRow}>
+            {(['all', 'active', 'inactive'] as const).map((value) => {
+              const selected = statusFilter === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => onStatusFilterChange(value)}
+                  style={[styles.toggleChip, selected && styles.toggleChipOn]}
+                >
+                  <Text style={[styles.toggleChipText, selected && styles.toggleChipTextOn]}>
+                    {value}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+      <View style={styles.formCard}>
+        <View style={styles.formHeaderRow}>
+          <Text style={styles.formTitle}>{editing ? 'Edit Template' : 'Create Template'}</Text>
+          <TouchableOpacity style={styles.smallGhostButton} onPress={onResetDraft}>
+            <Text style={styles.smallGhostButtonText}>{editing ? 'New Template' : 'Clear'}</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Name</Text>
+          <TextInput value={draft.name} onChangeText={(name) => onDraftChange({ name })} style={styles.input} />
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Description</Text>
+          <TextInput
+            value={draft.description}
+            onChangeText={(description) => onDraftChange({ description })}
+            style={[styles.input, styles.inputMultiline]}
+            multiline
+          />
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Status</Text>
+          <Pressable
+            onPress={() => onDraftChange({ isActive: !draft.isActive })}
+            style={[styles.toggleChip, draft.isActive && styles.toggleChipOn]}
+          >
+            <Text style={[styles.toggleChipText, draft.isActive && styles.toggleChipTextOn]}>
+              {draft.isActive ? 'Active' : 'Inactive'}
+            </Text>
+          </Pressable>
+        </View>
+        {saveError ? <Text style={[styles.metaRow, styles.errorText]}>Error: {saveError}</Text> : null}
+        {successMessage ? <Text style={[styles.metaRow, styles.successText]}>{successMessage}</Text> : null}
+        <View style={styles.formActionsRow}>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={editing ? onSubmitUpdate : onSubmitCreate}
+            disabled={saving}
+          >
+            <Text style={styles.primaryButtonText}>
+              {saving ? 'Saving...' : editing ? 'Save Changes' : 'Create Template'}
+            </Text>
+          </TouchableOpacity>
+          {editing ? (
+            <TouchableOpacity style={styles.warnButton} onPress={onDeactivate} disabled={saving}>
+              <Text style={styles.warnButtonText}>{saving ? 'Working...' : 'Deactivate'}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+      {loading ? <Text style={styles.metaRow}>Loading challenge templates...</Text> : null}
+      {error ? <Text style={[styles.metaRow, styles.errorText]}>Error: {error}</Text> : null}
+      {!loading && !error ? (
+        <>
+          <Text style={styles.metaRow}>Rows shown: {filteredRows.length} of {rows.length}</Text>
+          <View style={styles.tableWrap}>
+            <View style={styles.tableHeaderRow}>
+              <Text style={[styles.tableHeaderCell, styles.colWide]}>Template</Text>
+              <Text style={[styles.tableHeaderCell, styles.colSm]}>Status</Text>
+              <Text style={[styles.tableHeaderCell, styles.colSm]}>Updated</Text>
+            </View>
+            {filteredRows.slice(0, 12).map((row) => (
+              <Pressable key={row.id} style={styles.tableDataRow} onPress={() => onSelectRow(row)}>
+                <View style={[styles.tableCell, styles.colWide]}>
+                  <Text style={styles.tablePrimary}>{row.name}</Text>
+                  <Text numberOfLines={1} style={styles.tableSecondary}>
+                    {row.description?.trim() || '(no description)'}
+                  </Text>
+                </View>
+                <Text style={[styles.tableCellText, styles.colSm]}>{row.is_active ? 'active' : 'inactive'}</Text>
+                <Text style={[styles.tableCellText, styles.colSm]}>{formatDateShort(row.updated_at)}</Text>
+              </Pressable>
+            ))}
+            {filteredRows.length > 12 ? <Text style={styles.tableFootnote}>Showing first 12 filtered rows for A2 baseline UI (pagination later).</Text> : null}
+          </View>
+        </>
+      ) : null}
+    </View>
+  );
+}
+
 function UnauthorizedState({
   title,
   message,
@@ -163,6 +890,25 @@ export default function AdminShellScreen() {
   const [devRolePreview, setDevRolePreview] = useState<'live' | 'super_admin' | 'admin' | 'agent'>('live');
   const [unknownAdminPath, setUnknownAdminPath] = useState<string | null>(null);
   const [lastNavPushPath, setLastNavPushPath] = useState<string | null>(null);
+  const [kpiRows, setKpiRows] = useState<AdminKpiRow[]>([]);
+  const [kpiLoading, setKpiLoading] = useState(false);
+  const [kpiError, setKpiError] = useState<string | null>(null);
+  const [kpiSearchQuery, setKpiSearchQuery] = useState('');
+  const [kpiStatusFilter, setKpiStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [kpiTypeFilter, setKpiTypeFilter] = useState<'all' | AdminKpiWritePayload['type']>('all');
+  const [kpiDraft, setKpiDraft] = useState<KpiFormDraft>(emptyKpiDraft);
+  const [kpiSaving, setKpiSaving] = useState(false);
+  const [kpiSaveError, setKpiSaveError] = useState<string | null>(null);
+  const [kpiSuccessMessage, setKpiSuccessMessage] = useState<string | null>(null);
+  const [templateRows, setTemplateRows] = useState<AdminChallengeTemplateRow[]>([]);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+  const [templateSearchQuery, setTemplateSearchQuery] = useState('');
+  const [templateStatusFilter, setTemplateStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [templateDraft, setTemplateDraft] = useState<TemplateFormDraft>(emptyTemplateDraft);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateSaveError, setTemplateSaveError] = useState<string | null>(null);
+  const [templateSuccessMessage, setTemplateSuccessMessage] = useState<string | null>(null);
 
   const effectiveRoles = useMemo(() => {
     if (!__DEV__ || devRolePreview === 'live') return resolvedRoles;
@@ -177,12 +923,17 @@ export default function AdminShellScreen() {
   const a1Routes = ADMIN_ROUTES.filter((route) => getAdminRouteStage(route.key) === 'A1 now').length;
   const blockedRoutes = ADMIN_ROUTES.filter((route) => !canAccessRoute(route)).length;
   const visibleRoutes = ADMIN_ROUTES.filter(
-    (route) => showUpcomingRoutes || getAdminRouteStage(route.key) === 'A1 now'
+    (route) => {
+      const stage = getAdminRouteStage(route.key);
+      if (stage === 'A1 now' || stage === 'A2 later') return true;
+      return showUpcomingRoutes;
+    }
   );
 
   useEffect(() => {
     if (showUpcomingRoutes) return;
-    if (getAdminRouteStage(activeRouteKey) === 'A1 now') return;
+    const stage = getAdminRouteStage(activeRouteKey);
+    if (stage === 'A1 now' || stage === 'A2 later') return;
     setActiveRouteKey('overview');
   }, [activeRouteKey, showUpcomingRoutes]);
 
@@ -247,6 +998,204 @@ export default function AdminShellScreen() {
     }
     window.history.replaceState({}, '', nextPath);
   }, [activeRouteKey, canOpenActiveRoute, effectiveHasAdminAccess, lastNavPushPath, unknownAdminPath]);
+
+  const refreshKpis = async () => {
+    if (!session?.access_token) return;
+    setKpiLoading(true);
+    setKpiError(null);
+    try {
+      const rows = await fetchAdminKpis(session.access_token);
+      setKpiRows(sortRowsByUpdatedDesc(rows));
+    } catch (error) {
+      setKpiError(error instanceof Error ? error.message : 'Failed to load KPIs');
+    } finally {
+      setKpiLoading(false);
+    }
+  };
+
+  const refreshTemplates = async () => {
+    if (!session?.access_token) return;
+    setTemplateLoading(true);
+    setTemplateError(null);
+    try {
+      const rows = await fetchAdminChallengeTemplates(session.access_token);
+      setTemplateRows(sortRowsByUpdatedDesc(rows));
+    } catch (error) {
+      setTemplateError(error instanceof Error ? error.message : 'Failed to load templates');
+    } finally {
+      setTemplateLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!session?.access_token) return;
+    if (activeRouteKey !== 'kpis') return;
+    if (!effectiveHasAdminAccess) return;
+
+    void refreshKpis().catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRouteKey, effectiveHasAdminAccess, session?.access_token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!session?.access_token) return;
+    if (activeRouteKey !== 'challengeTemplates') return;
+    if (!effectiveHasAdminAccess) return;
+
+    void refreshTemplates().catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRouteKey, effectiveHasAdminAccess, session?.access_token]);
+
+  const handleKpiCreate = async () => {
+    if (!session?.access_token) return;
+    const built = buildKpiPayloadFromDraft(kpiDraft);
+    if (!built.payload) {
+      setKpiSaveError(built.error ?? 'Invalid KPI form');
+      return;
+    }
+    setKpiSaving(true);
+    setKpiSaveError(null);
+    setKpiSuccessMessage(null);
+    try {
+      const created = await createAdminKpi(session.access_token, built.payload);
+      setKpiRows((prev) => sortRowsByUpdatedDesc([created, ...prev.filter((row) => row.id !== created.id)]));
+      setKpiDraft(kpiDraftFromRow(created));
+      setKpiSuccessMessage(`KPI created: ${created.name}`);
+      await refreshKpis();
+    } catch (error) {
+      setKpiSaveError(error instanceof Error ? error.message : 'Failed to create KPI');
+    } finally {
+      setKpiSaving(false);
+    }
+  };
+
+  const handleKpiUpdate = async () => {
+    if (!session?.access_token || !kpiDraft.id) return;
+    const built = buildKpiPayloadFromDraft(kpiDraft);
+    if (!built.payload) {
+      setKpiSaveError(built.error ?? 'Invalid KPI form');
+      return;
+    }
+    setKpiSaving(true);
+    setKpiSaveError(null);
+    setKpiSuccessMessage(null);
+    try {
+      const updated = await updateAdminKpi(session.access_token, kpiDraft.id, built.payload);
+      setKpiRows((prev) => sortRowsByUpdatedDesc([updated, ...prev.filter((row) => row.id !== updated.id)]));
+      setKpiDraft(kpiDraftFromRow(updated));
+      setKpiSuccessMessage(`KPI updated: ${updated.name}`);
+      await refreshKpis();
+    } catch (error) {
+      setKpiSaveError(error instanceof Error ? error.message : 'Failed to update KPI');
+    } finally {
+      setKpiSaving(false);
+    }
+  };
+
+  const handleKpiDeactivate = async () => {
+    if (!session?.access_token || !kpiDraft.id) return;
+    const confirmed = await confirmDangerAction(
+      `Deactivate KPI "${kpiDraft.name || 'this KPI'}"? This marks it inactive.`
+    );
+    if (!confirmed) return;
+    setKpiSaving(true);
+    setKpiSaveError(null);
+    setKpiSuccessMessage(null);
+    try {
+      const deactivated = await deactivateAdminKpi(session.access_token, kpiDraft.id);
+      setKpiRows((prev) =>
+        sortRowsByUpdatedDesc([deactivated, ...prev.filter((row) => row.id !== deactivated.id)])
+      );
+      setKpiDraft(emptyKpiDraft());
+      setKpiSuccessMessage(`KPI deactivated: ${deactivated.name ?? 'updated row'}`);
+      await refreshKpis();
+    } catch (error) {
+      setKpiSaveError(error instanceof Error ? error.message : 'Failed to deactivate KPI');
+    } finally {
+      setKpiSaving(false);
+    }
+  };
+
+  const handleTemplateCreate = async () => {
+    if (!session?.access_token) return;
+    const built = buildTemplatePayloadFromDraft(templateDraft);
+    if (!built.payload) {
+      setTemplateSaveError(built.error ?? 'Invalid template form');
+      return;
+    }
+    setTemplateSaving(true);
+    setTemplateSaveError(null);
+    setTemplateSuccessMessage(null);
+    try {
+      const created = await createAdminChallengeTemplate(session.access_token, built.payload);
+      setTemplateRows((prev) =>
+        sortRowsByUpdatedDesc([created, ...prev.filter((row) => row.id !== created.id)])
+      );
+      setTemplateDraft(templateDraftFromRow(created));
+      setTemplateSuccessMessage(`Template created: ${created.name}`);
+      await refreshTemplates();
+    } catch (error) {
+      setTemplateSaveError(error instanceof Error ? error.message : 'Failed to create template');
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const handleTemplateUpdate = async () => {
+    if (!session?.access_token || !templateDraft.id) return;
+    const built = buildTemplatePayloadFromDraft(templateDraft);
+    if (!built.payload) {
+      setTemplateSaveError(built.error ?? 'Invalid template form');
+      return;
+    }
+    setTemplateSaving(true);
+    setTemplateSaveError(null);
+    setTemplateSuccessMessage(null);
+    try {
+      const updated = await updateAdminChallengeTemplate(session.access_token, templateDraft.id, built.payload);
+      setTemplateRows((prev) =>
+        sortRowsByUpdatedDesc([updated, ...prev.filter((row) => row.id !== updated.id)])
+      );
+      setTemplateDraft(templateDraftFromRow(updated));
+      setTemplateSuccessMessage(`Template updated: ${updated.name}`);
+      await refreshTemplates();
+    } catch (error) {
+      setTemplateSaveError(error instanceof Error ? error.message : 'Failed to update template');
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const handleTemplateDeactivate = async () => {
+    if (!session?.access_token || !templateDraft.id) return;
+    const confirmed = await confirmDangerAction(
+      `Deactivate template "${templateDraft.name || 'this template'}"? This marks it inactive.`
+    );
+    if (!confirmed) return;
+    setTemplateSaving(true);
+    setTemplateSaveError(null);
+    setTemplateSuccessMessage(null);
+    try {
+      const deactivated = await deactivateAdminChallengeTemplate(session.access_token, templateDraft.id);
+      setTemplateRows((prev) =>
+        sortRowsByUpdatedDesc([deactivated, ...prev.filter((row) => row.id !== deactivated.id)])
+      );
+      setTemplateDraft(emptyTemplateDraft());
+      setTemplateSuccessMessage(`Template deactivated: ${deactivated.name ?? 'updated row'}`);
+      await refreshTemplates();
+    } catch (error) {
+      setTemplateSaveError(error instanceof Error ? error.message : 'Failed to deactivate template');
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
 
   const checklistItems = [
     { label: 'Admin shell layout + navigation scaffold', status: 'done' },
@@ -339,8 +1288,8 @@ export default function AdminShellScreen() {
           <View style={styles.navFooterCard}>
             <View style={styles.navFooterRow}>
               <View style={styles.navFooterCopy}>
-                <Text style={styles.navFooterTitle}>Show upcoming routes</Text>
-                <Text style={styles.navFooterText}>A2/A3 placeholders stay scaffold-only in A1.</Text>
+                <Text style={styles.navFooterTitle}>Show A3 routes</Text>
+                <Text style={styles.navFooterText}>A1/A2 stay visible. Toggle reveals A3 placeholders only.</Text>
               </View>
               <Switch
                 value={showUpcomingRoutes}
@@ -490,6 +1439,72 @@ export default function AdminShellScreen() {
               >
                 {unknownAdminPath ? (
                   <NotFoundState requestedPath={unknownAdminPath} />
+                ) : activeRoute.key === 'kpis' ? (
+                  <AdminKpiCatalogPanel
+                    rows={kpiRows}
+                    loading={kpiLoading}
+                    error={kpiError}
+                    searchQuery={kpiSearchQuery}
+                    onSearchQueryChange={setKpiSearchQuery}
+                    statusFilter={kpiStatusFilter}
+                    onStatusFilterChange={setKpiStatusFilter}
+                    typeFilter={kpiTypeFilter}
+                    onTypeFilterChange={setKpiTypeFilter}
+                    draft={kpiDraft}
+                    onDraftChange={(patch) => {
+                      setKpiSaveError(null);
+                      setKpiSuccessMessage(null);
+                      setKpiDraft((prev) => ({ ...prev, ...patch }));
+                    }}
+                    onSelectRow={(row) => {
+                      setKpiSaveError(null);
+                      setKpiSuccessMessage(null);
+                      setKpiDraft(kpiDraftFromRow(row));
+                    }}
+                    onResetDraft={() => {
+                      setKpiSaveError(null);
+                      setKpiSuccessMessage(null);
+                      setKpiDraft(emptyKpiDraft());
+                    }}
+                    onSubmitCreate={handleKpiCreate}
+                    onSubmitUpdate={handleKpiUpdate}
+                    onDeactivate={handleKpiDeactivate}
+                    saving={kpiSaving}
+                    saveError={kpiSaveError}
+                    successMessage={kpiSuccessMessage}
+                  />
+                ) : activeRoute.key === 'challengeTemplates' ? (
+                  <AdminChallengeTemplatesPanel
+                    rows={templateRows}
+                    loading={templateLoading}
+                    error={templateError}
+                    searchQuery={templateSearchQuery}
+                    onSearchQueryChange={setTemplateSearchQuery}
+                    statusFilter={templateStatusFilter}
+                    onStatusFilterChange={setTemplateStatusFilter}
+                    draft={templateDraft}
+                    onDraftChange={(patch) => {
+                      setTemplateSaveError(null);
+                      setTemplateSuccessMessage(null);
+                      setTemplateDraft((prev) => ({ ...prev, ...patch }));
+                    }}
+                    onSelectRow={(row) => {
+                      setTemplateSaveError(null);
+                      setTemplateSuccessMessage(null);
+                      setTemplateDraft(templateDraftFromRow(row));
+                    }}
+                    onResetDraft={() => {
+                      setTemplateSaveError(null);
+                      setTemplateSuccessMessage(null);
+                      setTemplateDraft(emptyTemplateDraft());
+                    }}
+                    onSubmitCreate={handleTemplateCreate}
+                    onSubmitUpdate={handleTemplateUpdate}
+                    onDeactivate={handleTemplateDeactivate}
+                    saving={templateSaving}
+                    saveError={templateSaveError}
+                    successMessage={templateSuccessMessage}
+                  />
                 ) : (
                   <PlaceholderScreen route={activeRoute} rolesLabel={rolesLabel} />
                 )}
@@ -1005,6 +2020,251 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: '#243248',
     fontWeight: '600',
+  },
+  formCard: {
+    marginTop: 2,
+    borderWidth: 1,
+    borderColor: '#E3EBF8',
+    borderRadius: 12,
+    backgroundColor: '#FAFCFF',
+    padding: 12,
+    gap: 10,
+  },
+  formHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  formTitle: {
+    color: '#20304A',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  smallGhostButton: {
+    borderWidth: 1,
+    borderColor: '#D8E4FA',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#FFF',
+  },
+  smallGhostButtonText: {
+    color: '#345892',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  formGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  formField: {
+    gap: 5,
+    minWidth: 180,
+    flex: 1,
+  },
+  formFieldWide: {
+    minWidth: 280,
+    flex: 1.5,
+  },
+  formLabel: {
+    color: '#66758F',
+    fontSize: 11,
+    lineHeight: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontWeight: '700',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#DDE7F7',
+    borderRadius: 10,
+    backgroundColor: '#FFF',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#243248',
+  },
+  inputMultiline: {
+    minHeight: 72,
+    textAlignVertical: 'top',
+  },
+  readonlyValueBox: {
+    borderWidth: 1,
+    borderColor: '#E1E8F5',
+    borderRadius: 10,
+    backgroundColor: '#F7FAFF',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  readonlyValueText: {
+    color: '#32435C',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  formChip: {
+    borderWidth: 1,
+    borderColor: '#D7E3FA',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#FFF',
+  },
+  formChipSelected: {
+    borderColor: '#7EA7FF',
+    backgroundColor: '#EAF1FF',
+  },
+  formChipText: {
+    color: '#38517E',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  formChipTextSelected: {
+    color: '#1E4FBE',
+  },
+  inlineToggleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  fieldHelpText: {
+    color: '#6F7D95',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  filterBar: {
+    borderWidth: 1,
+    borderColor: '#E3EBF8',
+    borderRadius: 12,
+    backgroundColor: '#FAFCFF',
+    padding: 12,
+    gap: 10,
+  },
+  toggleChip: {
+    borderWidth: 1,
+    borderColor: '#D9E4F6',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#FFF',
+  },
+  toggleChipOn: {
+    borderColor: '#9FD4B8',
+    backgroundColor: '#EFFCF4',
+  },
+  toggleChipText: {
+    color: '#4C607F',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  toggleChipTextOn: {
+    color: '#1D7A4D',
+  },
+  formActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  primaryButton: {
+    backgroundColor: '#2158D5',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  primaryButtonText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  warnButton: {
+    backgroundColor: '#FFF4F2',
+    borderWidth: 1,
+    borderColor: '#F2C0B9',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  warnButtonText: {
+    color: '#B2483A',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  errorText: {
+    color: '#B33A3A',
+  },
+  successText: {
+    color: '#1C7A4C',
+    fontWeight: '600',
+  },
+  tableWrap: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#E1E9F7',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F5F8FF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E1E9F7',
+  },
+  tableHeaderCell: {
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    color: '#60718F',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  tableDataRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEF2F9',
+  },
+  tableCell: {
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    justifyContent: 'center',
+  },
+  tableCellText: {
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    color: '#314055',
+    fontSize: 12,
+  },
+  tablePrimary: {
+    color: '#223149',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  tableSecondary: {
+    color: '#76849D',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  colWide: {
+    flex: 1.6,
+  },
+  colMd: {
+    flex: 0.8,
+  },
+  colSm: {
+    flex: 0.7,
+  },
+  tableFootnote: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: '#73819A',
+    fontSize: 11,
+    backgroundColor: '#FBFCFF',
   },
   debugBox: {
     marginTop: 10,
