@@ -3941,16 +3941,30 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const renderTeamKpiSection = (type: 'PC' | 'GP' | 'VP', title: string, kpis: DashboardPayload['loggable_kpis']) => {
     if (kpis.length === 0) return null;
     const locked = (type === 'GP' && !gpUnlocked) || (type === 'VP' && !vpUnlocked);
+    const typeCountLabel = `${fmtNum(kpis.length)} KPI${kpis.length === 1 ? '' : 's'}`;
+    const sectionSub =
+      type === 'PC'
+        ? 'Production-driving team actions and commitments.'
+        : type === 'GP'
+          ? 'Growth actions that move team momentum forward.'
+          : 'Vitality habits that support team consistency.';
     return (
       <View style={styles.challengeSectionCard}>
         <View style={styles.challengeSectionHeader}>
-          <Text style={styles.challengeSectionTitle}>{title}</Text>
+          <View style={styles.challengeSectionHeaderCopy}>
+            <View style={styles.challengeSectionTitleRow}>
+              <Text style={styles.challengeSectionTitle}>{title}</Text>
+              <Text style={styles.challengeSectionCount}>{typeCountLabel}</Text>
+            </View>
+            <Text style={styles.challengeSectionSub}>{sectionSub}</Text>
+          </View>
           <View style={[styles.challengeSectionTypePill, { backgroundColor: kpiTypeTint(type) }]}>
             <Text style={[styles.challengeSectionTypePillText, { color: kpiTypeAccent(type) }]}>{type}</Text>
           </View>
         </View>
+        <View style={styles.challengeSectionDivider} />
         {locked ? (
-          <View style={styles.emptyPanel}>
+          <View style={[styles.emptyPanel, styles.challengeLockedPanel]}>
             <Text style={styles.metaText}>
               {type === 'GP'
                 ? `Business Growth unlock progress: ${Math.min(payload?.activity.active_days ?? 0, 3)}/3 days or ${Math.min(payload?.activity.total_logs ?? 0, 20)}/20 logs`
@@ -3958,7 +3972,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             </Text>
           </View>
         ) : (
-          <View style={styles.gridWrap}>
+          <View style={[styles.gridWrap, styles.challengeGridWrap]}>
             {kpis.map((kpi) => {
               const successAnim = getKpiTileSuccessAnim(kpi.id);
               const successOpacity = successAnim.interpolate({
@@ -3976,14 +3990,21 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               return (
                 <Pressable
                   key={`team-${type}-${kpi.id}`}
-                  style={[styles.gridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
+                  style={[styles.gridItem, styles.challengeGridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
                   onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
                   disabled={submitting}
                   onPressIn={() => runKpiTilePressInFeedback(kpi, { surface: 'log' })}
                   onPressOut={() => runKpiTilePressOutFeedback(kpi.id)}
                 >
-                  <Animated.View style={[styles.gridTileAnimatedWrap, { transform: [{ scale: getKpiTileScale(kpi.id) }] }]}>
+                  <Animated.View
+                    style={[
+                      styles.gridTileAnimatedWrap,
+                      styles.challengeGridTileAnimatedWrap,
+                      { transform: [{ scale: getKpiTileScale(kpi.id) }] },
+                    ]}
+                  >
                     <View style={styles.gridCircleWrap}>
+                      <View style={styles.challengeTilePlate} />
                       <View style={[styles.gridCircle, confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed]}>
                         {renderKpiIcon(kpi)}
                       </View>
@@ -4003,11 +4024,74 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </View>
                       </Animated.View>
                     </View>
-                    <Text style={[styles.gridLabel, confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed]}>{kpi.name}</Text>
+                    <Text
+                      style={[
+                        styles.gridLabel,
+                        styles.challengeGridLabel,
+                        confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed,
+                      ]}
+                    >
+                      {kpi.name}
+                    </Text>
                   </Animated.View>
                 </Pressable>
               );
             })}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const renderParticipationFocusCard = (
+    kind: 'challenge' | 'team',
+    sourceKpis: DashboardPayload['loggable_kpis'],
+    options: { title: string; sub: string }
+  ) => {
+    const focusKpis = dedupeKpisById(sourceKpis).slice(0, 3);
+    const tone = kind === 'challenge'
+      ? { pillBg: '#fff3d8', pillBorder: '#f0d898', pillText: '#8a6207', accentBg: '#fff8e8' }
+      : { pillBg: '#e8f4ff', pillBorder: '#cde3fb', pillText: '#1d5fa8', accentBg: '#f5faff' };
+    return (
+      <View style={styles.participationFocusCard}>
+        <View style={styles.participationFocusHeader}>
+          <View>
+            <Text style={styles.participationFocusTitle}>{options.title}</Text>
+            <Text style={styles.participationFocusSub}>{options.sub}</Text>
+          </View>
+          <View style={[styles.participationFocusPill, { backgroundColor: tone.pillBg, borderColor: tone.pillBorder }]}>
+            <Text style={[styles.participationFocusPillText, { color: tone.pillText }]}>
+              {focusKpis.length > 0 ? `${focusKpis.length} focus` : 'Placeholder'}
+            </Text>
+          </View>
+        </View>
+        {focusKpis.length === 0 ? (
+          <Text style={styles.participationFocusEmpty}>
+            Focus actions will appear here when {kind === 'challenge' ? 'challenge' : 'team'} relevance is available.
+          </Text>
+        ) : (
+          <View style={styles.participationFocusGrid}>
+            {focusKpis.map((kpi) => (
+              <Pressable
+                key={`${kind}-focus-${kpi.id}`}
+                style={[styles.participationFocusItem, { backgroundColor: tone.accentBg }]}
+                onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
+                disabled={submitting}
+                onPressIn={() => runKpiTilePressInFeedback(kpi, { surface: 'log' })}
+                onPressOut={() => runKpiTilePressOutFeedback(kpi.id)}
+              >
+                <View style={styles.participationFocusItemTop}>
+                  <View style={[styles.participationFocusIconWrap, { backgroundColor: kpiTypeTint(kpi.type) }]}>
+                    <View style={styles.participationFocusIconInner}>{renderKpiIcon(kpi)}</View>
+                  </View>
+                  <View style={[styles.participationFocusTypePill, { backgroundColor: kpiTypeTint(kpi.type) }]}>
+                    <Text style={[styles.participationFocusTypePillText, { color: kpiTypeAccent(kpi.type) }]}>{kpi.type}</Text>
+                  </View>
+                </View>
+                <Text numberOfLines={2} style={styles.participationFocusItemName}>{kpi.name}</Text>
+                <Text style={styles.participationFocusItemCta}>Tap to log</Text>
+              </Pressable>
+            ))}
           </View>
         )}
       </View>
@@ -4058,11 +4142,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 <View style={styles.challengeHeaderBadge}>
                   <Text style={styles.challengeHeaderBadgeText}>Challenge</Text>
                 </View>
-                <Text style={styles.challengeHeaderMeta}>Functional logging surface</Text>
+                <Text style={styles.challengeHeaderMeta}>Participation hub</Text>
               </View>
-              <Text style={styles.challengeHeaderTitle}>Challenge Logging</Text>
+              <Text style={styles.challengeHeaderTitle}>Challenge</Text>
               <Text style={styles.challengeHeaderSub}>
-                Log challenge-relevant KPIs from one place. Actions and rewards stay shared across Home and Challenge.
+                Track challenge pace, see what to log next, and record progress-driving actions from one place.
               </Text>
               <View style={styles.challengeHeaderStatsRow}>
                 <View style={styles.challengeHeaderStatChip}>
@@ -4084,14 +4168,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               </View>
               <View style={styles.challengeProgressCard}>
                 <View style={styles.challengeProgressHeader}>
-                  <Text style={styles.challengeProgressTitle}>Challenge progress</Text>
-                  <Text style={styles.challengeProgressMeta}>Placeholder (M3-G4b)</Text>
+                  <Text style={styles.challengeProgressTitle}>Challenge pace</Text>
+                  <Text style={styles.challengeProgressMeta}>Placeholder</Text>
                 </View>
                 <View style={styles.challengeProgressTrack}>
                   <View style={styles.challengeProgressFill} />
                 </View>
                 <View style={styles.challengeProgressLegendRow}>
-                  <Text style={styles.challengeProgressLegendText}>Progress wiring comes from future challenge payload.</Text>
+                  <View style={styles.challengePaceChip}>
+                    <Text style={styles.challengePaceChipText}>On track (placeholder)</Text>
+                  </View>
+                  <Text style={styles.challengeProgressLegendText}>Real challenge pace wiring lands with challenge payload.</Text>
                 </View>
               </View>
               <Text style={styles.challengeHeaderHint}>
@@ -4120,6 +4207,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               </View>
             ) : (
               <View style={styles.challengeSectionsWrap}>
+                {renderParticipationFocusCard('challenge', challengeSurfaceKpis, {
+                  title: 'What to log next',
+                  sub: 'Suggested challenge actions using current placeholder relevance ordering.',
+                })}
                 {renderChallengeKpiSection('PC', 'Projections (PC)', challengeKpiGroups.PC)}
                 {renderChallengeKpiSection('GP', 'Growth (GP)', challengeKpiGroups.GP)}
                 {renderChallengeKpiSection('VP', 'Vitality (VP)', challengeKpiGroups.VP)}
@@ -4127,16 +4218,23 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             )}
           </View>
         ) : activeTab === 'team' ? (
-          <>
+          <View style={styles.challengeSurfaceWrap}>
             <View style={styles.challengeHeaderCard}>
+              <View style={styles.challengeHeaderTopRow}>
+                <View style={[styles.challengeHeaderBadge, styles.teamHeaderBadge]}>
+                  <Text style={[styles.challengeHeaderBadgeText, styles.teamHeaderBadgeText]}>Team</Text>
+                </View>
+                <Text style={styles.challengeHeaderMeta}>Participation hub</Text>
+              </View>
               <Text style={styles.challengeHeaderTitle}>Team</Text>
               <Text style={styles.challengeHeaderSub}>
-                Log team-relevant KPIs here. Same KPI actions, grouped by type for team participation.
+                Stay on top of team priorities, team challenge actions, and shared KPI progress from one surface.
               </Text>
               <View style={styles.challengeHeaderStatsRow}>
                 <View style={styles.challengeHeaderStatChip}>
                   <Text style={styles.challengeHeaderStatLabel}>KPIs</Text>
                   <Text style={styles.challengeHeaderStatValue}>{fmtNum(teamTileCount)}</Text>
+                  <Text style={styles.challengeHeaderStatFoot}>Eligible on this surface</Text>
                 </View>
                 <View style={styles.challengeHeaderStatChip}>
                   <Text style={styles.challengeHeaderStatLabel}>Types</Text>
@@ -4147,6 +4245,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         (teamKpiGroups.VP.length > 0 ? 1 : 0)
                     )}
                   </Text>
+                  <Text style={styles.challengeHeaderStatFoot}>PC / GP / VP grouping</Text>
+                </View>
+              </View>
+              <View style={styles.challengeProgressCard}>
+                <View style={styles.challengeProgressHeader}>
+                  <Text style={styles.challengeProgressTitle}>Team focus pace</Text>
+                  <Text style={styles.challengeProgressMeta}>Placeholder</Text>
+                </View>
+                <View style={styles.challengeProgressTrack}>
+                  <View style={[styles.challengeProgressFill, styles.teamProgressFill]} />
+                </View>
+                <View style={styles.challengeProgressLegendRow}>
+                  <View style={[styles.challengePaceChip, styles.teamPaceChip]}>
+                    <Text style={[styles.challengePaceChipText, styles.teamPaceChipText]}>Behind pace (placeholder)</Text>
+                  </View>
+                  <Text style={styles.challengeProgressLegendText}>Team progress and rank wiring will use future team payload.</Text>
                 </View>
               </View>
               <Text style={styles.challengeHeaderHint}>
@@ -4156,6 +4270,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
             {teamTileCount === 0 ? (
               <View style={styles.challengeEmptyCard}>
+                <View style={[styles.challengeEmptyBadge, styles.teamHeaderBadge]}>
+                  <Text style={[styles.challengeEmptyBadgeText, styles.teamHeaderBadgeText]}>Team</Text>
+                </View>
                 <Text style={styles.challengeEmptyTitle}>No team KPIs available yet</Text>
                 <Text style={styles.challengeEmptyText}>
                   Team-relevant KPIs will appear here once team context is available for your account.
@@ -4171,13 +4288,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 </TouchableOpacity>
               </View>
             ) : (
-              <>
+              <View style={styles.challengeSectionsWrap}>
+                {renderParticipationFocusCard('team', teamSurfaceKpis, {
+                  title: 'Team focus actions',
+                  sub: 'Suggested team actions using current placeholder relevance ordering.',
+                })}
                 {renderTeamKpiSection('PC', 'Projections (PC)', teamKpiGroups.PC)}
                 {renderTeamKpiSection('GP', 'Growth (GP)', teamKpiGroups.GP)}
                 {renderTeamKpiSection('VP', 'Vitality (VP)', teamKpiGroups.VP)}
-              </>
+              </View>
             )}
-          </>
+          </View>
         ) : viewMode === 'home' ? (
           <>
             {renderHudRail()}
@@ -4349,127 +4470,129 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               )}
             </View>
 
-            <View style={styles.quickLogHeader}>
-              <View style={styles.activitySectionTitleWrap}>
-                <Text style={styles.sectionTitle}>BACKFILL / LOG FOR SELECTED DAY</Text>
-                <Text style={styles.activitySectionSub}>
-                  Use this grid to add logs to {selectedLogDate === isoTodayLocal() ? 'today' : 'the selected history day'}.
-                </Text>
-              </View>
-              <TouchableOpacity style={styles.addNewBtn} onPress={openAddNewDrawer}>
-                <Text style={styles.addNewBtnText}>⊕ Add New</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.segmentRow}>
-              {(['PC', 'GP', 'VP'] as const).map((item) => (
-                <TouchableOpacity
-                  key={item}
-                  style={[
-                    styles.segmentBtn,
-                    segment === item && styles.segmentBtnActive,
-                    segment === item && { backgroundColor: kpiTypeAccent(item) },
-                    ((item === 'GP' && !gpUnlocked) || (item === 'VP' && !vpUnlocked)) && styles.segmentBtnLocked,
-                  ]}
-                  onPress={() => {
-                    if (item === 'GP' && !gpUnlocked) {
-                      Alert.alert('Business Growth Locked', 'Unlock after 3 active days or 20 KPI logs.');
-                      return;
-                    }
-                    if (item === 'VP' && !vpUnlocked) {
-                      Alert.alert('Vitality Locked', 'Unlock after 7 active days or 40 KPI logs.');
-                      return;
-                    }
-                    setSegment(item);
-                  }}
-                >
-                  <Text style={[styles.segmentText, segment === item && styles.segmentTextActive]}>{item}</Text>
+            <View style={styles.activityBackfillCard}>
+              <View style={styles.quickLogHeader}>
+                <View style={styles.activitySectionTitleWrap}>
+                  <Text style={styles.sectionTitle}>BACKFILL / LOG FOR SELECTED DAY</Text>
+                  <Text style={styles.activitySectionSub}>
+                    Use this grid to add logs to {selectedLogDate === isoTodayLocal() ? 'today' : 'the selected history day'}.
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.addNewBtn} onPress={openAddNewDrawer}>
+                  <Text style={styles.addNewBtnText}>⊕ Add New</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            {(segment === 'GP' && !gpUnlocked) || (segment === 'VP' && !vpUnlocked) ? (
-              <View style={styles.emptyPanel}>
-                <Text style={styles.metaText}>
-                  {segment === 'GP'
-                    ? `Business Growth unlock progress: ${Math.min(payload?.activity.active_days ?? 0, 3)}/3 days or ${Math.min(payload?.activity.total_logs ?? 0, 20)}/20 logs`
-                    : `Vitality unlock progress: ${Math.min(payload?.activity.active_days ?? 0, 7)}/7 days or ${Math.min(payload?.activity.total_logs ?? 0, 40)}/40 logs`}
-                </Text>
               </View>
-            ) : (
-              <View style={styles.gridWrap}>
-                {quickLogKpis.map((kpi, idx) => {
-                  const successAnim = getKpiTileSuccessAnim(kpi.id);
-                  const successOpacity = successAnim.interpolate({
-                    inputRange: [0, 0.12, 1],
-                    outputRange: [0, 1, 0],
-                  });
-                  const successTranslateY = successAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -14],
-                  });
-                  const successScale = successAnim.interpolate({
-                    inputRange: [0, 0.2, 1],
-                    outputRange: [0.8, 1.02, 0.96],
-                  });
-                  return (
-                    <Pressable
-                      key={kpi.id}
-                      style={[styles.gridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
-                      onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
-                      onLongPress={() =>
-                        Alert.alert('Remove from Priority?', `${kpi.name} will be removed from your priority set.`, [
-                          { text: 'Cancel', style: 'cancel' },
-                          { text: 'Remove', style: 'destructive', onPress: () => removeManagedKpi(kpi.id) },
-                        ])
+
+              <View style={styles.segmentRow}>
+                {(['PC', 'GP', 'VP'] as const).map((item) => (
+                  <TouchableOpacity
+                    key={item}
+                    style={[
+                      styles.segmentBtn,
+                      segment === item && styles.segmentBtnActive,
+                      segment === item && { backgroundColor: kpiTypeAccent(item) },
+                      ((item === 'GP' && !gpUnlocked) || (item === 'VP' && !vpUnlocked)) && styles.segmentBtnLocked,
+                    ]}
+                    onPress={() => {
+                      if (item === 'GP' && !gpUnlocked) {
+                        Alert.alert('Business Growth Locked', 'Unlock after 3 active days or 20 KPI logs.');
+                        return;
                       }
-                      delayLongPress={280}
-                      disabled={submitting}
-                      onPressIn={() => runKpiTilePressInFeedback(kpi, { surface: 'log' })}
-                      onPressOut={() => runKpiTilePressOutFeedback(kpi.id)}
-                    >
-                      <Animated.View
-                        style={[styles.gridTileAnimatedWrap, { transform: [{ scale: getKpiTileScale(kpi.id) }] }]}
+                      if (item === 'VP' && !vpUnlocked) {
+                        Alert.alert('Vitality Locked', 'Unlock after 7 active days or 40 KPI logs.');
+                        return;
+                      }
+                      setSegment(item);
+                    }}
+                  >
+                    <Text style={[styles.segmentText, segment === item && styles.segmentTextActive]}>{item}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {(segment === 'GP' && !gpUnlocked) || (segment === 'VP' && !vpUnlocked) ? (
+                <View style={[styles.emptyPanel, styles.activityBackfillEmptyPanel]}>
+                  <Text style={styles.metaText}>
+                    {segment === 'GP'
+                      ? `Business Growth unlock progress: ${Math.min(payload?.activity.active_days ?? 0, 3)}/3 days or ${Math.min(payload?.activity.total_logs ?? 0, 20)}/20 logs`
+                      : `Vitality unlock progress: ${Math.min(payload?.activity.active_days ?? 0, 7)}/7 days or ${Math.min(payload?.activity.total_logs ?? 0, 40)}/40 logs`}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.gridWrap}>
+                  {quickLogKpis.map((kpi, idx) => {
+                    const successAnim = getKpiTileSuccessAnim(kpi.id);
+                    const successOpacity = successAnim.interpolate({
+                      inputRange: [0, 0.12, 1],
+                      outputRange: [0, 1, 0],
+                    });
+                    const successTranslateY = successAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -14],
+                    });
+                    const successScale = successAnim.interpolate({
+                      inputRange: [0, 0.2, 1],
+                      outputRange: [0.8, 1.02, 0.96],
+                    });
+                    return (
+                      <Pressable
+                        key={kpi.id}
+                        style={[styles.gridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
+                        onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
+                        onLongPress={() =>
+                          Alert.alert('Remove from Priority?', `${kpi.name} will be removed from your priority set.`, [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Remove', style: 'destructive', onPress: () => removeManagedKpi(kpi.id) },
+                          ])
+                        }
+                        delayLongPress={280}
+                        disabled={submitting}
+                        onPressIn={() => runKpiTilePressInFeedback(kpi, { surface: 'log' })}
+                        onPressOut={() => runKpiTilePressOutFeedback(kpi.id)}
                       >
-                        <View
-                          ref={(node) => {
-                            kpiTileCircleRefById.current[kpi.id] = node;
-                          }}
-                          style={styles.gridCircleWrap}
+                        <Animated.View
+                          style={[styles.gridTileAnimatedWrap, { transform: [{ scale: getKpiTileScale(kpi.id) }] }]}
                         >
                           <View
-                            style={[
-                              styles.gridCircle,
-                              confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed,
-                            ]}
+                            ref={(node) => {
+                              kpiTileCircleRefById.current[kpi.id] = node;
+                            }}
+                            style={styles.gridCircleWrap}
                           >
-                            {renderKpiIcon(kpi)}
-                          </View>
-                          <Animated.View
-                            pointerEvents="none"
-                            style={[
-                              styles.gridSuccessBadge,
-                              {
-                                opacity: successOpacity,
-                                transform: [{ translateY: successTranslateY }, { scale: successScale }],
-                              },
-                            ]}
-                          >
-                            <View style={styles.gridSuccessCoinOuter}>
-                              <View style={styles.gridSuccessCoinInner} />
-                              <View style={styles.gridSuccessCoinHighlight} />
+                            <View
+                              style={[
+                                styles.gridCircle,
+                                confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed,
+                              ]}
+                            >
+                              {renderKpiIcon(kpi)}
                             </View>
-                          </Animated.View>
-                        </View>
-                        <Text style={[styles.gridLabel, confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed]}>
-                          {kpi.name}
-                        </Text>
-                      </Animated.View>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
+                            <Animated.View
+                              pointerEvents="none"
+                              style={[
+                                styles.gridSuccessBadge,
+                                {
+                                  opacity: successOpacity,
+                                  transform: [{ translateY: successTranslateY }, { scale: successScale }],
+                                },
+                              ]}
+                            >
+                              <View style={styles.gridSuccessCoinOuter}>
+                                <View style={styles.gridSuccessCoinInner} />
+                                <View style={styles.gridSuccessCoinHighlight} />
+                              </View>
+                            </Animated.View>
+                          </View>
+                          <Text style={[styles.gridLabel, confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed]}>
+                            {kpi.name}
+                          </Text>
+                        </Animated.View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
 
             <View style={styles.recentEntriesCard}>
               <Text style={styles.todayLogsHeading}>RECENT ACTIVITY</Text>
@@ -5095,11 +5218,146 @@ const styles = StyleSheet.create({
   challengeProgressLegendRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   challengeProgressLegendText: {
     color: '#7b879a',
     fontSize: 11,
     lineHeight: 14,
+    flex: 1,
+    minWidth: 140,
+  },
+  challengePaceChip: {
+    borderRadius: 999,
+    backgroundColor: '#e8f5e8',
+    borderWidth: 1,
+    borderColor: '#cfe7cf',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  challengePaceChipText: {
+    color: '#2f8c4b',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  teamHeaderBadge: {
+    backgroundColor: '#eaf3ff',
+    borderColor: '#cfe0fb',
+  },
+  teamHeaderBadgeText: {
+    color: '#2764b3',
+  },
+  teamProgressFill: {
+    width: '31%',
+    backgroundColor: '#5d93ff',
+  },
+  teamPaceChip: {
+    backgroundColor: '#fff2e1',
+    borderColor: '#efd8b0',
+  },
+  teamPaceChipText: {
+    color: '#8b5f14',
+  },
+  participationFocusCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e1eaf5',
+    padding: 12,
+    gap: 10,
+    shadowColor: '#223453',
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  participationFocusHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  participationFocusTitle: {
+    color: '#2f3442',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  participationFocusSub: {
+    marginTop: 2,
+    color: '#7a8597',
+    fontSize: 11,
+    lineHeight: 14,
+    maxWidth: 230,
+  },
+  participationFocusPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  participationFocusPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  participationFocusEmpty: {
+    color: '#8a93a3',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  participationFocusGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  participationFocusItem: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    padding: 8,
+    gap: 6,
+  },
+  participationFocusItemTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  participationFocusIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  participationFocusIconInner: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  participationFocusTypePill: {
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  participationFocusTypePillText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  participationFocusItemName: {
+    color: '#3a4354',
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '700',
+    minHeight: 26,
+  },
+  participationFocusItemCta: {
+    color: '#1f5fe2',
+    fontSize: 10,
+    fontWeight: '800',
   },
   challengeHeaderHint: {
     color: '#8a93a3',
@@ -6046,6 +6304,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
   },
+  activityBackfillCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  activityBackfillEmptyPanel: {
+    marginTop: 2,
+  },
   sectionTitle: {
     color: '#3a4050',
     fontSize: 14,
@@ -6108,6 +6378,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 6,
+    shadowColor: '#223453',
+    shadowOpacity: 0.025,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
   },
   activityHeroTopRow: {
     flexDirection: 'row',
@@ -6159,6 +6434,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 8,
+    shadowColor: '#223453',
+    shadowOpacity: 0.02,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
   },
   activityDateHeaderRow: {
     flexDirection: 'row',
@@ -6281,6 +6561,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    shadowColor: '#223453',
+    shadowOpacity: 0.02,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
   },
   activityPipelineCopy: {
     flex: 1,
