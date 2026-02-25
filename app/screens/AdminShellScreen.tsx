@@ -152,6 +152,19 @@ async function confirmDangerAction(message: string): Promise<boolean> {
   });
 }
 
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (!text) return false;
+  if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 function sortRowsByUpdatedDesc<T extends { updated_at?: string | null; created_at?: string | null }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => {
     const aTime = new Date(a.updated_at ?? a.created_at ?? 0).getTime();
@@ -227,6 +240,8 @@ type CreateUserDraft = {
   tier: AdminUserCreatePayload['tier'];
   accountStatus: NonNullable<AdminUserCreatePayload['account_status']>;
 };
+
+type KnownUserEmailMap = Record<string, string>;
 
 function emptyUserDraft(): UserFormDraft {
   return { role: 'agent', tier: 'free', accountStatus: 'active' };
@@ -953,6 +968,14 @@ function AdminUsersPanel({
   rowLimit,
   onShowMoreRows,
   onResetRowLimit,
+  testUsersOnly,
+  onToggleTestUsersOnly,
+  showRecentFirst,
+  onToggleShowRecentFirst,
+  knownUserEmailsById,
+  copyNotice,
+  onCopyUserId,
+  onCopyUserEmail,
   createUserSaving,
   createUserError,
   createUserSuccessMessage,
@@ -991,6 +1014,14 @@ function AdminUsersPanel({
   rowLimit: number;
   onShowMoreRows: () => void;
   onResetRowLimit: () => void;
+  testUsersOnly: boolean;
+  onToggleTestUsersOnly: () => void;
+  showRecentFirst: boolean;
+  onToggleShowRecentFirst: () => void;
+  knownUserEmailsById: KnownUserEmailMap;
+  copyNotice: string | null;
+  onCopyUserId: () => void;
+  onCopyUserEmail: () => void;
   createUserSaving: boolean;
   createUserError: string | null;
   createUserSuccessMessage: string | null;
@@ -1005,14 +1036,30 @@ function AdminUsersPanel({
 }) {
   const filteredRows = rows.filter((row) => {
     const q = searchQuery.trim().toLowerCase();
+    const knownEmail = (knownUserEmailsById[row.id] ?? '').toLowerCase();
+    const isRecent =
+      row.created_at != null && Date.now() - new Date(row.created_at).getTime() < 1000 * 60 * 60 * 24 * 7;
+    const looksTest = knownEmail.includes('test') || row.id === selectedUser?.id || isRecent;
     const matchesSearch =
       !q ||
       row.id.toLowerCase().includes(q) ||
       (row.role ?? '').toLowerCase().includes(q) ||
-      (row.tier ?? '').toLowerCase().includes(q);
+      (row.tier ?? '').toLowerCase().includes(q) ||
+      knownEmail.includes(q);
     const matchesRole = roleFilter === 'all' || row.role === roleFilter;
     const matchesStatus = statusFilter === 'all' || row.account_status === statusFilter;
-    return matchesSearch && matchesRole && matchesStatus;
+    const matchesTestUsers = !testUsersOnly || looksTest;
+    return matchesSearch && matchesRole && matchesStatus && matchesTestUsers;
+  }).sort((a, b) => {
+    if (!showRecentFirst) return 0;
+    const aKnown = knownUserEmailsById[a.id] ?? '';
+    const bKnown = knownUserEmailsById[b.id] ?? '';
+    const aIsCreatedInSession = aKnown ? 1 : 0;
+    const bIsCreatedInSession = bKnown ? 1 : 0;
+    if (aIsCreatedInSession !== bIsCreatedInSession) return bIsCreatedInSession - aIsCreatedInSession;
+    const aTime = new Date(a.created_at ?? a.updated_at ?? 0).getTime();
+    const bTime = new Date(b.created_at ?? b.updated_at ?? 0).getTime();
+    return bTime - aTime;
   });
   const diagnostics = calibrationSnapshot?.diagnostics ?? null;
   const calibrationRows = calibrationSnapshot?.rows ?? [];
@@ -1037,6 +1084,15 @@ function AdminUsersPanel({
         <Text style={styles.metaRow}>
           Selected user: {selectedUser ? `${selectedUser.id} (${selectedUser.role} / ${selectedUser.tier} / ${selectedUser.account_status})` : 'none'}
         </Text>
+        {selectedUser && knownUserEmailsById[selectedUser.id] ? (
+          <View style={styles.inlineToggleRow}>
+            <View style={[styles.statusChip, { backgroundColor: '#EAF1FF', borderColor: '#C8DAFF' }]}>
+              <Text style={[styles.statusChipText, { color: '#1E4FBE' }]}>Selected test user</Text>
+            </View>
+            <Text style={styles.metaRow}>{knownUserEmailsById[selectedUser.id]}</Text>
+          </View>
+        ) : null}
+        {copyNotice ? <Text style={[styles.metaRow, styles.successText]}>{copyNotice}</Text> : null}
       </View>
 
       {userSaveError ? (
@@ -1204,6 +1260,30 @@ function AdminUsersPanel({
             })}
           </View>
         </View>
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Test User Workflow</Text>
+          <View style={styles.inlineToggleRow}>
+            <Pressable
+              onPress={onToggleTestUsersOnly}
+              style={[styles.toggleChip, testUsersOnly && styles.toggleChipOn]}
+            >
+              <Text style={[styles.toggleChipText, testUsersOnly && styles.toggleChipTextOn]}>
+                {testUsersOnly ? 'Test Users Only' : 'All Users'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={onToggleShowRecentFirst}
+              style={[styles.toggleChip, showRecentFirst && styles.toggleChipOn]}
+            >
+              <Text style={[styles.toggleChipText, showRecentFirst && styles.toggleChipTextOn]}>
+                {showRecentFirst ? 'Recent First' : 'Default Sort'}
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={styles.fieldHelpText}>
+            Heuristic view uses locally created-user emails and recent account creation time to make test users easier to find.
+          </Text>
+        </View>
       </View>
 
       <View style={styles.usersTopSplit}>
@@ -1263,6 +1343,9 @@ function AdminUsersPanel({
                     </View>
                     <View style={[styles.tableCell, styles.colMd]}>
                       <Text numberOfLines={1} style={styles.tableSecondary}>{row.id}</Text>
+                      {knownUserEmailsById[row.id] ? (
+                        <Text numberOfLines={1} style={styles.tableSecondary}>{knownUserEmailsById[row.id]}</Text>
+                      ) : null}
                     </View>
                   </Pressable>
                 );
@@ -1280,8 +1363,19 @@ function AdminUsersPanel({
           {selectedUser ? (
             <>
               <Text style={styles.metaRow}>User ID: {selectedUser.id}</Text>
+              {knownUserEmailsById[selectedUser.id] ? <Text style={styles.metaRow}>Email: {knownUserEmailsById[selectedUser.id]}</Text> : null}
               <Text style={styles.metaRow}>Created: {formatDateTimeShort(selectedUser.created_at)}</Text>
               <Text style={styles.metaRow}>Last activity: {formatDateTimeShort(selectedUser.last_activity_timestamp)}</Text>
+              <View style={styles.formActionsRow}>
+                <TouchableOpacity style={styles.smallGhostButton} onPress={onCopyUserId}>
+                  <Text style={styles.smallGhostButtonText}>Copy User ID</Text>
+                </TouchableOpacity>
+                {knownUserEmailsById[selectedUser.id] ? (
+                  <TouchableOpacity style={styles.smallGhostButton} onPress={onCopyUserEmail}>
+                    <Text style={styles.smallGhostButtonText}>Copy Email</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
               <View style={styles.formGrid}>
                 <View style={styles.formField}>
                   <Text style={styles.formLabel}>Role</Text>
@@ -1609,8 +1703,12 @@ export default function AdminShellScreen() {
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'agent' | 'team_leader' | 'admin' | 'super_admin'>('all');
   const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'active' | 'deactivated'>('all');
+  const [userTestUsersOnly, setUserTestUsersOnly] = useState(false);
+  const [userShowRecentFirst, setUserShowRecentFirst] = useState(true);
   const [userRowLimit, setUserRowLimit] = useState(16);
   const [selectedUser, setSelectedUser] = useState<AdminUserRow | null>(null);
+  const [knownUserEmailsById, setKnownUserEmailsById] = useState<KnownUserEmailMap>({});
+  const [userCopyNotice, setUserCopyNotice] = useState<string | null>(null);
   const [userDraft, setUserDraft] = useState<UserFormDraft>(emptyUserDraft);
   const [createUserDraft, setCreateUserDraft] = useState<CreateUserDraft>(emptyCreateUserDraft);
   const [createUserSaving, setCreateUserSaving] = useState(false);
@@ -2080,6 +2178,9 @@ export default function AdminShellScreen() {
       setCreateUserSuccessMessage(
         `${created.email} created (${created.user.id}) • role=${created.user.role} • tier=${created.user.tier} • status=${created.user.account_status}`
       );
+      setKnownUserEmailsById((prev) => ({ ...prev, [created.user.id]: created.email }));
+      setUserTestUsersOnly(true);
+      setUserShowRecentFirst(true);
       setCreateUserDraft(emptyCreateUserDraft());
       const refreshed = await refreshUsers();
       const createdRow = refreshed.find((row) => row.id === created.user.id) ?? created.user;
@@ -2090,6 +2191,20 @@ export default function AdminShellScreen() {
     } finally {
       setCreateUserSaving(false);
     }
+  };
+
+  const handleCopySelectedUserId = async () => {
+    if (!selectedUser?.id) return;
+    const ok = await copyTextToClipboard(selectedUser.id);
+    setUserCopyNotice(ok ? 'Copied user ID' : 'Could not copy user ID (clipboard unavailable)');
+  };
+
+  const handleCopySelectedUserEmail = async () => {
+    if (!selectedUser) return;
+    const email = knownUserEmailsById[selectedUser.id];
+    if (!email) return;
+    const ok = await copyTextToClipboard(email);
+    setUserCopyNotice(ok ? 'Copied user email' : 'Could not copy email (clipboard unavailable)');
   };
 
   const handleResetCalibration = async () => {
@@ -2446,6 +2561,7 @@ export default function AdminShellScreen() {
                     selectedUser={selectedUser}
                     userDraft={userDraft}
                     onSelectUser={(row) => {
+                      setUserCopyNotice(null);
                       setUserSaveError(null);
                       setUserSuccessMessage(null);
                       setSelectedUser(row);
@@ -2470,6 +2586,7 @@ export default function AdminShellScreen() {
                     }}
                     devPreviewActive={devOverrideActive}
                     onRefreshUsers={() => {
+                      setUserCopyNotice(null);
                       void refreshUsers();
                     }}
                     onSaveUser={handleUserSave}
@@ -2479,6 +2596,18 @@ export default function AdminShellScreen() {
                     rowLimit={userRowLimit}
                     onShowMoreRows={() => setUserRowLimit((prev) => prev + 16)}
                     onResetRowLimit={() => setUserRowLimit(16)}
+                    testUsersOnly={userTestUsersOnly}
+                    onToggleTestUsersOnly={() => setUserTestUsersOnly((prev) => !prev)}
+                    showRecentFirst={userShowRecentFirst}
+                    onToggleShowRecentFirst={() => setUserShowRecentFirst((prev) => !prev)}
+                    knownUserEmailsById={knownUserEmailsById}
+                    copyNotice={userCopyNotice}
+                    onCopyUserId={() => {
+                      void handleCopySelectedUserId();
+                    }}
+                    onCopyUserEmail={() => {
+                      void handleCopySelectedUserEmail();
+                    }}
                     createUserSaving={createUserSaving}
                     createUserError={createUserError}
                     createUserSuccessMessage={createUserSuccessMessage}
