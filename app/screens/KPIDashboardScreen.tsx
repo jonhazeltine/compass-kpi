@@ -135,6 +135,12 @@ type HomePanelTile = {
 type PipelineAnchorNagState =
   | { severity: 'ok' }
   | { severity: 'warning' | 'stale'; missingCount: number; staleDays: number; lowConfidence: boolean };
+type PipelineCheckinReason = 'deal_closed' | 'deal_lost' | 'correction';
+type PipelineCheckinFieldKey = 'listings' | 'buyers';
+type PipelineCheckinAnchorTargets = {
+  listings: DashboardPayload['loggable_kpis'][number] | null;
+  buyers: DashboardPayload['loggable_kpis'][number] | null;
+};
 
 type PendingDirectLog = {
   kpiId: string;
@@ -218,6 +224,12 @@ const PROJECTED_CARD_WINDOWS = [30, 60, 90, 180, 360] as const;
 const ACTUAL_CARD_VIEWS = ['actual365', 'progressYtd'] as const;
 const GP_LOTTIE_SOURCE: object | number | null = null;
 const VP_LOTTIE_SOURCE: object | number | null = null;
+const PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS = new Set<string>();
+const PIPELINE_LOST_ENCOURAGEMENT_MESSAGES = [
+  'Every pipeline dip is temporary. Refill the top and keep moving.',
+  'Lost deals happen. Your consistency restores momentum.',
+  'Reset the count, keep the reps high, and the next win comes faster.',
+] as const;
 
 function fmtUsd(v: number) {
   const safe = Number.isFinite(v) ? v : 0;
@@ -748,6 +760,25 @@ function derivePipelineAnchorNagState(payload: DashboardPayload | null): Pipelin
   return { severity: 'ok' };
 }
 
+function findPipelineCheckinAnchors(payload: DashboardPayload | null): PipelineCheckinAnchorTargets {
+  const anchors = (payload?.loggable_kpis ?? []).filter((kpi) => kpi.type === 'Pipeline_Anchor');
+  const listings = anchors.find((kpi) => String(kpi.name ?? '').toLowerCase().includes('listing')) ?? null;
+  const buyers = anchors.find((kpi) => String(kpi.name ?? '').toLowerCase().includes('buyer')) ?? null;
+  return { listings, buyers };
+}
+
+function readPipelineAnchorCountsFromPayload(payload: DashboardPayload | null) {
+  const rows = payload?.projection.required_pipeline_anchors ?? [];
+  const readCount = (needle: string) => {
+    const row = rows.find((item) => String(item.anchor_type ?? '').toLowerCase().includes(needle));
+    return Math.max(0, Math.round(Number(row?.anchor_value ?? 0) || 0));
+  };
+  return {
+    listings: readCount('listing'),
+    buyers: readCount('buyer'),
+  };
+}
+
 function renderContextBadgeLabel(badge: KpiTileContextBadge) {
   if (badge === 'CH') return '🏆';
   if (badge === 'TM') return '👥';
@@ -1056,6 +1087,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [chartImpactLineValue, setChartImpactLineValue] = useState(0);
   const chartImpactMonthPulseAnim = useRef(new Animated.Value(0)).current;
   const [chartImpactMonthIndex, setChartImpactMonthIndex] = useState<number | null>(null);
+  const [pipelineCheckinVisible, setPipelineCheckinVisible] = useState(false);
+  const [pipelineCheckinListings, setPipelineCheckinListings] = useState(0);
+  const [pipelineCheckinBuyers, setPipelineCheckinBuyers] = useState(0);
+  const [pipelineCheckinSubmitting, setPipelineCheckinSubmitting] = useState(false);
+  const [pipelineCheckinReasonPromptVisible, setPipelineCheckinReasonPromptVisible] = useState(false);
+  const [pipelineCheckinDecreaseFields, setPipelineCheckinDecreaseFields] = useState<PipelineCheckinFieldKey[]>([]);
+  const [pipelineCheckinReason, setPipelineCheckinReason] = useState<PipelineCheckinReason | null>(null);
+  const [pipelineCloseDateInput, setPipelineCloseDateInput] = useState('');
+  const [pipelineCloseGciInput, setPipelineCloseGciInput] = useState('');
+  const [pipelineLostEncouragement, setPipelineLostEncouragement] = useState('');
   const bottomNavPadBottom = 0;
   const bottomNavPadTop = 0;
   const contentBottomPad = 118 + Math.max(10, insets.bottom);
@@ -1731,6 +1772,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     return buildHomePanelTiles(panelKpis, payload ?? null);
   }, [homePanel, homeQuickLog, managedKpis, payload]);
   const pipelineAnchorNag = useMemo(() => derivePipelineAnchorNagState(payload ?? null), [payload]);
+  const pipelineCheckinAnchors = useMemo(() => findPipelineCheckinAnchors(payload ?? null), [payload]);
+  const pipelineAnchorCounts = useMemo(() => readPipelineAnchorCountsFromPayload(payload ?? null), [payload]);
+  const todayLocalIso = useMemo(() => isoTodayLocal(), []);
 
   const chartSeries = useMemo(() => chartFromPayload(payload), [payload]);
   const chartSplitX =
@@ -3404,6 +3448,160 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     return kpi.requires_direct_value_input ? 'Manual value input' : 'Tap to log';
   }, [estimatePcGeneratedForKpi]);
 
+  const openPipelineCheckinOverlay = useCallback(() => {
+    setPipelineCheckinListings(pipelineAnchorCounts.listings);
+    setPipelineCheckinBuyers(pipelineAnchorCounts.buyers);
+    setPipelineCheckinReasonPromptVisible(false);
+    setPipelineCheckinDecreaseFields([]);
+    setPipelineCheckinReason(null);
+    setPipelineCloseDateInput(isoTodayLocal());
+    setPipelineCloseGciInput('');
+    setPipelineLostEncouragement('');
+    setPipelineCheckinVisible(true);
+  }, [pipelineAnchorCounts.buyers, pipelineAnchorCounts.listings]);
+
+  const dismissPipelineCheckinForToday = useCallback(() => {
+    PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS.add(isoTodayLocal());
+    setPipelineCheckinReasonPromptVisible(false);
+    setPipelineCheckinReason(null);
+    setPipelineCheckinVisible(false);
+  }, []);
+
+  React.useEffect(() => {
+    if (!payload || state !== 'ready') return;
+    if (pipelineCheckinVisible || pendingDirectLog) return;
+    const today = isoTodayLocal();
+    if (PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS.has(today)) return;
+    if (pipelineAnchorNag.severity === 'ok') return;
+    openPipelineCheckinOverlay();
+  }, [openPipelineCheckinOverlay, payload, pendingDirectLog, pipelineAnchorNag.severity, pipelineCheckinVisible, state]);
+
+  const persistPipelineCountsMetadata = useCallback(
+    async (listings: number, buyers: number) => {
+      const token = session?.access_token;
+      if (!token) return;
+      try {
+        await fetch(`${API_URL}/me`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            pipeline_listings_pending: listings,
+            pipeline_buyers_uc: buyers,
+          }),
+        });
+      } catch {
+        // Non-blocking; anchor logs are the primary save path.
+      }
+    },
+    [session?.access_token]
+  );
+
+  const finalizePipelineCheckinSave = useCallback(
+    async (reason: PipelineCheckinReason) => {
+      const listingsKpi = pipelineCheckinAnchors.listings;
+      const buyersKpi = pipelineCheckinAnchors.buyers;
+      if (!listingsKpi || !buyersKpi) {
+        Alert.alert('Pipeline check-in unavailable', 'Required pipeline anchor KPIs are not available yet.');
+        return;
+      }
+
+      setPipelineCheckinSubmitting(true);
+      try {
+        const eventIso = new Date().toISOString();
+        await sendLog(listingsKpi.id, Math.max(0, Math.round(pipelineCheckinListings)), {
+          kpiType: 'Pipeline_Anchor',
+          skipSuccessBadge: true,
+          skipProjectionFlight: true,
+          eventTimestampIso: eventIso,
+        });
+        await sendLog(buyersKpi.id, Math.max(0, Math.round(pipelineCheckinBuyers)), {
+          kpiType: 'Pipeline_Anchor',
+          skipSuccessBadge: true,
+          skipProjectionFlight: true,
+          eventTimestampIso: eventIso,
+        });
+        await persistPipelineCountsMetadata(
+          Math.max(0, Math.round(pipelineCheckinListings)),
+          Math.max(0, Math.round(pipelineCheckinBuyers))
+        );
+
+        PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS.add(isoTodayLocal());
+        setPipelineCheckinVisible(false);
+        setPipelineCheckinReasonPromptVisible(false);
+
+        if (reason === 'deal_lost' && pipelineLostEncouragement) {
+          Alert.alert('Keep going', pipelineLostEncouragement);
+        }
+        if (reason === 'deal_closed') {
+          setViewMode('log');
+          const closeDate = pipelineCloseDateInput.trim() || isoTodayLocal();
+          const gci = pipelineCloseGciInput.trim() || '0';
+          Alert.alert(
+            'Deal close follow-up',
+            `Captured close intent (${closeDate}, GCI ${gci}). Continue in Logs to enter the close event.`
+          );
+        }
+      } finally {
+        setPipelineCheckinSubmitting(false);
+      }
+    },
+    [
+      persistPipelineCountsMetadata,
+      pipelineCheckinAnchors.buyers,
+      pipelineCheckinAnchors.listings,
+      pipelineCheckinBuyers,
+      pipelineCheckinListings,
+      pipelineCloseDateInput,
+      pipelineCloseGciInput,
+      pipelineLostEncouragement,
+      sendLog,
+    ]
+  );
+
+  const onSavePipelineCheckin = useCallback(() => {
+    const prevListings = pipelineAnchorCounts.listings;
+    const prevBuyers = pipelineAnchorCounts.buyers;
+    const nextListings = Math.max(0, Math.round(pipelineCheckinListings));
+    const nextBuyers = Math.max(0, Math.round(pipelineCheckinBuyers));
+    const decreased: PipelineCheckinFieldKey[] = [];
+    if (nextListings < prevListings) decreased.push('listings');
+    if (nextBuyers < prevBuyers) decreased.push('buyers');
+
+    setPipelineCheckinDecreaseFields(decreased);
+    if (decreased.length > 0) {
+      setPipelineCheckinReasonPromptVisible(true);
+      setPipelineCheckinReason(null);
+      setPipelineLostEncouragement('');
+      return;
+    }
+    void finalizePipelineCheckinSave('correction');
+  }, [finalizePipelineCheckinSave, pipelineAnchorCounts.buyers, pipelineAnchorCounts.listings, pipelineCheckinBuyers, pipelineCheckinListings]);
+
+  const onChoosePipelineDecreaseReason = useCallback(
+    (reason: PipelineCheckinReason) => {
+      setPipelineCheckinReason(reason);
+      setPipelineCheckinReasonPromptVisible(false);
+      if (reason === 'correction') {
+        void finalizePipelineCheckinSave(reason);
+        return;
+      }
+      if (reason === 'deal_lost') {
+        const msg =
+          PIPELINE_LOST_ENCOURAGEMENT_MESSAGES[
+            Math.floor(Math.random() * PIPELINE_LOST_ENCOURAGEMENT_MESSAGES.length)
+          ] ?? PIPELINE_LOST_ENCOURAGEMENT_MESSAGES[0];
+        setPipelineLostEncouragement(msg);
+      }
+      if (reason === 'deal_closed' && !pipelineCloseDateInput.trim()) {
+        setPipelineCloseDateInput(isoTodayLocal());
+      }
+    },
+    [finalizePipelineCheckinSave, pipelineCloseDateInput]
+  );
+
   if (state === 'loading') {
     return (
       <View style={styles.centered}>
@@ -3444,33 +3642,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             {renderHudRail()}
 
             <View style={styles.chartCard}>
-              {pipelineAnchorNag.severity !== 'ok' ? (
-                <TouchableOpacity
-                  style={[
-                    styles.anchorNagCard,
-                    pipelineAnchorNag.severity === 'warning' ? styles.anchorNagCardWarning : styles.anchorNagCardStale,
-                  ]}
-                  activeOpacity={0.86}
-                  onPress={() => setViewMode('log')}
-                >
-                  <View style={styles.anchorNagCopy}>
-                    <Text style={styles.anchorNagEyebrow}>Forecast accuracy</Text>
-                    <Text style={styles.anchorNagTitle}>
-                      {pipelineAnchorNag.severity === 'warning'
-                        ? 'Add pipeline anchors'
-                        : `Refresh pipeline anchors (${pipelineAnchorNag.staleDays}d old)`}
-                    </Text>
-                    <Text style={styles.anchorNagText}>
-                      {pipelineAnchorNag.lowConfidence
-                        ? 'Confidence is low. Updating anchors improves forecast reliability.'
-                        : 'Update pipeline anchors to improve forecast confidence and projection quality.'}
-                    </Text>
-                  </View>
-                  <View style={styles.anchorNagCtaPill}>
-                    <Text style={styles.anchorNagCtaText}>Open Logs</Text>
-                  </View>
-                </TouchableOpacity>
-              ) : null}
               <View
                 style={styles.homePanelViewport}
                 onLayout={(e) => setHomeVisualViewportWidth(e.nativeEvent.layout.width)}
@@ -3498,24 +3669,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             </View>
 
             {renderGameplayHeader()}
-
-            {pipelineAnchorNag.severity !== 'ok' ? (
-              <TouchableOpacity
-                style={[
-                  styles.homeAnchorNagChip,
-                  pipelineAnchorNag.severity === 'warning' ? styles.homeAnchorNagChipWarning : styles.homeAnchorNagChipStale,
-                ]}
-                activeOpacity={0.9}
-                onPress={() => setViewMode('log')}
-              >
-                <Text style={styles.homeAnchorNagChipText}>
-                  {pipelineAnchorNag.severity === 'warning'
-                    ? 'Update pipeline anchors to improve forecast accuracy'
-                    : `Pipeline anchors are stale (${pipelineAnchorNag.staleDays}d). Refresh to improve forecast accuracy`}
-                </Text>
-                <Text style={styles.homeAnchorNagChipCta}>Open Logs ›</Text>
-              </TouchableOpacity>
-            ) : null}
 
             <View
               style={styles.homePanelViewport}
@@ -3545,6 +3698,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           <>
             <View style={styles.logTopRow}>
               <Text style={styles.logTitle}>Log Activities</Text>
+              <TouchableOpacity style={styles.logPipelineBtn} onPress={openPipelineCheckinOverlay}>
+                <Text style={styles.logPipelineBtnText}>Update pipeline</Text>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.dateRow}>
@@ -3963,6 +4119,180 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             </TouchableOpacity>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={pipelineCheckinVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={dismissPipelineCheckinForToday}
+      >
+        <Pressable style={styles.pipelineCheckinBackdrop} onPress={dismissPipelineCheckinForToday}>
+          <Pressable style={styles.pipelineCheckinCard} onPress={() => {}}>
+            <View style={styles.pipelineCheckinHeader}>
+              <View style={styles.pipelineCheckinHeaderCopy}>
+                <Text style={styles.pipelineCheckinTitle}>Update your pipeline</Text>
+                <Text style={styles.pipelineCheckinHelp}>
+                  Keep your forecast accurate with current pipeline counts.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.pipelineCheckinCloseBtn}
+                onPress={dismissPipelineCheckinForToday}
+                disabled={pipelineCheckinSubmitting}
+              >
+                <Text style={styles.pipelineCheckinCloseBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.pipelineCheckinFieldCard}>
+              <Text style={styles.pipelineCheckinFieldLabel}>Pending listings</Text>
+              <View style={styles.pipelineCheckinStepperRow}>
+                <TouchableOpacity
+                  style={styles.pipelineStepperBtn}
+                  disabled={pipelineCheckinSubmitting}
+                  onPress={() => setPipelineCheckinListings((v) => Math.max(0, v - 1))}
+                >
+                  <Text style={styles.pipelineStepperBtnText}>−</Text>
+                </TouchableOpacity>
+                <Text style={styles.pipelineCheckinCountValue}>{fmtNum(pipelineCheckinListings)}</Text>
+                <TouchableOpacity
+                  style={styles.pipelineStepperBtn}
+                  disabled={pipelineCheckinSubmitting}
+                  onPress={() => setPipelineCheckinListings((v) => Math.max(0, v + 1))}
+                >
+                  <Text style={styles.pipelineStepperBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.pipelineCheckinFieldCard}>
+              <Text style={styles.pipelineCheckinFieldLabel}>Buyers under contract</Text>
+              <View style={styles.pipelineCheckinStepperRow}>
+                <TouchableOpacity
+                  style={styles.pipelineStepperBtn}
+                  disabled={pipelineCheckinSubmitting}
+                  onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v - 1))}
+                >
+                  <Text style={styles.pipelineStepperBtnText}>−</Text>
+                </TouchableOpacity>
+                <Text style={styles.pipelineCheckinCountValue}>{fmtNum(pipelineCheckinBuyers)}</Text>
+                <TouchableOpacity
+                  style={styles.pipelineStepperBtn}
+                  disabled={pipelineCheckinSubmitting}
+                  onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v + 1))}
+                >
+                  <Text style={styles.pipelineStepperBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {pipelineCheckinReasonPromptVisible ? (
+              <View style={styles.pipelineCheckinBranchCard}>
+                <Text style={styles.pipelineCheckinBranchTitle}>Your pipeline count went down. What happened?</Text>
+                {pipelineCheckinDecreaseFields.length > 0 ? (
+                  <Text style={styles.pipelineCheckinBranchSub}>
+                    Updated lower: {pipelineCheckinDecreaseFields.map((field) => (field === 'listings' ? 'Pending listings' : 'Buyers under contract')).join(', ')}
+                  </Text>
+                ) : null}
+                <View style={styles.pipelineCheckinBranchButtons}>
+                  <TouchableOpacity
+                    style={styles.pipelineBranchOption}
+                    onPress={() => onChoosePipelineDecreaseReason('deal_closed')}
+                  >
+                    <Text style={styles.pipelineBranchOptionText}>A deal closed</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.pipelineBranchOption}
+                    onPress={() => onChoosePipelineDecreaseReason('deal_lost')}
+                  >
+                    <Text style={styles.pipelineBranchOptionText}>A deal was lost</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.pipelineBranchOption}
+                    onPress={() => onChoosePipelineDecreaseReason('correction')}
+                  >
+                    <Text style={styles.pipelineBranchOptionText}>Just correcting my count</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+
+            {pipelineCheckinReason === 'deal_closed' ? (
+              <View style={styles.pipelineCheckinBranchCard}>
+                <Text style={styles.pipelineCheckinBranchTitle}>Capture close follow-up</Text>
+                <Text style={styles.pipelineCheckinBranchSub}>
+                  Enter a close date and GCI amount, then we will save counts and route you to Logs.
+                </Text>
+                <TextInput
+                  style={styles.pipelineCheckinInlineInput}
+                  value={pipelineCloseDateInput}
+                  onChangeText={setPipelineCloseDateInput}
+                  placeholder="YYYY-MM-DD"
+                  autoCapitalize="none"
+                />
+                <TextInput
+                  style={styles.pipelineCheckinInlineInput}
+                  value={pipelineCloseGciInput}
+                  onChangeText={setPipelineCloseGciInput}
+                  placeholder="GCI amount"
+                  keyboardType="decimal-pad"
+                />
+                <TouchableOpacity
+                  style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
+                  disabled={pipelineCheckinSubmitting}
+                  onPress={() => void finalizePipelineCheckinSave('deal_closed')}
+                >
+                  <Text style={styles.pipelineCheckinPrimaryBtnText}>
+                    {pipelineCheckinSubmitting ? 'Saving…' : 'Save counts & open Logs'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {pipelineCheckinReason === 'deal_lost' ? (
+              <View style={styles.pipelineCheckinBranchCard}>
+                <Text style={styles.pipelineCheckinBranchTitle}>Reset and keep moving</Text>
+                <Text style={styles.pipelineCheckinBranchSub}>
+                  {pipelineLostEncouragement || PIPELINE_LOST_ENCOURAGEMENT_MESSAGES[0]}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
+                  disabled={pipelineCheckinSubmitting}
+                  onPress={() => void finalizePipelineCheckinSave('deal_lost')}
+                >
+                  <Text style={styles.pipelineCheckinPrimaryBtnText}>
+                    {pipelineCheckinSubmitting ? 'Saving…' : 'Save updated counts'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            <View style={styles.pipelineCheckinActions}>
+              <TouchableOpacity
+                style={styles.pipelineCheckinSecondaryBtn}
+                disabled={pipelineCheckinSubmitting}
+                onPress={dismissPipelineCheckinForToday}
+              >
+                <Text style={styles.pipelineCheckinSecondaryBtnText}>Dismiss for today</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
+                disabled={
+                  pipelineCheckinSubmitting ||
+                  pipelineCheckinReasonPromptVisible ||
+                  pipelineCheckinReason === 'deal_closed' ||
+                  pipelineCheckinReason === 'deal_lost'
+                }
+                onPress={onSavePipelineCheckin}
+              >
+                <Text style={styles.pipelineCheckinPrimaryBtnText}>
+                  {pipelineCheckinSubmitting ? 'Saving…' : 'Save counts'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <Modal visible={pendingDirectLog !== null} transparent animationType="slide" onRequestClose={() => setPendingDirectLog(null)}>
@@ -4846,11 +5176,26 @@ const styles = StyleSheet.create({
   logTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
   },
   logTitle: {
     fontSize: 20,
     color: '#2f3442',
     fontWeight: '700',
+  },
+  logPipelineBtn: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d8e2f2',
+    backgroundColor: '#eef5ff',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  logPipelineBtnText: {
+    color: '#1f5fe2',
+    fontSize: 12,
+    fontWeight: '800',
   },
   avatarBtn: {
     width: 34,
@@ -5536,6 +5881,174 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.55,
+  },
+  pipelineCheckinBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(18, 22, 31, 0.42)',
+  },
+  pipelineCheckinCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e4eaf3',
+    padding: 14,
+    gap: 10,
+  },
+  pipelineCheckinHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  pipelineCheckinHeaderCopy: {
+    flex: 1,
+  },
+  pipelineCheckinTitle: {
+    color: '#2d3442',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  pipelineCheckinHelp: {
+    marginTop: 2,
+    color: '#6f7888',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  pipelineCheckinCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f1f4f9',
+  },
+  pipelineCheckinCloseBtnText: {
+    color: '#596478',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  pipelineCheckinFieldCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    backgroundColor: '#fbfcfe',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  pipelineCheckinFieldLabel: {
+    color: '#3b4454',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  pipelineCheckinStepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  pipelineStepperBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d8e1ef',
+    backgroundColor: '#f0f5ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pipelineStepperBtnText: {
+    color: '#1f5fe2',
+    fontSize: 22,
+    lineHeight: 24,
+    fontWeight: '700',
+  },
+  pipelineCheckinCountValue: {
+    minWidth: 72,
+    textAlign: 'center',
+    color: '#2f3442',
+    fontSize: 28,
+    lineHeight: 31,
+    fontWeight: '800',
+  },
+  pipelineCheckinBranchCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ead39f',
+    backgroundColor: '#fff8ea',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  pipelineCheckinBranchTitle: {
+    color: '#5a4824',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  pipelineCheckinBranchSub: {
+    color: '#745f31',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  pipelineCheckinBranchButtons: {
+    gap: 8,
+  },
+  pipelineBranchOption: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e8d3a6',
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  pipelineBranchOptionText: {
+    color: '#4f4121',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  pipelineCheckinInlineInput: {
+    borderWidth: 1,
+    borderColor: '#dddff0',
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#2f3442',
+  },
+  pipelineCheckinActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 2,
+  },
+  pipelineCheckinPrimaryBtn: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: '#1f5fe2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  pipelineCheckinPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  pipelineCheckinSecondaryBtn: {
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#dbe2ee',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  pipelineCheckinSecondaryBtnText: {
+    color: '#5a6578',
+    fontSize: 12,
+    fontWeight: '700',
   },
   modalBackdrop: {
     flex: 1,
