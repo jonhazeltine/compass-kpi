@@ -1016,7 +1016,7 @@ function AdminUsersPanel({
         </View>
       </View>
 
-      <View style={[styles.summaryRow, styles.summaryRowCompact]}>
+      <View style={styles.usersTopSplit}>
         <View style={[styles.tableWrap, { flex: 1, minWidth: 320 }]}>
           <View style={[styles.formHeaderRow, { paddingHorizontal: 12, paddingTop: 10 }]}>
             <Text style={styles.formTitle}>User List</Text>
@@ -1024,6 +1024,7 @@ function AdminUsersPanel({
               <Text style={styles.smallGhostButtonText}>Refresh</Text>
             </TouchableOpacity>
           </View>
+          <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Click a user row to load User Ops + calibration details.</Text>
           {loading ? <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Loading users...</Text> : null}
           {error ? <Text style={[styles.metaRow, styles.errorText, { paddingHorizontal: 12 }]}>Error: {error}</Text> : null}
           {!loading && !error ? (
@@ -1044,10 +1045,18 @@ function AdminUsersPanel({
                     style={[styles.tableDataRow, selected && { backgroundColor: '#EDF3FF' }]}
                     onPress={() => onSelectUser(row)}
                   >
-                    <Text style={[styles.tableCellText, styles.colMd]}>{row.role}</Text>
-                    <Text style={[styles.tableCellText, styles.colSm]}>{row.tier}</Text>
-                    <Text style={[styles.tableCellText, styles.colSm]}>{row.account_status}</Text>
-                    <Text style={[styles.tableCellText, styles.colSm]}>{formatDateShort(row.last_activity_timestamp)}</Text>
+                    <View style={[styles.tableCell, styles.colMd]}>
+                      <Text style={styles.tableCellText}>{row.role}</Text>
+                    </View>
+                    <View style={[styles.tableCell, styles.colSm]}>
+                      <Text style={styles.tableCellText}>{row.tier}</Text>
+                    </View>
+                    <View style={[styles.tableCell, styles.colSm]}>
+                      <Text style={styles.tableCellText}>{row.account_status}</Text>
+                    </View>
+                    <View style={[styles.tableCell, styles.colSm]}>
+                      <Text style={styles.tableCellText}>{formatDateShort(row.last_activity_timestamp)}</Text>
+                    </View>
                     <View style={[styles.tableCell, styles.colMd]}>
                       <Text numberOfLines={1} style={styles.tableSecondary}>{row.id}</Text>
                     </View>
@@ -1059,7 +1068,7 @@ function AdminUsersPanel({
           ) : null}
         </View>
 
-        <View style={[styles.formCard, { flex: 1, minWidth: 320 }]}>
+        <View style={[styles.formCard, styles.usersOpsCard]}>
           <View style={styles.formHeaderRow}>
             <Text style={styles.formTitle}>User Ops</Text>
             <Text style={styles.metaRow}>{selectedUser ? formatDateTimeShort(selectedUser.updated_at) : 'Select a user'}</Text>
@@ -1154,7 +1163,7 @@ function AdminUsersPanel({
         </View>
       </View>
 
-      <View style={[styles.summaryRow, styles.summaryRowCompact]}>
+      <View style={styles.usersDiagnosticsGrid}>
         <View style={[styles.summaryCard, { flex: 1 }]}>
           <Text style={styles.summaryLabel}>Calibration Diagnostics</Text>
           {calibrationLoading ? <Text style={styles.metaRow}>Loading calibration...</Text> : null}
@@ -2457,6 +2466,23 @@ const styles = StyleSheet.create({
   summaryRowCompact: {
     flexDirection: 'column',
   },
+  usersTopSplit: {
+    flexDirection: 'row',
+    gap: 12,
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+  },
+  usersOpsCard: {
+    flex: 1,
+    minWidth: 320,
+    alignSelf: 'stretch',
+  },
+  usersDiagnosticsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+  },
   summaryCard: {
     flex: 1,
     minWidth: 220,
@@ -2881,6 +2907,7 @@ const styles = StyleSheet.create({
   },
   tableDataRow: {
     flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#EEF2F9',
   },

@@ -68,7 +68,7 @@ without duplicating KPI definitions or creating multiple logging mechanics.
 
 ### Reports / Predictions
 - Projection detail, confidence, trend review
-- Pipeline anchor status and stronger anchor nudges
+- Pipeline status visibility and entry points into pipeline check-in/edit flows
 
 ## Priority Panel (Replaces Quick) — M3 Decision
 
@@ -84,7 +84,7 @@ without duplicating KPI definitions or creating multiple logging mechanics.
 1. Team challenge KPI behind pace
 2. Personal challenge KPI behind pace
 3. Team-required KPI stale/missing
-4. Pipeline anchors missing/stale
+4. Pipeline counts missing/stale
 5. Personal KPI off-goal / low recent activity
 6. User favorites / selected KPI fallback fill
 
@@ -108,19 +108,41 @@ without duplicating KPI definitions or creating multiple logging mechanics.
 - `Team`: filter by team/team-challenge relevance, then group by type within the screen
 - Do not use a giant mixed KPI list as the default on Challenge/Team surfaces
 
-## Pipeline Anchor Nudges (M3 Must-Have)
+## Daily Pipeline Check-In (M3 Must-Have)
 
 ### Why
-Pipeline anchors are forecast-critical inputs and currently easy to ignore.
+Current pipeline counts (pending listings + buyers under contract) are forecast-critical inputs and currently easy to ignore.
 
 ### Placement (v1)
-- `Home`: light nag/banner/chip
-- `Reports / Predictions`: stronger nag with “why this matters” explanation + CTA
+- First app open of the day: full-screen, dismissible `Daily Pipeline Check-In` overlay
+- `Activity / Logs`: explicit entry point to reopen and edit current pipeline counts
+- `Reports / Predictions`: optional entry point to pipeline check-in/edit (no persistent nag required)
 
 ### Trigger examples (v1)
-- Missing anchors
-- Stale anchors beyond configured recency threshold
-- Confidence degradation linked to missing/stale anchors (copy only in v1 is acceptable)
+- First app open of the day (show at most once per day unless manually reopened)
+- Missing pipeline counts
+- Stale pipeline counts beyond configured recency threshold
+- Optional later enhancement: post-log contextual prompt after likely pipeline-changing KPI logs
+
+### UX language (locked direction)
+- Use agent-facing language:
+  - `Update your pipeline`
+  - `Pending listings`
+  - `Buyers under contract`
+- Avoid internal terms in UI copy:
+  - `pipeline anchor`
+  - `anchor`
+
+### Daily overlay flow (v1)
+1. Show current counts in fast stepper-style inputs (`-` / count / `+`)
+2. Save updated counts as current pipeline status (rolling values)
+3. If a count decreases vs previous saved value, prompt for reason:
+   - `Deal closed`
+   - `Deal lost`
+   - `Just correcting my count`
+4. If `Deal closed`, route into close detail capture (GCI + close date)
+5. If `Deal lost`, show a short randomized encouragement message
+6. Overlay is dismissible and can be reopened later from `Activity / Logs`
 
 ## Implementation Strategy (Low-Interruption / Long-Tail Checkpoints)
 
@@ -141,12 +163,16 @@ This sequence is designed to avoid blocking `M3b` polish and to produce visible 
 
 **Checkpoint outcome:** Home reflects what matters now, not only a static quick set
 
-### M3-G3: Pipeline Anchor Nags (Home + Reports)
-- Add Home nag placement (light)
-- Add Reports/Predictions nag placement (stronger CTA)
-- Keep logic simple in v1 (missing/stale checks)
+### M3-G3: Daily Pipeline Check-In Overlay (First open of day)
+- Add once-per-day, dismissible full-screen pipeline check-in overlay
+- Use simple count entry for:
+  - pending listings
+  - buyers under contract
+- Add decrease follow-up branch (`closed` / `lost` / `correction`)
+- Add `Activity / Logs` entry point to reopen/edit counts
+- Avoid persistent Home dashboard nags in v1
 
-**Checkpoint outcome:** forecast-critical anchor completion improves without major redesign
+**Checkpoint outcome:** forecast-critical pipeline counts are captured at a high-probability moment without crowding the Home dashboard
 
 ### M3-G4: Challenge Screen (Functional-first logging surface)
 - Add first-class Challenge screen with challenge KPI logging
@@ -183,7 +209,7 @@ M3 is considered complete enough when:
 - Challenge and Team each provide first-class logging surfaces
 - KPI overlap is visible, deduped, and non-confusing
 - Activity/Logs supports history/backfill/corrections as a separate role
-- Pipeline anchor nudges exist and drive action
+- Daily pipeline check-in overlay exists and drives current pipeline count updates
 - Type-based behavior separation (`PC/GP/VP/...`) remains preserved across all surfaces
 
 ## Scope Boundary / Deferrals
@@ -192,11 +218,11 @@ M3 is considered complete enough when:
 - Deep challenge/team screen visual polish can roll into later M4/M7 work as needed
 
 ## Implementation Notes for Agents
-- Prefer additive changes over rewrites in early gates (`M3-G1` to `M3-G3`)
+- Prefer additive changes over rewrites in early gates (`M3-G1` to `M3-G3`), but `M3-G3` may replace prior dashboard nag experiments
 - Keep KPI tile interaction plumbing shared across surfaces to avoid timing drift
 - Do not create separate logging APIs or context-specific log writes
 - Preserve non-negotiables:
   - PC vs Actual separation
   - GP/VP never generating PC
   - confidence display-only
-  - pipeline anchors remain explicit forecast inputs
+  - pipeline anchors (user-facing: pipeline counts) remain explicit forecast inputs

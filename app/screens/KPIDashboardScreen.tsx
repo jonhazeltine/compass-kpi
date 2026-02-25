@@ -14,6 +14,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useColorScheme,
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -24,6 +25,11 @@ import PillGrowthBg from '../assets/figma/kpi_icon_bank/pill_growth_bg_v1.svg';
 import PillProjectionsBg from '../assets/figma/kpi_icon_bank/pill_projections_bg_v1.svg';
 import PillQuicklogBg from '../assets/figma/kpi_icon_bank/pill_quicklog_bg_v1.svg';
 import PillVitalityBg from '../assets/figma/kpi_icon_bank/pill_vitality_bg_orange_v2.svg';
+import TabChallengesIcon from '../assets/figma/kpi_icon_bank/tab_challenges_themeable_v1.svg';
+import TabCoachIcon from '../assets/figma/kpi_icon_bank/tab_coach_themeable_v2.svg';
+import TabDashboardIcon from '../assets/figma/kpi_icon_bank/tab_dashboard_themeable_v1.svg';
+import TabLogsIcon from '../assets/figma/kpi_icon_bank/tab_logs_themeable_v1.svg';
+import TabTeamIcon from '../assets/figma/kpi_icon_bank/tab_team_themeable_v1.svg';
 import { useAuth } from '../contexts/AuthContext';
 import {
   getFeedbackConfig,
@@ -781,6 +787,15 @@ function readPipelineAnchorCountsFromPayload(payload: DashboardPayload | null) {
   };
 }
 
+function findActualGciLogKpi(payload: DashboardPayload | null) {
+  const actualKpis = (payload?.loggable_kpis ?? []).filter((kpi) => kpi.type === 'Actual');
+  const byName = actualKpis.find((kpi) => {
+    const name = String(kpi.name ?? '').toLowerCase();
+    return name.includes('gci') || name.includes('close') || name.includes('deal');
+  });
+  return byName ?? actualKpis[0] ?? null;
+}
+
 function renderContextBadgeLabel(badge: KpiTileContextBadge) {
   if (badge === 'CH') return '🏆';
   if (badge === 'TM') return '👥';
@@ -961,12 +976,12 @@ const feedbackAudioAssets = {
   logError: require('../assets/audio/sfx/ui_error.mp3'),
 } as const;
 
-const bottomTabIconAssets = {
-  home: require('../assets/figma/kpi_icon_bank/dashboard coin.png'),
-  challenge: require('../assets/figma/kpi_icon_bank/flag coin.png'),
-  newkpi: require('../assets/figma/kpi_icon_bank/log coin.png'),
-  team: require('../assets/figma/kpi_icon_bank/team coin.png'),
-  user: require('../assets/figma/kpi_icon_bank/coach coin.png'),
+const bottomTabIconSvgByKey = {
+  home: TabDashboardIcon,
+  challenge: TabChallengesIcon,
+  newkpi: TabLogsIcon,
+  team: TabTeamIcon,
+  user: TabCoachIcon,
 } as const;
 
 const homePanelPillSvgBg = {
@@ -980,8 +995,8 @@ const bottomTabIconStyleByKey: Record<BottomTab, any> = {
   home: null,
   challenge: null,
   newkpi: null,
-  team: null,
-  user: null,
+  team: { transform: [{ translateY: -3 }] },
+  user: { transform: [{ translateY: -3 }] },
 };
 
 type Props = {
@@ -991,6 +1006,8 @@ type Props = {
 export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const { session } = useAuth();
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
+  const isDarkMode = colorScheme === 'dark';
   const [state, setState] = useState<LoadState>('loading');
   const [payload, setPayload] = useState<DashboardPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1104,6 +1121,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const bottomNavPadBottom = 0;
   const bottomNavPadTop = 0;
   const contentBottomPad = 118 + Math.max(10, insets.bottom);
+  const bottomTabTheme = isDarkMode
+    ? {
+        activeFg: '#CFE0FF',
+        inactiveFg: '#7FA4E6',
+        activeBg: 'rgba(78, 116, 191, 0.28)',
+      }
+    : {
+        activeFg: '#2E5FBF',
+        inactiveFg: '#6F95DB',
+        activeBg: 'rgba(226, 236, 255, 0.98)',
+      };
 
   const gpUnlocked = (payload?.activity.active_days ?? 0) >= 3 || (payload?.activity.total_logs ?? 0) >= 20;
   const vpUnlocked = (payload?.activity.active_days ?? 0) >= 7 || (payload?.activity.total_logs ?? 0) >= 40;
@@ -1778,6 +1806,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const pipelineAnchorNag = useMemo(() => derivePipelineAnchorNagState(payload ?? null), [payload]);
   const pipelineCheckinAnchors = useMemo(() => findPipelineCheckinAnchors(payload ?? null), [payload]);
   const pipelineAnchorCounts = useMemo(() => readPipelineAnchorCountsFromPayload(payload ?? null), [payload]);
+  const actualGciLogKpi = useMemo(() => findActualGciLogKpi(payload ?? null), [payload]);
   const todayLocalIso = useMemo(() => isoTodayLocal(), []);
   const pipelineCheckinDismissStorageKey = useMemo(() => {
     const userId = String(session?.user?.id ?? '').trim();
@@ -2063,7 +2092,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     const token = session?.access_token;
     if (!token) {
       Alert.alert('Not authenticated', 'Please sign in again.');
-      return;
+      return false;
     }
 
     setSubmitting(true);
@@ -2103,10 +2132,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         }, settleDelay);
       }
       void refreshConfidenceSnapshot();
+      return true;
     } catch (e: unknown) {
       void triggerHapticAsync('error');
       void playFeedbackCueAsync('logError');
       Alert.alert('Log failed', e instanceof Error ? e.message : 'Failed to log KPI');
+      return false;
     } finally {
       setSubmitting(false);
       setSubmittingKpiId(null);
@@ -3564,26 +3595,57 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         Alert.alert('Pipeline check-in unavailable', 'Required pipeline anchor KPIs are not available yet.');
         return;
       }
+      let closeEventIso: string | null = null;
+      let closeGciAmount: number | null = null;
+      if (reason === 'deal_closed') {
+        const normalizedDate = (pipelineCloseDateInput.trim() || isoTodayLocal()).trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
+          Alert.alert('Invalid close date', 'Use YYYY-MM-DD for the close date.');
+          return;
+        }
+        const parsedGci = Number(pipelineCloseGciInput.replace(/,/g, '').trim());
+        if (!Number.isFinite(parsedGci) || parsedGci <= 0) {
+          Alert.alert('Invalid GCI amount', 'Enter a valid GCI amount greater than 0.');
+          return;
+        }
+        if (!actualGciLogKpi) {
+          Alert.alert('Close logging unavailable', 'No Actual GCI log KPI is available for this account yet.');
+          return;
+        }
+        closeEventIso = eventTimestampIsoForSelectedDay(normalizedDate);
+        closeGciAmount = parsedGci;
+      }
 
       setPipelineCheckinSubmitting(true);
       try {
         const eventIso = new Date().toISOString();
-        await sendLog(listingsKpi.id, Math.max(0, Math.round(pipelineCheckinListings)), {
+        const listingsSaved = await sendLog(listingsKpi.id, Math.max(0, Math.round(pipelineCheckinListings)), {
           kpiType: 'Pipeline_Anchor',
           skipSuccessBadge: true,
           skipProjectionFlight: true,
           eventTimestampIso: eventIso,
         });
-        await sendLog(buyersKpi.id, Math.max(0, Math.round(pipelineCheckinBuyers)), {
+        if (!listingsSaved) return;
+        const buyersSaved = await sendLog(buyersKpi.id, Math.max(0, Math.round(pipelineCheckinBuyers)), {
           kpiType: 'Pipeline_Anchor',
           skipSuccessBadge: true,
           skipProjectionFlight: true,
           eventTimestampIso: eventIso,
         });
+        if (!buyersSaved) return;
         await persistPipelineCountsMetadata(
           Math.max(0, Math.round(pipelineCheckinListings)),
           Math.max(0, Math.round(pipelineCheckinBuyers))
         );
+        if (reason === 'deal_closed' && closeEventIso && closeGciAmount != null && actualGciLogKpi) {
+          const closeSaved = await sendLog(actualGciLogKpi.id, closeGciAmount, {
+            kpiType: 'Actual',
+            skipSuccessBadge: true,
+            skipProjectionFlight: true,
+            eventTimestampIso: closeEventIso,
+          });
+          if (!closeSaved) return;
+        }
 
         const today = isoTodayLocal();
         PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS.add(today);
@@ -3595,12 +3657,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           Alert.alert('Keep going', pipelineLostEncouragement);
         }
         if (reason === 'deal_closed') {
-          setViewMode('log');
           const closeDate = pipelineCloseDateInput.trim() || isoTodayLocal();
           const gci = pipelineCloseGciInput.trim() || '0';
           Alert.alert(
-            'Deal close follow-up',
-            `Captured close intent (${closeDate}, GCI ${gci}). Continue in Logs to enter the close event.`
+            'Close event logged',
+            `Actual GCI close logged and pipeline counts updated (${closeDate}, GCI ${gci}).`
           );
         }
       } finally {
@@ -3611,6 +3672,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       persistPipelineCountsMetadata,
       pipelineCheckinAnchors.buyers,
       pipelineCheckinAnchors.listings,
+      actualGciLogKpi,
       pipelineCheckinBuyers,
       pipelineCheckinListings,
       pipelineCloseDateInput,
@@ -4062,15 +4124,27 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   : undefined
               }
             >
-              <Image
-                source={bottomTabIconAssets[tab.key]}
-                style={[
-                  styles.bottomIconImage,
-                  bottomTabIconStyleByKey[tab.key],
-                  activeTab === tab.key ? styles.bottomIconImageActive : styles.bottomIconImageInactive,
-                ]}
-                resizeMode="contain"
-              />
+              {(() => {
+                const TabIcon = bottomTabIconSvgByKey[tab.key];
+                const isActive = activeTab === tab.key;
+                const iconColor = isActive ? bottomTabTheme.activeFg : bottomTabTheme.inactiveFg;
+                return (
+                  <View
+                    style={[
+                      styles.bottomIconSvgWrap,
+                      isActive && { backgroundColor: bottomTabTheme.activeBg },
+                      isActive ? styles.bottomIconImageActive : styles.bottomIconImageInactive,
+                    ]}
+                  >
+                    <TabIcon
+                      width="100%"
+                      height="100%"
+                      color={iconColor}
+                      style={[styles.bottomIconSvg, bottomTabIconStyleByKey[tab.key]]}
+                    />
+                  </View>
+                );
+              })()}
             </Animated.View>
           </TouchableOpacity>
         ))}
@@ -4278,19 +4352,40 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               {pipelineCheckinReason === 'deal_closed' ? (
                 <View style={styles.pipelineCheckinBranchCard}>
                   <Text style={styles.pipelineCheckinBranchTitle}>Capture close follow-up</Text>
-                  <Text style={styles.pipelineCheckinBranchSub}>
-                    Enter a close date and GCI amount, then we will save counts and route you to Logs.
-                  </Text>
-                  <TextInput
-                    style={styles.pipelineCheckinInlineInput}
-                    value={pipelineCloseDateInput}
-                    onChangeText={setPipelineCloseDateInput}
-                    placeholder="YYYY-MM-DD"
-                    autoCapitalize="none"
-                  />
-                  <TextInput
-                    style={styles.pipelineCheckinInlineInput}
-                    value={pipelineCloseGciInput}
+                <Text style={styles.pipelineCheckinBranchSub}>
+                  Enter a close date and GCI amount to log the close and update pipeline counts.
+                </Text>
+                <View style={styles.pipelineCheckinDateRow}>
+                  <TouchableOpacity
+                    style={styles.pipelineCheckinDateBtn}
+                    disabled={pipelineCheckinSubmitting}
+                    onPress={() => setPipelineCloseDateInput((prev) => shiftIsoLocalDate(prev || isoTodayLocal(), -1))}
+                  >
+                    <Text style={styles.pipelineCheckinDateBtnText}>‹</Text>
+                  </TouchableOpacity>
+                  <View style={styles.pipelineCheckinDateValueWrap}>
+                    <Text style={styles.pipelineCheckinDateValueLabel}>Close date</Text>
+                    <Text style={styles.pipelineCheckinDateValueText}>
+                      {formatLogDateHeading(pipelineCloseDateInput || isoTodayLocal())}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.pipelineCheckinDateBtn}
+                    disabled={pipelineCheckinSubmitting}
+                    onPress={() =>
+                      setPipelineCloseDateInput((prev) => {
+                        const next = shiftIsoLocalDate(prev || isoTodayLocal(), 1);
+                        const today = isoTodayLocal();
+                        return next > today ? today : next;
+                      })
+                    }
+                  >
+                    <Text style={styles.pipelineCheckinDateBtnText}>›</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.pipelineCheckinInlineInput}
+                  value={pipelineCloseGciInput}
                     onChangeText={setPipelineCloseGciInput}
                     placeholder="GCI amount"
                     keyboardType="decimal-pad"
@@ -4301,7 +4396,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     onPress={() => void finalizePipelineCheckinSave('deal_closed')}
                   >
                     <Text style={styles.pipelineCheckinPrimaryBtnText}>
-                      {pipelineCheckinSubmitting ? 'Saving…' : 'Save counts & open Logs'}
+                      {pipelineCheckinSubmitting ? 'Logging…' : 'Log close & save counts'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -4319,7 +4414,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     onPress={() => void finalizePipelineCheckinSave('deal_lost')}
                   >
                     <Text style={styles.pipelineCheckinPrimaryBtnText}>
-                      {pipelineCheckinSubmitting ? 'Saving…' : 'Save updated counts'}
+                      {pipelineCheckinSubmitting ? 'Logging…' : 'Log & save counts'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -4340,7 +4435,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     onPress={onSavePipelineCheckin}
                   >
                     <Text style={styles.pipelineCheckinPrimaryBtnText}>
-                      {pipelineCheckinSubmitting ? 'Saving…' : 'Save counts'}
+                      {pipelineCheckinSubmitting ? 'Updating…' : 'Update pipeline'}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -5732,6 +5827,17 @@ const styles = StyleSheet.create({
     width: 62,
     height: 62,
   },
+  bottomIconSvgWrap: {
+    width: 62,
+    height: 62,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomIconSvg: {
+    width: 62,
+    height: 62,
+  },
   bottomIconImageInactive: {
     opacity: 0.88,
   },
@@ -6077,6 +6183,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     color: '#2f3442',
+  },
+  pipelineCheckinDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  pipelineCheckinDateBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d8e1ef',
+    backgroundColor: '#f0f5ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pipelineCheckinDateBtnText: {
+    color: '#1f5fe2',
+    fontSize: 20,
+    lineHeight: 20,
+    fontWeight: '800',
+  },
+  pipelineCheckinDateValueWrap: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#dddff0',
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  pipelineCheckinDateValueLabel: {
+    color: '#7a8394',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  pipelineCheckinDateValueText: {
+    marginTop: 2,
+    color: '#2f3442',
+    fontSize: 14,
+    fontWeight: '700',
   },
   pipelineCheckinActions: {
     flexDirection: 'row',

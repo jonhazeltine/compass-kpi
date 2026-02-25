@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <filter id="ds" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="rgba(0,0,0,0)" flood-opacity="1"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#ds)">
+    <rect x="8" y="8" width="48" height="48" rx="16" fill="transparent"/>
+  </g>
+
+  <g stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- mountain -->
+    <path d="M14 48l12-16 8 10 6-8 10 14"/>
+    <path d="M30 48h20"/>
+
+    <!-- hiker -->
+    <circle cx="24" cy="22" r="4"/>
+    <path d="M24 26l-3 9"/>
+    <path d="M24 30l7 4"/>
+    <path d="M21 35l-4 8"/>
+    <path d="M21 35l7 8"/>
+
+    <!-- trekking pole -->
+    <path d="M33 28l-2 18"/>
+
+    <!-- summit spark -->
+    <path d="M46 17l1.2 2.5 2.6.7-2.1 1.8.6 2.7-2.3-1.4-2.3 1.4.6-2.7-2.1-1.8 2.6-.7z"/>
+  </g>
+</svg>
