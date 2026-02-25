@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
 import LottieSlot from '../components/LottieSlot';
@@ -225,6 +226,7 @@ const ACTUAL_CARD_VIEWS = ['actual365', 'progressYtd'] as const;
 const GP_LOTTIE_SOURCE: object | number | null = null;
 const VP_LOTTIE_SOURCE: object | number | null = null;
 const PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS = new Set<string>();
+const PIPELINE_CHECKIN_DISMISS_KEY_PREFIX = 'compass.pipeline_checkin.dismissed_day';
 const PIPELINE_LOST_ENCOURAGEMENT_MESSAGES = [
   'Every pipeline dip is temporary. Refill the top and keep moving.',
   'Lost deals happen. Your consistency restores momentum.',
@@ -1097,6 +1099,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [pipelineCloseDateInput, setPipelineCloseDateInput] = useState('');
   const [pipelineCloseGciInput, setPipelineCloseGciInput] = useState('');
   const [pipelineLostEncouragement, setPipelineLostEncouragement] = useState('');
+  const [pipelineCheckinDismissedDay, setPipelineCheckinDismissedDay] = useState<string | null>(null);
+  const [pipelineCheckinDismissalLoaded, setPipelineCheckinDismissalLoaded] = useState(false);
   const bottomNavPadBottom = 0;
   const bottomNavPadTop = 0;
   const contentBottomPad = 118 + Math.max(10, insets.bottom);
@@ -1775,6 +1779,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const pipelineCheckinAnchors = useMemo(() => findPipelineCheckinAnchors(payload ?? null), [payload]);
   const pipelineAnchorCounts = useMemo(() => readPipelineAnchorCountsFromPayload(payload ?? null), [payload]);
   const todayLocalIso = useMemo(() => isoTodayLocal(), []);
+  const pipelineCheckinDismissStorageKey = useMemo(() => {
+    const userId = String(session?.user?.id ?? '').trim();
+    return userId ? `${PIPELINE_CHECKIN_DISMISS_KEY_PREFIX}:${userId}` : null;
+  }, [session?.user?.id]);
 
   const chartSeries = useMemo(() => chartFromPayload(payload), [payload]);
   const chartSplitX =
@@ -3460,21 +3468,70 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     setPipelineCheckinVisible(true);
   }, [pipelineAnchorCounts.buyers, pipelineAnchorCounts.listings]);
 
+  React.useEffect(() => {
+    let cancelled = false;
+    setPipelineCheckinDismissalLoaded(false);
+    if (!pipelineCheckinDismissStorageKey) {
+      setPipelineCheckinDismissedDay(null);
+      setPipelineCheckinDismissalLoaded(true);
+      return;
+    }
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(pipelineCheckinDismissStorageKey);
+        if (!cancelled) setPipelineCheckinDismissedDay(stored || null);
+      } catch {
+        if (!cancelled) setPipelineCheckinDismissedDay(null);
+      } finally {
+        if (!cancelled) setPipelineCheckinDismissalLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pipelineCheckinDismissStorageKey]);
+
+  const persistPipelineDismissedDay = useCallback(
+    async (isoDay: string) => {
+      setPipelineCheckinDismissedDay(isoDay);
+      if (!pipelineCheckinDismissStorageKey) return;
+      try {
+        await AsyncStorage.setItem(pipelineCheckinDismissStorageKey, isoDay);
+      } catch {
+        // Non-blocking local persistence.
+      }
+    },
+    [pipelineCheckinDismissStorageKey]
+  );
+
   const dismissPipelineCheckinForToday = useCallback(() => {
-    PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS.add(isoTodayLocal());
+    const today = isoTodayLocal();
+    PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS.add(today);
+    void persistPipelineDismissedDay(today);
     setPipelineCheckinReasonPromptVisible(false);
     setPipelineCheckinReason(null);
     setPipelineCheckinVisible(false);
-  }, []);
+  }, [persistPipelineDismissedDay]);
 
   React.useEffect(() => {
     if (!payload || state !== 'ready') return;
     if (pipelineCheckinVisible || pendingDirectLog) return;
+    if (!pipelineCheckinDismissalLoaded) return;
     const today = isoTodayLocal();
     if (PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS.has(today)) return;
+    if (pipelineCheckinDismissedDay === today) return;
     if (pipelineAnchorNag.severity === 'ok') return;
     openPipelineCheckinOverlay();
-  }, [openPipelineCheckinOverlay, payload, pendingDirectLog, pipelineAnchorNag.severity, pipelineCheckinVisible, state]);
+  }, [
+    openPipelineCheckinOverlay,
+    payload,
+    pendingDirectLog,
+    pipelineAnchorNag.severity,
+    pipelineCheckinDismissalLoaded,
+    pipelineCheckinDismissedDay,
+    pipelineCheckinVisible,
+    state,
+  ]);
 
   const persistPipelineCountsMetadata = useCallback(
     async (listings: number, buyers: number) => {
@@ -3528,7 +3585,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           Math.max(0, Math.round(pipelineCheckinBuyers))
         );
 
-        PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS.add(isoTodayLocal());
+        const today = isoTodayLocal();
+        PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS.add(today);
+        void persistPipelineDismissedDay(today);
         setPipelineCheckinVisible(false);
         setPipelineCheckinReasonPromptVisible(false);
 
@@ -3557,6 +3616,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       pipelineCloseDateInput,
       pipelineCloseGciInput,
       pipelineLostEncouragement,
+      persistPipelineDismissedDay,
       sendLog,
     ]
   );
@@ -4129,168 +4189,163 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       >
         <Pressable style={styles.pipelineCheckinBackdrop} onPress={dismissPipelineCheckinForToday}>
           <Pressable style={styles.pipelineCheckinCard} onPress={() => {}}>
-            <View style={styles.pipelineCheckinHeader}>
-              <View style={styles.pipelineCheckinHeaderCopy}>
-                <Text style={styles.pipelineCheckinTitle}>Update your pipeline</Text>
-                <Text style={styles.pipelineCheckinHelp}>
-                  Keep your forecast accurate with current pipeline counts.
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.pipelineCheckinCloseBtn}
-                onPress={dismissPipelineCheckinForToday}
-                disabled={pipelineCheckinSubmitting}
-              >
-                <Text style={styles.pipelineCheckinCloseBtnText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.pipelineCheckinFieldCard}>
-              <Text style={styles.pipelineCheckinFieldLabel}>Pending listings</Text>
-              <View style={styles.pipelineCheckinStepperRow}>
-                <TouchableOpacity
-                  style={styles.pipelineStepperBtn}
-                  disabled={pipelineCheckinSubmitting}
-                  onPress={() => setPipelineCheckinListings((v) => Math.max(0, v - 1))}
-                >
-                  <Text style={styles.pipelineStepperBtnText}>−</Text>
-                </TouchableOpacity>
-                <Text style={styles.pipelineCheckinCountValue}>{fmtNum(pipelineCheckinListings)}</Text>
-                <TouchableOpacity
-                  style={styles.pipelineStepperBtn}
-                  disabled={pipelineCheckinSubmitting}
-                  onPress={() => setPipelineCheckinListings((v) => Math.max(0, v + 1))}
-                >
-                  <Text style={styles.pipelineStepperBtnText}>+</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.pipelineCheckinFieldCard}>
-              <Text style={styles.pipelineCheckinFieldLabel}>Buyers under contract</Text>
-              <View style={styles.pipelineCheckinStepperRow}>
-                <TouchableOpacity
-                  style={styles.pipelineStepperBtn}
-                  disabled={pipelineCheckinSubmitting}
-                  onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v - 1))}
-                >
-                  <Text style={styles.pipelineStepperBtnText}>−</Text>
-                </TouchableOpacity>
-                <Text style={styles.pipelineCheckinCountValue}>{fmtNum(pipelineCheckinBuyers)}</Text>
-                <TouchableOpacity
-                  style={styles.pipelineStepperBtn}
-                  disabled={pipelineCheckinSubmitting}
-                  onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v + 1))}
-                >
-                  <Text style={styles.pipelineStepperBtnText}>+</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {pipelineCheckinReasonPromptVisible ? (
-              <View style={styles.pipelineCheckinBranchCard}>
-                <Text style={styles.pipelineCheckinBranchTitle}>Your pipeline count went down. What happened?</Text>
-                {pipelineCheckinDecreaseFields.length > 0 ? (
-                  <Text style={styles.pipelineCheckinBranchSub}>
-                    Updated lower: {pipelineCheckinDecreaseFields.map((field) => (field === 'listings' ? 'Pending listings' : 'Buyers under contract')).join(', ')}
+            <ScrollView
+              style={styles.pipelineCheckinScroll}
+              contentContainerStyle={styles.pipelineCheckinScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.pipelineCheckinHeader}>
+                <View style={styles.pipelineCheckinHeaderCopy}>
+                  <Text style={styles.pipelineCheckinTitle}>Update your pipeline</Text>
+                  <Text style={styles.pipelineCheckinHelp}>
+                    Keep your forecast accurate with current pipeline counts.
                   </Text>
-                ) : null}
-                <View style={styles.pipelineCheckinBranchButtons}>
+                </View>
+                <TouchableOpacity
+                  style={styles.pipelineCheckinCloseBtn}
+                  onPress={dismissPipelineCheckinForToday}
+                  disabled={pipelineCheckinSubmitting}
+                >
+                  <Text style={styles.pipelineCheckinCloseBtnText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.pipelineCheckinFieldCard}>
+                <Text style={styles.pipelineCheckinFieldLabel}>Pending listings</Text>
+                <View style={styles.pipelineCheckinStepperRow}>
                   <TouchableOpacity
-                    style={styles.pipelineBranchOption}
-                    onPress={() => onChoosePipelineDecreaseReason('deal_closed')}
+                    style={styles.pipelineStepperBtn}
+                    disabled={pipelineCheckinSubmitting}
+                    onPress={() => setPipelineCheckinListings((v) => Math.max(0, v - 1))}
                   >
-                    <Text style={styles.pipelineBranchOptionText}>A deal closed</Text>
+                    <Text style={styles.pipelineStepperBtnText}>−</Text>
                   </TouchableOpacity>
+                  <Text style={styles.pipelineCheckinCountValue}>{fmtNum(pipelineCheckinListings)}</Text>
                   <TouchableOpacity
-                    style={styles.pipelineBranchOption}
-                    onPress={() => onChoosePipelineDecreaseReason('deal_lost')}
+                    style={styles.pipelineStepperBtn}
+                    disabled={pipelineCheckinSubmitting}
+                    onPress={() => setPipelineCheckinListings((v) => Math.max(0, v + 1))}
                   >
-                    <Text style={styles.pipelineBranchOptionText}>A deal was lost</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.pipelineBranchOption}
-                    onPress={() => onChoosePipelineDecreaseReason('correction')}
-                  >
-                    <Text style={styles.pipelineBranchOptionText}>Just correcting my count</Text>
+                    <Text style={styles.pipelineStepperBtnText}>+</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-            ) : null}
 
-            {pipelineCheckinReason === 'deal_closed' ? (
-              <View style={styles.pipelineCheckinBranchCard}>
-                <Text style={styles.pipelineCheckinBranchTitle}>Capture close follow-up</Text>
-                <Text style={styles.pipelineCheckinBranchSub}>
-                  Enter a close date and GCI amount, then we will save counts and route you to Logs.
-                </Text>
-                <TextInput
-                  style={styles.pipelineCheckinInlineInput}
-                  value={pipelineCloseDateInput}
-                  onChangeText={setPipelineCloseDateInput}
-                  placeholder="YYYY-MM-DD"
-                  autoCapitalize="none"
-                />
-                <TextInput
-                  style={styles.pipelineCheckinInlineInput}
-                  value={pipelineCloseGciInput}
-                  onChangeText={setPipelineCloseGciInput}
-                  placeholder="GCI amount"
-                  keyboardType="decimal-pad"
-                />
-                <TouchableOpacity
-                  style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
-                  disabled={pipelineCheckinSubmitting}
-                  onPress={() => void finalizePipelineCheckinSave('deal_closed')}
-                >
-                  <Text style={styles.pipelineCheckinPrimaryBtnText}>
-                    {pipelineCheckinSubmitting ? 'Saving…' : 'Save counts & open Logs'}
-                  </Text>
-                </TouchableOpacity>
+              <View style={styles.pipelineCheckinFieldCard}>
+                <Text style={styles.pipelineCheckinFieldLabel}>Buyers under contract</Text>
+                <View style={styles.pipelineCheckinStepperRow}>
+                  <TouchableOpacity
+                    style={styles.pipelineStepperBtn}
+                    disabled={pipelineCheckinSubmitting}
+                    onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v - 1))}
+                  >
+                    <Text style={styles.pipelineStepperBtnText}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.pipelineCheckinCountValue}>{fmtNum(pipelineCheckinBuyers)}</Text>
+                  <TouchableOpacity
+                    style={styles.pipelineStepperBtn}
+                    disabled={pipelineCheckinSubmitting}
+                    onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v + 1))}
+                  >
+                    <Text style={styles.pipelineStepperBtnText}>+</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            ) : null}
 
-            {pipelineCheckinReason === 'deal_lost' ? (
-              <View style={styles.pipelineCheckinBranchCard}>
-                <Text style={styles.pipelineCheckinBranchTitle}>Reset and keep moving</Text>
-                <Text style={styles.pipelineCheckinBranchSub}>
-                  {pipelineLostEncouragement || PIPELINE_LOST_ENCOURAGEMENT_MESSAGES[0]}
-                </Text>
-                <TouchableOpacity
-                  style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
-                  disabled={pipelineCheckinSubmitting}
-                  onPress={() => void finalizePipelineCheckinSave('deal_lost')}
-                >
-                  <Text style={styles.pipelineCheckinPrimaryBtnText}>
-                    {pipelineCheckinSubmitting ? 'Saving…' : 'Save updated counts'}
+              {pipelineCheckinReasonPromptVisible ? (
+                <View style={styles.pipelineCheckinBranchCard}>
+                  <Text style={styles.pipelineCheckinBranchTitle}>Your pipeline count went down. What happened?</Text>
+                  {pipelineCheckinDecreaseFields.length > 0 ? (
+                    <Text style={styles.pipelineCheckinBranchSub}>
+                      Updated lower: {pipelineCheckinDecreaseFields.map((field) => (field === 'listings' ? 'Pending listings' : 'Buyers under contract')).join(', ')}
+                    </Text>
+                  ) : null}
+                  <View style={styles.pipelineCheckinBranchButtons}>
+                    <TouchableOpacity style={styles.pipelineBranchOption} onPress={() => onChoosePipelineDecreaseReason('deal_closed')}>
+                      <Text style={styles.pipelineBranchOptionText}>A deal closed</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.pipelineBranchOption} onPress={() => onChoosePipelineDecreaseReason('deal_lost')}>
+                      <Text style={styles.pipelineBranchOptionText}>A deal was lost</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.pipelineBranchOption} onPress={() => onChoosePipelineDecreaseReason('correction')}>
+                      <Text style={styles.pipelineBranchOptionText}>Just correcting my count</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+
+              {pipelineCheckinReason === 'deal_closed' ? (
+                <View style={styles.pipelineCheckinBranchCard}>
+                  <Text style={styles.pipelineCheckinBranchTitle}>Capture close follow-up</Text>
+                  <Text style={styles.pipelineCheckinBranchSub}>
+                    Enter a close date and GCI amount, then we will save counts and route you to Logs.
                   </Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
+                  <TextInput
+                    style={styles.pipelineCheckinInlineInput}
+                    value={pipelineCloseDateInput}
+                    onChangeText={setPipelineCloseDateInput}
+                    placeholder="YYYY-MM-DD"
+                    autoCapitalize="none"
+                  />
+                  <TextInput
+                    style={styles.pipelineCheckinInlineInput}
+                    value={pipelineCloseGciInput}
+                    onChangeText={setPipelineCloseGciInput}
+                    placeholder="GCI amount"
+                    keyboardType="decimal-pad"
+                  />
+                  <TouchableOpacity
+                    style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
+                    disabled={pipelineCheckinSubmitting}
+                    onPress={() => void finalizePipelineCheckinSave('deal_closed')}
+                  >
+                    <Text style={styles.pipelineCheckinPrimaryBtnText}>
+                      {pipelineCheckinSubmitting ? 'Saving…' : 'Save counts & open Logs'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
 
-            <View style={styles.pipelineCheckinActions}>
-              <TouchableOpacity
-                style={styles.pipelineCheckinSecondaryBtn}
-                disabled={pipelineCheckinSubmitting}
-                onPress={dismissPipelineCheckinForToday}
-              >
-                <Text style={styles.pipelineCheckinSecondaryBtnText}>Dismiss for today</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
-                disabled={
-                  pipelineCheckinSubmitting ||
-                  pipelineCheckinReasonPromptVisible ||
-                  pipelineCheckinReason === 'deal_closed' ||
-                  pipelineCheckinReason === 'deal_lost'
-                }
-                onPress={onSavePipelineCheckin}
-              >
-                <Text style={styles.pipelineCheckinPrimaryBtnText}>
-                  {pipelineCheckinSubmitting ? 'Saving…' : 'Save counts'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+              {pipelineCheckinReason === 'deal_lost' ? (
+                <View style={styles.pipelineCheckinBranchCard}>
+                  <Text style={styles.pipelineCheckinBranchTitle}>Reset and keep moving</Text>
+                  <Text style={styles.pipelineCheckinBranchSub}>
+                    {pipelineLostEncouragement || PIPELINE_LOST_ENCOURAGEMENT_MESSAGES[0]}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
+                    disabled={pipelineCheckinSubmitting}
+                    onPress={() => void finalizePipelineCheckinSave('deal_lost')}
+                  >
+                    <Text style={styles.pipelineCheckinPrimaryBtnText}>
+                      {pipelineCheckinSubmitting ? 'Saving…' : 'Save updated counts'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
+              <View style={styles.pipelineCheckinActions}>
+                <TouchableOpacity
+                  style={styles.pipelineCheckinSecondaryBtn}
+                  disabled={pipelineCheckinSubmitting}
+                  onPress={dismissPipelineCheckinForToday}
+                >
+                  <Text style={styles.pipelineCheckinSecondaryBtnText}>Dismiss for today</Text>
+                </TouchableOpacity>
+                {pipelineCheckinReason !== 'deal_closed' && pipelineCheckinReason !== 'deal_lost' ? (
+                  <TouchableOpacity
+                    style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
+                    disabled={pipelineCheckinSubmitting || pipelineCheckinReasonPromptVisible}
+                    onPress={onSavePipelineCheckin}
+                  >
+                    <Text style={styles.pipelineCheckinPrimaryBtnText}>
+                      {pipelineCheckinSubmitting ? 'Saving…' : 'Save counts'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -5893,6 +5948,13 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: '#e4eaf3',
+    maxHeight: '82%',
+    overflow: 'hidden',
+  },
+  pipelineCheckinScroll: {
+    maxHeight: '100%',
+  },
+  pipelineCheckinScrollContent: {
     padding: 14,
     gap: 10,
   },
@@ -6020,6 +6082,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginTop: 2,
+    paddingTop: 2,
   },
   pipelineCheckinPrimaryBtn: {
     flex: 1,
@@ -6036,6 +6099,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   pipelineCheckinSecondaryBtn: {
+    flex: 1,
     minHeight: 42,
     borderRadius: 12,
     borderWidth: 1,
