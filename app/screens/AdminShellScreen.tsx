@@ -944,6 +944,7 @@ function AdminUsersPanel({
   onCreateUserDraftChange,
   onCreateUserSubmit,
   onCreateUserReset,
+  devPreviewActive,
   onRefreshUsers,
   onSaveUser,
   onResetCalibration,
@@ -981,6 +982,7 @@ function AdminUsersPanel({
   onCreateUserDraftChange: (patch: Partial<CreateUserDraft>) => void;
   onCreateUserSubmit: () => void;
   onCreateUserReset: () => void;
+  devPreviewActive: boolean;
   onRefreshUsers: () => void;
   onSaveUser: () => void;
   onResetCalibration: () => void;
@@ -1060,6 +1062,11 @@ function AdminUsersPanel({
         <Text style={styles.metaRow}>
           Create a non-super-admin account for A3 role/tier testing without risking the current super admin user.
         </Text>
+        {devPreviewActive ? (
+          <Text style={styles.fieldHelpText}>
+            Dev AuthZ Preview only changes UI guards. Backend create-user permissions still use your live session role.
+          </Text>
+        ) : null}
         <View style={styles.formGrid}>
           <View style={[styles.formField, styles.formFieldWide]}>
             <Text style={styles.formLabel}>Email</Text>
@@ -2461,6 +2468,7 @@ export default function AdminShellScreen() {
                       setCreateUserSuccessMessage(null);
                       setCreateUserDraft(emptyCreateUserDraft());
                     }}
+                    devPreviewActive={devOverrideActive}
                     onRefreshUsers={() => {
                       void refreshUsers();
                     }}

@@ -62,9 +62,12 @@ Lightweight manual verification checklist for the admin A3 baseline UI in `/admi
 - [x] Reports panel probe UI now includes clearer status chips, last checked timestamp, and expandable response previews
 - [x] `POST /admin/data-exports` remains documented only (no side-effecting call)
 - [x] Backend `POST /admin/users` route added on documented contract path for A3 test-user creation (same `/admin/users` endpoint family)
+- [x] Create-user happy path works from `/admin/users` after restoring live backend role to `super_admin` (operator-reported)
+- [x] Create-user authz failure was observed and explained during validation:
+  - dev authz preview does not grant backend permissions
+  - backend correctly returned `Admin access required` when live `/me` role was `agent`
 
 ### Pending operator click-through (run in browser)
-- [ ] Run create-user happy path from `/admin/users` (non-super-admin test user)
 - [ ] Record create-user error behavior for one invalid input case (short password or duplicate email)
 - [ ] Re-run users edit/save happy path after latest operator polish
 - [ ] Re-run calibration reset/reinitialize actions after latest operator polish
@@ -73,3 +76,4 @@ Lightweight manual verification checklist for the admin A3 baseline UI in `/admi
 ### Known accepted limitations (this checkpoint)
 - Reports endpoints may legitimately return `404 Not implemented` until backend implementation lands; UI treats this as an explicit, acceptable state.
 - Users list remains a baseline list (no pagination yet); operator UI now supports `Show more` row expansion for manual inspection.
+- Dev AuthZ Preview is intentionally UI-only; backend admin writes still enforce live session role from `public.users`.

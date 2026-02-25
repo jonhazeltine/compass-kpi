@@ -274,6 +274,24 @@
   - Delete route performs safe deactivation (`is_active=false`).
 - `GET /admin/users`, `PUT /admin/users/{id}/role`, `PUT /admin/users/{id}/tier`, `PUT /admin/users/{id}/status`
   - Platform-admin-only access with auditable write path.
+- `POST /admin/users`
+  - Platform-admin-only create path for admin test/user setup within existing `/admin/users` family.
+  - Request payload (JSON):
+    - `email` (required, normalized to lowercase)
+    - `password` (required, minimum 8 chars; temporary password supported for local/admin setup)
+    - `role` (required; one of `agent|team_leader|admin|super_admin`)
+    - `tier` (required; one of `free|basic|teams|enterprise`)
+    - `account_status` (optional; defaults to `active`, or `deactivated`)
+  - Behavior:
+    - Creates auth user via Supabase admin auth API
+    - Writes/updates `public.users` row with role/tier/account status
+    - Writes admin audit log entry (`create_user`)
+    - Mirrors role into auth metadata (`app_metadata.role`, `app_metadata.roles`, `user_metadata.role`)
+  - Response (`201`):
+    - `{ user: { id, role, tier, account_status, last_activity_timestamp, created_at, updated_at }, email }`
+  - Validation/error semantics:
+    - `422` for invalid email/password/role/tier/account_status
+    - `403` if caller is not platform admin / super admin
 - `GET /admin/users/{id}/kpi-calibration`
   - Platform-admin-only read path for per-user KPI multipliers + diagnostics.
 - `PATCH /admin/users/{id}/kpi-calibration/{kpiId}`

@@ -2936,6 +2936,97 @@ app.get("/admin/users", async (req, res) => {
   }
 });
 
+app.post("/admin/users", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    if (!(await isPlatformAdmin(auth.user.id))) return res.status(403).json({ error: "Admin access required" });
+
+    const body = req.body as {
+      email?: unknown;
+      password?: unknown;
+      role?: unknown;
+      tier?: unknown;
+      account_status?: unknown;
+    };
+
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const password = String(body.password ?? "");
+    const role = String(body.role ?? "agent");
+    const tier = String(body.tier ?? "free");
+    const accountStatus = String(body.account_status ?? "active");
+
+    if (!email || !email.includes("@")) {
+      return res.status(422).json({ error: "email is required" });
+    }
+    if (!password || password.length < 8) {
+      return res.status(422).json({ error: "password is required and must be at least 8 characters" });
+    }
+    if (!["agent", "team_leader", "admin", "super_admin"].includes(role)) {
+      return res.status(422).json({ error: "role must be one of: agent, team_leader, admin, super_admin" });
+    }
+    if (!["free", "basic", "teams", "enterprise"].includes(tier)) {
+      return res.status(422).json({ error: "tier must be one of: free, basic, teams, enterprise" });
+    }
+    if (!["active", "deactivated"].includes(accountStatus)) {
+      return res.status(422).json({ error: "account_status must be one of: active, deactivated" });
+    }
+
+    const authCreate = await dataClient.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        role,
+      },
+      app_metadata: {
+        role,
+        roles: [role],
+      },
+    });
+    if (authCreate.error) return handleSupabaseError(res, "Failed to create auth user", authCreate.error);
+
+    const createdUserId = String(authCreate.data.user?.id ?? "");
+    if (!createdUserId) {
+      return res.status(500).json({ error: "Auth user create returned no id" });
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data: userRow, error: userRowError } = await dataClient
+      .from("users")
+      .upsert(
+        {
+          id: createdUserId,
+          role,
+          tier,
+          account_status: accountStatus,
+          updated_at: nowIso,
+        },
+        { onConflict: "id" }
+      )
+      .select("id,role,tier,account_status,last_activity_timestamp,created_at,updated_at")
+      .single();
+    if (userRowError) return handleSupabaseError(res, "Failed to create user row", userRowError);
+
+    await logAdminActivity(auth.user.id, "users", createdUserId, "create_user", {
+      email,
+      role,
+      tier,
+      account_status: accountStatus,
+    });
+
+    return res.status(201).json({
+      user: userRow,
+      email,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /admin/users", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.put("/admin/users/:id/role", async (req, res) => {
   try {
     const auth = await authenticateRequest(req.headers.authorization);
