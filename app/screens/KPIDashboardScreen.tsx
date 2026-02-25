@@ -194,7 +194,7 @@ const GP_BOTTOM_SLUG_INDEX: Record<string, number> = Object.fromEntries(
 
 const HOME_PANEL_ORDER: HomePanel[] = ['Quick', 'PC', 'GP', 'VP'];
 const HOME_PANEL_LABELS: Record<HomePanel, string> = {
-  Quick: 'QUICK LOG',
+  Quick: 'PRIORITY',
   PC: 'PROJECTIONS',
   GP: 'GROWTH',
   VP: 'VITALITY',
@@ -642,6 +642,71 @@ function buildHomePanelTiles(
     kpi,
     context: deriveKpiTileContextMeta(kpi, payload, tileIndex),
   }));
+}
+
+function rankHomePriorityKpisV1(params: {
+  managedKpis: DashboardPayload['loggable_kpis'];
+  favoriteKpiIds: string[];
+  managedKpiIdSet: Set<string>;
+  payload: DashboardPayload | null;
+  gpUnlocked: boolean;
+  vpUnlocked: boolean;
+}) {
+  const { managedKpis, favoriteKpiIds, managedKpiIdSet, payload, gpUnlocked, vpUnlocked } = params;
+  const favoriteRankById = new Map(favoriteKpiIds.map((id, index) => [id, index]));
+  const requiredAnchorIds = new Set(
+    (payload?.projection.required_pipeline_anchors ?? [])
+      .map((anchor) => String(anchor.kpi_id ?? '').trim())
+      .filter(Boolean)
+  );
+  const lastLogMsByKpiId = new Map<string, number>();
+  for (const row of payload?.recent_logs ?? []) {
+    const id = String(row.kpi_id ?? '').trim();
+    if (!id) continue;
+    const ts = new Date(String(row.event_timestamp ?? '')).getTime();
+    if (!Number.isFinite(ts)) continue;
+    const prev = lastLogMsByKpiId.get(id);
+    if (prev == null || ts > prev) lastLogMsByKpiId.set(id, ts);
+  }
+  const nowMs = Date.now();
+  const baseIndexById = new Map(managedKpis.map((kpi, index) => [kpi.id, index]));
+
+  return dedupeKpisById(managedKpis)
+    .map((kpi) => {
+      let score = 0;
+      const id = String(kpi.id ?? '').trim();
+      const favoriteRank = favoriteRankById.get(id);
+      const lastLogMs = lastLogMsByKpiId.get(id);
+      const isLocked = (kpi.type === 'GP' && !gpUnlocked) || (kpi.type === 'VP' && !vpUnlocked);
+      const isRequiredAnchor = requiredAnchorIds.has(id);
+
+      // TODO(M3-G7): insert challenge/team/team-challenge lagging + required inputs ahead of these heuristics.
+      if (isRequiredAnchor) score += 9000;
+      if (managedKpiIdSet.has(id)) score += 900;
+      if (favoriteRank != null) score += 800 - favoriteRank * 20;
+      if (lastLogMs == null) {
+        score += 2400; // Never/recently unseen in local recent_logs -> surface it.
+      } else {
+        const staleDays = Math.max(0, Math.floor((nowMs - lastLogMs) / 86400000));
+        score += Math.min(staleDays, 30) * 80;
+      }
+
+      // Lightweight deterministic type/value heuristics using existing payload fields.
+      if (kpi.type === 'PC') score += Math.round(Number(kpi.pc_weight ?? 0) * 220);
+      if (kpi.type === 'GP') score += Math.round(Number(kpi.gp_value ?? 0) * 14);
+      if (kpi.type === 'VP') score += Math.round(Number(kpi.vp_value ?? 0) * 14);
+      if (kpi.requires_direct_value_input) score -= 120;
+
+      // Keep locked categories de-prioritized in Priority while preserving fallback eligibility.
+      if (isLocked) score -= 7000;
+
+      return { kpi, score, baseIndex: baseIndexById.get(kpi.id) ?? Number.MAX_SAFE_INTEGER };
+    })
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.baseIndex - b.baseIndex;
+    })
+    .map((row) => row.kpi);
 }
 
 function renderContextBadgeLabel(badge: KpiTileContextBadge) {
@@ -1609,13 +1674,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
   const homeQuickLog = useMemo(
     () => {
-      const byId = new Map(managedKpis.map((kpi) => [kpi.id, kpi]));
-      const favorites = favoriteKpiIds.map((id) => byId.get(id)).filter(Boolean) as DashboardPayload['loggable_kpis'];
-      const used = new Set(favorites.map((kpi) => kpi.id));
-      const fill = managedKpis.filter((kpi) => !used.has(kpi.id));
-      return dedupeKpisById([...favorites, ...fill]).slice(0, 6);
+      return rankHomePriorityKpisV1({
+        managedKpis,
+        favoriteKpiIds,
+        managedKpiIdSet,
+        payload: payload ?? null,
+        gpUnlocked,
+        vpUnlocked,
+      }).slice(0, 6);
     },
-    [favoriteKpiIds, managedKpis]
+    [favoriteKpiIds, gpUnlocked, managedKpiIdSet, managedKpis, payload, vpUnlocked]
   );
 
   const homePanelTiles = useMemo(() => {
@@ -3022,7 +3090,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       const isFavorite = prev.includes(kpiId);
       const next = isFavorite ? prev.filter((id) => id !== kpiId) : [...prev, kpiId];
       if (!isFavorite && next.length > 6) {
-        Alert.alert('Favorites full', 'You can star up to 6 Quick Log favorites.');
+        Alert.alert('Favorites full', 'You can star up to 6 Priority favorites.');
         return prev;
       }
       void saveKpiPreferences(managedKpiIds, next);
@@ -3518,7 +3586,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       style={[styles.gridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
                       onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
                       onLongPress={() =>
-                        Alert.alert('Remove from Quick Log?', `${kpi.name} will be removed from your quick log set.`, [
+                        Alert.alert('Remove from Priority?', `${kpi.name} will be removed from your priority set.`, [
                           { text: 'Cancel', style: 'cancel' },
                           { text: 'Remove', style: 'destructive', onPress: () => removeManagedKpi(kpi.id) },
                         ])
@@ -3710,7 +3778,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       <Modal visible={addDrawerVisible} transparent animationType="fade" onRequestClose={() => setAddDrawerVisible(false)}>
         <View style={styles.drawerBackdrop}>
           <View style={styles.drawerCard}>
-            <Text style={styles.drawerTitle}>Quick Log Settings</Text>
+            <Text style={styles.drawerTitle}>Priority Settings</Text>
             <Text style={styles.drawerUnlockedHint}>Toggle On/Off and mark up to 6 favorites.</Text>
             <View style={styles.drawerFilterRow}>
               {(['Quick', 'PC', 'GP', 'VP'] as const).map((filter) => (
@@ -3720,7 +3788,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   onPress={() => setDrawerFilter(filter)}
                 >
                   <Text style={[styles.drawerFilterChipText, drawerFilter === filter && styles.drawerFilterChipTextActive]}>
-                    {filter === 'Quick' ? 'Quick' : `${filter} ${selectedCountsByType[filter]}/6`}
+                    {filter === 'Quick' ? 'Priority' : `${filter} ${selectedCountsByType[filter]}/6`}
                   </Text>
                 </TouchableOpacity>
               ))}
