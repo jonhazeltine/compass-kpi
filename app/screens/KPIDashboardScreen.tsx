@@ -4237,47 +4237,108 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           </>
         ) : (
           <>
-            <View style={styles.logTopRow}>
-              <Text style={styles.logTitle}>Log Activities</Text>
-              <TouchableOpacity style={styles.logPipelineBtn} onPress={openPipelineCheckinOverlay}>
-                <Text style={styles.logPipelineBtnText}>Update pipeline</Text>
-              </TouchableOpacity>
+            <View style={styles.activityHeroCard}>
+              <View style={styles.activityHeroTopRow}>
+                <Text style={styles.activityHeroEyebrow}>Activity / Logs & History</Text>
+                <TouchableOpacity style={styles.logPipelineBtn} onPress={openPipelineCheckinOverlay}>
+                  <Text style={styles.logPipelineBtnText}>Update pipeline</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.logTitle}>Activity</Text>
+              <Text style={styles.activityHeroSub}>
+                Review prior entries, backfill a selected day, and manage corrections without leaving the dashboard flow.
+              </Text>
             </View>
 
-            <View style={styles.dateRow}>
-              <TouchableOpacity
-                style={[styles.arrowBtn, !canGoBackwardDate && styles.arrowBtnDisabled]}
-                disabled={!canGoBackwardDate}
-                onPress={() => {
-                  if (!canGoBackwardDate) return;
-                  setSelectedLogDateIso((prev) => shiftIsoLocalDate(prev ?? isoTodayLocal(), -1));
-                }}
-              >
-                <Text style={[styles.arrow, !canGoBackwardDate && styles.arrowDisabled]}>←</Text>
-              </TouchableOpacity>
-              <Text style={styles.dateText}>{formatLogDateHeading(selectedLogDate)}</Text>
-              <TouchableOpacity
-                style={[styles.arrowBtn, !canGoForwardDate && styles.arrowBtnDisabled]}
-                disabled={!canGoForwardDate}
-                onPress={() => {
-                  if (!canGoForwardDate) return;
-                  setSelectedLogDateIso((prev) => {
-                    const next = shiftIsoLocalDate(prev ?? isoTodayLocal(), 1);
-                    const today = isoTodayLocal();
-                    return next > today ? today : next;
-                  });
-                }}
-              >
-                <Text style={[styles.arrow, !canGoForwardDate && styles.arrowDisabled]}>→</Text>
+            <View style={styles.activityDateCard}>
+              <View style={styles.activityDateHeaderRow}>
+                <View>
+                  <Text style={styles.activityDateLabel}>Selected day</Text>
+                  <Text style={styles.dateText}>{formatLogDateHeading(selectedLogDate)}</Text>
+                </View>
+                <View style={styles.activityDateChipRow}>
+                  <View
+                    style={[
+                      styles.activityDateChip,
+                      selectedLogDate === isoTodayLocal() ? styles.activityDateChipToday : styles.activityDateChipHistory,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.activityDateChipText,
+                        selectedLogDate === isoTodayLocal()
+                          ? styles.activityDateChipTextToday
+                          : styles.activityDateChipTextHistory,
+                      ]}
+                    >
+                      {selectedLogDate === isoTodayLocal() ? 'Today' : 'History'}
+                    </Text>
+                  </View>
+                  {selectedLogDate !== isoTodayLocal() ? (
+                    <TouchableOpacity
+                      style={styles.activityTodayJumpBtn}
+                      onPress={() => setSelectedLogDateIso(isoTodayLocal())}
+                    >
+                      <Text style={styles.activityTodayJumpBtnText}>Today</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
+              <View style={styles.dateRow}>
+                <TouchableOpacity
+                  style={[styles.arrowBtn, !canGoBackwardDate && styles.arrowBtnDisabled]}
+                  disabled={!canGoBackwardDate}
+                  onPress={() => {
+                    if (!canGoBackwardDate) return;
+                    setSelectedLogDateIso((prev) => shiftIsoLocalDate(prev ?? isoTodayLocal(), -1));
+                  }}
+                >
+                  <Text style={[styles.arrow, !canGoBackwardDate && styles.arrowDisabled]}>←</Text>
+                </TouchableOpacity>
+                <Text style={styles.activityDateNavHint}>
+                  {selectedLogDate === isoTodayLocal()
+                    ? 'Logging updates today by default'
+                    : 'Backfill logs will be saved to the selected day'}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.arrowBtn, !canGoForwardDate && styles.arrowBtnDisabled]}
+                  disabled={!canGoForwardDate}
+                  onPress={() => {
+                    if (!canGoForwardDate) return;
+                    setSelectedLogDateIso((prev) => {
+                      const next = shiftIsoLocalDate(prev ?? isoTodayLocal(), 1);
+                      const today = isoTodayLocal();
+                      return next > today ? today : next;
+                    });
+                  }}
+                >
+                  <Text style={[styles.arrow, !canGoForwardDate && styles.arrowDisabled]}>→</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.activityPipelineCard}>
+              <View style={styles.activityPipelineCopy}>
+                <Text style={styles.activityPipelineTitle}>Pipeline check-in</Text>
+                <Text style={styles.activityPipelineSub}>
+                  Update pending listings and buyers under contract anytime from Activity.
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.activityPipelineCta} onPress={openPipelineCheckinOverlay}>
+                <Text style={styles.activityPipelineCtaText}>Update pipeline</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.todayLogsCard}>
               <Text style={styles.todayLogsHeading}>
-                {selectedLogDate === isoTodayLocal() ? 'TODAYS LOGS' : 'SELECTED DAY LOGS'}
+                {selectedLogDate === isoTodayLocal() ? "TODAY'S LOG SUMMARY" : 'SELECTED DAY LOG SUMMARY'}
               </Text>
               {todaysLogRows.length === 0 ? (
-                <Text style={styles.todayLogsEmpty}>No logs yet today.</Text>
+                <Text style={styles.todayLogsEmpty}>
+                  {selectedLogDate === isoTodayLocal()
+                    ? 'No logs recorded yet today.'
+                    : 'No logs recorded for this selected day yet.'}
+                </Text>
               ) : (
                 todaysLogRows.map((row) => (
                   <View key={row.kpiId} style={styles.todayLogsRow}>
@@ -4288,24 +4349,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               )}
             </View>
 
-            <View style={styles.logsHeroCard}>
-              <Image source={dashboardAssets.crown} style={styles.crownImage} resizeMode="contain" />
-              <View style={styles.celebrationRow}>
-                <Image source={dashboardAssets.confettiLeft} style={styles.confettiImage} resizeMode="contain" />
-                <Image source={dashboardAssets.confettiRight} style={styles.confettiImage} resizeMode="contain" />
-              </View>
-              <Text style={styles.logsCount}>{fmtNum(payload?.activity.total_logs ?? 0)}</Text>
-              <Text style={styles.logsSub}>Todays Logs</Text>
-              <Text style={styles.hiWork}>Hi, Sarah Roy, Great work</Text>
-              <View style={styles.greenBanner}>
-                <Text style={styles.greenBannerText}>
-                  🎉 You have made a total of {fmtNum(payload?.activity.total_logs ?? 0)} logs so far today.
+            <View style={styles.quickLogHeader}>
+              <View style={styles.activitySectionTitleWrap}>
+                <Text style={styles.sectionTitle}>BACKFILL / LOG FOR SELECTED DAY</Text>
+                <Text style={styles.activitySectionSub}>
+                  Use this grid to add logs to {selectedLogDate === isoTodayLocal() ? 'today' : 'the selected history day'}.
                 </Text>
               </View>
-            </View>
-
-            <View style={styles.quickLogHeader}>
-              <Text style={styles.sectionTitle}>ADD NEW ACTIVITY</Text>
               <TouchableOpacity style={styles.addNewBtn} onPress={openAddNewDrawer}>
                 <Text style={styles.addNewBtnText}>⊕ Add New</Text>
               </TouchableOpacity>
@@ -4422,9 +4472,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             )}
 
             <View style={styles.recentEntriesCard}>
-              <Text style={styles.todayLogsHeading}>RECENT ENTRIES</Text>
+              <Text style={styles.todayLogsHeading}>RECENT ACTIVITY</Text>
               {recentLogEntries.length === 0 ? (
-                <Text style={styles.todayLogsEmpty}>No recent entries.</Text>
+                <Text style={styles.todayLogsEmpty}>No recent activity yet.</Text>
               ) : (
                 recentLogEntries.map((log) => (
                   <View key={log.id} style={styles.recentEntryRow}>
@@ -4453,6 +4503,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   </View>
                 ))
               )}
+            </View>
+
+            <View style={styles.logsHeroCard}>
+              <Image source={dashboardAssets.crown} style={styles.crownImage} resizeMode="contain" />
+              <View style={styles.celebrationRow}>
+                <Image source={dashboardAssets.confettiLeft} style={styles.confettiImage} resizeMode="contain" />
+                <Image source={dashboardAssets.confettiRight} style={styles.confettiImage} resizeMode="contain" />
+              </View>
+              <Text style={styles.logsCount}>{fmtNum(payload?.activity.total_logs ?? 0)}</Text>
+              <Text style={styles.logsSub}>Total logs (today)</Text>
+              <Text style={styles.hiWork}>Hi, Sarah Roy, Great work</Text>
+              <View style={styles.greenBanner}>
+                <Text style={styles.greenBannerText}>
+                  🎉 You have made a total of {fmtNum(payload?.activity.total_logs ?? 0)} logs so far today.
+                </Text>
+              </View>
             </View>
           </>
         )}
@@ -5965,9 +6031,20 @@ const styles = StyleSheet.create({
   },
   quickLogHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginTop: 4,
+    gap: 8,
+  },
+  activitySectionTitleWrap: {
+    flex: 1,
+    gap: 3,
+    paddingTop: 1,
+  },
+  activitySectionSub: {
+    color: '#7b8494',
+    fontSize: 11,
+    lineHeight: 14,
   },
   sectionTitle: {
     color: '#3a4050',
@@ -6023,6 +6100,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  activityHeroCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  activityHeroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  activityHeroEyebrow: {
+    color: '#647083',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.25,
+  },
   logTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -6033,6 +6132,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: '#2f3442',
     fontWeight: '700',
+  },
+  activityHeroSub: {
+    color: '#6f7888',
+    fontSize: 12,
+    lineHeight: 17,
   },
   logPipelineBtn: {
     borderRadius: 999,
@@ -6045,6 +6149,71 @@ const styles = StyleSheet.create({
   logPipelineBtnText: {
     color: '#1f5fe2',
     fontSize: 12,
+    fontWeight: '800',
+  },
+  activityDateCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  activityDateHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  activityDateLabel: {
+    color: '#6f7888',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.25,
+    marginBottom: 2,
+  },
+  activityDateChipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+  activityDateChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  activityDateChipToday: {
+    backgroundColor: '#eaf4ea',
+    borderColor: '#cfe4d0',
+  },
+  activityDateChipHistory: {
+    backgroundColor: '#eef3ff',
+    borderColor: '#dbe5fb',
+  },
+  activityDateChipText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  activityDateChipTextToday: {
+    color: '#2f8c4b',
+  },
+  activityDateChipTextHistory: {
+    color: '#3d5ca8',
+  },
+  activityTodayJumpBtn: {
+    borderRadius: 999,
+    backgroundColor: '#2f3645',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  activityTodayJumpBtnText: {
+    color: '#fff',
+    fontSize: 11,
     fontWeight: '800',
   },
   avatarBtn: {
@@ -6071,6 +6240,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
+  activityDateNavHint: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#6f7888',
+    fontSize: 11,
+    lineHeight: 14,
+    paddingHorizontal: 8,
+    fontWeight: '600',
+  },
   arrow: {
     fontSize: 18,
     color: '#2f3442',
@@ -6092,6 +6270,44 @@ const styles = StyleSheet.create({
     color: '#333948',
     fontSize: 14,
     fontWeight: '600',
+  },
+  activityPipelineCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  activityPipelineCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  activityPipelineTitle: {
+    color: '#2f3442',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  activityPipelineSub: {
+    color: '#6f7888',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  activityPipelineCta: {
+    borderRadius: 999,
+    backgroundColor: '#eef5ff',
+    borderWidth: 1,
+    borderColor: '#d8e2f2',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  activityPipelineCtaText: {
+    color: '#1f5fe2',
+    fontSize: 11,
+    fontWeight: '800',
   },
   todayLogsCard: {
     backgroundColor: '#fff',
