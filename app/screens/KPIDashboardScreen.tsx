@@ -26,7 +26,7 @@ import PillProjectionsBg from '../assets/figma/kpi_icon_bank/pill_projections_bg
 import PillQuicklogBg from '../assets/figma/kpi_icon_bank/pill_quicklog_bg_v1.svg';
 import PillVitalityBg from '../assets/figma/kpi_icon_bank/pill_vitality_bg_orange_v2.svg';
 import TabChallengesIcon from '../assets/figma/kpi_icon_bank/tab_challenges_themeable_v1.svg';
-import TabCoachIcon from '../assets/figma/kpi_icon_bank/tab_coach_themeable_v2.svg';
+import TabCoachIcon from '../assets/figma/kpi_icon_bank/tab_coach_themeable_v1.svg';
 import TabDashboardIcon from '../assets/figma/kpi_icon_bank/tab_dashboard_themeable_v1.svg';
 import TabLogsIcon from '../assets/figma/kpi_icon_bank/tab_logs_themeable_v1.svg';
 import TabTeamIcon from '../assets/figma/kpi_icon_bank/tab_team_themeable_v1.svg';
@@ -147,6 +147,11 @@ type PipelineCheckinFieldKey = 'listings' | 'buyers';
 type PipelineCheckinAnchorTargets = {
   listings: DashboardPayload['loggable_kpis'][number] | null;
   buyers: DashboardPayload['loggable_kpis'][number] | null;
+};
+type ChallengeKpiGroups = {
+  PC: DashboardPayload['loggable_kpis'];
+  GP: DashboardPayload['loggable_kpis'];
+  VP: DashboardPayload['loggable_kpis'];
 };
 
 type PendingDirectLog = {
@@ -768,6 +773,40 @@ function derivePipelineAnchorNagState(payload: DashboardPayload | null): Pipelin
   return { severity: 'ok' };
 }
 
+function deriveChallengeSurfaceKpis(params: {
+  managedKpis: DashboardPayload['loggable_kpis'];
+  favoriteKpiIds: string[];
+  payload: DashboardPayload | null;
+}): DashboardPayload['loggable_kpis'] {
+  const { managedKpis, favoriteKpiIds, payload } = params;
+  // TODO(M3-G4+): replace with real challenge membership/progress payload filtering when available.
+  // v1 placeholder seam: prioritize favorited + recently active KPIs, then fill from managed KPI set.
+  const byId = new Map(managedKpis.map((kpi) => [kpi.id, kpi]));
+  const favorites = favoriteKpiIds.map((id) => byId.get(id)).filter(Boolean) as DashboardPayload['loggable_kpis'];
+  const recentIds = Array.from(
+    new Set(
+      (payload?.recent_logs ?? [])
+        .slice()
+        .reverse()
+        .map((row) => String(row.kpi_id ?? '').trim())
+        .filter(Boolean)
+    )
+  );
+  const recent = recentIds.map((id) => byId.get(id)).filter(Boolean) as DashboardPayload['loggable_kpis'];
+  const merged = dedupeKpisById([...favorites, ...recent, ...managedKpis]);
+  return merged.filter((kpi) => kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP');
+}
+
+function groupChallengeKpisByType(kpis: DashboardPayload['loggable_kpis']): ChallengeKpiGroups {
+  const grouped: ChallengeKpiGroups = { PC: [], GP: [], VP: [] };
+  for (const kpi of dedupeKpisById(kpis)) {
+    if (kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP') {
+      grouped[kpi.type].push(kpi);
+    }
+  }
+  return grouped;
+}
+
 function findPipelineCheckinAnchors(payload: DashboardPayload | null): PipelineCheckinAnchorTargets {
   const anchors = (payload?.loggable_kpis ?? []).filter((kpi) => kpi.type === 'Pipeline_Anchor');
   const listings = anchors.find((kpi) => String(kpi.name ?? '').toLowerCase().includes('listing')) ?? null;
@@ -995,7 +1034,7 @@ const bottomTabIconStyleByKey: Record<BottomTab, any> = {
   home: null,
   challenge: null,
   newkpi: null,
-  team: { transform: [{ translateY: -3 }] },
+  team: { transform: [{ translateY: -6 }] },
   user: { transform: [{ translateY: -3 }] },
 };
 
@@ -1812,6 +1851,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     const userId = String(session?.user?.id ?? '').trim();
     return userId ? `${PIPELINE_CHECKIN_DISMISS_KEY_PREFIX}:${userId}` : null;
   }, [session?.user?.id]);
+  const challengeSurfaceKpis = useMemo(
+    () => deriveChallengeSurfaceKpis({ managedKpis, favoriteKpiIds, payload: payload ?? null }),
+    [favoriteKpiIds, managedKpis, payload]
+  );
+  const challengeKpiGroups = useMemo(() => groupChallengeKpisByType(challengeSurfaceKpis), [challengeSurfaceKpis]);
+  const challengeTileCount =
+    challengeKpiGroups.PC.length + challengeKpiGroups.GP.length + challengeKpiGroups.VP.length;
 
   const chartSeries = useMemo(() => chartFromPayload(payload), [payload]);
   const chartSplitX =
@@ -3404,6 +3450,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setViewMode('home');
       return;
     }
+    if (tab === 'challenge') {
+      setViewMode('log');
+      return;
+    }
     if (tab === 'newkpi') {
       setViewMode('log');
       return;
@@ -3724,6 +3774,86 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     [finalizePipelineCheckinSave, pipelineCloseDateInput]
   );
 
+  const renderChallengeKpiSection = (
+    type: 'PC' | 'GP' | 'VP',
+    title: string,
+    kpis: DashboardPayload['loggable_kpis']
+  ) => {
+    if (kpis.length === 0) return null;
+    const locked = (type === 'GP' && !gpUnlocked) || (type === 'VP' && !vpUnlocked);
+    return (
+      <View style={styles.challengeSectionCard}>
+        <View style={styles.challengeSectionHeader}>
+          <Text style={styles.challengeSectionTitle}>{title}</Text>
+          <View style={[styles.challengeSectionTypePill, { backgroundColor: kpiTypeTint(type) }]}>
+            <Text style={[styles.challengeSectionTypePillText, { color: kpiTypeAccent(type) }]}>{type}</Text>
+          </View>
+        </View>
+        {locked ? (
+          <View style={styles.emptyPanel}>
+            <Text style={styles.metaText}>
+              {type === 'GP'
+                ? `Business Growth unlock progress: ${Math.min(payload?.activity.active_days ?? 0, 3)}/3 days or ${Math.min(payload?.activity.total_logs ?? 0, 20)}/20 logs`
+                : `Vitality unlock progress: ${Math.min(payload?.activity.active_days ?? 0, 7)}/7 days or ${Math.min(payload?.activity.total_logs ?? 0, 40)}/40 logs`}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.gridWrap}>
+            {kpis.map((kpi) => {
+              const successAnim = getKpiTileSuccessAnim(kpi.id);
+              const successOpacity = successAnim.interpolate({
+                inputRange: [0, 0.12, 1],
+                outputRange: [0, 1, 0],
+              });
+              const successTranslateY = successAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, -14],
+              });
+              const successScale = successAnim.interpolate({
+                inputRange: [0, 0.2, 1],
+                outputRange: [0.8, 1.02, 0.96],
+              });
+              return (
+                <Pressable
+                  key={`challenge-${type}-${kpi.id}`}
+                  style={[styles.gridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
+                  onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
+                  disabled={submitting}
+                  onPressIn={() => runKpiTilePressInFeedback(kpi, { surface: 'log' })}
+                  onPressOut={() => runKpiTilePressOutFeedback(kpi.id)}
+                >
+                  <Animated.View style={[styles.gridTileAnimatedWrap, { transform: [{ scale: getKpiTileScale(kpi.id) }] }]}>
+                    <View style={styles.gridCircleWrap}>
+                      <View style={[styles.gridCircle, confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed]}>
+                        {renderKpiIcon(kpi)}
+                      </View>
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.gridSuccessBadge,
+                          {
+                            opacity: successOpacity,
+                            transform: [{ translateY: successTranslateY }, { scale: successScale }],
+                          },
+                        ]}
+                      >
+                        <View style={styles.gridSuccessCoinOuter}>
+                          <View style={styles.gridSuccessCoinInner} />
+                          <View style={styles.gridSuccessCoinHighlight} />
+                        </View>
+                      </Animated.View>
+                    </View>
+                    <Text style={[styles.gridLabel, confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed]}>{kpi.name}</Text>
+                  </Animated.View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   if (state === 'loading') {
     return (
       <View style={styles.centered}>
@@ -3744,6 +3874,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     );
   }
 
+  const isHomeGameplaySurface = activeTab === 'home' && viewMode === 'home';
+
   return (
     <View
       ref={(node) => {
@@ -3753,13 +3885,65 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     >
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: contentBottomPad }]}
-        scrollEnabled={viewMode !== 'home'}
-        bounces={viewMode !== 'home'}
+        scrollEnabled={!isHomeGameplaySurface}
+        bounces={!isHomeGameplaySurface}
         alwaysBounceVertical={false}
-        showsVerticalScrollIndicator={viewMode !== 'home'}
+        showsVerticalScrollIndicator={!isHomeGameplaySurface}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {viewMode === 'home' ? (
+        {activeTab === 'challenge' ? (
+          <>
+            <View style={styles.challengeHeaderCard}>
+              <Text style={styles.challengeHeaderTitle}>Challenge</Text>
+              <Text style={styles.challengeHeaderSub}>
+                Log challenge-relevant KPIs here. Same KPI actions, grouped by type.
+              </Text>
+              <View style={styles.challengeHeaderStatsRow}>
+                <View style={styles.challengeHeaderStatChip}>
+                  <Text style={styles.challengeHeaderStatLabel}>KPIs</Text>
+                  <Text style={styles.challengeHeaderStatValue}>{fmtNum(challengeTileCount)}</Text>
+                </View>
+                <View style={styles.challengeHeaderStatChip}>
+                  <Text style={styles.challengeHeaderStatLabel}>Types</Text>
+                  <Text style={styles.challengeHeaderStatValue}>
+                    {fmtNum(
+                      (challengeKpiGroups.PC.length > 0 ? 1 : 0) +
+                        (challengeKpiGroups.GP.length > 0 ? 1 : 0) +
+                        (challengeKpiGroups.VP.length > 0 ? 1 : 0)
+                    )}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.challengeHeaderHint}>
+                TODO: wire real challenge progress + membership filtering when challenge payload is available.
+              </Text>
+            </View>
+
+            {challengeTileCount === 0 ? (
+              <View style={styles.challengeEmptyCard}>
+                <Text style={styles.challengeEmptyTitle}>No challenge KPIs available yet</Text>
+                <Text style={styles.challengeEmptyText}>
+                  Challenge-relevant KPIs will appear here once challenge context is available for your account.
+                </Text>
+                <TouchableOpacity
+                  style={styles.challengeEmptyCta}
+                  onPress={() => {
+                    setActiveTab('home');
+                    setViewMode('home');
+                  }}
+                >
+                  <Text style={styles.challengeEmptyCtaText}>Back to Home</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                {renderChallengeKpiSection('PC', 'Projections (PC)', challengeKpiGroups.PC)}
+                {renderChallengeKpiSection('GP', 'Growth (GP)', challengeKpiGroups.GP)}
+                {renderChallengeKpiSection('VP', 'Vitality (VP)', challengeKpiGroups.VP)}
+              </>
+            )}
+          </>
+        ) : viewMode === 'home' ? (
           <>
             {renderHudRail()}
 
@@ -4484,6 +4668,115 @@ const styles = StyleSheet.create({
     paddingBottom: 116,
     gap: 12,
     backgroundColor: '#f6f7f9',
+  },
+  challengeHeaderCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    padding: 12,
+    gap: 8,
+  },
+  challengeHeaderTitle: {
+    color: '#2f3442',
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  challengeHeaderSub: {
+    color: '#677184',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  challengeHeaderStatsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  challengeHeaderStatChip: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    backgroundColor: '#fbfcfe',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  challengeHeaderStatLabel: {
+    color: '#7b8494',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.25,
+  },
+  challengeHeaderStatValue: {
+    marginTop: 2,
+    color: '#2f3442',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  challengeHeaderHint: {
+    color: '#8a93a3',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  challengeSectionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  challengeSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  challengeSectionTitle: {
+    color: '#2f3442',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  challengeSectionTypePill: {
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  challengeSectionTypePillText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  challengeEmptyCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    padding: 14,
+    gap: 8,
+    alignItems: 'flex-start',
+  },
+  challengeEmptyTitle: {
+    color: '#2f3442',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  challengeEmptyText: {
+    color: '#6f7888',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  challengeEmptyCta: {
+    marginTop: 2,
+    borderRadius: 999,
+    backgroundColor: '#1f5fe2',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  challengeEmptyCtaText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
   },
   centered: {
     flex: 1,
