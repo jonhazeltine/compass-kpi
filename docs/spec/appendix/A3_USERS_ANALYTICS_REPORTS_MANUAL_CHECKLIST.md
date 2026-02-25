@@ -24,6 +24,13 @@ Lightweight manual verification checklist for the admin A3 baseline UI in `/admi
 - [ ] Change status to `deactivated` -> confirmation shown before save
 - [ ] Cancel deactivation confirm -> no changes applied
 
+### Create user (A3 test account setup)
+- [ ] Create non-super-admin user from `/admin/users` with email + temporary password
+- [ ] Success message includes created user summary (email/id/role/tier/status)
+- [ ] Users list refreshes and shows created user
+- [ ] Created user row auto-selects in `User Ops` panel (or is easy to locate/select)
+- [ ] Create-user validation errors are clear (missing email / short password / duplicate email)
+
 ### Partial-save hardening (correctness)
 - [ ] Simulate or trigger a failure after one field update (if possible)
 - [ ] Error message states partial success fields (e.g., `role`, `tier`)
@@ -54,8 +61,11 @@ Lightweight manual verification checklist for the admin A3 baseline UI in `/admi
   - selected user + draft re-sync from backend after error
 - [x] Reports panel probe UI now includes clearer status chips, last checked timestamp, and expandable response previews
 - [x] `POST /admin/data-exports` remains documented only (no side-effecting call)
+- [x] Backend `POST /admin/users` route added on documented contract path for A3 test-user creation (same `/admin/users` endpoint family)
 
 ### Pending operator click-through (run in browser)
+- [ ] Run create-user happy path from `/admin/users` (non-super-admin test user)
+- [ ] Record create-user error behavior for one invalid input case (short password or duplicate email)
 - [ ] Re-run users edit/save happy path after latest operator polish
 - [ ] Re-run calibration reset/reinitialize actions after latest operator polish
 - [ ] Record current `/admin/reports` probe outcomes (`overview`, `detailed-reports`) from live backend

@@ -31,6 +31,7 @@ import {
   type AdminKpiWritePayload,
 } from '../lib/adminCatalogApi';
 import {
+  createAdminUser,
   fetchAdminUserCalibration,
   fetchAdminUserCalibrationEvents,
   fetchAdminUsers,
@@ -42,6 +43,7 @@ import {
   type AdminUserCalibrationEvent,
   type AdminUserCalibrationRow,
   type AdminUserCalibrationSnapshot,
+  type AdminUserCreatePayload,
   type AdminUserRow,
 } from '../lib/adminUsersApi';
 import {
@@ -218,8 +220,26 @@ type UserFormDraft = {
   accountStatus: AdminUserRow['account_status'];
 };
 
+type CreateUserDraft = {
+  email: string;
+  password: string;
+  role: AdminUserCreatePayload['role'];
+  tier: AdminUserCreatePayload['tier'];
+  accountStatus: NonNullable<AdminUserCreatePayload['account_status']>;
+};
+
 function emptyUserDraft(): UserFormDraft {
   return { role: 'agent', tier: 'free', accountStatus: 'active' };
+}
+
+function emptyCreateUserDraft(): CreateUserDraft {
+  return {
+    email: '',
+    password: '',
+    role: 'agent',
+    tier: 'free',
+    accountStatus: 'active',
+  };
 }
 
 function userDraftFromRow(row: AdminUserRow): UserFormDraft {
@@ -920,6 +940,10 @@ function AdminUsersPanel({
   userDraft,
   onSelectUser,
   onUserDraftChange,
+  createUserDraft,
+  onCreateUserDraftChange,
+  onCreateUserSubmit,
+  onCreateUserReset,
   onRefreshUsers,
   onSaveUser,
   onResetCalibration,
@@ -928,6 +952,9 @@ function AdminUsersPanel({
   rowLimit,
   onShowMoreRows,
   onResetRowLimit,
+  createUserSaving,
+  createUserError,
+  createUserSuccessMessage,
   userSaving,
   userSaveError,
   userSuccessMessage,
@@ -950,6 +977,10 @@ function AdminUsersPanel({
   userDraft: UserFormDraft;
   onSelectUser: (row: AdminUserRow) => void;
   onUserDraftChange: (patch: Partial<UserFormDraft>) => void;
+  createUserDraft: CreateUserDraft;
+  onCreateUserDraftChange: (patch: Partial<CreateUserDraft>) => void;
+  onCreateUserSubmit: () => void;
+  onCreateUserReset: () => void;
   onRefreshUsers: () => void;
   onSaveUser: () => void;
   onResetCalibration: () => void;
@@ -958,6 +989,9 @@ function AdminUsersPanel({
   rowLimit: number;
   onShowMoreRows: () => void;
   onResetRowLimit: () => void;
+  createUserSaving: boolean;
+  createUserError: string | null;
+  createUserSuccessMessage: string | null;
   userSaving: boolean;
   userSaveError: string | null;
   userSuccessMessage: string | null;
@@ -1015,6 +1049,109 @@ function AdminUsersPanel({
           <Text style={styles.alertSuccessText}>{userSuccessMessage}</Text>
         </View>
       ) : null}
+
+      <View style={styles.formCard}>
+        <View style={styles.formHeaderRow}>
+          <Text style={styles.formTitle}>Create Test User</Text>
+          <TouchableOpacity style={styles.smallGhostButton} onPress={onCreateUserReset}>
+            <Text style={styles.smallGhostButtonText}>Clear</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.metaRow}>
+          Create a non-super-admin account for A3 role/tier testing without risking the current super admin user.
+        </Text>
+        <View style={styles.formGrid}>
+          <View style={[styles.formField, styles.formFieldWide]}>
+            <Text style={styles.formLabel}>Email</Text>
+            <TextInput
+              value={createUserDraft.email}
+              onChangeText={(email) => onCreateUserDraftChange({ email })}
+              style={styles.input}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="test.user+admin@compass.local"
+            />
+          </View>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Temporary Password</Text>
+            <TextInput
+              value={createUserDraft.password}
+              onChangeText={(password) => onCreateUserDraftChange({ password })}
+              style={styles.input}
+              secureTextEntry
+              placeholder="Min 8 characters"
+            />
+          </View>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Role</Text>
+            <View style={styles.chipRow}>
+              {(['agent', 'team_leader', 'admin'] as const).map((role) => {
+                const selected = createUserDraft.role === role;
+                return (
+                  <Pressable
+                    key={role}
+                    onPress={() => onCreateUserDraftChange({ role })}
+                    style={[styles.formChip, selected && styles.formChipSelected]}
+                  >
+                    <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>{role}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Tier</Text>
+            <View style={styles.chipRow}>
+              {(['free', 'basic', 'teams', 'enterprise'] as const).map((tier) => {
+                const selected = createUserDraft.tier === tier;
+                return (
+                  <Pressable
+                    key={tier}
+                    onPress={() => onCreateUserDraftChange({ tier })}
+                    style={[styles.formChip, selected && styles.formChipSelected]}
+                  >
+                    <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>{tier}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Account Status</Text>
+            <View style={styles.inlineToggleRow}>
+              {(['active', 'deactivated'] as const).map((status) => {
+                const selected = createUserDraft.accountStatus === status;
+                return (
+                  <Pressable
+                    key={status}
+                    onPress={() => onCreateUserDraftChange({ accountStatus: status })}
+                    style={[styles.toggleChip, selected && styles.toggleChipOn]}
+                  >
+                    <Text style={[styles.toggleChipText, selected && styles.toggleChipTextOn]}>{status}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+        {createUserError ? (
+          <View style={styles.alertErrorBox}>
+            <Text style={styles.alertErrorTitle}>Create user error</Text>
+            <Text style={styles.alertErrorText} selectable>{createUserError}</Text>
+          </View>
+        ) : null}
+        {createUserSuccessMessage ? (
+          <View style={styles.alertSuccessBox}>
+            <Text style={styles.alertSuccessTitle}>User created</Text>
+            <Text style={styles.alertSuccessText} selectable>{createUserSuccessMessage}</Text>
+          </View>
+        ) : null}
+        <View style={styles.formActionsRow}>
+          <TouchableOpacity style={styles.primaryButton} onPress={onCreateUserSubmit} disabled={createUserSaving}>
+            <Text style={styles.primaryButtonText}>{createUserSaving ? 'Creating...' : 'Create User'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       <View style={styles.filterBar}>
         <View style={[styles.formField, styles.formFieldWide]}>
@@ -1468,6 +1605,10 @@ export default function AdminShellScreen() {
   const [userRowLimit, setUserRowLimit] = useState(16);
   const [selectedUser, setSelectedUser] = useState<AdminUserRow | null>(null);
   const [userDraft, setUserDraft] = useState<UserFormDraft>(emptyUserDraft);
+  const [createUserDraft, setCreateUserDraft] = useState<CreateUserDraft>(emptyCreateUserDraft);
+  const [createUserSaving, setCreateUserSaving] = useState(false);
+  const [createUserError, setCreateUserError] = useState<string | null>(null);
+  const [createUserSuccessMessage, setCreateUserSuccessMessage] = useState<string | null>(null);
   const [userSaving, setUserSaving] = useState(false);
   const [userSaveError, setUserSaveError] = useState<string | null>(null);
   const [userSuccessMessage, setUserSuccessMessage] = useState<string | null>(null);
@@ -1905,6 +2046,45 @@ export default function AdminShellScreen() {
     }
   };
 
+  const handleCreateUser = async () => {
+    if (!session?.access_token) return;
+    const email = createUserDraft.email.trim().toLowerCase();
+    const password = createUserDraft.password;
+    if (!email) {
+      setCreateUserError('Email is required');
+      return;
+    }
+    if (password.length < 8) {
+      setCreateUserError('Temporary password must be at least 8 characters');
+      return;
+    }
+
+    setCreateUserSaving(true);
+    setCreateUserError(null);
+    setCreateUserSuccessMessage(null);
+    try {
+      const created = await createAdminUser(session.access_token, {
+        email,
+        password,
+        role: createUserDraft.role,
+        tier: createUserDraft.tier,
+        account_status: createUserDraft.accountStatus,
+      });
+      setCreateUserSuccessMessage(
+        `${created.email} created (${created.user.id}) • role=${created.user.role} • tier=${created.user.tier} • status=${created.user.account_status}`
+      );
+      setCreateUserDraft(emptyCreateUserDraft());
+      const refreshed = await refreshUsers();
+      const createdRow = refreshed.find((row) => row.id === created.user.id) ?? created.user;
+      setSelectedUser(createdRow);
+      setUserDraft(userDraftFromRow(createdRow));
+    } catch (error) {
+      setCreateUserError(error instanceof Error ? error.message : 'Failed to create user');
+    } finally {
+      setCreateUserSaving(false);
+    }
+  };
+
   const handleResetCalibration = async () => {
     if (!session?.access_token || !selectedUser?.id) return;
     const confirmed = await confirmDangerAction(`Reset all KPI calibration rows for user ${selectedUser.id}?`);
@@ -2269,6 +2449,18 @@ export default function AdminShellScreen() {
                       setUserSuccessMessage(null);
                       setUserDraft((prev) => ({ ...prev, ...patch }));
                     }}
+                    createUserDraft={createUserDraft}
+                    onCreateUserDraftChange={(patch) => {
+                      setCreateUserError(null);
+                      setCreateUserSuccessMessage(null);
+                      setCreateUserDraft((prev) => ({ ...prev, ...patch }));
+                    }}
+                    onCreateUserSubmit={handleCreateUser}
+                    onCreateUserReset={() => {
+                      setCreateUserError(null);
+                      setCreateUserSuccessMessage(null);
+                      setCreateUserDraft(emptyCreateUserDraft());
+                    }}
                     onRefreshUsers={() => {
                       void refreshUsers();
                     }}
@@ -2279,6 +2471,9 @@ export default function AdminShellScreen() {
                     rowLimit={userRowLimit}
                     onShowMoreRows={() => setUserRowLimit((prev) => prev + 16)}
                     onResetRowLimit={() => setUserRowLimit(16)}
+                    createUserSaving={createUserSaving}
+                    createUserError={createUserError}
+                    createUserSuccessMessage={createUserSuccessMessage}
                     userSaving={userSaving}
                     userSaveError={userSaveError}
                     userSuccessMessage={userSuccessMessage}

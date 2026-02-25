@@ -10,6 +10,14 @@ export type AdminUserRow = {
   updated_at?: string | null;
 };
 
+export type AdminUserCreatePayload = {
+  email: string;
+  password: string;
+  role: 'agent' | 'team_leader' | 'admin' | 'super_admin';
+  tier: 'free' | 'basic' | 'teams' | 'enterprise';
+  account_status?: 'active' | 'deactivated';
+};
+
 export type AdminUserCalibrationRow = {
   user_id: string;
   kpi_id: string;
@@ -89,6 +97,18 @@ async function sendAdminJson<T>(
 export async function fetchAdminUsers(accessToken: string): Promise<AdminUserRow[]> {
   const data = await fetchAdminJson<{ users?: AdminUserRow[] }>('/admin/users', accessToken);
   return data.users ?? [];
+}
+
+export async function createAdminUser(
+  accessToken: string,
+  payload: AdminUserCreatePayload
+): Promise<{ user: AdminUserRow; email: string }> {
+  return await sendAdminJson<{ user: AdminUserRow; email: string }>(
+    '/admin/users',
+    accessToken,
+    'POST',
+    payload
+  );
 }
 
 export async function updateAdminUserRole(
