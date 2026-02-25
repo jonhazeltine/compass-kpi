@@ -97,20 +97,24 @@ function PlaceholderScreen({
       </View>
       <Text style={styles.panelBody}>{route.description}</Text>
       <View style={styles.metaList}>
-        <Text style={styles.metaRow}>Status: placeholder (A1 shell scaffold)</Text>
+        <Text style={styles.metaRow}>Status: route available, feature panel pending</Text>
         <Text style={styles.metaRow}>Required roles: {route.requiredRoles.join(', ')}</Text>
         <Text style={styles.metaRow}>Detected session roles: {rolesLabel}</Text>
       </View>
       <View style={styles.placeholderGrid}>
         <View style={styles.placeholderCard}>
-          <Text style={styles.placeholderCardLabel}>Next implementation</Text>
+          <Text style={styles.placeholderCardLabel}>Planned capability</Text>
           <Text style={styles.placeholderCardValue}>
-            {stage === 'A1 now' ? 'Guard + nav behavior' : stage === 'A2 now' ? 'CRUD screens + API wiring' : 'Ops views + reports'}
+            {stage === 'A1 now'
+              ? 'Route access and navigation handling'
+              : stage === 'A2 now'
+                ? 'Catalog and template operations'
+                : 'User operations and reporting tools'}
           </Text>
         </View>
         <View style={styles.placeholderCard}>
-          <Text style={styles.placeholderCardLabel}>Contract policy</Text>
-          <Text style={styles.placeholderCardValue}>Reuse documented `/admin/*` endpoints only</Text>
+          <Text style={styles.placeholderCardLabel}>API access</Text>
+          <Text style={styles.placeholderCardValue}>Uses documented `/admin/*` endpoints only</Text>
         </View>
       </View>
     </View>
@@ -123,7 +127,7 @@ function NotFoundState({ requestedPath }: { requestedPath: string }) {
       <Text style={styles.eyebrow}>404</Text>
       <Text style={styles.panelTitle}>Admin route not found</Text>
       <Text style={styles.panelBody}>
-        This admin path is not part of the current A1 shell scaffold. Use the left navigation to continue.
+        This admin path is not available in the current admin workspace. Use the left navigation to continue.
       </Text>
       <View style={styles.metaList}>
         <Text style={styles.metaRow}>Requested path: {requestedPath}</Text>
@@ -1547,7 +1551,7 @@ function AdminReportsPanel({
         </View>
       </View>
       <Text style={styles.panelBody}>
-        Reporting tools check live backend availability for analytics endpoints and show readable status/results for operator validation.
+        Reporting tools check live backend availability for analytics endpoints and show readable status and response details.
       </Text>
       <View style={styles.metaList}>
         <Text style={styles.metaRow}>Last checked: {lastCheckedAt ? formatDateTimeShort(lastCheckedAt) : 'Not checked yet'}</Text>
@@ -1610,7 +1614,7 @@ function AdminReportsPanel({
             </>
           ) : (
             <Text style={styles.summaryNote} selectable>
-              Checks live backend availability for the detailed reports endpoint. Endpoint not available yet (404) is acceptable for this checkpoint.
+              Checks live backend availability for the detailed reports endpoint. Endpoint not available yet (404) is shown as an explicit unavailable state.
             </Text>
           )}
         </View>
@@ -1618,7 +1622,7 @@ function AdminReportsPanel({
           <Text style={styles.summaryLabel}>POST /admin/data-exports</Text>
           <Text style={styles.summaryValue}>Export action not enabled in this panel</Text>
           <Text style={styles.summaryNote}>
-            This panel shows the export contract entry point but does not execute export requests from the UI yet.
+            This panel shows the export endpoint used for reporting exports, but does not run export requests from this screen.
           </Text>
         </View>
       </View>
@@ -2351,8 +2355,10 @@ export default function AdminShellScreen() {
           <View style={styles.navFooterCard}>
             <View style={styles.navFooterRow}>
               <View style={styles.navFooterCopy}>
-                <Text style={styles.navFooterTitle}>A1-A3 routes visible</Text>
-                <Text style={styles.navFooterText}>Current sprint admin routes are now shown by default while A2/A3 rollout continues.</Text>
+                <Text style={styles.navFooterTitle}>Admin workspace routes</Text>
+                <Text style={styles.navFooterText}>
+                  Use the left navigation to move between available admin tools. Routes that are not available yet are labeled in the list.
+                </Text>
               </View>
             </View>
           </View>
@@ -2367,7 +2373,7 @@ export default function AdminShellScreen() {
             <View style={styles.header}>
               <View>
                 <Text style={styles.headerTitle}>Compass KPI Admin</Text>
-                <Text style={styles.headerSubtitle}>Session-bound admin surface (A1 foundation)</Text>
+                <Text style={styles.headerSubtitle}>Operator tools for user access, KPI catalog, templates, and reporting checks</Text>
               </View>
               <View style={styles.headerActions}>
                 <View style={styles.roleBadge}>
@@ -2426,14 +2432,14 @@ export default function AdminShellScreen() {
             <View style={styles.checklistCard}>
               <Pressable style={styles.formHeaderRow} onPress={() => setShowImplementationNotes((prev) => !prev)}>
                 <View style={styles.checklistHeader}>
-                  <Text style={styles.checklistTitle}>Implementation Notes</Text>
-                  <Text style={styles.checklistSubtitle}>Internal traceability and debug context for admin build work</Text>
+                  <Text style={styles.checklistTitle}>Implementation Status</Text>
+                  <Text style={styles.checklistSubtitle}>Internal readiness notes and debug context for admin maintenance</Text>
                 </View>
                 <Text style={styles.smallGhostButtonText}>{showImplementationNotes ? 'Hide' : 'Show'}</Text>
               </Pressable>
               {showImplementationNotes ? (
                 <View style={styles.checklistList}>
-                  <Text style={styles.metaRow}>Historic A1 shell/authz baseline checklist (completed)</Text>
+                  <Text style={styles.metaRow}>Historic A1 shell/authz baseline checklist (completed; kept for traceability)</Text>
                   {checklistItems.map((item) => {
                     const done = item.status === 'done';
                     return (
