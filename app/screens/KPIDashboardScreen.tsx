@@ -153,6 +153,11 @@ type ChallengeKpiGroups = {
   GP: DashboardPayload['loggable_kpis'];
   VP: DashboardPayload['loggable_kpis'];
 };
+type TeamKpiGroups = {
+  PC: DashboardPayload['loggable_kpis'];
+  GP: DashboardPayload['loggable_kpis'];
+  VP: DashboardPayload['loggable_kpis'];
+};
 
 type PendingDirectLog = {
   kpiId: string;
@@ -799,6 +804,46 @@ function deriveChallengeSurfaceKpis(params: {
 
 function groupChallengeKpisByType(kpis: DashboardPayload['loggable_kpis']): ChallengeKpiGroups {
   const grouped: ChallengeKpiGroups = { PC: [], GP: [], VP: [] };
+  for (const kpi of dedupeKpisById(kpis)) {
+    if (kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP') {
+      grouped[kpi.type].push(kpi);
+    }
+  }
+  return grouped;
+}
+
+function deriveTeamSurfaceKpis(params: {
+  managedKpis: DashboardPayload['loggable_kpis'];
+  favoriteKpiIds: string[];
+  payload: DashboardPayload | null;
+}): DashboardPayload['loggable_kpis'] {
+  const { managedKpis, favoriteKpiIds, payload } = params;
+  // TODO(M3-G5+): replace with real team/team-challenge relevance filtering when team payload/context is available.
+  // v1 placeholder seam: bias toward recently active + favorites + required pipeline-related visibility, then fill from managed KPIs.
+  const byId = new Map(managedKpis.map((kpi) => [kpi.id, kpi]));
+  const favorites = favoriteKpiIds.map((id) => byId.get(id)).filter(Boolean) as DashboardPayload['loggable_kpis'];
+  const recentIds = Array.from(
+    new Set(
+      (payload?.recent_logs ?? [])
+        .slice()
+        .reverse()
+        .map((row) => String(row.kpi_id ?? '').trim())
+        .filter(Boolean)
+    )
+  );
+  const recent = recentIds.map((id) => byId.get(id)).filter(Boolean) as DashboardPayload['loggable_kpis'];
+  const requiredAnchorIds = new Set(
+    (payload?.projection.required_pipeline_anchors ?? [])
+      .map((row) => String(row.kpi_id ?? '').trim())
+      .filter(Boolean)
+  );
+  const required = managedKpis.filter((kpi) => requiredAnchorIds.has(String(kpi.id ?? '')));
+  const merged = dedupeKpisById([...required, ...recent, ...favorites, ...managedKpis]);
+  return merged.filter((kpi) => kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP');
+}
+
+function groupTeamKpisByType(kpis: DashboardPayload['loggable_kpis']): TeamKpiGroups {
+  const grouped: TeamKpiGroups = { PC: [], GP: [], VP: [] };
   for (const kpi of dedupeKpisById(kpis)) {
     if (kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP') {
       grouped[kpi.type].push(kpi);
@@ -1858,6 +1903,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const challengeKpiGroups = useMemo(() => groupChallengeKpisByType(challengeSurfaceKpis), [challengeSurfaceKpis]);
   const challengeTileCount =
     challengeKpiGroups.PC.length + challengeKpiGroups.GP.length + challengeKpiGroups.VP.length;
+  const teamSurfaceKpis = useMemo(
+    () => deriveTeamSurfaceKpis({ managedKpis, favoriteKpiIds, payload: payload ?? null }),
+    [favoriteKpiIds, managedKpis, payload]
+  );
+  const teamKpiGroups = useMemo(() => groupTeamKpisByType(teamSurfaceKpis), [teamSurfaceKpis]);
+  const teamTileCount = teamKpiGroups.PC.length + teamKpiGroups.GP.length + teamKpiGroups.VP.length;
 
   const chartSeries = useMemo(() => chartFromPayload(payload), [payload]);
   const chartSplitX =
@@ -3458,6 +3509,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setViewMode('log');
       return;
     }
+    if (tab === 'team') {
+      setViewMode('log');
+      return;
+    }
     Alert.alert('Coming next', 'This section is planned for later sprint scope.');
   };
 
@@ -3883,6 +3938,82 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     );
   };
 
+  const renderTeamKpiSection = (type: 'PC' | 'GP' | 'VP', title: string, kpis: DashboardPayload['loggable_kpis']) => {
+    if (kpis.length === 0) return null;
+    const locked = (type === 'GP' && !gpUnlocked) || (type === 'VP' && !vpUnlocked);
+    return (
+      <View style={styles.challengeSectionCard}>
+        <View style={styles.challengeSectionHeader}>
+          <Text style={styles.challengeSectionTitle}>{title}</Text>
+          <View style={[styles.challengeSectionTypePill, { backgroundColor: kpiTypeTint(type) }]}>
+            <Text style={[styles.challengeSectionTypePillText, { color: kpiTypeAccent(type) }]}>{type}</Text>
+          </View>
+        </View>
+        {locked ? (
+          <View style={styles.emptyPanel}>
+            <Text style={styles.metaText}>
+              {type === 'GP'
+                ? `Business Growth unlock progress: ${Math.min(payload?.activity.active_days ?? 0, 3)}/3 days or ${Math.min(payload?.activity.total_logs ?? 0, 20)}/20 logs`
+                : `Vitality unlock progress: ${Math.min(payload?.activity.active_days ?? 0, 7)}/7 days or ${Math.min(payload?.activity.total_logs ?? 0, 40)}/40 logs`}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.gridWrap}>
+            {kpis.map((kpi) => {
+              const successAnim = getKpiTileSuccessAnim(kpi.id);
+              const successOpacity = successAnim.interpolate({
+                inputRange: [0, 0.12, 1],
+                outputRange: [0, 1, 0],
+              });
+              const successTranslateY = successAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, -14],
+              });
+              const successScale = successAnim.interpolate({
+                inputRange: [0, 0.2, 1],
+                outputRange: [0.8, 1.02, 0.96],
+              });
+              return (
+                <Pressable
+                  key={`team-${type}-${kpi.id}`}
+                  style={[styles.gridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
+                  onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
+                  disabled={submitting}
+                  onPressIn={() => runKpiTilePressInFeedback(kpi, { surface: 'log' })}
+                  onPressOut={() => runKpiTilePressOutFeedback(kpi.id)}
+                >
+                  <Animated.View style={[styles.gridTileAnimatedWrap, { transform: [{ scale: getKpiTileScale(kpi.id) }] }]}>
+                    <View style={styles.gridCircleWrap}>
+                      <View style={[styles.gridCircle, confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed]}>
+                        {renderKpiIcon(kpi)}
+                      </View>
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.gridSuccessBadge,
+                          {
+                            opacity: successOpacity,
+                            transform: [{ translateY: successTranslateY }, { scale: successScale }],
+                          },
+                        ]}
+                      >
+                        <View style={styles.gridSuccessCoinOuter}>
+                          <View style={styles.gridSuccessCoinInner} />
+                          <View style={styles.gridSuccessCoinHighlight} />
+                        </View>
+                      </Animated.View>
+                    </View>
+                    <Text style={[styles.gridLabel, confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed]}>{kpi.name}</Text>
+                  </Animated.View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   if (state === 'loading') {
     return (
       <View style={styles.centered}>
@@ -3995,6 +4126,58 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               </View>
             )}
           </View>
+        ) : activeTab === 'team' ? (
+          <>
+            <View style={styles.challengeHeaderCard}>
+              <Text style={styles.challengeHeaderTitle}>Team</Text>
+              <Text style={styles.challengeHeaderSub}>
+                Log team-relevant KPIs here. Same KPI actions, grouped by type for team participation.
+              </Text>
+              <View style={styles.challengeHeaderStatsRow}>
+                <View style={styles.challengeHeaderStatChip}>
+                  <Text style={styles.challengeHeaderStatLabel}>KPIs</Text>
+                  <Text style={styles.challengeHeaderStatValue}>{fmtNum(teamTileCount)}</Text>
+                </View>
+                <View style={styles.challengeHeaderStatChip}>
+                  <Text style={styles.challengeHeaderStatLabel}>Types</Text>
+                  <Text style={styles.challengeHeaderStatValue}>
+                    {fmtNum(
+                      (teamKpiGroups.PC.length > 0 ? 1 : 0) +
+                        (teamKpiGroups.GP.length > 0 ? 1 : 0) +
+                        (teamKpiGroups.VP.length > 0 ? 1 : 0)
+                    )}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.challengeHeaderHint}>
+                TODO: wire real team/team-challenge relevance + progress summary when team payload is available.
+              </Text>
+            </View>
+
+            {teamTileCount === 0 ? (
+              <View style={styles.challengeEmptyCard}>
+                <Text style={styles.challengeEmptyTitle}>No team KPIs available yet</Text>
+                <Text style={styles.challengeEmptyText}>
+                  Team-relevant KPIs will appear here once team context is available for your account.
+                </Text>
+                <TouchableOpacity
+                  style={styles.challengeEmptyCta}
+                  onPress={() => {
+                    setActiveTab('home');
+                    setViewMode('home');
+                  }}
+                >
+                  <Text style={styles.challengeEmptyCtaText}>Back to Home</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                {renderTeamKpiSection('PC', 'Projections (PC)', teamKpiGroups.PC)}
+                {renderTeamKpiSection('GP', 'Growth (GP)', teamKpiGroups.GP)}
+                {renderTeamKpiSection('VP', 'Vitality (VP)', teamKpiGroups.VP)}
+              </>
+            )}
+          </>
         ) : viewMode === 'home' ? (
           <>
             {renderHudRail()}
