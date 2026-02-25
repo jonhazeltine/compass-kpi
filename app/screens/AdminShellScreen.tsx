@@ -1036,13 +1036,15 @@ function AdminUsersPanel({
 }) {
   const filteredRows = rows.filter((row) => {
     const q = searchQuery.trim().toLowerCase();
-    const knownEmail = (knownUserEmailsById[row.id] ?? '').toLowerCase();
+    const knownEmail = (row.email ?? knownUserEmailsById[row.id] ?? '').toLowerCase();
+    const knownName = (row.name ?? '').toLowerCase();
     const isRecent =
       row.created_at != null && Date.now() - new Date(row.created_at).getTime() < 1000 * 60 * 60 * 24 * 7;
     const looksTest = knownEmail.includes('test') || row.id === selectedUser?.id || isRecent;
     const matchesSearch =
       !q ||
       row.id.toLowerCase().includes(q) ||
+      knownName.includes(q) ||
       (row.role ?? '').toLowerCase().includes(q) ||
       (row.tier ?? '').toLowerCase().includes(q) ||
       knownEmail.includes(q);
@@ -1082,14 +1084,14 @@ function AdminUsersPanel({
       <View style={styles.metaList}>
         <Text style={styles.metaRow}>Last refreshed: {lastRefreshedAt ? formatDateTimeShort(lastRefreshedAt) : 'Not yet loaded'}</Text>
         <Text style={styles.metaRow}>
-          Selected user: {selectedUser ? `${selectedUser.id} (${selectedUser.role} / ${selectedUser.tier} / ${selectedUser.account_status})` : 'none'}
+          Selected user: {selectedUser ? `${selectedUser.name ?? selectedUser.id} (${selectedUser.role} / ${selectedUser.tier} / ${selectedUser.account_status})` : 'none'}
         </Text>
-        {selectedUser && knownUserEmailsById[selectedUser.id] ? (
+        {selectedUser && (selectedUser.email ?? knownUserEmailsById[selectedUser.id]) ? (
           <View style={styles.inlineToggleRow}>
             <View style={[styles.statusChip, { backgroundColor: '#EAF1FF', borderColor: '#C8DAFF' }]}>
               <Text style={[styles.statusChipText, { color: '#1E4FBE' }]}>Selected test user</Text>
             </View>
-            <Text style={styles.metaRow}>{knownUserEmailsById[selectedUser.id]}</Text>
+            <Text style={styles.metaRow}>{selectedUser.email ?? knownUserEmailsById[selectedUser.id]}</Text>
           </View>
         ) : null}
         {copyNotice ? <Text style={[styles.metaRow, styles.successText]}>{copyNotice}</Text> : null}
@@ -1223,7 +1225,7 @@ function AdminUsersPanel({
             value={searchQuery}
             onChangeText={onSearchQueryChange}
             style={styles.input}
-            placeholder="Search user id / role / tier"
+            placeholder="Search user id / name / email / role / tier"
           />
         </View>
         <View style={styles.formField}>
@@ -1315,6 +1317,7 @@ function AdminUsersPanel({
                 </View>
               </View>
               <View style={styles.tableHeaderRow}>
+                <Text style={[styles.tableHeaderCell, styles.colMd]}>User</Text>
                 <Text style={[styles.tableHeaderCell, styles.colMd]}>Role</Text>
                 <Text style={[styles.tableHeaderCell, styles.colSm]}>Tier</Text>
                 <Text style={[styles.tableHeaderCell, styles.colSm]}>Status</Text>
@@ -1330,6 +1333,10 @@ function AdminUsersPanel({
                     onPress={() => onSelectUser(row)}
                   >
                     <View style={[styles.tableCell, styles.colMd]}>
+                      <Text numberOfLines={1} style={styles.tablePrimary}>{row.name?.trim() || '(no name)'}</Text>
+                      <Text numberOfLines={1} style={styles.tableSecondary}>{row.email ?? knownUserEmailsById[row.id] ?? '(email unavailable)'}</Text>
+                    </View>
+                    <View style={[styles.tableCell, styles.colMd]}>
                       <Text style={styles.tableCellText}>{row.role}</Text>
                     </View>
                     <View style={[styles.tableCell, styles.colSm]}>
@@ -1343,8 +1350,8 @@ function AdminUsersPanel({
                     </View>
                     <View style={[styles.tableCell, styles.colMd]}>
                       <Text numberOfLines={1} style={styles.tableSecondary}>{row.id}</Text>
-                      {knownUserEmailsById[row.id] ? (
-                        <Text numberOfLines={1} style={styles.tableSecondary}>{knownUserEmailsById[row.id]}</Text>
+                      {(row.email ?? knownUserEmailsById[row.id]) ? (
+                        <Text numberOfLines={1} style={styles.tableSecondary}>{row.email ?? knownUserEmailsById[row.id]}</Text>
                       ) : null}
                     </View>
                   </Pressable>
@@ -1363,14 +1370,17 @@ function AdminUsersPanel({
           {selectedUser ? (
             <>
               <Text style={styles.metaRow}>User ID: {selectedUser.id}</Text>
-              {knownUserEmailsById[selectedUser.id] ? <Text style={styles.metaRow}>Email: {knownUserEmailsById[selectedUser.id]}</Text> : null}
+              {selectedUser.name ? <Text style={styles.metaRow}>Name: {selectedUser.name}</Text> : null}
+              {(selectedUser.email ?? knownUserEmailsById[selectedUser.id]) ? (
+                <Text style={styles.metaRow}>Email: {selectedUser.email ?? knownUserEmailsById[selectedUser.id]}</Text>
+              ) : null}
               <Text style={styles.metaRow}>Created: {formatDateTimeShort(selectedUser.created_at)}</Text>
               <Text style={styles.metaRow}>Last activity: {formatDateTimeShort(selectedUser.last_activity_timestamp)}</Text>
               <View style={styles.formActionsRow}>
                 <TouchableOpacity style={styles.smallGhostButton} onPress={onCopyUserId}>
                   <Text style={styles.smallGhostButtonText}>Copy User ID</Text>
                 </TouchableOpacity>
-                {knownUserEmailsById[selectedUser.id] ? (
+                {(selectedUser.email ?? knownUserEmailsById[selectedUser.id]) ? (
                   <TouchableOpacity style={styles.smallGhostButton} onPress={onCopyUserEmail}>
                     <Text style={styles.smallGhostButtonText}>Copy Email</Text>
                   </TouchableOpacity>
@@ -2201,7 +2211,7 @@ export default function AdminShellScreen() {
 
   const handleCopySelectedUserEmail = async () => {
     if (!selectedUser) return;
-    const email = knownUserEmailsById[selectedUser.id];
+    const email = selectedUser.email ?? knownUserEmailsById[selectedUser.id];
     if (!email) return;
     const ok = await copyTextToClipboard(email);
     setUserCopyNotice(ok ? 'Copied user email' : 'Could not copy email (clipboard unavailable)');

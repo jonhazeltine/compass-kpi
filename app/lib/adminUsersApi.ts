@@ -2,6 +2,8 @@ import { API_URL } from './supabase';
 
 export type AdminUserRow = {
   id: string;
+  email?: string | null;
+  name?: string | null;
   role: 'agent' | 'team_leader' | 'admin' | 'super_admin' | string;
   tier: 'free' | 'basic' | 'teams' | 'enterprise' | string;
   account_status: 'active' | 'deactivated' | string;

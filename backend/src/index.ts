@@ -2928,7 +2928,33 @@ app.get("/admin/users", async (req, res) => {
       .order("created_at", { ascending: false })
       .limit(500);
     if (error) return handleSupabaseError(res, "Failed to fetch users", error);
-    return res.json({ users: data ?? [] });
+
+    const authUsersPage = await dataClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (authUsersPage.error) return handleSupabaseError(res, "Failed to fetch auth user details", authUsersPage.error);
+    const authById = new Map(
+      (authUsersPage.data.users ?? []).map((u) => [
+        String(u.id ?? ""),
+        {
+          email: u.email ?? null,
+          name:
+            (typeof u.user_metadata?.name === "string" && u.user_metadata.name) ||
+            (typeof u.user_metadata?.full_name === "string" && u.user_metadata.full_name) ||
+            null,
+        },
+      ])
+    );
+
+    return res.json({
+      users: (data ?? []).map((row) => {
+        const id = String((row as { id?: unknown }).id ?? "");
+        const authMeta = authById.get(id);
+        return {
+          ...row,
+          email: authMeta?.email ?? null,
+          name: authMeta?.name ?? null,
+        };
+      }),
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in GET /admin/users", err);
