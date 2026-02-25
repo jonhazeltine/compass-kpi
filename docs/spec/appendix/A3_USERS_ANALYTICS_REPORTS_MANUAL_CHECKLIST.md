@@ -1,6 +1,6 @@
 # A3 Users + Analytics + Reports Manual Checklist
 
-Last updated: 2026-02-25
+Last updated: 2026-02-25 (A3 operator usability pass)
 Sprint item: `A3 Users + Analytics + Reports`
 
 ## Purpose
@@ -43,6 +43,23 @@ Lightweight manual verification checklist for the admin A3 baseline UI in `/admi
 - [ ] `detailed-reports` probe shows one of: `Endpoint responded`, `Forbidden`, `Not implemented`, `Error`
 - [ ] `POST /admin/data-exports` remains documented in UI without firing side-effecting export call
 
-## Notes / Results
-- Record observed endpoint statuses here (e.g., `404 not implemented` is acceptable until backend implementation lands).
-- Record any overlapping layout or state-sync issues here before checkpoint commit.
+## Recorded Results (Checkpoint)
+
+### Completed / observed
+- [x] Users panel row selection populates `User Ops`
+- [x] Users panel overlap issue (save button hidden behind diagnostics) was reproduced and fixed in A3 hardening
+- [x] Partial-save recovery behavior implemented:
+  - error message includes partial-success fields when applicable
+  - user list refreshes on save error
+  - selected user + draft re-sync from backend after error
+- [x] Reports panel probe UI now includes clearer status chips, last checked timestamp, and expandable response previews
+- [x] `POST /admin/data-exports` remains documented only (no side-effecting call)
+
+### Pending operator click-through (run in browser)
+- [ ] Re-run users edit/save happy path after latest operator polish
+- [ ] Re-run calibration reset/reinitialize actions after latest operator polish
+- [ ] Record current `/admin/reports` probe outcomes (`overview`, `detailed-reports`) from live backend
+
+### Known accepted limitations (this checkpoint)
+- Reports endpoints may legitimately return `404 Not implemented` until backend implementation lands; UI treats this as an explicit, acceptable state.
+- Users list remains a baseline list (no pagination yet); operator UI now supports `Show more` row expansion for manual inspection.

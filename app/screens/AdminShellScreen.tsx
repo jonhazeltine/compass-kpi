@@ -257,6 +257,24 @@ function formatProbeStatus(status: EndpointProbeStatus): string {
   }
 }
 
+function getProbeTone(status: EndpointProbeStatus) {
+  switch (status.kind) {
+    case 'ready':
+      return { bg: '#E8FFF3', text: '#146C43', border: '#B6E6CB', label: 'Ready' };
+    case 'forbidden':
+      return { bg: '#FFF5E8', text: '#9A5A00', border: '#F5D9AA', label: 'Forbidden' };
+    case 'not_implemented':
+      return { bg: '#EEF3FF', text: '#204ECF', border: '#CEDBFF', label: 'Not implemented' };
+    case 'error':
+      return { bg: '#FFF0F0', text: '#B2483A', border: '#F2C0B9', label: 'Error' };
+    case 'loading':
+      return { bg: '#F4F7FD', text: '#52607A', border: '#DFE7F3', label: 'Checking' };
+    case 'idle':
+    default:
+      return { bg: '#F4F7FD', text: '#52607A', border: '#DFE7F3', label: 'Not checked' };
+  }
+}
+
 function emptyKpiDraft(): KpiFormDraft {
   return {
     name: '',
@@ -906,6 +924,10 @@ function AdminUsersPanel({
   onSaveUser,
   onResetCalibration,
   onReinitializeCalibration,
+  lastRefreshedAt,
+  rowLimit,
+  onShowMoreRows,
+  onResetRowLimit,
   userSaving,
   userSaveError,
   userSuccessMessage,
@@ -932,6 +954,10 @@ function AdminUsersPanel({
   onSaveUser: () => void;
   onResetCalibration: () => void;
   onReinitializeCalibration: () => void;
+  lastRefreshedAt: string | null;
+  rowLimit: number;
+  onShowMoreRows: () => void;
+  onResetRowLimit: () => void;
   userSaving: boolean;
   userSaveError: string | null;
   userSuccessMessage: string | null;
@@ -954,6 +980,7 @@ function AdminUsersPanel({
   });
   const diagnostics = calibrationSnapshot?.diagnostics ?? null;
   const calibrationRows = calibrationSnapshot?.rows ?? [];
+  const selectedVisibleRows = filteredRows.slice(0, rowLimit);
 
   return (
     <View style={styles.panel}>
@@ -969,6 +996,25 @@ function AdminUsersPanel({
       <Text style={styles.panelBody}>
         A3 user operations baseline wired to existing admin user and calibration endpoints (role, tier, status, calibration diagnostics).
       </Text>
+      <View style={styles.metaList}>
+        <Text style={styles.metaRow}>Last refreshed: {lastRefreshedAt ? formatDateTimeShort(lastRefreshedAt) : 'Not yet loaded'}</Text>
+        <Text style={styles.metaRow}>
+          Selected user: {selectedUser ? `${selectedUser.id} (${selectedUser.role} / ${selectedUser.tier} / ${selectedUser.account_status})` : 'none'}
+        </Text>
+      </View>
+
+      {userSaveError ? (
+        <View style={styles.alertErrorBox}>
+          <Text style={styles.alertErrorTitle}>User save error</Text>
+          <Text style={styles.alertErrorText} selectable>{userSaveError}</Text>
+        </View>
+      ) : null}
+      {userSuccessMessage ? (
+        <View style={styles.alertSuccessBox}>
+          <Text style={styles.alertSuccessTitle}>User action complete</Text>
+          <Text style={styles.alertSuccessText}>{userSuccessMessage}</Text>
+        </View>
+      ) : null}
 
       <View style={styles.filterBar}>
         <View style={[styles.formField, styles.formFieldWide]}>
@@ -1029,7 +1075,21 @@ function AdminUsersPanel({
           {error ? <Text style={[styles.metaRow, styles.errorText, { paddingHorizontal: 12 }]}>Error: {error}</Text> : null}
           {!loading && !error ? (
             <>
-              <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Rows shown: {filteredRows.length} of {rows.length}</Text>
+              <View style={[styles.formHeaderRow, { paddingHorizontal: 12 }]}>
+                <Text style={styles.metaRow}>Rows shown: {Math.min(selectedVisibleRows.length, filteredRows.length)} of {filteredRows.length} filtered ({rows.length} total)</Text>
+                <View style={styles.formActionsRow}>
+                  {filteredRows.length > rowLimit ? (
+                    <TouchableOpacity style={styles.smallGhostButton} onPress={onShowMoreRows}>
+                      <Text style={styles.smallGhostButtonText}>Show more</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {rowLimit > 16 ? (
+                    <TouchableOpacity style={styles.smallGhostButton} onPress={onResetRowLimit}>
+                      <Text style={styles.smallGhostButtonText}>Reset rows</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
               <View style={styles.tableHeaderRow}>
                 <Text style={[styles.tableHeaderCell, styles.colMd]}>Role</Text>
                 <Text style={[styles.tableHeaderCell, styles.colSm]}>Tier</Text>
@@ -1037,12 +1097,12 @@ function AdminUsersPanel({
                 <Text style={[styles.tableHeaderCell, styles.colSm]}>Last Active</Text>
                 <Text style={[styles.tableHeaderCell, styles.colMd]}>User ID</Text>
               </View>
-              {filteredRows.slice(0, 16).map((row) => {
+              {selectedVisibleRows.map((row) => {
                 const selected = selectedUser?.id === row.id;
                 return (
                   <Pressable
                     key={row.id}
-                    style={[styles.tableDataRow, selected && { backgroundColor: '#EDF3FF' }]}
+                    style={[styles.tableDataRow, selected && styles.tableDataRowSelectedStrong]}
                     onPress={() => onSelectUser(row)}
                   >
                     <View style={[styles.tableCell, styles.colMd]}>
@@ -1063,7 +1123,7 @@ function AdminUsersPanel({
                   </Pressable>
                 );
               })}
-              {filteredRows.length > 16 ? <Text style={styles.tableFootnote}>Showing first 16 filtered rows for A3 baseline UI.</Text> : null}
+              {filteredRows.length > rowLimit ? <Text style={styles.tableFootnote}>Showing first {rowLimit} filtered rows. Use “Show more” to inspect more users.</Text> : null}
             </>
           ) : null}
         </View>
@@ -1131,8 +1191,6 @@ function AdminUsersPanel({
                   </View>
                 </View>
               </View>
-              {userSaveError ? <Text style={[styles.metaRow, styles.errorText]}>Error: {userSaveError}</Text> : null}
-              {userSuccessMessage ? <Text style={[styles.metaRow, styles.successText]}>{userSuccessMessage}</Text> : null}
               <View style={styles.formActionsRow}>
                 <TouchableOpacity style={styles.primaryButton} onPress={onSaveUser} disabled={userSaving}>
                   <Text style={styles.primaryButtonText}>{userSaving ? 'Saving...' : 'Save User Changes'}</Text>
@@ -1209,14 +1267,22 @@ function AdminUsersPanel({
 function AdminReportsPanel({
   overviewStatus,
   detailedStatus,
+  lastCheckedAt,
   onRefresh,
   loading,
 }: {
   overviewStatus: EndpointProbeStatus;
   detailedStatus: EndpointProbeStatus;
+  lastCheckedAt: string | null;
   onRefresh: () => void;
   loading: boolean;
 }) {
+  const [expandedOverview, setExpandedOverview] = useState(false);
+  const [expandedDetailed, setExpandedDetailed] = useState(false);
+  const overviewTone = getProbeTone(overviewStatus);
+  const detailedTone = getProbeTone(detailedStatus);
+  const hasOverviewPreview = overviewStatus.kind === 'ready';
+  const hasDetailedPreview = detailedStatus.kind === 'ready';
   return (
     <View style={styles.panel}>
       <View style={styles.panelTopRow}>
@@ -1231,6 +1297,9 @@ function AdminReportsPanel({
       <Text style={styles.panelBody}>
         A3 reporting surface validates documented analytics/report contracts. If endpoints are not implemented in the backend yet, this panel reports that clearly without introducing new endpoint families.
       </Text>
+      <View style={styles.metaList}>
+        <Text style={styles.metaRow}>Last checked: {lastCheckedAt ? formatDateTimeShort(lastCheckedAt) : 'Not checked yet'}</Text>
+      </View>
       <View style={styles.formActionsRow}>
         <TouchableOpacity style={styles.primaryButton} onPress={onRefresh} disabled={loading}>
           <Text style={styles.primaryButtonText}>{loading ? 'Checking...' : 'Check Analytics Endpoints'}</Text>
@@ -1238,21 +1307,59 @@ function AdminReportsPanel({
       </View>
       <View style={[styles.summaryRow, styles.summaryRowCompact]}>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>GET /admin/analytics/overview</Text>
-          <Text style={styles.summaryValue}>{formatProbeStatus(overviewStatus)}</Text>
-          {'bodyPreview' in overviewStatus ? (
-            <Text style={styles.summaryNote} numberOfLines={6}>{overviewStatus.bodyPreview}</Text>
+          <View style={styles.endpointHeaderRow}>
+            <Text style={styles.summaryLabel}>GET /admin/analytics/overview</Text>
+            <View style={[styles.statusChip, { backgroundColor: overviewTone.bg, borderColor: overviewTone.border }]}>
+              <Text style={[styles.statusChipText, { color: overviewTone.text }]}>{overviewTone.label}</Text>
+            </View>
+          </View>
+          <Text style={styles.summaryValue} selectable>{formatProbeStatus(overviewStatus)}</Text>
+          {hasOverviewPreview ? (
+            <>
+              <TouchableOpacity
+                style={styles.smallGhostButton}
+                onPress={() => setExpandedOverview((prev) => !prev)}
+              >
+                <Text style={styles.smallGhostButtonText}>{expandedOverview ? 'Collapse preview' : 'Expand preview'}</Text>
+              </TouchableOpacity>
+              <View style={styles.codePreviewBox}>
+                <Text style={styles.codePreviewText} selectable numberOfLines={expandedOverview ? undefined : 8}>
+                  {overviewStatus.bodyPreview}
+                </Text>
+              </View>
+            </>
           ) : (
-            <Text style={styles.summaryNote}>Documented in spec; this panel probes the live backend response.</Text>
+            <Text style={styles.summaryNote} selectable>
+              Documented in spec; this panel probes the live backend response.
+            </Text>
           )}
         </View>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>GET /admin/analytics/detailed-reports</Text>
-          <Text style={styles.summaryValue}>{formatProbeStatus(detailedStatus)}</Text>
-          {'bodyPreview' in detailedStatus ? (
-            <Text style={styles.summaryNote} numberOfLines={6}>{detailedStatus.bodyPreview}</Text>
+          <View style={styles.endpointHeaderRow}>
+            <Text style={styles.summaryLabel}>GET /admin/analytics/detailed-reports</Text>
+            <View style={[styles.statusChip, { backgroundColor: detailedTone.bg, borderColor: detailedTone.border }]}>
+              <Text style={[styles.statusChipText, { color: detailedTone.text }]}>{detailedTone.label}</Text>
+            </View>
+          </View>
+          <Text style={styles.summaryValue} selectable>{formatProbeStatus(detailedStatus)}</Text>
+          {hasDetailedPreview ? (
+            <>
+              <TouchableOpacity
+                style={styles.smallGhostButton}
+                onPress={() => setExpandedDetailed((prev) => !prev)}
+              >
+                <Text style={styles.smallGhostButtonText}>{expandedDetailed ? 'Collapse preview' : 'Expand preview'}</Text>
+              </TouchableOpacity>
+              <View style={styles.codePreviewBox}>
+                <Text style={styles.codePreviewText} selectable numberOfLines={expandedDetailed ? undefined : 8}>
+                  {detailedStatus.bodyPreview}
+                </Text>
+              </View>
+            </>
           ) : (
-            <Text style={styles.summaryNote}>Documented for A3. If 404, backend implementation is still pending.</Text>
+            <Text style={styles.summaryNote} selectable>
+              Documented for A3. If 404, backend implementation is still pending.
+            </Text>
           )}
         </View>
         <View style={styles.summaryCard}>
@@ -1354,9 +1461,11 @@ export default function AdminShellScreen() {
   const [userRows, setUserRows] = useState<AdminUserRow[]>([]);
   const [userLoading, setUserLoading] = useState(false);
   const [userError, setUserError] = useState<string | null>(null);
+  const [userLastRefreshedAt, setUserLastRefreshedAt] = useState<string | null>(null);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'agent' | 'team_leader' | 'admin' | 'super_admin'>('all');
   const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'active' | 'deactivated'>('all');
+  const [userRowLimit, setUserRowLimit] = useState(16);
   const [selectedUser, setSelectedUser] = useState<AdminUserRow | null>(null);
   const [userDraft, setUserDraft] = useState<UserFormDraft>(emptyUserDraft);
   const [userSaving, setUserSaving] = useState(false);
@@ -1368,6 +1477,7 @@ export default function AdminShellScreen() {
   const [calibrationEvents, setCalibrationEvents] = useState<AdminUserCalibrationEvent[]>([]);
   const [calibrationActionLoading, setCalibrationActionLoading] = useState(false);
   const [reportsProbeLoading, setReportsProbeLoading] = useState(false);
+  const [reportsLastCheckedAt, setReportsLastCheckedAt] = useState<string | null>(null);
   const [analyticsOverviewStatus, setAnalyticsOverviewStatus] = useState<EndpointProbeStatus>({ kind: 'idle' });
   const [analyticsDetailedStatus, setAnalyticsDetailedStatus] = useState<EndpointProbeStatus>({ kind: 'idle' });
 
@@ -1483,8 +1593,9 @@ export default function AdminShellScreen() {
       const rows = await fetchAdminUsers(session.access_token);
       const sorted = sortRowsByUpdatedDesc(rows);
       setUserRows(sorted);
+      setUserLastRefreshedAt(new Date().toISOString());
       setSelectedUser((prev) => {
-        if (!prev) return prev;
+        if (!prev) return sorted[0] ?? null;
         return sorted.find((row) => row.id === prev.id) ?? null;
       });
       return sorted;
@@ -1526,6 +1637,7 @@ export default function AdminShellScreen() {
       ]);
       setAnalyticsOverviewStatus(overview);
       setAnalyticsDetailedStatus(detailed);
+      setReportsLastCheckedAt(new Date().toISOString());
     } finally {
       setReportsProbeLoading(false);
     }
@@ -2163,6 +2275,10 @@ export default function AdminShellScreen() {
                     onSaveUser={handleUserSave}
                     onResetCalibration={handleResetCalibration}
                     onReinitializeCalibration={handleReinitializeCalibration}
+                    lastRefreshedAt={userLastRefreshedAt}
+                    rowLimit={userRowLimit}
+                    onShowMoreRows={() => setUserRowLimit((prev) => prev + 16)}
+                    onResetRowLimit={() => setUserRowLimit(16)}
                     userSaving={userSaving}
                     userSaveError={userSaveError}
                     userSuccessMessage={userSuccessMessage}
@@ -2176,6 +2292,7 @@ export default function AdminShellScreen() {
                   <AdminReportsPanel
                     overviewStatus={analyticsOverviewStatus}
                     detailedStatus={analyticsDetailedStatus}
+                    lastCheckedAt={reportsLastCheckedAt}
                     onRefresh={() => {
                       void probeReportsEndpoints();
                     }}
@@ -2504,6 +2621,24 @@ const styles = StyleSheet.create({
     borderColor: '#DFE7F3',
     padding: 14,
   },
+  endpointHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  statusChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  statusChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
   summaryLabel: {
     color: '#6A768D',
     fontSize: 12,
@@ -2522,6 +2657,20 @@ const styles = StyleSheet.create({
     color: '#748198',
     fontSize: 12,
     marginTop: 6,
+  },
+  codePreviewBox: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E1E9F7',
+    borderRadius: 10,
+    backgroundColor: '#F7FAFF',
+    padding: 10,
+  },
+  codePreviewText: {
+    color: '#2A3953',
+    fontSize: 12,
+    lineHeight: 17,
+    fontFamily: Platform.OS === 'web' ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined,
   },
   checklistCard: {
     backgroundColor: 'rgba(255,255,255,0.92)',
@@ -2864,6 +3013,47 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+  alertSuccessBox: {
+    borderWidth: 1,
+    borderColor: '#B6E6CB',
+    backgroundColor: '#EFFFF6',
+    borderRadius: 12,
+    padding: 10,
+    gap: 4,
+  },
+  alertSuccessTitle: {
+    color: '#146C43',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  alertSuccessText: {
+    color: '#1E5F43',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  alertErrorBox: {
+    borderWidth: 1,
+    borderColor: '#F2C0B9',
+    backgroundColor: '#FFF5F2',
+    borderRadius: 12,
+    padding: 10,
+    gap: 4,
+  },
+  alertErrorTitle: {
+    color: '#B2483A',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  alertErrorText: {
+    color: '#8E3D32',
+    fontSize: 13,
+    lineHeight: 18,
+  },
   primaryButton: {
     backgroundColor: '#2158D5',
     borderRadius: 10,
@@ -2922,6 +3112,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#EEF2F9',
+  },
+  tableDataRowSelectedStrong: {
+    backgroundColor: '#EAF1FF',
+    borderLeftWidth: 3,
+    borderLeftColor: '#2F67E8',
   },
   tableCell: {
     paddingHorizontal: 10,
