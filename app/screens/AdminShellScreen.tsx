@@ -1079,7 +1079,7 @@ function AdminUsersPanel({
         </View>
       </View>
       <Text style={styles.panelBody}>
-        A3 user operations baseline wired to existing admin user and calibration endpoints (role, tier, status, calibration diagnostics).
+        Manage user access, subscription tier, status, and calibration diagnostics for admin QA and support workflows.
       </Text>
       <View style={styles.metaList}>
         <Text style={styles.metaRow}>Last refreshed: {lastRefreshedAt ? formatDateTimeShort(lastRefreshedAt) : 'Not yet loaded'}</Text>
@@ -1219,6 +1219,10 @@ function AdminUsersPanel({
       </View>
 
       <View style={styles.filterBar}>
+        <View style={styles.formHeaderRow}>
+          <Text style={styles.formTitle}>Find & Select User</Text>
+          <Text style={styles.metaRow}>Filter and select an account to manage access and calibration.</Text>
+        </View>
         <View style={[styles.formField, styles.formFieldWide]}>
           <Text style={styles.formLabel}>Search</Text>
           <TextInput
@@ -1263,7 +1267,7 @@ function AdminUsersPanel({
           </View>
         </View>
         <View style={styles.formField}>
-          <Text style={styles.formLabel}>Test User Workflow</Text>
+          <Text style={styles.formLabel}>Test User Focus</Text>
           <View style={styles.inlineToggleRow}>
             <Pressable
               onPress={onToggleTestUsersOnly}
@@ -1282,9 +1286,7 @@ function AdminUsersPanel({
               </Text>
             </Pressable>
           </View>
-          <Text style={styles.fieldHelpText}>
-            Heuristic view uses locally created-user emails and recent account creation time to make test users easier to find.
-          </Text>
+          <Text style={styles.fieldHelpText}>Uses recent accounts and known test-user emails to make QA users easier to find and reuse.</Text>
         </View>
       </View>
 
@@ -1296,7 +1298,7 @@ function AdminUsersPanel({
               <Text style={styles.smallGhostButtonText}>Refresh</Text>
             </TouchableOpacity>
           </View>
-          <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Click a user row to load User Ops + calibration details.</Text>
+          <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Click a user row to open access/tier controls and calibration details.</Text>
           {loading ? <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Loading users...</Text> : null}
           {error ? <Text style={[styles.metaRow, styles.errorText, { paddingHorizontal: 12 }]}>Error: {error}</Text> : null}
           {!loading && !error ? (
@@ -1364,7 +1366,7 @@ function AdminUsersPanel({
 
         <View style={[styles.formCard, styles.usersOpsCard]}>
           <View style={styles.formHeaderRow}>
-            <Text style={styles.formTitle}>User Ops</Text>
+            <Text style={styles.formTitle}>User Access + Tier</Text>
             <Text style={styles.metaRow}>{selectedUser ? formatDateTimeShort(selectedUser.updated_at) : 'Select a user'}</Text>
           </View>
           {selectedUser ? (
@@ -1386,6 +1388,7 @@ function AdminUsersPanel({
                   </TouchableOpacity>
                 ) : null}
               </View>
+              <Text style={styles.formLabel}>Access Controls</Text>
               <View style={styles.formGrid}>
                 <View style={styles.formField}>
                   <Text style={styles.formLabel}>Role</Text>
@@ -1444,7 +1447,8 @@ function AdminUsersPanel({
                   <Text style={styles.primaryButtonText}>{userSaving ? 'Saving...' : 'Save User Changes'}</Text>
                 </TouchableOpacity>
               </View>
-              <View style={[styles.formActionsRow, { marginTop: 6 }]}>
+              <Text style={styles.formLabel}>Calibration Actions</Text>
+              <View style={[styles.formActionsRow, { marginTop: 2 }]}>
                 <TouchableOpacity
                   style={styles.smallGhostButton}
                   onPress={onResetCalibration}
@@ -1464,7 +1468,7 @@ function AdminUsersPanel({
               </View>
             </>
           ) : (
-            <Text style={styles.panelBody}>Select a user row to edit role/tier/status and inspect calibration diagnostics.</Text>
+            <Text style={styles.panelBody}>Select a user row to edit access/tier/status and review calibration diagnostics.</Text>
           )}
         </View>
       </View>
@@ -1543,7 +1547,7 @@ function AdminReportsPanel({
         </View>
       </View>
       <Text style={styles.panelBody}>
-        A3 reporting surface validates documented analytics/report contracts. If endpoints are not implemented in the backend yet, this panel reports that clearly without introducing new endpoint families.
+        Reporting tools check live backend availability for analytics endpoints and show readable status/results for operator validation.
       </Text>
       <View style={styles.metaList}>
         <Text style={styles.metaRow}>Last checked: {lastCheckedAt ? formatDateTimeShort(lastCheckedAt) : 'Not checked yet'}</Text>
@@ -1578,7 +1582,7 @@ function AdminReportsPanel({
             </>
           ) : (
             <Text style={styles.summaryNote} selectable>
-              Documented in spec; this panel probes the live backend response.
+              Checks live backend availability for the overview analytics endpoint.
             </Text>
           )}
         </View>
@@ -1606,15 +1610,15 @@ function AdminReportsPanel({
             </>
           ) : (
             <Text style={styles.summaryNote} selectable>
-              Documented for A3. If 404, backend implementation is still pending.
+              Checks live backend availability for the detailed reports endpoint. Endpoint not available yet (404) is acceptable for this checkpoint.
             </Text>
           )}
         </View>
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>POST /admin/data-exports</Text>
-          <Text style={styles.summaryValue}>Contract documented (not wired in this backend yet)</Text>
+          <Text style={styles.summaryValue}>Export action not enabled in this panel</Text>
           <Text style={styles.summaryNote}>
-            A3 UI keeps export entry point visible, but avoids a side-effecting call until backend endpoint implementation lands.
+            This panel shows the export contract entry point but does not execute export requests from the UI yet.
           </Text>
         </View>
       </View>
@@ -1685,6 +1689,7 @@ export default function AdminShellScreen() {
     getInitialAdminRouteKey(process.env.EXPO_PUBLIC_ADMIN_INITIAL_ROUTE)
   );
   const [devRolePreview, setDevRolePreview] = useState<'live' | 'super_admin' | 'admin' | 'agent'>('live');
+  const [showImplementationNotes, setShowImplementationNotes] = useState(false);
   const [unknownAdminPath, setUnknownAdminPath] = useState<string | null>(null);
   const [lastNavPushPath, setLastNavPushPath] = useState<string | null>(null);
   const [kpiRows, setKpiRows] = useState<AdminKpiRow[]>([]);
@@ -2280,7 +2285,7 @@ export default function AdminShellScreen() {
               <View style={styles.brandCopy}>
                 <Text style={styles.brandTag}>A1</Text>
                 <Text style={styles.brandTitle}>Admin Shell</Text>
-                <Text style={styles.brandSubtitle}>Admin shell + AuthZ with A2/A3 rollout in progress</Text>
+                <Text style={styles.brandSubtitle}>User Ops, Catalog, and Reporting tools</Text>
               </View>
             </View>
             <View style={styles.brandMetricsRow}>
@@ -2397,12 +2402,12 @@ export default function AdminShellScreen() {
                 </Text>
               </View>
               <View style={styles.summaryCard}>
-                <Text style={styles.summaryLabel}>A1 Coverage</Text>
-                <Text style={styles.summaryValue}>Shell + authz foundation with A2/A3 admin workflow panels</Text>
-                <Text style={styles.summaryNote}>A2 live CRUD, A3 users ops + reports contract validation in progress</Text>
+                <Text style={styles.summaryLabel}>Admin Workspace</Text>
+                <Text style={styles.summaryValue}>User ops, KPI catalog, templates, and reporting checks in one admin surface</Text>
+                <Text style={styles.summaryNote}>Use the left navigation to move between admin workflows</Text>
               </View>
               <View style={styles.summaryCard}>
-                <Text style={styles.summaryLabel}>Web Routing</Text>
+                <Text style={styles.summaryLabel}>Navigation</Text>
                 <Text style={styles.summaryValue}>
                   {Platform.OS === 'web'
                     ? `Path sync enabled (${
@@ -2414,30 +2419,34 @@ export default function AdminShellScreen() {
                       })`
                     : 'Path sync inactive outside web runtime'}
                 </Text>
-                <Text style={styles.summaryNote}>
-                  Browser history/back button now tracks active admin, unauthorized, and not-found states
-                </Text>
+                <Text style={styles.summaryNote}>Browser back/forward tracks admin route changes, unauthorized, and not-found states</Text>
               </View>
             </View>
 
             <View style={styles.checklistCard}>
-              <View style={styles.checklistHeader}>
-                <Text style={styles.checklistTitle}>Historic A1 Checklist</Text>
-                <Text style={styles.checklistSubtitle}>A1 shell/authz baseline completed; shown here for traceability</Text>
-              </View>
-              <View style={styles.checklistList}>
-                {checklistItems.map((item) => {
-                  const done = item.status === 'done';
-                  return (
-                    <View key={item.label} style={styles.checklistRow}>
-                      <View style={[styles.checklistDot, done ? styles.checklistDotDone : styles.checklistDotPending]} />
-                      <Text style={[styles.checklistText, done ? styles.checklistTextDone : styles.checklistTextPending]}>
-                        {done ? '[done]' : '[next]'} {item.label}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
+              <Pressable style={styles.formHeaderRow} onPress={() => setShowImplementationNotes((prev) => !prev)}>
+                <View style={styles.checklistHeader}>
+                  <Text style={styles.checklistTitle}>Implementation Notes</Text>
+                  <Text style={styles.checklistSubtitle}>Internal traceability and debug context for admin build work</Text>
+                </View>
+                <Text style={styles.smallGhostButtonText}>{showImplementationNotes ? 'Hide' : 'Show'}</Text>
+              </Pressable>
+              {showImplementationNotes ? (
+                <View style={styles.checklistList}>
+                  <Text style={styles.metaRow}>Historic A1 shell/authz baseline checklist (completed)</Text>
+                  {checklistItems.map((item) => {
+                    const done = item.status === 'done';
+                    return (
+                      <View key={item.label} style={styles.checklistRow}>
+                        <View style={[styles.checklistDot, done ? styles.checklistDotDone : styles.checklistDotPending]} />
+                        <Text style={[styles.checklistText, done ? styles.checklistTextDone : styles.checklistTextPending]}>
+                          {done ? '[done]' : '[next]'} {item.label}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
             </View>
 
             {__DEV__ ? (
