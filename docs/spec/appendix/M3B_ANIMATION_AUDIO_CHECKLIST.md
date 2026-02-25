@@ -75,3 +75,4 @@ These items are expected to come from Figma/AE/Blender/Lottie/SFX tooling and ar
 ## Notes
 - This checklist is intentionally execution-focused and narrower than the broader `M7` visual polish scope.
 - If a checklist item exceeds the M3b time-box, ship the simpler version and defer the remainder to `M7` backlog.
+- Post-M3b dashboard/logging IA completion sequencing (including `Quick` -> `Priority`, Challenge/Team first-class logging surfaces, and Activity/Logs role rewrite) is tracked separately in `docs/spec/appendix/M3_COMPLETION_PLAN_PRIORITY_CONTEXT_SURFACES.md`.

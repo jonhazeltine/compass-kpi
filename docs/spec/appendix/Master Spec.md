@@ -2994,3 +2994,67 @@ VII. Adaptive Per-User KPI Weighting (Calibration Layer)
  \* Diagnostics and transparency:  
    \* Track rolling error metrics and sample size for calibration quality.  
    \* Confidence formula remains display-layer; calibration diagnostics are additive explainability metadata.  
+
+VIII. Algorithm Addendum Integration (Projection Integrity & Calibration Hardening, Planned)  
+ \* Status (2026-02-25): Spec-integrated, implementation deferred. See appendices:  
+   \* `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_1_PROJECTION_INTEGRITY_CALIBRATION.md`  
+   \* `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_2_PROJECTION_LAB.md`  
+ \* Canonical supersession rule: Addendum changes supersede earlier wording only where explicitly noted in this section and the algorithm spec lock.  
+ \* A. Fairness / predictiveness objective (extends VII):  
+   \* Calibration continues to use per-user KPI multipliers over global base weights.  
+   \* Confidence and comparability should reflect demonstrated predictiveness/trust, not raw KPI count or number of tracked KPI categories.  
+ \* B. Onboarding baseline vs target data separation (planned onboarding redesign):  
+   \* Baseline KPI quantities (history-anchored) are used for onboarding tail seeding, continuity defaults, and conservative calibration initialization.  
+   \* Target KPI quantities (future plan) are planning/coaching/what-if inputs only and must not contaminate baseline seeding logs.  
+   \* Baseline Coverage Meter is computed using the real projection engine against historical last-12-month Actual GCI (`coverage_pct = min(100, PC_365 / ActualGCI_12mo)`).  
+   \* Untracked Drivers remainder is explicitly surfaced (`100% - displayed coverage`) and is allowed within guardrails.  
+   \* Stage-2 proceed rule (planned): coverage must be `>= 80%`, and Untracked Drivers remainder must be `<= 20%`.  
+   \* Coverage display is capped at `100%`; internal overshoot is permitted only to support final KPI inclusion, with hard cap `105%` (still display `100%`).  
+ \* C. Onboarding backplot span refinement (planned):  
+   \* Replace fixed 52-week assumptions with timing-config-driven span.  
+   \* `impact_window_days = delay_days + hold_days + decay_days` (per selected PC KPI).  
+   \* `backplot_span_days = max(365, max_selected_pc_impact_window_days) + safety_margin`.  
+   \* Default safety margin: `30 days`.  
+ \* D. Continuity Projection layer for 12-month horizon (planned):  
+   \* Continuity Projection is an optional admin/config-controlled forecast-only provider source, target default ON in production when enabled by rollout decision.  
+   \* It generates forecast-only future inputs (default 365-day horizon) to reduce artificial emptiness in months 6-12.  
+   \* Continuity inputs must not be stored as user logs and must not affect GP/VP, leaderboards/challenges, or calibration truth loops.  
+   \* Replacement rule: real KPI logs override/remove overlapping continuity inputs in forecast computation.  
+   \* Projection Lab scenarios must support Continuity ON/OFF diffing per run.  
+ \* E. Confidence continuity modifier (planned display-layer extension):  
+   \* Per horizon (`PC_30`, `PC_90`, `PC_365`), compute `forecast_share = PC_from_provider_forecast / max(total_PC, epsilon)`.  
+   \* `continuity_modifier = clamp(1 - 0.60 * forecast_share, 0.60, 1.00)`.  
+   \* `confidence_horizon = base_confidence * continuity_modifier`.  
+   \* Base confidence formula remains the canonical starting point; continuity modifier is additive display-layer shaping.  
+ \* F. Data integrity / provenance requirements (planned):  
+   \* Seeded synthetic events must be distinguishable from user-entered logs (flags/metadata/provenance).  
+   \* Forecast-only provider continuity inputs must remain isolated from competitive scoring, analytics truth, and calibration training.  
+   \* If any synthetic forecast events are ever persisted in future designs, explicit provenance enum/type is required.  
+
+IX. Projection Lab (Admin Simulation + Regression, Planned A3/A4)  
+ \* Purpose: Internal admin-only algorithm integrity harness that generates synthetic inputs, runs the real KPI→PC algorithm, visualizes outputs, compares versions/settings, and catches regressions.  
+ \* Placement:  
+   \* Primary build target: `A3` (admin analytics/reporting-adjacent tooling)  
+   \* Hardening/regression workflows: `A4`  
+   \* Backend hooks may land earlier in a scoped backend-prep track without committing UI build.  
+ \* Core modules (v1 planned):  
+   \* Scenario Library (CRUD) for reusable simulation definitions  
+   \* Scenario Runner (mock inputs only; no mocked algorithm internals)  
+   \* Timeline Visualizer (projection, confidence, provenance split over time)  
+   \* Version/Config Compare (including Continuity ON/OFF)  
+   \* Regression Assertions (6-month cliff, onboarding skew bounds, KPI selection bias convergence, continuity isolation)  
+   \* Export/Report summary artifacts (JSON first, CSV optional later)  
+ \* Planned admin endpoints (to be added to API contracts before implementation):  
+   \* `GET /admin/projection-lab/scenarios`  
+   \* `POST /admin/projection-lab/scenarios`  
+   \* `PUT /admin/projection-lab/scenarios/:id`  
+   \* `DELETE /admin/projection-lab/scenarios/:id`  
+   \* `POST /admin/projection-lab/runs`  
+   \* `GET /admin/projection-lab/runs/:id`  
+   \* `POST /admin/projection-lab/compare`  
+   \* `POST /admin/projection-lab/assertions/evaluate`  
+ \* Constraints:  
+   \* Admin-authz required.  
+   \* Synthetic inputs only by default.  
+   \* No production-user data mutation in scenario runs unless a future replay mode is explicitly designed and approved.  
+ \* v1 storage default (planned): store run outputs as JSON blobs in `projection_lab_runs`; normalize later if query/reporting needs require it.  

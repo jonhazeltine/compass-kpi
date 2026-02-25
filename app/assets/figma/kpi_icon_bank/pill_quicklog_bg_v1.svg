@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="320" viewBox="0 0 2048 320" fill="none">
+  <defs>
+    <clipPath id="pill">
+      <rect x="0" y="0" width="2048" height="320" rx="160" ry="160"/>
+    </clipPath>
+    <filter id="shadow" x="-5%" y="-50%" width="110%" height="200%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+    <linearGradient id="rim" x1="0" y1="0" x2="2048" y2="320">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="35%" stop-color="#cfd8e3" stop-opacity="0.75"/>
+      <stop offset="70%" stop-color="#7a8797" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.85"/>
+    </linearGradient>
+    <radialGradient id="glass" cx="35%" cy="35%" r="75%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="55%" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.02"/>
+    </radialGradient>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <rect x="0" y="0" width="2048" height="320" rx="160" ry="160" fill="#08142A"/>
+    <rect x="6" y="6" width="2036" height="308" rx="154" ry="154" fill="#0B1E3A" opacity="0.85"/>
+    <rect x="0" y="0" width="2048" height="320" rx="160" ry="160" fill="url(#glass)"/>
+    <rect x="0.5" y="0.5" width="2047" height="319" rx="160" ry="160" stroke="url(#rim)" stroke-width="2"/>
+    <rect x="10" y="10" width="2028" height="300" rx="150" ry="150" stroke="#7DD3FC" stroke-opacity="0.35" stroke-width="2"/>
+    <circle cx="1898" cy="70" r="34" fill="#7DD3FC" opacity="0.18"/>
+    <circle cx="1898" cy="70" r="18" fill="#7DD3FC" opacity="0.22"/>
+  </g>
+
+  <g clip-path="url(#pill)">
+    <g opacity="0.85">
+      <path d="M80 90 C 520 30, 980 130, 1928 60" stroke="#BFE9FF" stroke-opacity="0.55" stroke-width="10" stroke-linecap="round"/><path d="M80 145 C 520 85, 980 185, 1928 115" stroke="#BFE9FF" stroke-opacity="0.35" stroke-width="8" stroke-linecap="round"/><path d="M80 200 C 520 140, 980 240, 1928 170" stroke="#BFE9FF" stroke-opacity="0.25" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="723" cy="78" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1393" cy="52" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="1741" cy="177" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="808" cy="189" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="1923" cy="169" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="136" cy="62" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="916" cy="57" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="245" cy="181" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="181" cy="251" r="3" fill="#DDF6FF" opacity="0.35"/><circle cx="313" cy="97" r="3" fill="#DDF6FF" opacity="0.35"/><circle cx="186" cy="187" r="3" fill="#DDF6FF" opacity="0.35"/><circle cx="872" cy="52" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="155" cy="182" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="653" cy="147" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="1167" cy="70" r="3" fill="#DDF6FF" opacity="0.35"/><circle cx="691" cy="183" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="271" cy="188" r="3" fill="#DDF6FF" opacity="0.35"/><circle cx="1368" cy="88" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="259" cy="180" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="1215" cy="55" r="3" fill="#DDF6FF" opacity="0.35"/><circle cx="481" cy="167" r="3" fill="#DDF6FF" opacity="0.35"/><circle cx="935" cy="238" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1013" cy="189" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="800" cy="116" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="1686" cy="86" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="227" cy="187" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1135" cy="166" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1553" cy="154" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1307" cy="58" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="1108" cy="147" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="1610" cy="127" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="1971" cy="165" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="140" cy="211" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="1625" cy="182" r="3" fill="#DDF6FF" opacity="0.35"/><circle cx="1676" cy="264" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="756" cy="217" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1277" cy="167" r="3" fill="#DDF6FF" opacity="0.35"/><circle cx="1692" cy="156" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="1780" cy="63" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1030" cy="218" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="184" cy="227" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1385" cy="187" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="642" cy="223" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1876" cy="211" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="106" cy="280" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="787" cy="83" r="3" fill="#DDF6FF" opacity="0.35"/><circle cx="299" cy="166" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="506" cy="236" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="324" cy="229" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="874" cy="140" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="225" cy="82" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="882" cy="180" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1869" cy="75" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1829" cy="180" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1506" cy="146" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="1458" cy="266" r="2" fill="#DDF6FF" opacity="0.35"/><circle cx="532" cy="78" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="420" cy="78" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="1408" cy="99" r="1" fill="#DDF6FF" opacity="0.35"/><circle cx="1053" cy="252" r="3" fill="#DDF6FF" opacity="0.35"/>
+    </g>
+    <path d="M0 230.39999999999998 C 512.0 198.4, 1126.4 294.40000000000003, 2048 243.2 L 2048 320 L 0 320 Z" fill="#7DD3FC" opacity="0.08"/>
+  </g>
+</svg>

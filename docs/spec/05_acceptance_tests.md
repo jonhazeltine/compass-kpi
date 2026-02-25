@@ -230,6 +230,44 @@
 - When calling `GET /ops/summary/policy`
 - Then non-admin receives `403` and admin receives policy integrity counters
 
+### 24) Onboarding Baseline Coverage Guardrails (Planned Addendum)
+- Given onboarding baseline slider inputs are used to simulate a steady weekly KPI pattern against last-12-month Actual GCI
+- When coverage is computed for the baseline stage
+- Then coverage display is capped at `100%`
+- And internal overshoot is permitted only up to `105%`
+- And user cannot proceed while baseline coverage is `< 80%`
+- And user cannot proceed while `Untracked Drivers` remainder is `> 20%`
+- And baseline and target KPI streams are persisted separately for later use
+
+### 25) Continuity Projection ON/OFF Horizon Behavior (Planned Addendum)
+- Given continuity projection is configurable per environment/admin toggle
+- When continuity is `OFF`
+- Then provider-forecast contribution is zero and continuity modifier is `1.0`
+- When continuity is `ON`
+- Then far-horizon projection can include provider-forecast continuity inputs
+- And continuity inputs remain forecast-only (not user logs)
+- And overlapping real logs replace/override provider continuity contributions
+
+### 26) Horizon Confidence Penalty by Forecast Reliance (Planned Addendum)
+- Given per-horizon projection outputs include provenance splits (`real`, `seeded_history`, `provider_forecast`)
+- When provider forecast share increases in a horizon
+- Then horizon confidence decreases by continuity modifier clamp rules without changing base projection values
+- And modifier floor/ceiling behavior is preserved (`0.60` to `1.00`)
+
+### 27) Synthetic / Provider Forecast Isolation Rules (Planned Addendum)
+- Given onboarding seeded history and provider continuity inputs exist for forecast integrity
+- When challenge progress, leaderboards, GP/VP, and calibration truth updates are computed
+- Then provider continuity inputs are excluded from those computations
+- And seeded/provider sources remain distinguishable for audit/debug purposes
+
+### 28) Projection Lab Scenario Regression Harness (Planned A3/A4)
+- Given an admin creates a Projection Lab scenario with synthetic inputs
+- When the scenario is executed
+- Then the real KPI→PC algorithm path is used (inputs mocked only)
+- And continuity ON/OFF comparisons can be run and diffed
+- And regression assertions can evaluate known failure modes (6-month cliff, onboarding skew, KPI selection bias)
+- And run outputs can be exported/reviewed without mutating production user data by default
+
 ## Edge Cases
 
 ### E1) Offline Log Sync Ordering and Integrity
@@ -319,6 +357,17 @@
 - Then link opens in approved browser flow
 - And tap event is tracked (without blocking challenge progression)
 
+### E9) Selection Bias Convergence (Planned Simulation Scenario)
+- Given two synthetic users with identical closings but different tracked KPI subsets
+- When sufficient calibration updates are simulated via Projection Lab
+- Then prediction accuracy converges within bounded tolerance across both users
+
+### E10) Continuity Replacement Overlap Safety (Planned)
+- Given continuity projection contributes forecast-only future inputs
+- When real KPI logs arrive in the same buffered horizon window
+- Then overlapping provider continuity contributions are removed/ignored deterministically
+- And no duplicate contribution remains in horizon provenance accounting
+
 ## Regression Checklist
 
 - Auth routes still enforce bearer token requirements.
@@ -367,7 +416,21 @@ This section defines UI/API integration validation for the frontend sprint roadm
 | A1 | #21 (authz baseline) | Admin auth guard, role-gated navigation, 403 handling on restricted admin routes |
 | A2 | #21 (kpi/template CRUD) | KPI catalog and challenge template CRUD UI behavior with safe deactivation patterns |
 | A3 | #21 (user ops), analytics/report validation | User role/tier/status operations, analytics dashboard views, report/export initiation UI |
-| A4 | #22, #23 | Notification queue ops UI, policy summary UI, admin hardening/regression checks |
+| A4 | #22, #23, #28 | Notification queue ops UI, policy summary UI, projection-lab regression/admin hardening checks |
+
+## Addendum Acceptance Mapping (2026-02-25, Planned / Spec-Only)
+
+- Part 1 references:
+  - `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_1_PROJECTION_INTEGRITY_CALIBRATION.md`
+- Part 2 references:
+  - `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_2_PROJECTION_LAB.md`
+- Planned backend algorithm validation additions:
+  - #24, #25, #26, #27
+  - E9, E10
+- Planned admin Projection Lab validation:
+  - #28 (A3/A4 rollout path)
+- Planned implementation note:
+  - These scenarios are spec-mapped now and should be activated when corresponding backend/admin features are implemented.
 
 ### Frontend Regression Gate
 - No sprint closes unless prior frontend sprint coverage remains green.

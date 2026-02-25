@@ -69,3 +69,51 @@
 - GP/VP must not generate PC.
 - Forecast Confidence must not mutate base projection numbers.
 - Pipeline Anchors are mandatory inputs for forecast confidence context.
+
+## Addendum Integration (2026-02-25) — Projection Integrity + Projection Lab (Planned)
+
+References:
+- `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_1_PROJECTION_INTEGRITY_CALIBRATION.md`
+- `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_2_PROJECTION_LAB.md`
+
+Status:
+- `spec-integrated, implementation deferred`
+- This section records accepted behavioral direction and supersedes earlier wording where explicitly noted.
+
+### Forecast Engine Extensions (Planned)
+- Calibration model remains `effective_weight = pc_weight * user_multiplier` and preserves current TTC/decay timeline logic.
+- Forecast generation must preserve source provenance separation for projection inputs:
+  - `real` (user-entered logs)
+  - `seeded_history` (onboarding synthetic backplot)
+  - `provider_forecast` (continuity projection; forecast-only source)
+- Continuity Projection (optional, admin/config toggled) may provide forecast-only future inputs to prevent an artificially empty 6-12 month horizon.
+- Provider continuity inputs are forecast-only and must not:
+  - appear as historical user logs,
+  - count toward leaderboards/challenges,
+  - affect GP/VP,
+  - train calibration as ground truth.
+- Real user logs override/replace overlapping continuity-forecast inputs in projection computation.
+
+### Onboarding Completion Behavior (Planned Revision)
+- Onboarding data model is split into:
+  - `baseline` KPI quantities (history-anchored; used for seed/init)
+  - `target` KPI quantities (planning-only; no historical seed contamination)
+- Baseline coverage is evaluated using the real projection engine against last-12-month actual GCI.
+- Baseline outputs drive:
+  - onboarding tail seeding
+  - continuity projection defaults
+  - conservative calibration initialization
+- Target outputs drive planning/coaching/what-if only and do not write into historical log stores.
+
+### Confidence Layer Extension (Planned)
+- Base confidence formula remains unchanged and display-layer only.
+- Add horizon-specific continuity modifier (per `PC_30`, `PC_90`, `PC_365`) based on forecast reliance share from `provider_forecast`.
+- Confidence should reflect demonstrated predictiveness and calibration trust quality, not raw KPI count.
+
+### Logging / Integrity Requirements (Planned)
+- Synthetic seeded events must be distinguishable from user-entered logs (flags/metadata/provenance).
+- Forecast-only provider continuity inputs must remain isolated from competitive scoring, analytics truth loops, and calibration training.
+
+### Admin Projection Lab (Planned A3/A4)
+- Admin-only simulation/regression harness will run the real KPI→PC algorithm on synthetic inputs.
+- Projection Lab is a testing/integrity layer (mock inputs only), not a replacement algorithm path.

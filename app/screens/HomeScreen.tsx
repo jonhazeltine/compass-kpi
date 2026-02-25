@@ -17,7 +17,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <View style={styles.headerGreeting}>
           <Text style={styles.headerHello}>Hi, Jonathan</Text>

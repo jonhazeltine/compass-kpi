@@ -7,6 +7,7 @@ import {
   Image,
   Modal,
   PanResponder,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -15,11 +16,17 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
 import LottieSlot from '../components/LottieSlot';
+import PillGrowthBg from '../assets/figma/kpi_icon_bank/pill_growth_bg_v1.svg';
+import PillProjectionsBg from '../assets/figma/kpi_icon_bank/pill_projections_bg_v1.svg';
+import PillQuicklogBg from '../assets/figma/kpi_icon_bank/pill_quicklog_bg_v1.svg';
+import PillVitalityBg from '../assets/figma/kpi_icon_bank/pill_vitality_bg_orange_v2.svg';
 import { useAuth } from '../contexts/AuthContext';
 import {
   getFeedbackConfig,
+  registerFeedbackCueSource,
   playFeedbackCueAsync,
   playKpiTypeCueAsync,
   preloadFeedbackCuesAsync,
@@ -113,13 +120,48 @@ type LoadState = 'loading' | 'empty' | 'error' | 'ready';
 type Segment = 'PC' | 'GP' | 'VP';
 type ViewMode = 'home' | 'log';
 type BottomTab = 'home' | 'challenge' | 'newkpi' | 'team' | 'user';
-type DrawerFilter = 'All' | 'PC' | 'GP' | 'VP';
+type DrawerFilter = 'Quick' | 'PC' | 'GP' | 'VP';
 type HomePanel = 'Quick' | 'PC' | 'GP' | 'VP';
+type KpiTileContextBadge = 'CH' | 'TM' | 'TC' | 'REQ';
+type KpiTileContextMeta = {
+  badges: KpiTileContextBadge[];
+  isRequired?: boolean;
+  isLagging?: boolean;
+};
+type HomePanelTile = {
+  kpi: DashboardPayload['loggable_kpis'][number];
+  context: KpiTileContextMeta;
+};
 
 type PendingDirectLog = {
   kpiId: string;
   name: string;
   type: DashboardPayload['loggable_kpis'][number]['type'];
+};
+
+type ActiveFlightFx = {
+  key: number;
+  startX: number;
+  startY: number;
+  deltaX: number;
+  deltaY: number;
+  arcLift: number;
+  anim: Animated.Value;
+};
+
+type MeasuredBox = { x: number; y: number; width: number; height: number };
+
+type SendLogOptions = {
+  kpiType?: DashboardPayload['loggable_kpis'][number]['type'];
+  skipSuccessBadge?: boolean;
+  skipProjectionFlight?: boolean;
+  eventTimestampIso?: string;
+};
+
+type QueuedLogTask = {
+  kpiId: string;
+  direct?: number;
+  options?: SendLogOptions;
 };
 
 const KPI_TYPE_SORT_ORDER: Record<'PC' | 'GP' | 'VP', number> = {
@@ -163,12 +205,14 @@ const HOME_PANEL_ICONS: Record<HomePanel, string> = {
   GP: '🏙️',
   VP: '🌳',
 };
-const GAMEPLAY_MODE_ACTIVE_WIDTH = 170;
+const GAMEPLAY_MODE_ACTIVE_WIDTH = 238;
 const GAMEPLAY_MODE_INACTIVE_WIDTH = 52;
 const GAMEPLAY_MODE_GAP = 6;
 const GAMEPLAY_MODE_LOOP_CYCLES = 3;
 const MODE_RAIL_LOOP_CYCLES = 15;
 const MODE_RAIL_MIDDLE_CYCLE = Math.floor(MODE_RAIL_LOOP_CYCLES / 2);
+const PROJECTED_CARD_WINDOWS = [30, 60, 90, 180, 360] as const;
+const ACTUAL_CARD_VIEWS = ['actual365', 'progressYtd'] as const;
 const GP_LOTTIE_SOURCE: object | number | null = null;
 const VP_LOTTIE_SOURCE: object | number | null = null;
 
@@ -545,6 +589,68 @@ function normalizeManagedKpiIds(
   return next;
 }
 
+function dedupeKpisById(kpis: DashboardPayload['loggable_kpis']): DashboardPayload['loggable_kpis'] {
+  const seen = new Set<string>();
+  const deduped: DashboardPayload['loggable_kpis'] = [];
+  for (const kpi of kpis) {
+    const id = String(kpi.id ?? '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    deduped.push(kpi);
+  }
+  return deduped;
+}
+
+function derivePlaceholderOverlayBadgesForHomeTile(
+  _kpi: DashboardPayload['loggable_kpis'][number],
+  tileIndex: number
+): KpiTileContextBadge[] {
+  // DEV/DEMO seam (M3-G1): make context badges visibly render on Home before challenge/team payload wiring.
+  // TODO(M3-G4/M3-G5): replace with real challenge/team memberships when payload includes them.
+  if (tileIndex === 0) return ['CH'];
+  if (tileIndex === 1) return ['TM'];
+  if (tileIndex === 2) return ['TC'];
+  return [];
+}
+
+function deriveKpiTileContextMeta(
+  kpi: DashboardPayload['loggable_kpis'][number],
+  payload: DashboardPayload | null,
+  tileIndex: number
+): KpiTileContextMeta {
+  const requiredAnchorIds = new Set(
+    (payload?.projection.required_pipeline_anchors ?? [])
+      .map((anchor) => String(anchor.kpi_id ?? '').trim())
+      .filter(Boolean)
+  );
+  const isRequired = requiredAnchorIds.has(String(kpi.id ?? '').trim());
+  const badges = new Set<KpiTileContextBadge>();
+  if (isRequired) badges.add('REQ');
+  for (const badge of derivePlaceholderOverlayBadgesForHomeTile(kpi, tileIndex)) badges.add(badge);
+  return {
+    badges: [...badges],
+    isRequired,
+    isLagging: false,
+  };
+}
+
+function buildHomePanelTiles(
+  kpis: DashboardPayload['loggable_kpis'],
+  payload: DashboardPayload | null
+): HomePanelTile[] {
+  return dedupeKpisById(kpis).map((kpi, tileIndex) => ({
+    kpi,
+    context: deriveKpiTileContextMeta(kpi, payload, tileIndex),
+  }));
+}
+
+function renderContextBadgeLabel(badge: KpiTileContextBadge) {
+  if (badge === 'CH') return '🏆';
+  if (badge === 'TM') return '👥';
+  if (badge === 'TC') return '👥🏆';
+  return 'REQ';
+}
+
 function monthKey(d: Date) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
@@ -557,8 +663,11 @@ function monthLabel(monthKeyValue: string) {
   const [year, month] = monthKeyValue.split('-').map(Number);
   const dt = new Date(year, (month ?? 1) - 1, 1);
   const mon = dt.toLocaleString(undefined, { month: 'short' });
-  const yy = String(year).slice(-2);
-  return `${mon} '${yy}`;
+  if ((month ?? 0) === 1) {
+    const yy = String(year).slice(-2);
+    return `${mon} '${yy}`;
+  }
+  return mon;
 }
 
 function monthLabelFromIsoMonthStart(isoValue: string) {
@@ -591,6 +700,23 @@ function isoTodayLocal() {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function shiftIsoLocalDate(isoDay: string, deltaDays: number) {
+  const [year, month, day] = String(isoDay || '').split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return isoTodayLocal();
+  const dt = new Date(year, Math.max(0, month - 1), day);
+  dt.setDate(dt.getDate() + deltaDays);
+  const nextYear = dt.getFullYear();
+  const nextMonth = String(dt.getMonth() + 1).padStart(2, '0');
+  const nextDay = String(dt.getDate()).padStart(2, '0');
+  return `${nextYear}-${nextMonth}-${nextDay}`;
+}
+
+function eventTimestampIsoForSelectedDay(isoDay: string) {
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(isoDay) ? isoDay : isoTodayLocal();
+  // Use noon UTC so the stored ISO date prefix remains the selected day across time zones.
+  return `${normalized}T12:00:00.000Z`;
 }
 
 function chartFromPayload(payload: DashboardPayload | null) {
@@ -688,12 +814,46 @@ const dashboardAssets = {
   confettiRight: require('../assets/figma/dashboard/confetti_right.png'),
 } as const;
 
+const feedbackAudioAssets = {
+  swipe: require('../assets/audio/sfx/swipe_shorter.m4a'),
+  logTap: require('../assets/audio/sfx/coin_success.m4a'),
+  growthTap: require('../assets/audio/sfx/drill_growth_kpi_sound.m4a'),
+  vitalityTap: require('../assets/audio/sfx/Vitatlity2.m4a'),
+  logSuccess: require('../assets/audio/sfx/ui_coin_success.mp3'),
+  locked: require('../assets/audio/sfx/ui_locked.mp3'),
+  logError: require('../assets/audio/sfx/ui_error.mp3'),
+} as const;
+
+const bottomTabIconAssets = {
+  home: require('../assets/figma/kpi_icon_bank/dashboard coin.png'),
+  challenge: require('../assets/figma/kpi_icon_bank/flag coin.png'),
+  newkpi: require('../assets/figma/kpi_icon_bank/log coin.png'),
+  team: require('../assets/figma/kpi_icon_bank/team coin.png'),
+  user: require('../assets/figma/kpi_icon_bank/coach coin.png'),
+} as const;
+
+const homePanelPillSvgBg = {
+  Quick: PillQuicklogBg,
+  PC: PillProjectionsBg,
+  GP: PillGrowthBg,
+  VP: PillVitalityBg,
+} as const;
+
+const bottomTabIconStyleByKey: Record<BottomTab, any> = {
+  home: null,
+  challenge: null,
+  newkpi: null,
+  team: null,
+  user: null,
+};
+
 type Props = {
   onOpenProfile?: () => void;
 };
 
 export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const { session } = useAuth();
+  const insets = useSafeAreaInsets();
   const [state, setState] = useState<LoadState>('loading');
   const [payload, setPayload] = useState<DashboardPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -705,7 +865,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   const [activeTab, setActiveTab] = useState<BottomTab>('home');
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
-  const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('All');
+  const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
   const [favoriteKpiIds, setFavoriteKpiIds] = useState<string[]>([]);
   const [pendingDirectLog, setPendingDirectLog] = useState<PendingDirectLog | null>(null);
@@ -720,13 +880,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [homeVisualViewportWidth, setHomeVisualViewportWidth] = useState(0);
   const [homeGridViewportWidth, setHomeGridViewportWidth] = useState(0);
   const [hudActiveIndex, setHudActiveIndex] = useState(0);
+  const [projectedCardWindowDays, setProjectedCardWindowDays] = useState<(typeof PROJECTED_CARD_WINDOWS)[number]>(90);
+  const [actualHudCardView, setActualHudCardView] = useState<(typeof ACTUAL_CARD_VIEWS)[number]>('actual365');
   const [modeRailViewportWidth, setModeRailViewportWidth] = useState(0);
   const [modeRailActiveCycle, setModeRailActiveCycle] = useState(MODE_RAIL_MIDDLE_CYCLE);
+  const [modeRailScrollEnabled, setModeRailScrollEnabled] = useState(true);
   const [confirmedKpiTileIds, setConfirmedKpiTileIds] = useState<Record<string, true>>({});
   const [feedbackMuted, setFeedbackMuted] = useState(!getFeedbackConfig().audioEnabled);
   const [feedbackVolume, setFeedbackVolume] = useState(getFeedbackConfig().volume);
   const homePanelAnim = useRef(new Animated.Value(HOME_PANEL_ORDER.length + HOME_PANEL_ORDER.indexOf('Quick'))).current;
   const modeRailScrollRef = useRef<ScrollView | null>(null);
+  const modeRailDragStartXRef = useRef<number | null>(null);
+  const modeRailDragLastXRef = useRef(0);
+  const modeRailDragCommittedRef = useRef(false);
+  const modeRailFreezeXRef = useRef<number | null>(null);
+  const modeRailHasMomentumRef = useRef(false);
+  const modeRailPanelDragStartVirtualRef = useRef<number | null>(null);
   const modeRailVirtualIndexRef = useRef(MODE_RAIL_MIDDLE_CYCLE * HOME_PANEL_ORDER.length + HOME_PANEL_ORDER.indexOf('Quick'));
   const homePanelVirtualIndexRef = useRef(HOME_PANEL_ORDER.length + HOME_PANEL_ORDER.indexOf('Quick'));
   const homePanelDirectionRef = useRef<-1 | 0 | 1>(0);
@@ -742,22 +911,50 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const chartPinnedScrollXRef = useRef<number | null>(null);
   const preservePinnedChartScrollRef = useRef(false);
   const chartScrollableRef = useRef<View | null>(null);
-  const homePanelSwipeActiveRef = useRef(false);
-  const homePanelSwipeSuppressTapUntilRef = useRef(0);
-  const pendingQuickTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingQuickTapKpiIdRef = useRef<string | null>(null);
-  const pendingQuickTapFiredRef = useRef(false);
-  const flightAnim = useRef(new Animated.Value(0)).current;
-  const [flightFx, setFlightFx] = useState<{
-    key: number;
-    startX: number;
-    startY: number;
-    deltaX: number;
-    deltaY: number;
-    arcLift: number;
-  } | null>(null);
+  const flightRootBoxCacheRef = useRef<MeasuredBox | null>(null);
+  const flightChartViewportBoxCacheRef = useRef<MeasuredBox | null>(null);
+  const flightChartContentBoxCacheRef = useRef<MeasuredBox | null>(null);
+  const flightMeasureCachePanelRef = useRef<HomePanel | null>(null);
+  const [activeFlightFx, setActiveFlightFx] = useState<ActiveFlightFx[]>([]);
+  const logQueueRef = useRef<QueuedLogTask[]>([]);
+  const logQueueRunningRef = useRef(false);
+  const homeTapHapticLastAtRef = useRef(0);
+  const homeTapHapticBurstRef = useRef(0);
+  const homeAutoFireStartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const homeAutoFireIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const homeAutoFireKpiIdRef = useRef<string | null>(null);
+  const projectedHudValueAnim = useRef(new Animated.Value(0)).current;
+  const projectedHudInitializedRef = useRef(false);
+  const projectedHudTargetRef = useRef(0);
+  const projectedHudSpinIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const projectedHudSpinFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const projectedHudSpinningRef = useRef(false);
+  const projectedHudSpinTickRef = useRef(0);
+  const projectedHudSpinStartedAtRef = useRef(0);
+  const projectedHudValuePopAnim = useRef(new Animated.Value(0)).current;
+  const projectedHudAccentFlashAnim = useRef(new Animated.Value(0)).current;
+  const projectedHudSlotTranslateY = useRef(new Animated.Value(0)).current;
+  const projectedHudSlotStepBusyRef = useRef(false);
+  const projectedHudSlotCurrentTextRef = useRef('$0');
+  const projectedHudSlotNextTextRef = useRef('$0');
+  const [projectedHudDisplayValue, setProjectedHudDisplayValue] = useState(0);
+  const [projectedHudSlotCurrentText, setProjectedHudSlotCurrentText] = useState('$0');
+  const [projectedHudSlotNextText, setProjectedHudSlotNextText] = useState('$0');
+  const chartImpactBurstValueAnim = useRef(new Animated.Value(0)).current;
+  const chartImpactBurstOpacityAnim = useRef(new Animated.Value(0)).current;
+  const chartImpactBurstScaleAnim = useRef(new Animated.Value(0.94)).current;
+  const chartImpactBurstHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chartImpactBurstTargetRef = useRef(0);
+  const chartImpactBurstDisplayRef = useRef(0);
+  const chartImpactBurstVisibleRef = useRef(false);
+  const [chartImpactBurstDisplay, setChartImpactBurstDisplay] = useState(0);
   const [chartImpactLineX, setChartImpactLineX] = useState<number | null>(null);
   const [chartImpactLineValue, setChartImpactLineValue] = useState(0);
+  const chartImpactMonthPulseAnim = useRef(new Animated.Value(0)).current;
+  const [chartImpactMonthIndex, setChartImpactMonthIndex] = useState<number | null>(null);
+  const bottomNavPadBottom = 0;
+  const bottomNavPadTop = 0;
+  const contentBottomPad = 118 + Math.max(10, insets.bottom);
 
   const gpUnlocked = (payload?.activity.active_days ?? 0) >= 3 || (payload?.activity.total_logs ?? 0) >= 20;
   const vpUnlocked = (payload?.activity.active_days ?? 0) >= 7 || (payload?.activity.total_logs ?? 0) >= 40;
@@ -854,8 +1051,24 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   }, [fetchDashboard, state]);
 
   React.useEffect(() => {
+    registerFeedbackCueSource('swipe', feedbackAudioAssets.swipe);
+    registerFeedbackCueSource('logTap', feedbackAudioAssets.logTap);
+    registerFeedbackCueSource('growthTap', feedbackAudioAssets.growthTap);
+    registerFeedbackCueSource('vitalityTap', feedbackAudioAssets.vitalityTap);
+    registerFeedbackCueSource('logSuccess', feedbackAudioAssets.logSuccess);
+    registerFeedbackCueSource('locked', feedbackAudioAssets.locked);
+    registerFeedbackCueSource('logError', feedbackAudioAssets.logError);
     void primeFeedbackAudioAsync();
     void preloadFeedbackCuesAsync();
+    return () => {
+      registerFeedbackCueSource('swipe', null);
+      registerFeedbackCueSource('logTap', null);
+      registerFeedbackCueSource('growthTap', null);
+      registerFeedbackCueSource('vitalityTap', null);
+      registerFeedbackCueSource('logSuccess', null);
+      registerFeedbackCueSource('locked', null);
+      registerFeedbackCueSource('logError', null);
+    };
   }, []);
 
   React.useEffect(() => {
@@ -888,10 +1101,69 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     };
   }, [chartImpactLineAnim]);
 
+  React.useEffect(() => {
+    const sub = projectedHudValueAnim.addListener(({ value }) => {
+      setProjectedHudDisplayValue(Math.max(0, Math.round(value)));
+    });
+    return () => {
+      projectedHudValueAnim.removeListener(sub);
+    };
+  }, [projectedHudValueAnim]);
+
+  const animateProjectedHudValuePop = useCallback(() => {
+    projectedHudValuePopAnim.stopAnimation();
+    projectedHudAccentFlashAnim.stopAnimation();
+    projectedHudValuePopAnim.setValue(0);
+    projectedHudAccentFlashAnim.setValue(0);
+    Animated.parallel([
+      Animated.sequence([
+        Animated.timing(projectedHudValuePopAnim, {
+          toValue: 1,
+          duration: 120,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(projectedHudValuePopAnim, {
+          toValue: 0,
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.sequence([
+        Animated.timing(projectedHudAccentFlashAnim, {
+          toValue: 1,
+          duration: 110,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(projectedHudAccentFlashAnim, {
+          toValue: 0,
+          duration: 260,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+      ]),
+    ]).start();
+  }, [projectedHudAccentFlashAnim, projectedHudValuePopAnim]);
+
+  React.useEffect(() => {
+    const sub = chartImpactBurstValueAnim.addListener(({ value }) => {
+      const rounded = Math.max(0, Math.round(value));
+      chartImpactBurstDisplayRef.current = rounded;
+      setChartImpactBurstDisplay(rounded);
+    });
+    return () => {
+      chartImpactBurstValueAnim.removeListener(sub);
+    };
+  }, [chartImpactBurstValueAnim]);
+
   React.useEffect(
     () => () => {
       Object.values(kpiTileConfirmTimeoutByIdRef.current).forEach(clearTimeout);
-      if (pendingQuickTapTimerRef.current) clearTimeout(pendingQuickTapTimerRef.current);
+      if (chartImpactBurstHideTimeoutRef.current) clearTimeout(chartImpactBurstHideTimeoutRef.current);
+      if (projectedHudSpinIntervalRef.current) clearInterval(projectedHudSpinIntervalRef.current);
+      if (projectedHudSpinFallbackTimeoutRef.current) clearTimeout(projectedHudSpinFallbackTimeoutRef.current);
     },
     []
   );
@@ -920,6 +1192,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     preservePinnedChartScrollRef.current = false;
     chartPinnedScrollXRef.current = null;
   }, [viewMode]);
+
+  React.useEffect(() => {
+    // Panel switches should reopen the shared chart at the canonical "today" anchor,
+    // not preserve a prior animation pin from another panel.
+    preservePinnedChartScrollRef.current = false;
+    chartPinnedScrollXRef.current = null;
+  }, [homePanel]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -1000,21 +1279,58 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const animateChartImpactLine = useCallback((x: number) => {
     setChartImpactLineX(x);
     chartImpactLineAnim.stopAnimation();
-    setChartImpactLineValue(1.22);
-    chartImpactLineAnim.setValue(1.22);
+    chartImpactLineAnim.setValue(0);
+    setChartImpactLineValue(0);
     return new Promise<void>((resolve) => {
-      Animated.timing(chartImpactLineAnim, {
-        toValue: 0,
-        duration: 1320,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start(() => {
+      Animated.sequence([
+        Animated.timing(chartImpactLineAnim, {
+          toValue: 0.92,
+          duration: 6,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: false,
+        }),
+        Animated.timing(chartImpactLineAnim, {
+          toValue: 0.58,
+          duration: 48,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: false,
+        }),
+        Animated.timing(chartImpactLineAnim, {
+          toValue: 0,
+          duration: 460,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+      ]).start(() => {
         setChartImpactLineX((prev) => (prev === x ? null : prev));
         setChartImpactLineValue(0);
         resolve();
       });
     });
   }, [chartImpactLineAnim]);
+
+  const animateChartImpactMonthPulse = useCallback((monthIndex: number) => {
+    setChartImpactMonthIndex(monthIndex);
+    chartImpactMonthPulseAnim.stopAnimation();
+    chartImpactMonthPulseAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(chartImpactMonthPulseAnim, {
+        toValue: 1,
+        duration: 140,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.delay(220),
+      Animated.timing(chartImpactMonthPulseAnim, {
+        toValue: 0,
+        duration: 560,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setChartImpactMonthIndex((prev) => (prev === monthIndex ? null : prev));
+    });
+  }, [chartImpactMonthPulseAnim]);
 
   const measureInWindowAsync = useCallback(
     (node: { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void } | null) =>
@@ -1029,6 +1345,39 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       }),
     []
   );
+
+  const refreshFlightMeasureCache = useCallback(async () => {
+    const rootNode = screenRootRef.current;
+    const chartViewportNode = chartScrollRef.current;
+    const chartContentNode = chartScrollableRef.current;
+    const [rootBox, chartViewportBox, chartContentBox] = await Promise.all([
+      measureInWindowAsync(rootNode),
+      measureInWindowAsync(chartViewportNode as unknown as View | null),
+      measureInWindowAsync(chartContentNode),
+    ]);
+    if (rootBox) flightRootBoxCacheRef.current = rootBox;
+    if (chartViewportBox) flightChartViewportBoxCacheRef.current = chartViewportBox;
+    if (chartContentBox) flightChartContentBoxCacheRef.current = chartContentBox;
+    flightMeasureCachePanelRef.current = homePanel;
+  }, [homePanel, measureInWindowAsync]);
+
+  React.useEffect(() => {
+    if (viewMode !== 'home' || chartViewportWidth <= 0) return;
+    const raf = requestAnimationFrame(() => {
+      void refreshFlightMeasureCache();
+    });
+    const t = setTimeout(() => {
+      void refreshFlightMeasureCache();
+    }, 120);
+    const t2 = setTimeout(() => {
+      void refreshFlightMeasureCache();
+    }, 300);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+      clearTimeout(t2);
+    };
+  }, [chartViewportWidth, homePanel, refreshFlightMeasureCache, viewMode]);
 
   const getProjectionImpactPointForDate = useCallback((payoffStartIso: string) => {
     const series = chartFromPayload(payload);
@@ -1080,51 +1429,116 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     };
   }, [payload]);
 
-  const launchProjectionFlightFx = useCallback(async (kpiId: string, payoffStartIso: string) => {
+  const launchProjectionFlightFx = useCallback(async (
+    kpiId: string,
+    payoffStartIso: string,
+    options?: { centerOnImpact?: boolean; sourcePagePoint?: { x: number; y: number } | null }
+  ) => {
     if (viewMode !== 'home') return;
-    const impact = getProjectionImpactPointForDate(payoffStartIso);
-    if (!impact) return;
-    if (chartScrollRef.current && chartViewportWidth > 0) {
+    const rawImpact = getProjectionImpactPointForDate(payoffStartIso);
+    if (!rawImpact) return;
+    let impact = rawImpact;
+    const shouldCenterOnImpact = options?.centerOnImpact !== false;
+    if (!shouldCenterOnImpact && chartViewportWidth > 0) {
+      const visibleMinX = chartScrollXRef.current + 6;
+      const visibleMaxX = chartScrollXRef.current + Math.max(12, chartViewportWidth - 10);
+      const clampedImpactX = Math.max(visibleMinX, Math.min(visibleMaxX, impact.x));
+      if (clampedImpactX !== impact.x) {
+        impact = { ...impact, x: clampedImpactX };
+      }
+    }
+    if (shouldCenterOnImpact && chartScrollRef.current && chartViewportWidth > 0) {
       const maxScroll = Math.max(0, impact.chartWidth - chartViewportWidth);
       const targetScrollX = Math.min(maxScroll, Math.max(0, impact.x - chartViewportWidth / 2));
       chartPinnedScrollXRef.current = targetScrollX;
       preservePinnedChartScrollRef.current = true;
       chartScrollRef.current.scrollTo({ x: targetScrollX, animated: false });
       chartScrollXRef.current = targetScrollX;
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
     }
-    const sourceNode = kpiTileCircleRefById.current[kpiId];
+    const sourceNode = options?.sourcePagePoint ? null : kpiTileCircleRefById.current[kpiId];
     const chartViewportNode = chartScrollRef.current;
+    const chartContentNode = chartScrollableRef.current;
     const rootNode = screenRootRef.current;
-    const [sourceBox, chartBox] = await Promise.all([
-      measureInWindowAsync(sourceNode),
-      measureInWindowAsync(chartViewportNode as unknown as View | null),
-    ]);
-    const rootBox = await measureInWindowAsync(rootNode);
-    if (!sourceBox || !chartBox || !rootBox) return;
+    const canUseCachedBoxes =
+      options?.sourcePagePoint != null &&
+      flightMeasureCachePanelRef.current === homePanel &&
+      flightRootBoxCacheRef.current != null &&
+      (flightChartContentBoxCacheRef.current != null || flightChartViewportBoxCacheRef.current != null);
+    let sourceBox: MeasuredBox | null = null;
+    let chartViewportBox = canUseCachedBoxes ? flightChartViewportBoxCacheRef.current : null;
+    let chartContentBox = canUseCachedBoxes ? flightChartContentBoxCacheRef.current : null;
+    let rootBox = canUseCachedBoxes ? flightRootBoxCacheRef.current : null;
+    if (!canUseCachedBoxes) {
+      [sourceBox, chartViewportBox, chartContentBox] = await Promise.all([
+        measureInWindowAsync(sourceNode),
+        measureInWindowAsync(chartViewportNode as unknown as View | null),
+        measureInWindowAsync(chartContentNode),
+      ]);
+      rootBox = await measureInWindowAsync(rootNode);
+      if (rootBox) flightRootBoxCacheRef.current = rootBox;
+      if (chartViewportBox) flightChartViewportBoxCacheRef.current = chartViewportBox;
+      if (chartContentBox) flightChartContentBoxCacheRef.current = chartContentBox;
+    }
+    if (!rootBox || (!chartViewportBox && !chartContentBox)) return;
 
     const projectileHalf = 14;
-    const startX = sourceBox.x - rootBox.x + sourceBox.width / 2 - projectileHalf;
-    const startY = sourceBox.y - rootBox.y + sourceBox.height / 2 - projectileHalf;
-    const endX = chartBox.x - rootBox.x + impact.x - chartScrollXRef.current - projectileHalf;
-    const endY = chartBox.y - rootBox.y + 12 + impact.y - projectileHalf;
-    setFlightFx({
-      key: Date.now(),
+    const startX = options?.sourcePagePoint
+      ? options.sourcePagePoint.x - rootBox.x - projectileHalf
+      : (sourceBox ? sourceBox.x - rootBox.x + sourceBox.width / 2 - projectileHalf : null);
+    const startY = options?.sourcePagePoint
+      ? options.sourcePagePoint.y - rootBox.y - projectileHalf
+      : (sourceBox ? sourceBox.y - rootBox.y + sourceBox.height / 2 - projectileHalf : null);
+    if (startX == null || startY == null) return;
+    const viewportBoxForTarget = options?.sourcePagePoint != null ? chartViewportBox : null;
+    const useViewportTargetMath = viewportBoxForTarget != null;
+    const rawEndX =
+      useViewportTargetMath
+        ? viewportBoxForTarget.x - rootBox.x + impact.x - chartScrollXRef.current - projectileHalf
+        : chartContentBox != null
+          ? chartContentBox.x - rootBox.x + impact.x - projectileHalf
+          : (chartViewportBox?.x ?? rootBox.x) - rootBox.x + impact.x - chartScrollXRef.current - projectileHalf;
+    const rawEndY =
+      (chartContentBox?.y ?? chartViewportBox?.y ?? rootBox.y) - rootBox.y + 12 + impact.y - projectileHalf;
+    const endX = Math.max(-8, Math.min(rootBox.width + 8, rawEndX));
+    const endY = Math.max(-8, Math.min(rootBox.height + 8, rawEndY));
+    const flightAnim = new Animated.Value(0);
+    const flightKey = Date.now() + Math.floor(Math.random() * 1000);
+    setActiveFlightFx((prev) => {
+      const next: ActiveFlightFx[] = [
+        ...prev,
+        {
+          key: flightKey,
+          startX,
+          startY,
+          deltaX: endX - startX,
+          deltaY: endY - startY,
+          arcLift: Math.max(42, Math.min(86, Math.abs(endX - startX) * 0.14)),
+          anim: flightAnim,
+        },
+      ];
+      return next.length > 10 ? next.slice(next.length - 10) : next;
+    });
+    const thisFlight = {
+      key: flightKey,
       startX,
       startY,
       deltaX: endX - startX,
       deltaY: endY - startY,
       arcLift: Math.max(42, Math.min(86, Math.abs(endX - startX) * 0.14)),
-    });
-    flightAnim.stopAnimation();
+      anim: flightAnim,
+    } satisfies ActiveFlightFx;
     flightAnim.setValue(0);
-    const FLIGHT_DURATION_MS = 430;
-    const IMPACT_PROGRESS_TRIGGER = 0.76;
+    const FLIGHT_DURATION_MS = 340;
+    const IMPACT_PROGRESS_TRIGGER = 0;
+    const impactSeries = chartFromPayload(payload);
+    const impactMonthIndex = Math.max(0, Math.min(impactSeries.labels.length - 1, Math.round(impact.x / impactSeries.step)));
     let impactStarted = false;
     let impactPromise: Promise<void> | null = null;
     const maybeStartImpact = () => {
       if (impactStarted) return;
       impactStarted = true;
+      animateChartImpactMonthPulse(impactMonthIndex);
       impactPromise = animateChartImpactLine(impact.x);
     };
     const flightSub = flightAnim.addListener(({ value }) => {
@@ -1134,13 +1548,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     });
 
     await new Promise<void>((resolve) => {
+      maybeStartImpact();
       Animated.timing(flightAnim, {
         toValue: 1,
         duration: FLIGHT_DURATION_MS,
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }).start(() => {
-        setFlightFx(null);
+        setActiveFlightFx((prev) => prev.filter((fx) => fx.key !== thisFlight.key));
         resolve();
       });
     });
@@ -1149,7 +1564,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     if (impactPromise) {
       await impactPromise;
     }
-  }, [animateChartImpactLine, chartViewportWidth, flightAnim, getProjectionImpactPointForDate, measureInWindowAsync, viewMode]);
+  }, [animateChartImpactLine, animateChartImpactMonthPulse, chartViewportWidth, getProjectionImpactPointForDate, measureInWindowAsync, payload, viewMode]);
 
   const toggleFeedbackMuted = useCallback(() => {
     setFeedbackMuted((prev) => {
@@ -1198,15 +1613,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       const favorites = favoriteKpiIds.map((id) => byId.get(id)).filter(Boolean) as DashboardPayload['loggable_kpis'];
       const used = new Set(favorites.map((kpi) => kpi.id));
       const fill = managedKpis.filter((kpi) => !used.has(kpi.id));
-      return [...favorites, ...fill].slice(0, 6);
+      return dedupeKpisById([...favorites, ...fill]).slice(0, 6);
     },
     [favoriteKpiIds, managedKpis]
   );
 
-  const homePanelKpis = useMemo(() => {
-    if (homePanel === 'Quick') return homeQuickLog;
-    return managedKpis.filter((kpi) => kpi.type === homePanel).slice(0, 6);
-  }, [homePanel, homeQuickLog, managedKpis]);
+  const homePanelTiles = useMemo(() => {
+    const panelKpis =
+      homePanel === 'Quick' ? homeQuickLog : managedKpis.filter((kpi) => kpi.type === homePanel).slice(0, 6);
+    return buildHomePanelTiles(panelKpis, payload ?? null);
+  }, [homePanel, homeQuickLog, managedKpis, payload]);
 
   const chartSeries = useMemo(() => chartFromPayload(payload), [payload]);
   const chartSplitX =
@@ -1248,8 +1664,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       Number(payload?.projection.pc_next_365 ?? 0) ||
       projectedFromChart365 ||
       Number(payload?.projection.pc_90d ?? 0) * 4;
+    const projectedNext30Raw = sumProjectedDays(30);
     const projectedNext60Raw = sumProjectedDays(60);
+    const projectedNext90Raw = sumProjectedDays(90);
     const projectedNext180Raw = sumProjectedDays(180);
+    const projectedNext360Raw = sumProjectedDays(360);
     const projectedYtdRaw =
       Number(payload?.projection.projected_gci_ytd ?? 0) ||
       (actualYtdRaw + projectedThisYearFromChart);
@@ -1259,13 +1678,89 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     return {
       actualLast365: Number.isFinite(actualLast365Raw) ? actualLast365Raw : 0,
       actualYtd: Number.isFinite(actualYtdRaw) ? actualYtdRaw : 0,
+      projectedNext30: Number.isFinite(projectedNext30Raw) ? projectedNext30Raw : 0,
       projectedNext365: Number.isFinite(projectedNext365Raw) ? projectedNext365Raw : 0,
       projectedNext60: Number.isFinite(projectedNext60Raw) ? projectedNext60Raw : 0,
+      projectedNext90: Number.isFinite(projectedNext90Raw) ? projectedNext90Raw : 0,
       projectedNext180: Number.isFinite(projectedNext180Raw) ? projectedNext180Raw : 0,
+      projectedNext360: Number.isFinite(projectedNext360Raw) ? projectedNext360Raw : 0,
       projectedYtd: Number.isFinite(projectedYtdRaw) ? projectedYtdRaw : 0,
       progressPct: Number.isFinite(progressPctRaw) ? progressPctRaw : 0,
     };
   }, [payload]);
+
+  React.useEffect(() => {
+    const projectedCardValueByWindow: Record<(typeof PROJECTED_CARD_WINDOWS)[number], number> = {
+      30: cardMetrics.projectedNext30,
+      60: cardMetrics.projectedNext60,
+      90: cardMetrics.projectedNext90,
+      180: cardMetrics.projectedNext180,
+      360: cardMetrics.projectedNext360,
+    };
+    const target = Math.max(0, Math.round(projectedCardValueByWindow[projectedCardWindowDays] ?? 0));
+
+    if (!projectedHudInitializedRef.current) {
+      projectedHudInitializedRef.current = true;
+      projectedHudTargetRef.current = target;
+      projectedHudValueAnim.setValue(target);
+      setProjectedHudDisplayValue(target);
+      return;
+    }
+
+    const start = projectedHudTargetRef.current;
+    if (target === start) return;
+    projectedHudTargetRef.current = target;
+    animateProjectedHudValuePop();
+    if (projectedHudSpinningRef.current) {
+      // Keep spinning during rapid-fire / network refresh; just update the target to settle to later.
+      return;
+    }
+
+    projectedHudValueAnim.stopAnimation();
+
+    const span = Math.max(500, Math.abs(target - start));
+    const dir = target >= start ? 1 : -1;
+    const spin1 = Math.max(0, start + dir * Math.round(span * 0.8));
+    const spin2 = Math.max(0, start + dir * Math.round(span * 1.55));
+    const spin3 = Math.max(0, target + dir * Math.round(Math.max(700, span * 0.4)));
+
+    projectedHudValueAnim.setValue(start);
+    Animated.sequence([
+      Animated.timing(projectedHudValueAnim, {
+        toValue: spin1,
+        duration: 65,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }),
+      Animated.timing(projectedHudValueAnim, {
+        toValue: spin2,
+        duration: 65,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }),
+      Animated.timing(projectedHudValueAnim, {
+        toValue: spin3,
+        duration: 85,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }),
+      Animated.timing(projectedHudValueAnim, {
+        toValue: target,
+        duration: 160,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [
+    cardMetrics.projectedNext30,
+    cardMetrics.projectedNext60,
+    cardMetrics.projectedNext90,
+    cardMetrics.projectedNext180,
+    cardMetrics.projectedNext360,
+    projectedCardWindowDays,
+    animateProjectedHudValuePop,
+    projectedHudValueAnim,
+  ]);
 
   React.useEffect(() => {
     if (!chartViewportWidth || !chartScrollRef.current || viewMode !== 'home') return;
@@ -1286,42 +1781,25 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       };
     }
     const currentX = chartSplitX;
-    const targetX = Math.max(0, currentX - chartViewportWidth / 3);
+    const leftPeekInset = 14;
+    const targetX = Math.max(0, currentX - leftPeekInset);
     const clampedX = Math.min(maxX, targetX);
     const run = () => chartScrollRef.current?.scrollTo({ x: clampedX, animated: false });
     run();
     const t = setTimeout(run, 80);
     return () => clearTimeout(t);
-  }, [chartSeries.dataWidth, chartViewportWidth, viewMode, payload?.chart, chartSplitX]);
-  const availableLogDates = useMemo(() => {
-    const dates = new Set(
-      (payload?.recent_logs ?? [])
-        .map((log) => String(log.event_timestamp ?? ''))
-        .filter(Boolean)
-        .map((iso) => iso.slice(0, 10))
-    );
-    return [...dates].sort((a, b) => (a < b ? 1 : -1));
-  }, [payload?.recent_logs]);
-
-  const navigableLogDates = useMemo(() => {
-    const dates = new Set(availableLogDates);
-    dates.add(isoTodayLocal());
-    return [...dates].sort((a, b) => (a < b ? 1 : -1));
-  }, [availableLogDates]);
-
+  }, [chartSeries.dataWidth, chartViewportWidth, viewMode, payload?.chart, chartSplitX, homePanel]);
   React.useEffect(() => {
     const today = isoTodayLocal();
     setSelectedLogDateIso((prev) => {
       if (!prev) return today;
-      if (navigableLogDates.includes(prev)) return prev;
-      return today;
+      return prev;
     });
-  }, [navigableLogDates]);
+  }, []);
 
   const selectedLogDate = selectedLogDateIso ?? isoTodayLocal();
-  const selectedLogDateIndex = navigableLogDates.indexOf(selectedLogDate);
-  const canGoBackwardDate = selectedLogDateIndex >= 0 && selectedLogDateIndex < navigableLogDates.length - 1;
-  const canGoForwardDate = selectedLogDateIndex > 0;
+  const canGoBackwardDate = true;
+  const canGoForwardDate = selectedLogDate < isoTodayLocal();
 
   const todaysLogRows = useMemo(() => {
     const kpiNameById = new Map((payload?.loggable_kpis ?? []).map((kpi) => [kpi.id, kpi.name]));
@@ -1420,11 +1898,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const sendLog = async (
     kpiId: string,
     direct?: number,
-    options?: {
-      kpiType?: DashboardPayload['loggable_kpis'][number]['type'];
-      skipSuccessBadge?: boolean;
-      skipProjectionFlight?: boolean;
-    }
+    options?: SendLogOptions
   ) => {
     const token = session?.access_token;
     if (!token) {
@@ -1443,14 +1917,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         },
         body: JSON.stringify({
           kpi_id: kpiId,
-          event_timestamp: new Date().toISOString(),
+          event_timestamp: options?.eventTimestampIso ?? eventTimestampIsoForSelectedDay(selectedLogDate),
           logged_value: direct,
           idempotency_key: `${kpiId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
         }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? 'Failed to log KPI');
-      void playFeedbackCueAsync('logSuccess');
+      // M3b tuning: keep only the immediate onPressIn tap SFX for now; success remains visual/haptic.
       if (!options?.skipSuccessBadge) {
         animateKpiTileSuccess(kpiId);
       }
@@ -1460,6 +1934,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         await launchProjectionFlightFx(kpiId, payoffStartDate);
       }
       await fetchDashboard();
+      if ((options?.kpiType ?? 'PC') === 'PC') {
+        const elapsed = Date.now() - projectedHudSpinStartedAtRef.current;
+        const minSpinMs = 3000;
+        const settleDelay = Math.max(40, minSpinMs - elapsed);
+        setTimeout(() => {
+          stopProjectedHudSlotSpin({ settleToCurrentTarget: true });
+        }, settleDelay);
+      }
       void refreshConfidenceSnapshot();
     } catch (e: unknown) {
       void triggerHapticAsync('error');
@@ -1471,9 +1953,238 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
   };
 
+  const processQueuedLogs = useCallback(async () => {
+    if (logQueueRunningRef.current) return;
+    logQueueRunningRef.current = true;
+    try {
+      while (logQueueRef.current.length > 0) {
+        const nextTask = logQueueRef.current.shift();
+        if (!nextTask) continue;
+        await sendLog(nextTask.kpiId, nextTask.direct, nextTask.options);
+      }
+    } finally {
+      logQueueRunningRef.current = false;
+      if (logQueueRef.current.length > 0) {
+        void processQueuedLogs();
+      }
+    }
+  }, [sendLog]);
+
+  const enqueueLogTask = useCallback(
+    (task: QueuedLogTask) => {
+      logQueueRef.current.push(task);
+      void processQueuedLogs();
+    },
+    [processQueuedLogs]
+  );
+
+  const triggerHomeRapidTapHaptic = useCallback(() => {
+    const now = Date.now();
+    const delta = now - homeTapHapticLastAtRef.current;
+    if (delta > 220) {
+      homeTapHapticBurstRef.current = 0;
+    } else {
+      homeTapHapticBurstRef.current += 1;
+    }
+    homeTapHapticLastAtRef.current = now;
+
+    if (homeTapHapticBurstRef.current >= 3 && delta < 90) return;
+    if (homeTapHapticBurstRef.current >= 6 && delta < 130 && homeTapHapticBurstRef.current % 2 === 0) return;
+    void triggerHapticAsync('tap');
+  }, []);
+
+  function stopProjectedHudSlotSpin(options?: { settleToCurrentTarget?: boolean }) {
+    if (projectedHudSpinIntervalRef.current) {
+      clearInterval(projectedHudSpinIntervalRef.current);
+      projectedHudSpinIntervalRef.current = null;
+    }
+    if (projectedHudSpinFallbackTimeoutRef.current) {
+      clearTimeout(projectedHudSpinFallbackTimeoutRef.current);
+      projectedHudSpinFallbackTimeoutRef.current = null;
+    }
+    const wasSpinning = projectedHudSpinningRef.current;
+    projectedHudSpinningRef.current = false;
+    projectedHudSlotStepBusyRef.current = false;
+    if (!wasSpinning || !options?.settleToCurrentTarget) return;
+    projectedHudValueAnim.stopAnimation((currentValue) => {
+      projectedHudValueAnim.setValue(Number(currentValue) || projectedHudDisplayValue);
+      Animated.timing(projectedHudValueAnim, {
+        toValue: projectedHudTargetRef.current,
+        duration: 180,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    });
+    const targetText = fmtUsd(projectedHudTargetRef.current);
+    projectedHudSlotTranslateY.stopAnimation();
+    projectedHudSlotTranslateY.setValue(0);
+    projectedHudSlotNextTextRef.current = targetText;
+    setProjectedHudSlotNextText(targetText);
+    Animated.timing(projectedHudSlotTranslateY, {
+      toValue: -28,
+      duration: 120,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      projectedHudSlotCurrentTextRef.current = targetText;
+      setProjectedHudSlotCurrentText(targetText);
+      projectedHudSlotTranslateY.setValue(0);
+    });
+  }
+
+  const startProjectedHudSlotSpin = useCallback(() => {
+    stopProjectedHudSlotSpin();
+    projectedHudSpinningRef.current = true;
+    projectedHudSpinTickRef.current = 0;
+    projectedHudSpinStartedAtRef.current = Date.now();
+    projectedHudSlotStepBusyRef.current = false;
+    projectedHudValueAnim.stopAnimation((currentValue) => {
+      const base = Math.max(0, Math.round(Number(currentValue) || projectedHudDisplayValue || projectedHudTargetRef.current));
+      projectedHudValueAnim.setValue(base);
+      const baseText = fmtUsd(base);
+      projectedHudSlotCurrentTextRef.current = baseText;
+      projectedHudSlotNextTextRef.current = baseText;
+      setProjectedHudSlotCurrentText(baseText);
+      setProjectedHudSlotNextText(baseText);
+      projectedHudSlotTranslateY.setValue(0);
+      projectedHudSpinIntervalRef.current = setInterval(() => {
+        if (!projectedHudSpinningRef.current || projectedHudSlotStepBusyRef.current) return;
+        projectedHudSlotStepBusyRef.current = true;
+        projectedHudSpinTickRef.current += 1;
+        const tick = projectedHudSpinTickRef.current;
+        const bump = 600 + ((tick % 5) * 350) + ((tick % 3) * 220);
+        const wobble = (tick % 2 === 0 ? 1 : -1) * (120 + (tick % 4) * 55);
+        const next = Math.max(0, base + tick * bump + wobble);
+        projectedHudValueAnim.setValue(next);
+        const nextText = fmtUsd(next);
+        projectedHudSlotNextTextRef.current = nextText;
+        setProjectedHudSlotNextText(nextText);
+        projectedHudSlotTranslateY.setValue(0);
+        Animated.timing(projectedHudSlotTranslateY, {
+          toValue: -28,
+          duration: 50,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }).start(() => {
+          projectedHudSlotCurrentTextRef.current = nextText;
+          setProjectedHudSlotCurrentText(nextText);
+          projectedHudSlotTranslateY.setValue(0);
+          projectedHudSlotStepBusyRef.current = false;
+        });
+      }, 60);
+    });
+    projectedHudSpinFallbackTimeoutRef.current = setTimeout(() => {
+      stopProjectedHudSlotSpin({ settleToCurrentTarget: true });
+    }, 3200);
+  }, [projectedHudDisplayValue, projectedHudSlotTranslateY, projectedHudValueAnim]);
+
+  const bumpChartImpactBurst = useCallback(
+    (amount: number) => {
+      const safeAmount = Math.max(0, Math.round(Number(amount) || 0));
+      if (safeAmount <= 0) return;
+
+      if (chartImpactBurstHideTimeoutRef.current) {
+        clearTimeout(chartImpactBurstHideTimeoutRef.current);
+        chartImpactBurstHideTimeoutRef.current = null;
+      }
+
+      if (!chartImpactBurstVisibleRef.current) {
+        chartImpactBurstVisibleRef.current = true;
+        chartImpactBurstOpacityAnim.stopAnimation();
+        chartImpactBurstScaleAnim.stopAnimation();
+        chartImpactBurstValueAnim.stopAnimation();
+        chartImpactBurstOpacityAnim.setValue(0);
+        chartImpactBurstScaleAnim.setValue(0.94);
+        chartImpactBurstValueAnim.setValue(safeAmount);
+        chartImpactBurstDisplayRef.current = safeAmount;
+        setChartImpactBurstDisplay(safeAmount);
+        Animated.parallel([
+          Animated.timing(chartImpactBurstOpacityAnim, {
+            toValue: 1,
+            duration: 90,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.spring(chartImpactBurstScaleAnim, {
+            toValue: 1,
+            friction: 6,
+            tension: 220,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      } else {
+        chartImpactBurstScaleAnim.stopAnimation();
+        chartImpactBurstScaleAnim.setValue(1.04);
+        Animated.spring(chartImpactBurstScaleAnim, {
+          toValue: 1,
+          friction: 6,
+          tension: 220,
+          useNativeDriver: true,
+        }).start();
+      }
+
+      chartImpactBurstTargetRef.current += safeAmount;
+      const nextTarget = chartImpactBurstTargetRef.current;
+      const shouldAnimateValue = chartImpactBurstDisplayRef.current !== safeAmount || nextTarget !== safeAmount;
+      if (shouldAnimateValue) {
+        chartImpactBurstValueAnim.stopAnimation((currentValue) => {
+          chartImpactBurstValueAnim.setValue(Number(currentValue) || chartImpactBurstDisplayRef.current);
+          Animated.timing(chartImpactBurstValueAnim, {
+            toValue: nextTarget,
+            duration: 180,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }).start();
+        });
+      }
+
+      chartImpactBurstHideTimeoutRef.current = setTimeout(() => {
+        Animated.timing(chartImpactBurstOpacityAnim, {
+          toValue: 0,
+          duration: 260,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }).start(() => {
+          chartImpactBurstVisibleRef.current = false;
+          chartImpactBurstTargetRef.current = 0;
+          chartImpactBurstValueAnim.stopAnimation();
+          chartImpactBurstValueAnim.setValue(0);
+          chartImpactBurstDisplayRef.current = 0;
+          setChartImpactBurstDisplay(0);
+        });
+      }, 3650);
+    },
+    [chartImpactBurstOpacityAnim, chartImpactBurstScaleAnim, chartImpactBurstValueAnim]
+  );
+
+  const runKpiTilePressInFeedback = useCallback(
+    (
+      kpi: DashboardPayload['loggable_kpis'][number],
+      options?: { surface?: 'home' | 'log' }
+    ) => {
+      animateKpiTilePress(kpi.id, true);
+      if (options?.surface === 'home') {
+        triggerHomeRapidTapHaptic();
+      } else {
+        void triggerHapticAsync('tap');
+      }
+      void playKpiTypeCueAsync(kpi.type);
+      flashKpiTileConfirm(kpi.id);
+    },
+    [animateKpiTilePress, triggerHomeRapidTapHaptic, flashKpiTileConfirm]
+  );
+
+  const runKpiTilePressOutFeedback = useCallback((kpiId: string) => {
+    animateKpiTilePress(kpiId, false);
+  }, [animateKpiTilePress]);
+
   const onTapQuickLog = async (
     kpi: DashboardPayload['loggable_kpis'][number],
-    options?: { skipTapFeedback?: boolean }
+    options?: {
+      skipTapFeedback?: boolean;
+      skipOptimisticProjectionLaunch?: boolean;
+      sourcePagePoint?: { x: number; y: number } | null;
+    }
   ) => {
     if ((kpi.type === 'GP' && !gpUnlocked) || (kpi.type === 'VP' && !vpUnlocked)) {
       void triggerHapticAsync('warning');
@@ -1487,6 +2198,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       return;
     }
 
+    // Immediate tap cues belong on tile onPressIn; this fallback is for non-tile callers.
     if (!options?.skipTapFeedback) {
       void triggerHapticAsync('tap');
       void playKpiTypeCueAsync(kpi.type);
@@ -1502,59 +2214,87 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     animateKpiTileSuccess(kpi.id);
 
     let launchedOptimisticProjection = false;
-    if (kpi.type === 'PC') {
+    if (kpi.type === 'PC' && !options?.skipOptimisticProjectionLaunch) {
+      if (!kpi.requires_direct_value_input) {
+        animateProjectedHudValuePop();
+        bumpChartImpactBurst(estimatePcGeneratedForKpi(kpi));
+      }
       const delayDays = Math.max(0, Number(kpi.delay_days ?? 0));
-      const optimisticPayoffStartIso = new Date(Date.now() + delayDays * 24 * 60 * 60 * 1000).toISOString();
+      const holdDays = Math.max(0, Number(kpi.hold_days ?? 0));
+      const optimisticPayoffDays = delayDays + holdDays;
+      const optimisticPayoffStartIso = new Date(
+        Date.now() + optimisticPayoffDays * 24 * 60 * 60 * 1000
+      ).toISOString();
       launchedOptimisticProjection = true;
-      void launchProjectionFlightFx(kpi.id, optimisticPayoffStartIso);
+      void launchProjectionFlightFx(kpi.id, optimisticPayoffStartIso, {
+        centerOnImpact: options?.sourcePagePoint ? false : undefined,
+        sourcePagePoint: options?.sourcePagePoint ?? null,
+      });
     }
 
-    await sendLog(kpi.id, undefined, {
+    enqueueLogTask({
+      kpiId: kpi.id,
+      options: {
       kpiType: kpi.type,
       skipSuccessBadge: true,
-      skipProjectionFlight: launchedOptimisticProjection,
+      skipProjectionFlight: launchedOptimisticProjection || Boolean(options?.skipOptimisticProjectionLaunch),
+      eventTimestampIso: eventTimestampIsoForSelectedDay(selectedLogDate),
+      },
     });
   };
 
-  const cancelPendingQuickTap = useCallback(() => {
-    if (pendingQuickTapTimerRef.current) {
-      clearTimeout(pendingQuickTapTimerRef.current);
-      pendingQuickTapTimerRef.current = null;
+  const fireHomeQuickLogAtPoint = useCallback(
+    (kpi: DashboardPayload['loggable_kpis'][number], sourcePagePoint: { x: number; y: number } | null) => {
+      runKpiTilePressInFeedback(kpi, { surface: 'home' });
+      void onTapQuickLog(kpi, {
+        skipTapFeedback: true,
+        sourcePagePoint,
+      });
+    },
+    [onTapQuickLog, runKpiTilePressInFeedback]
+  );
+
+  const stopHomeAutoFire = useCallback((kpiId?: string) => {
+    if (kpiId && homeAutoFireKpiIdRef.current && homeAutoFireKpiIdRef.current !== kpiId) return;
+    if (homeAutoFireStartTimeoutRef.current) {
+      clearTimeout(homeAutoFireStartTimeoutRef.current);
+      homeAutoFireStartTimeoutRef.current = null;
     }
-    pendingQuickTapKpiIdRef.current = null;
-    pendingQuickTapFiredRef.current = false;
+    if (homeAutoFireIntervalRef.current) {
+      clearInterval(homeAutoFireIntervalRef.current);
+      homeAutoFireIntervalRef.current = null;
+    }
+    homeAutoFireKpiIdRef.current = null;
   }, []);
 
-  const firePendingQuickTapNow = useCallback(
-    (kpi: DashboardPayload['loggable_kpis'][number]) => {
-      const now = Date.now();
-      if (homePanelSwipeActiveRef.current || now < homePanelSwipeSuppressTapUntilRef.current) {
-        cancelPendingQuickTap();
-        return;
-      }
-      if (pendingQuickTapFiredRef.current || pendingQuickTapKpiIdRef.current !== kpi.id) return;
-      pendingQuickTapFiredRef.current = true;
-      if (pendingQuickTapTimerRef.current) {
-        clearTimeout(pendingQuickTapTimerRef.current);
-        pendingQuickTapTimerRef.current = null;
-      }
-      void onTapQuickLog(kpi, { skipTapFeedback: true });
+  const startHomeAutoFire = useCallback(
+    (
+      kpi: DashboardPayload['loggable_kpis'][number],
+      sourcePagePoint: { x: number; y: number } | null
+    ) => {
+      stopHomeAutoFire();
+      homeAutoFireKpiIdRef.current = kpi.id;
+      homeAutoFireStartTimeoutRef.current = setTimeout(() => {
+        if (homeAutoFireKpiIdRef.current !== kpi.id) return;
+        fireHomeQuickLogAtPoint(kpi, sourcePagePoint);
+        homeAutoFireIntervalRef.current = setInterval(() => {
+          if (homeAutoFireKpiIdRef.current !== kpi.id) return;
+          fireHomeQuickLogAtPoint(kpi, sourcePagePoint);
+        }, 88);
+      }, 180);
     },
-    [cancelPendingQuickTap, onTapQuickLog]
+    [fireHomeQuickLogAtPoint, stopHomeAutoFire]
   );
 
-  const scheduleQuickTap = useCallback(
-    (kpi: DashboardPayload['loggable_kpis'][number]) => {
-      cancelPendingQuickTap();
-      pendingQuickTapKpiIdRef.current = kpi.id;
-      pendingQuickTapFiredRef.current = false;
-      pendingQuickTapTimerRef.current = setTimeout(() => {
-        pendingQuickTapTimerRef.current = null;
-        firePendingQuickTapNow(kpi);
-      }, 75);
-    },
-    [cancelPendingQuickTap, firePendingQuickTapNow]
-  );
+  React.useEffect(() => {
+    return () => {
+      stopHomeAutoFire();
+    };
+  }, [stopHomeAutoFire]);
+
+  React.useEffect(() => {
+    stopHomeAutoFire();
+  }, [homePanel, stopHomeAutoFire, viewMode]);
 
   const submitDirectLog = async () => {
     if (submitting || !pendingDirectLog) return;
@@ -1586,7 +2326,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             },
           ]}
         >
-          <Text style={styles.chartBoostChipText}>{gpBoostActive ? 'GP Boost Active' : 'GP Boost Locked'}</Text>
+          <Text style={styles.chartBoostChipText}>{gpBoostActive ? 'Growth Boost' : 'Growth Boost 🔒'}</Text>
         </Animated.View>
         <Animated.View
           style={[
@@ -1599,9 +2339,21 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             },
           ]}
         >
-          <Text style={styles.chartBoostChipText}>{vpBoostActive ? 'VP Boost Active' : 'VP Boost Locked'}</Text>
+          <Text style={styles.chartBoostChipText}>{vpBoostActive ? 'Vitality Boost' : 'Vitality Boost 🔒'}</Text>
         </Animated.View>
       </View>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.chartImpactBurstOverlay,
+          {
+            opacity: chartImpactBurstOpacityAnim,
+            transform: [{ scale: chartImpactBurstScaleAnim }],
+          },
+        ]}
+      >
+        <Text style={styles.chartImpactBurstValue}>{fmtUsd(chartImpactBurstDisplay)}</Text>
+      </Animated.View>
       <View style={styles.chartRow}>
         <View style={styles.yAxisCol}>
           {chartSeries.yTicks.map((tick, idx) => (
@@ -1619,6 +2371,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               ? (e) => {
                   const width = e.nativeEvent.layout.width;
                   setChartViewportWidth(width);
+                  void refreshFlightMeasureCache();
                   if (preservePinnedChartScrollRef.current && chartPinnedScrollXRef.current != null) {
                     const maxScroll = Math.max(0, chartSeries.chartWidth - width);
                     const pinned = Math.min(maxScroll, Math.max(0, chartPinnedScrollXRef.current));
@@ -1719,14 +2472,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     {(() => {
                       const deformLineY = (x: number, y: number) => {
                         if (chartImpactLineX == null) return y;
-                        const spread = 56;
+                        const spread = 74;
                         const distance = Math.abs(x - chartImpactLineX);
                         const normalized = distance / Math.max(1, spread);
-                        const primary = Math.exp(-(normalized * normalized) * 1.6);
-                        const rippleEnvelope = Math.exp(-(normalized * normalized) * 0.7);
-                        const ripple = Math.cos(normalized * Math.PI * 2.2) * 0.28 * rippleEnvelope;
-                        const influence = Math.max(-0.12, primary + ripple);
-                        const amplitude = 38;
+                        const primary = Math.exp(-(normalized * normalized) * 1.15);
+                        const rippleEnvelope = Math.exp(-(normalized * normalized) * 0.85);
+                        const ripple = Math.cos(normalized * Math.PI * 1.45) * 0.12 * rippleEnvelope;
+                        const influence = Math.max(-0.05, primary + ripple);
+                        const amplitude = 32;
                         return y - chartImpactLineValue * amplitude * influence;
                       };
                       const monthTargetXs = chartSeries.futureProjected.map(
@@ -1742,7 +2495,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         const drawNextY = deformLineY(nextX, nextYBase);
                         const band =
                           chartSeries.futureBands[idx] ?? payload?.projection.confidence.band ?? 'yellow';
-                        const subdivisions = 16;
+                        const subdivisions = 24;
                         const pieces = Array.from({ length: subdivisions }, (_, subIdx) => {
                           const t1 = subIdx / subdivisions;
                           const t2 = (subIdx + 1) / subdivisions;
@@ -1790,40 +2543,34 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 );
               })()}
             </Svg>
-            {(() => {
-              const splitX = chartSeries.step * (chartSeries.splitBaseIndex + chartSeries.splitOffsetFraction);
-              const currentValue = chartSeries.pastActual[chartSeries.splitBaseIndex] ?? 0;
-              const currentY = yForValue(currentValue, 170, chartSeries.min, chartSeries.max);
-              return (
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.chartMarkerPulse,
-                    {
-                      left: splitX - 12,
-                      top: 12 + currentY - 12,
-                      opacity: chartReactionAnim.interpolate({
-                        inputRange: [0, 0.12, 1],
-                        outputRange: [0, 0.42, 0],
-                      }),
-                      transform: [
-                        {
-                          scale: chartReactionAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 2] }),
-                        },
-                      ],
-                    },
-                  ]}
-                />
-              );
-            })()}
             <View style={styles.monthRow}>
               {chartSeries.labels.map((label, idx) => (
-                <Text
+                <Animated.Text
                   key={`${label}-${idx}`}
-                  style={[styles.monthLabel, idx === chartSeries.splitBaseIndex && styles.monthBoundaryLabel]}
+                  style={[
+                    styles.monthLabel,
+                    idx === chartSeries.splitBaseIndex && styles.monthBoundaryLabel,
+                    idx === chartImpactMonthIndex && styles.monthImpactLabel,
+                    idx === chartImpactMonthIndex
+                      ? {
+                          opacity: chartImpactMonthPulseAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.9, 1],
+                          }),
+                          transform: [
+                            {
+                              scale: chartImpactMonthPulseAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [1, 1.12],
+                              }),
+                            },
+                          ],
+                        }
+                      : null,
+                  ]}
                 >
                   {label}
-                </Text>
+                </Animated.Text>
               ))}
             </View>
           </View>
@@ -1833,157 +2580,184 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   );
 
   const renderHudRail = () => {
-    const confidenceBand = payload?.projection.confidence.band ?? 'yellow';
-    const confidenceScore = Number(payload?.projection.confidence.score ?? 0);
+    const projectedCardValueByWindow: Record<(typeof PROJECTED_CARD_WINDOWS)[number], number> = {
+      30: cardMetrics.projectedNext30,
+      60: cardMetrics.projectedNext60,
+      90: cardMetrics.projectedNext90,
+      180: cardMetrics.projectedNext180,
+      360: cardMetrics.projectedNext360,
+    };
+    const cycleActualHudCard = () => {
+      setActualHudCardView((prev) => {
+        const idx = ACTUAL_CARD_VIEWS.indexOf(prev);
+        return ACTUAL_CARD_VIEWS[(idx + 1) % ACTUAL_CARD_VIEWS.length] ?? 'actual365';
+      });
+    };
+    const cycleProjectedCardWindow = () => {
+      setProjectedCardWindowDays((prev) => {
+        const idx = PROJECTED_CARD_WINDOWS.indexOf(prev);
+        return PROJECTED_CARD_WINDOWS[(idx + 1) % PROJECTED_CARD_WINDOWS.length] ?? 360;
+      });
+    };
+    const actualCard: {
+      key: string;
+      label: string;
+      value: string;
+      accent: string;
+      subValue?: string;
+      onPress?: () => void;
+      kind?: 'actual' | 'projected';
+    } =
+      actualHudCardView === 'actual365'
+        ? {
+            key: 'actual365',
+            label: 'Actual GCI (365d)',
+            value: fmtUsd(cardMetrics.actualLast365),
+            subValue: fmtUsd(cardMetrics.actualYtd),
+            accent: '#2f9f56',
+            onPress: cycleActualHudCard,
+            kind: 'actual',
+          }
+        : {
+            key: 'progress',
+            label: 'Progress YTD',
+            value: fmtUsd(cardMetrics.actualYtd),
+            subValue: `${Math.round(cardMetrics.progressPct)}%`,
+            accent: '#1f5fe2',
+            onPress: cycleActualHudCard,
+            kind: 'actual',
+          };
     const hudCards: Array<{
       key: string;
       label: string;
       value: string;
       accent: string;
       subValue?: string;
+      onPress?: () => void;
+      kind?: 'actual' | 'projected';
     }> = [
-      { key: 'actual365', label: 'Actual GCI (365d)', value: fmtUsd(cardMetrics.actualLast365), accent: '#2f9f56' },
-      { key: 'proj365', label: 'Projected (365d)', value: fmtUsd(cardMetrics.projectedNext365), accent: '#2158d5' },
-      { key: 'proj60', label: 'Projected (60d)', value: fmtUsd(cardMetrics.projectedNext60), accent: '#4c79e6' },
-      { key: 'proj180', label: 'Projected (180d)', value: fmtUsd(cardMetrics.projectedNext180), accent: '#6c8ff0' },
+      actualCard,
       {
-        key: 'progress',
-        label: 'Progress',
-        value: `${Math.round(cardMetrics.progressPct)}%`,
-        subValue: fmtUsd(payload?.actuals.actual_gci ?? 0),
-        accent: '#2f3442',
-      },
-      {
-        key: 'confidence',
-        label: 'Confidence',
-        value: `${fmtNum(confidenceScore)}`,
-        subValue: confidenceBand === 'green' ? 'Strong' : confidenceBand === 'yellow' ? 'Average' : 'Low',
-        accent: confidenceColor(confidenceBand),
+        key: 'projCycle',
+        label: `Projected (${projectedCardWindowDays}d)`,
+        value: fmtUsd(projectedCardValueByWindow[projectedCardWindowDays]),
+        subValue: `Next ${projectedCardWindowDays} days`,
+        accent: '#2158d5',
+        onPress: cycleProjectedCardWindow,
+        kind: 'projected',
       },
     ];
 
-    const HUD_CARD_WIDTH = 154;
-    const SNAP = HUD_CARD_WIDTH + 10;
-
     return (
       <View style={styles.hudRailWrap}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          snapToInterval={SNAP}
-          decelerationRate="fast"
-          snapToAlignment="start"
-          contentContainerStyle={styles.hudRailContent}
-          onMomentumScrollEnd={(e) => {
-            const x = e.nativeEvent.contentOffset.x;
-            setHudActiveIndex(Math.max(0, Math.round(x / SNAP)));
-          }}
-        >
+        <View style={styles.hudRailStaticRow}>
           {hudCards.map((card, idx) => (
-            <View
+            <TouchableOpacity
               key={card.key}
+              activeOpacity={card.onPress ? 0.8 : 1}
+              disabled={!card.onPress}
+              onPress={card.onPress}
               style={[
                 styles.hudCard,
-                { width: HUD_CARD_WIDTH },
+                card.onPress && styles.hudCardInteractive,
+                card.onPress && styles.hudCardTappableGlow,
+                card.kind === 'actual' && styles.hudCardActualInteractive,
+                card.kind === 'projected' && styles.hudCardProjectedInteractive,
+                styles.hudCardFill,
                 idx === hudActiveIndex && styles.hudCardActive,
               ]}
             >
-              <View style={[styles.hudCardAccent, { backgroundColor: card.accent }]} />
+              <View style={styles.hudCardHeaderRow}>
+                <Animated.View
+                  style={[
+                    styles.hudCardAccent,
+                    { backgroundColor: card.accent },
+                    card.key === 'projCycle'
+                      ? {
+                          opacity: projectedHudAccentFlashAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1, 0.7],
+                          }),
+                          transform: [
+                            {
+                              scaleX: projectedHudAccentFlashAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [1, 1.5],
+                              }),
+                            },
+                          ],
+                        }
+                      : null,
+                  ]}
+                />
+                {card.onPress ? <View style={[styles.hudCardHintDot, { backgroundColor: card.accent }]} /> : null}
+              </View>
               <Text style={styles.hudCardLabel}>{card.label}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hudCardValueScroll}>
-                <Text style={styles.hudCardValue}>{card.value}</Text>
+                <Animated.View
+                  style={
+                    card.key === 'projCycle'
+                      ? {
+                          transform: [
+                            {
+                              scale: projectedHudValuePopAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [1, 1.08],
+                              }),
+                            },
+                          ],
+                        }
+                      : undefined
+                  }
+                >
+                  <Text style={styles.hudCardValue}>{card.value}</Text>
+                </Animated.View>
               </ScrollView>
               {card.subValue ? <Text style={styles.hudCardSub}>{card.subValue}</Text> : null}
-            </View>
+            </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
       </View>
     );
   };
 
   const renderGameplayHeader = () => {
-    const modeRailSidePad = Math.max(0, modeRailViewportWidth / 2 - GAMEPLAY_MODE_ACTIVE_WIDTH / 2);
-    const modeRailItems = Array.from({ length: MODE_RAIL_LOOP_CYCLES }).flatMap((_, cycleIdx) =>
-      HOME_PANEL_ORDER.map((item) => ({ item, cycleIdx }))
-    );
+    const currentIdx = HOME_PANEL_ORDER.indexOf(homePanel);
+    const prevPanel = HOME_PANEL_ORDER[(currentIdx - 1 + HOME_PANEL_ORDER.length) % HOME_PANEL_ORDER.length] ?? 'Quick';
+    const nextPanel = HOME_PANEL_ORDER[(currentIdx + 1) % HOME_PANEL_ORDER.length] ?? 'Quick';
+    const activeBg = homePanel === 'Quick' ? '#2f3645' : kpiTypeAccent(homePanel as Segment);
+    const ActivePillBg = homePanelPillSvgBg[homePanel];
     return (
       <View style={styles.gameplayHeader}>
         <View style={styles.gameplayHeaderTopRow}>
-          <View style={styles.modeRailShell} onLayout={(e) => setModeRailViewportWidth(e.nativeEvent.layout.width)}>
-            <ScrollView
-              ref={modeRailScrollRef}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[styles.modeRailContent, { paddingHorizontal: modeRailSidePad }]}
-            >
-              {modeRailItems.map(({ item, cycleIdx }) => {
-                const isActive = cycleIdx === modeRailActiveCycle && homePanel === item;
-                return (
-                  <TouchableOpacity
-                    key={`${cycleIdx}-${item}`}
-                    style={[
-                      styles.gameplaySegmentBtn,
-                      isActive ? styles.gameplaySegmentBtnActive : styles.gameplaySegmentBtnInactive,
-                      isActive ? { width: GAMEPLAY_MODE_ACTIVE_WIDTH } : { width: GAMEPLAY_MODE_INACTIVE_WIDTH },
-                      isActive && { backgroundColor: item === 'Quick' ? '#2f3645' : kpiTypeAccent(item as Segment) },
-                      !isActive && styles.gameplaySegmentBtnInactiveBg,
-                      ((item === 'GP' && !gpUnlocked) || (item === 'VP' && !vpUnlocked)) && styles.segmentBtnLocked,
-                    ]}
-                    onPress={() => {
-                      if (item === 'GP' && !gpUnlocked) {
-                        Alert.alert('Business Growth Locked', 'Unlock after 3 active days or 20 KPI logs.');
-                        return;
-                      }
-                      if (item === 'VP' && !vpUnlocked) {
-                        Alert.alert('Vitality Locked', 'Unlock after 7 active days or 40 KPI logs.');
-                        return;
-                      }
-                      homePanelDirectionRef.current = 0;
-                      setHomePanel(item);
-                    }}
-                  >
-                    {isActive ? (
-                      <>
-                        <Animated.View
-                          style={[
-                            styles.gameplaySegmentLane,
-                            { backgroundColor: item === 'Quick' ? '#ffffff' : 'rgba(255,255,255,0.92)' },
-                            {
-                              opacity: modeLanePulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }),
-                              transform: [
-                                {
-                                  scaleX: modeLanePulseAnim.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [1, 1.06],
-                                  }),
-                                },
-                              ],
-                            },
-                          ]}
-                        />
-                        <Text style={[styles.gameplaySegmentText, styles.gameplaySegmentTextActive]}>
-                          {HOME_PANEL_LABELS[item]}
-                        </Text>
-                      </>
-                    ) : (
-                      <Text style={styles.gameplaySegmentIcon}>{HOME_PANEL_ICONS[item]}</Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-          <TouchableOpacity
-            style={[styles.panelSfxBtn, feedbackMuted && styles.panelSfxBtnMuted]}
-            onPress={toggleFeedbackMuted}
-            onLongPress={cycleFeedbackVolume}
-            delayLongPress={260}
-            accessibilityLabel="Toggle sound effects; long press to cycle volume"
+          <View
+            {...simpleHeaderSwipePanResponder.panHandlers}
+            style={styles.modeRailShell}
           >
-            <Text style={[styles.panelSfxText, feedbackMuted && styles.panelSfxTextMuted]}>
-              {feedbackMuted ? 'SFX OFF' : `SFX ${Math.round(feedbackVolume * 100)}`}
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modeRailEdgeBtn}
+              onPress={() => void shiftHomePanelFromRail(-1)}
+              accessibilityLabel={`Previous mode (${HOME_PANEL_LABELS[prevPanel]})`}
+            >
+              <Text style={styles.modeRailEdgeBtnText}>‹</Text>
+            </TouchableOpacity>
+            <View style={[styles.modeRailActivePill, { backgroundColor: activeBg }]}>
+              <ActivePillBg width="100%" height="100%" preserveAspectRatio="none" style={styles.modeRailActivePillSvgBg} />
+              <View style={styles.modeRailActivePillSvgShade} />
+              <View style={styles.modeRailContent}>
+                <Text style={[styles.gameplaySegmentText, styles.gameplaySegmentTextActive, styles.modeRailActivePillText]}>
+                  {HOME_PANEL_LABELS[homePanel]}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.modeRailEdgeBtn}
+              onPress={() => void shiftHomePanelFromRail(1)}
+              accessibilityLabel={`Next mode (${HOME_PANEL_LABELS[nextPanel]})`}
+            >
+              <Text style={styles.modeRailEdgeBtnText}>›</Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity style={styles.panelGearBtn} onPress={openAddNewDrawer} accessibilityLabel="Edit log setup">
             <Text style={styles.panelGearText}>⚙︎</Text>
           </TouchableOpacity>
@@ -2014,8 +2788,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
   const renderHomeGridPanel = (panel: HomePanel, options?: { attachLiveTileRefs?: boolean }) => {
     const locked = (panel === 'GP' && !gpUnlocked) || (panel === 'VP' && !vpUnlocked);
-    const panelKpis =
-      panel === 'Quick' ? homeQuickLog : managedKpis.filter((kpi) => kpi.type === panel).slice(0, 6);
+    const panelTiles =
+      panel === homePanel
+        ? homePanelTiles
+        : buildHomePanelTiles(
+            panel === 'Quick' ? homeQuickLog : managedKpis.filter((kpi) => kpi.type === panel).slice(0, 6),
+            payload ?? null
+          );
 
     if (locked) {
       return (
@@ -2031,7 +2810,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
     return (
       <View style={styles.gridWrap}>
-        {panelKpis.map((kpi) => {
+        {panelTiles.map(({ kpi, context }) => {
           const successAnim = getKpiTileSuccessAnim(kpi.id);
           const successOpacity = successAnim.interpolate({
             inputRange: [0, 0.12, 1],
@@ -2046,22 +2825,21 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             outputRange: [0.8, 1.02, 0.96],
           });
           return (
-            <TouchableOpacity
+            <Pressable
               key={kpi.id}
-              style={[styles.gridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
-              onPress={undefined}
-              disabled={submitting}
-              onPressIn={() => {
-                animateKpiTilePress(kpi.id, true);
-                if (!submitting) {
-                  scheduleQuickTap(kpi);
-                }
+              style={styles.gridItem}
+              onPress={() => {}}
+              onPressIn={(e) => {
+                const sourcePagePoint = {
+                  x: e.nativeEvent.pageX,
+                  y: e.nativeEvent.pageY,
+                };
+                fireHomeQuickLogAtPoint(kpi, sourcePagePoint);
+                startHomeAutoFire(kpi, sourcePagePoint);
               }}
               onPressOut={() => {
-                animateKpiTilePress(kpi.id, false);
-                if (pendingQuickTapKpiIdRef.current === kpi.id && !pendingQuickTapFiredRef.current) {
-                  firePendingQuickTapNow(kpi);
-                }
+                stopHomeAutoFire(kpi.id);
+                runKpiTilePressOutFeedback(kpi.id);
               }}
             >
               <Animated.View style={[styles.gridTileAnimatedWrap, { transform: [{ scale: getKpiTileScale(kpi.id) }] }]}>
@@ -2079,26 +2857,38 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     style={[
                       styles.gridCircle,
                       confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed,
+                      context.isRequired && styles.gridCircleRequired,
                     ]}
                   >
                     {renderKpiIcon(kpi)}
                   </View>
-                  <Animated.View
-                    pointerEvents="none"
-                    style={[
-                      styles.gridSuccessBadge,
-                      {
-                        opacity: successOpacity,
-                        transform: [{ translateY: successTranslateY }, { scale: successScale }],
-                      },
-                    ]}
-                  >
-                    <Text style={styles.gridSuccessBadgeText}>+1</Text>
-                  </Animated.View>
+                  {context.badges.length > 0 ? (
+                    <View pointerEvents="none" style={styles.gridContextBadgeStack}>
+                      {context.badges.map((badge) => (
+                        <View
+                          key={`${kpi.id}:${badge}`}
+                          style={[
+                            styles.gridContextBadge,
+                            badge === 'REQ' && styles.gridContextBadgeRequired,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.gridContextBadgeText,
+                              badge === 'REQ' && styles.gridContextBadgeTextRequired,
+                            ]}
+                          >
+                            {renderContextBadgeLabel(badge)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                  {/* Suppress local +1 in the looping home carousel to avoid duplicate copies peeking. */}
                 </View>
                 <Text style={[styles.gridLabel, confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed]}>{kpi.name}</Text>
               </Animated.View>
-            </TouchableOpacity>
+            </Pressable>
           );
         })}
       </View>
@@ -2241,64 +3031,181 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   };
 
   const openAddNewDrawer = () => {
-    setDrawerFilter('All');
+    setDrawerFilter(homePanel);
     setAddDrawerVisible(true);
   };
 
-  const shiftHomePanel = (direction: -1 | 1) => {
-    homePanelDirectionRef.current = direction;
-    setHomePanel((prev) => {
-      const currentIdx = HOME_PANEL_ORDER.indexOf(prev);
-      const nextIdx = (currentIdx + direction + HOME_PANEL_ORDER.length) % HOME_PANEL_ORDER.length;
-      return HOME_PANEL_ORDER[nextIdx] ?? 'Quick';
-    });
-  };
+  const activateHomePanel = useCallback(
+    (item: HomePanel) => {
+      if (item === 'GP' && !gpUnlocked) {
+        Alert.alert('Business Growth Locked', 'Unlock after 3 active days or 20 KPI logs.');
+        return false;
+      }
+      if (item === 'VP' && !vpUnlocked) {
+        Alert.alert('Vitality Locked', 'Unlock after 7 active days or 40 KPI logs.');
+        return false;
+      }
+      homePanelDirectionRef.current = 0;
+      setHomePanel(item);
+      return true;
+    },
+    [gpUnlocked, vpUnlocked]
+  );
 
-  const homePanelPanResponder = useMemo(
+  const shiftHomePanelFromRail = useCallback(
+    (direction: -1 | 1) => {
+      const currentIdx = HOME_PANEL_ORDER.indexOf(homePanel);
+      const nextIdx = (currentIdx + direction + HOME_PANEL_ORDER.length) % HOME_PANEL_ORDER.length;
+      const next = HOME_PANEL_ORDER[nextIdx] ?? 'Quick';
+      const changed = activateHomePanel(next);
+      if (changed) void playFeedbackCueAsync('swipe');
+      return changed;
+    },
+    [activateHomePanel, homePanel]
+  );
+
+  const commitModeRailSwipeSelection = useCallback(() => {
+    if (modeRailDragCommittedRef.current) return;
+    const startX = modeRailDragStartXRef.current;
+    if (startX == null) return;
+    const delta = modeRailDragLastXRef.current - startX;
+    const absDelta = Math.abs(delta);
+    if (absDelta < 8) return;
+    const swipeDir: -1 | 1 = delta > 0 ? 1 : -1;
+
+    let freezeTargetX = modeRailDragLastXRef.current;
+    if (modeRailViewportWidth > 0) {
+      const ACTIVE_W = GAMEPLAY_MODE_ACTIVE_WIDTH;
+      const INACTIVE_W = GAMEPLAY_MODE_INACTIVE_WIDTH;
+      const GAP = GAMEPLAY_MODE_GAP;
+      const sidePad = Math.max(0, modeRailViewportWidth / 2 - ACTIVE_W / 2);
+      const totalItems = HOME_PANEL_ORDER.length * MODE_RAIL_LOOP_CYCLES;
+      const nextVirtualIdx = modeRailVirtualIndexRef.current + swipeDir;
+      let xStart = sidePad;
+      for (let i = 0; i < nextVirtualIdx; i += 1) xStart += INACTIVE_W + GAP;
+      const activeCenter = xStart + ACTIVE_W / 2;
+      const contentWidth =
+        sidePad * 2 + ACTIVE_W + INACTIVE_W * (totalItems - 1) + GAP * (totalItems - 1);
+      const maxScroll = Math.max(0, contentWidth - modeRailViewportWidth);
+      freezeTargetX = Math.min(maxScroll, Math.max(0, activeCenter - modeRailViewportWidth / 2));
+    }
+
+    modeRailDragCommittedRef.current = true;
+    modeRailDragStartXRef.current = null;
+    modeRailFreezeXRef.current = freezeTargetX;
+    modeRailScrollRef.current?.scrollTo({ x: modeRailFreezeXRef.current, animated: false });
+    setModeRailScrollEnabled(false);
+    if (swipeDir > 0) {
+      void shiftHomePanelFromRail(1);
+      return;
+    }
+    void shiftHomePanelFromRail(-1);
+  }, [shiftHomePanelFromRail]);
+
+  const simpleHeaderSwipePanResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponderCapture: (_, gesture) => {
-          const should = Math.abs(gesture.dx) > 16 && Math.abs(gesture.dy) < 20;
-          if (should) {
-            homePanelSwipeActiveRef.current = true;
-            homePanelSwipeSuppressTapUntilRef.current = Date.now() + 220;
-            cancelPendingQuickTap();
-          }
-          return should;
-        },
-        onMoveShouldSetPanResponder: (_, gesture) => {
-          const should = Math.abs(gesture.dx) > 16 && Math.abs(gesture.dy) < 20;
-          if (should) {
-            homePanelSwipeActiveRef.current = true;
-            homePanelSwipeSuppressTapUntilRef.current = Date.now() + 220;
-            cancelPendingQuickTap();
-          }
-          return should;
-        },
-        onPanResponderGrant: () => {
-          homePanelSwipeActiveRef.current = true;
-          homePanelSwipeSuppressTapUntilRef.current = Date.now() + 220;
-          cancelPendingQuickTap();
-        },
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          Math.abs(gesture.dx) > 8 && Math.abs(gesture.dy) < 26,
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 8 && Math.abs(gesture.dy) < 26,
         onPanResponderRelease: (_, gesture) => {
-          homePanelSwipeActiveRef.current = false;
-          homePanelSwipeSuppressTapUntilRef.current = Date.now() + 180;
-          if (gesture.dx <= -24) {
-            shiftHomePanel(1);
+          if (gesture.dx <= -14 || gesture.vx <= -0.2) {
+            void shiftHomePanelFromRail(1);
             return;
           }
-          if (gesture.dx >= 24) {
-            shiftHomePanel(-1);
+          if (gesture.dx >= 14 || gesture.vx >= 0.2) {
+            void shiftHomePanelFromRail(-1);
+          }
+        },
+      }),
+    [shiftHomePanelFromRail]
+  );
+
+  const headerModeRailPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onPanResponderTerminationRequest: () => false,
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          Math.abs(gesture.dx) > 4 && Math.abs(gesture.dy) < 32,
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 4 && Math.abs(gesture.dy) < 32,
+        onPanResponderGrant: () => {
+          modeRailDragCommittedRef.current = false;
+          modeRailHasMomentumRef.current = false;
+          modeRailDragStartXRef.current = modeRailDragLastXRef.current;
+          homePanelAnim.stopAnimation((value) => {
+            modeRailPanelDragStartVirtualRef.current = value;
+            homePanelVirtualIndexRef.current = value;
+            homePanelAnim.setValue(value);
+          });
+        },
+        onPanResponderMove: (_, gesture) => {
+          const railStartX = modeRailDragStartXRef.current;
+          const panelStart = modeRailPanelDragStartVirtualRef.current;
+          if (railStartX == null || panelStart == null) return;
+          modeRailScrollRef.current?.scrollTo({ x: Math.max(0, railStartX - gesture.dx), animated: false });
+          const dragWidth = Math.max(1, gridPageWidth);
+          const raw = panelStart - (gesture.dx / dragWidth) * 2.8;
+          const clamped = Math.max(panelStart - 1.9, Math.min(panelStart + 1.9, raw));
+          homePanelAnim.setValue(clamped);
+        },
+        onPanResponderRelease: (_, gesture) => {
+          const panelStart = modeRailPanelDragStartVirtualRef.current;
+          const railStartX = modeRailDragStartXRef.current;
+          modeRailPanelDragStartVirtualRef.current = null;
+          modeRailDragStartXRef.current = null;
+          const panelCount = HOME_PANEL_ORDER.length;
+          if (panelStart == null) return;
+          const anchor = Math.round(panelStart);
+          const shouldAdvance =
+            gesture.dx <= -6 || gesture.vx <= -0.1 ? 1 : gesture.dx >= 6 || gesture.vx >= 0.1 ? -1 : 0;
+
+          if (shouldAdvance !== 0) {
+            homePanelAnim.stopAnimation();
+            void shiftHomePanelFromRail(shouldAdvance as -1 | 1);
+            return;
+          }
+
+          Animated.timing(homePanelAnim, {
+            toValue: anchor,
+            duration: 140,
+            useNativeDriver: true,
+          }).start(() => {
+            const normalized = panelCount + (((anchor % panelCount) + panelCount) % panelCount);
+            homePanelVirtualIndexRef.current = normalized;
+            homePanelAnim.setValue(normalized);
+            homePanelDirectionRef.current = 0;
+          });
+          if (railStartX != null) {
+            modeRailScrollRef.current?.scrollTo({ x: railStartX, animated: true });
           }
         },
         onPanResponderTerminate: () => {
-          homePanelSwipeActiveRef.current = false;
-          homePanelSwipeSuppressTapUntilRef.current = Date.now() + 180;
-          cancelPendingQuickTap();
+          const panelStart = modeRailPanelDragStartVirtualRef.current;
+          const railStartX = modeRailDragStartXRef.current;
+          modeRailPanelDragStartVirtualRef.current = null;
+          modeRailDragStartXRef.current = null;
+          if (panelStart != null) {
+            const panelCount = HOME_PANEL_ORDER.length;
+            const anchor = Math.round(panelStart);
+            Animated.timing(homePanelAnim, {
+              toValue: anchor,
+              duration: 140,
+              useNativeDriver: true,
+            }).start(() => {
+              const normalized = panelCount + (((anchor % panelCount) + panelCount) % panelCount);
+              homePanelVirtualIndexRef.current = normalized;
+              homePanelAnim.setValue(normalized);
+              homePanelDirectionRef.current = 0;
+            });
+          }
+          if (railStartX != null) {
+            modeRailScrollRef.current?.scrollTo({ x: railStartX, animated: true });
+          }
         },
       }),
-    [cancelPendingQuickTap]
+    [gridPageWidth, homePanelAnim, shiftHomePanelFromRail]
   );
+
 
   const onBottomTabPress = (tab: BottomTab) => {
     setActiveTab(tab);
@@ -2331,7 +3238,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       if (Math.abs(metricDelta) > 0.000001) return metricDelta;
       return 0;
     });
-    if (drawerFilter === 'All') return ordered;
+    if (drawerFilter === 'Quick') return ordered;
     return ordered.filter((kpi) => kpi.type === drawerFilter);
   }, [allSelectableKpis, drawerFilter]);
 
@@ -2362,11 +3269,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     return map;
   }, [payload?.recent_logs]);
 
+  const estimatePcGeneratedForKpi = useCallback((kpi: DashboardPayload['loggable_kpis'][number]) => {
+    if (kpi.type !== 'PC') return 0;
+    const recentPc = recentPcGeneratedByKpiId.get(kpi.id);
+    if (recentPc != null && recentPc > 0) return recentPc;
+    const weight = Number(kpi.pc_weight ?? 0);
+    return Math.max(0, Math.round(estAveragePricePoint * estCommissionRate * weight));
+  }, [estAveragePricePoint, estCommissionRate, recentPcGeneratedByKpiId]);
+
   const formatDrawerKpiMeta = useCallback((kpi: DashboardPayload['loggable_kpis'][number]) => {
     if (kpi.type === 'PC') {
-      const recentPc = recentPcGeneratedByKpiId.get(kpi.id);
-      const weight = Number(kpi.pc_weight ?? 0);
-      const estPc = recentPc != null && recentPc > 0 ? recentPc : estAveragePricePoint * estCommissionRate * weight;
+      const estPc = estimatePcGeneratedForKpi(kpi);
       const delay = Number(kpi.delay_days ?? 0);
       const hold = Number(kpi.hold_days ?? 0);
       const ttcLabel = (kpi.ttc_definition || '').trim() || `${delay + hold}d`;
@@ -2381,7 +3294,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       return `VP +${fmtNum(pts)} pt${pts === 1 ? '' : 's'}`;
     }
     return kpi.requires_direct_value_input ? 'Manual value input' : 'Tap to log';
-  }, [estAveragePricePoint, estCommissionRate, recentPcGeneratedByKpiId]);
+  }, [estimatePcGeneratedForKpi]);
 
   if (state === 'loading') {
     return (
@@ -2411,7 +3324,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       style={styles.screenRoot}
     >
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPad }]}
+        scrollEnabled={viewMode !== 'home'}
+        bounces={viewMode !== 'home'}
+        alwaysBounceVertical={false}
+        showsVerticalScrollIndicator={viewMode !== 'home'}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {viewMode === 'home' ? (
@@ -2448,7 +3365,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             {renderGameplayHeader()}
 
             <View
-              {...homePanelPanResponder.panHandlers}
               style={styles.homePanelViewport}
               onLayout={(e) => setHomeGridViewportWidth(e.nativeEvent.layout.width)}
             >
@@ -2484,9 +3400,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 disabled={!canGoBackwardDate}
                 onPress={() => {
                   if (!canGoBackwardDate) return;
-                  const nextIdx = selectedLogDateIndex + 1;
-                  const nextDate = navigableLogDates[nextIdx];
-                  if (nextDate) setSelectedLogDateIso(nextDate);
+                  setSelectedLogDateIso((prev) => shiftIsoLocalDate(prev ?? isoTodayLocal(), -1));
                 }}
               >
                 <Text style={[styles.arrow, !canGoBackwardDate && styles.arrowDisabled]}>←</Text>
@@ -2497,9 +3411,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 disabled={!canGoForwardDate}
                 onPress={() => {
                   if (!canGoForwardDate) return;
-                  const nextIdx = selectedLogDateIndex - 1;
-                  const nextDate = navigableLogDates[nextIdx];
-                  if (nextDate) setSelectedLogDateIso(nextDate);
+                  setSelectedLogDateIso((prev) => {
+                    const next = shiftIsoLocalDate(prev ?? isoTodayLocal(), 1);
+                    const today = isoTodayLocal();
+                    return next > today ? today : next;
+                  });
                 }}
               >
                 <Text style={[styles.arrow, !canGoForwardDate && styles.arrowDisabled]}>→</Text>
@@ -2507,7 +3423,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             </View>
 
             <View style={styles.todayLogsCard}>
-              <Text style={styles.todayLogsHeading}>TODAYS LOGS</Text>
+              <Text style={styles.todayLogsHeading}>
+                {selectedLogDate === isoTodayLocal() ? 'TODAYS LOGS' : 'SELECTED DAY LOGS'}
+              </Text>
               {todaysLogRows.length === 0 ? (
                 <Text style={styles.todayLogsEmpty}>No logs yet today.</Text>
               ) : (
@@ -2595,10 +3513,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     outputRange: [0.8, 1.02, 0.96],
                   });
                   return (
-                    <TouchableOpacity
+                    <Pressable
                       key={kpi.id}
                       style={[styles.gridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
-                      onPress={() => void onTapQuickLog(kpi)}
+                      onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
                       onLongPress={() =>
                         Alert.alert('Remove from Quick Log?', `${kpi.name} will be removed from your quick log set.`, [
                           { text: 'Cancel', style: 'cancel' },
@@ -2607,8 +3525,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       }
                       delayLongPress={280}
                       disabled={submitting}
-                      onPressIn={() => animateKpiTilePress(kpi.id, true)}
-                      onPressOut={() => animateKpiTilePress(kpi.id, false)}
+                      onPressIn={() => runKpiTilePressInFeedback(kpi, { surface: 'log' })}
+                      onPressOut={() => runKpiTilePressOutFeedback(kpi.id)}
                     >
                       <Animated.View
                         style={[styles.gridTileAnimatedWrap, { transform: [{ scale: getKpiTileScale(kpi.id) }] }]}
@@ -2637,14 +3555,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               },
                             ]}
                           >
-                            <Text style={styles.gridSuccessBadgeText}>+1</Text>
+                            <View style={styles.gridSuccessCoinOuter}>
+                              <View style={styles.gridSuccessCoinInner} />
+                              <View style={styles.gridSuccessCoinHighlight} />
+                            </View>
                           </Animated.View>
                         </View>
                         <Text style={[styles.gridLabel, confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed]}>
                           {kpi.name}
                         </Text>
                       </Animated.View>
-                    </TouchableOpacity>
+                    </Pressable>
                   );
                 })}
               </View>
@@ -2687,8 +3608,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         )}
       </ScrollView>
 
-      {flightFx ? (
-        <>
+      {activeFlightFx.map((flightFx) => (
+        <React.Fragment key={flightFx.key}>
           <Animated.View
             pointerEvents="none"
             style={[
@@ -2696,22 +3617,25 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               {
                 left: flightFx.startX,
                 top: flightFx.startY,
-                opacity: flightAnim.interpolate({ inputRange: [0, 0.06, 0.95, 1], outputRange: [0, 1, 1, 0] }),
+                opacity: flightFx.anim.interpolate({ inputRange: [0, 0.06, 0.95, 1], outputRange: [0, 1, 1, 0] }),
                 transform: [
-                  { translateX: flightAnim.interpolate({ inputRange: [0, 1], outputRange: [0, flightFx.deltaX] }) },
+                  { translateX: flightFx.anim.interpolate({ inputRange: [0, 1], outputRange: [0, flightFx.deltaX] }) },
                   {
-                    translateY: flightAnim.interpolate({
+                    translateY: flightFx.anim.interpolate({
                       inputRange: [0, 0.45, 1],
                       outputRange: [0, -flightFx.arcLift, flightFx.deltaY],
                     }),
                   },
                   { rotate: '-8deg' },
-                  { scale: flightAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.9, 1.08, 0.96] }) },
+                  { scale: flightFx.anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.9, 1.08, 0.96] }) },
                 ],
               },
             ]}
           >
-            <Text style={styles.fxProjectileText}>$</Text>
+            <View style={styles.fxCoinOuter}>
+              <View style={styles.fxCoinInner} />
+              <View style={styles.fxCoinHighlight} />
+            </View>
           </Animated.View>
           <Animated.View
             pointerEvents="none"
@@ -2720,33 +3644,36 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               {
                 left: flightFx.startX - 8,
                 top: flightFx.startY + 6,
-                opacity: flightAnim.interpolate({ inputRange: [0, 0.12, 0.9, 1], outputRange: [0, 0.85, 0.85, 0] }),
+                opacity: flightFx.anim.interpolate({ inputRange: [0, 0.12, 0.9, 1], outputRange: [0, 0.85, 0.85, 0] }),
                 transform: [
-                  { translateX: flightAnim.interpolate({ inputRange: [0, 1], outputRange: [0, flightFx.deltaX + 12] }) },
+                  { translateX: flightFx.anim.interpolate({ inputRange: [0, 1], outputRange: [0, flightFx.deltaX + 12] }) },
                   {
-                    translateY: flightAnim.interpolate({
+                    translateY: flightFx.anim.interpolate({
                       inputRange: [0, 0.4, 1],
                       outputRange: [0, -Math.max(24, flightFx.arcLift * 0.72), flightFx.deltaY + 4],
                     }),
                   },
                   { rotate: '10deg' },
-                  { scale: flightAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.75, 0.95, 0.8] }) },
+                  { scale: flightFx.anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.75, 0.95, 0.8] }) },
                 ],
               },
             ]}
           >
-            <Text style={[styles.fxProjectileText, styles.fxProjectileTextAlt]}>$</Text>
+            <View style={[styles.fxCoinOuter, styles.fxCoinOuterTrail]}>
+              <View style={styles.fxCoinInner} />
+              <View style={styles.fxCoinHighlight} />
+            </View>
           </Animated.View>
-        </>
-      ) : null}
+        </React.Fragment>
+      ))}
 
-      <View style={styles.bottomNav}>
+      <View style={[styles.bottomNav, { paddingTop: bottomNavPadTop, paddingBottom: bottomNavPadBottom }]}>
         {([
-          { key: 'home', icon: '⌂', label: 'Home' },
-          { key: 'challenge', icon: '⍟', label: 'Challenge' },
-          { key: 'newkpi', icon: '⊕', label: 'Log' },
-          { key: 'team', icon: '◫', label: 'Team' },
-          { key: 'user', icon: '◉', label: 'User' },
+          { key: 'home' },
+          { key: 'challenge' },
+          { key: 'newkpi' },
+          { key: 'team' },
+          { key: 'user' },
         ] as const).map((tab) => (
           <TouchableOpacity
             key={tab.key}
@@ -2766,8 +3693,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   : undefined
               }
             >
-              <Text style={[styles.bottomIcon, activeTab === tab.key && styles.bottomActive]}>{tab.icon}</Text>
-              <Text style={[styles.bottomLabel, activeTab === tab.key && styles.bottomActive]}>{tab.label}</Text>
+              <Image
+                source={bottomTabIconAssets[tab.key]}
+                style={[
+                  styles.bottomIconImage,
+                  bottomTabIconStyleByKey[tab.key],
+                  activeTab === tab.key ? styles.bottomIconImageActive : styles.bottomIconImageInactive,
+                ]}
+                resizeMode="contain"
+              />
             </Animated.View>
           </TouchableOpacity>
         ))}
@@ -2779,14 +3713,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             <Text style={styles.drawerTitle}>Quick Log Settings</Text>
             <Text style={styles.drawerUnlockedHint}>Toggle On/Off and mark up to 6 favorites.</Text>
             <View style={styles.drawerFilterRow}>
-              {(['All', 'PC', 'GP', 'VP'] as const).map((filter) => (
+              {(['Quick', 'PC', 'GP', 'VP'] as const).map((filter) => (
                 <TouchableOpacity
                   key={filter}
                   style={[styles.drawerFilterChip, drawerFilter === filter && styles.drawerFilterChipActive]}
                   onPress={() => setDrawerFilter(filter)}
                 >
                   <Text style={[styles.drawerFilterChipText, drawerFilter === filter && styles.drawerFilterChipTextActive]}>
-                    {filter === 'All' ? 'All' : `${filter} ${selectedCountsByType[filter]}/6`}
+                    {filter === 'Quick' ? 'Quick' : `${filter} ${selectedCountsByType[filter]}/6`}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -2973,6 +3907,11 @@ const styles = StyleSheet.create({
     paddingRight: 6,
     gap: 10,
   },
+  hudRailStaticRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+  },
   hudCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -2987,6 +3926,23 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
+  hudCardFill: {
+    flex: 1,
+  },
+  hudCardInteractive: {
+    borderColor: '#dfe7f5',
+  },
+  hudCardTappableGlow: {
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  hudCardActualInteractive: {
+    backgroundColor: '#fbfefc',
+  },
+  hudCardProjectedInteractive: {
+    backgroundColor: '#fbfcff',
+  },
   hudCardActive: {
     borderColor: '#d8e3f8',
     shadowOpacity: 0.08,
@@ -2994,11 +3950,23 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     transform: [{ scale: 1.015 }],
   },
+  hudCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    marginBottom: 4,
+  },
   hudCardAccent: {
     width: 24,
     height: 3,
     borderRadius: 999,
-    marginBottom: 6,
+  },
+  hudCardHintDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    opacity: 0.65,
   },
   hudCardLabel: {
     color: '#7a8392',
@@ -3008,6 +3976,14 @@ const styles = StyleSheet.create({
   hudCardValueScroll: {
     maxHeight: 28,
     marginTop: 2,
+  },
+  hudCardValueSlotViewport: {
+    height: 28,
+    overflow: 'hidden',
+    justifyContent: 'flex-start',
+  },
+  hudCardValueSlotTrack: {
+    flexDirection: 'column',
   },
   hudCardValue: {
     color: '#2f3442',
@@ -3119,10 +4095,65 @@ const styles = StyleSheet.create({
     backgroundColor: '#e6e9ee',
     padding: 4,
     overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  modeRailEdgeBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  modeRailEdgeBtnText: {
+    color: '#43506a',
+    fontSize: 21,
+    lineHeight: 22,
+    fontWeight: '700',
+  },
+  modeRailActivePill: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  modeRailActivePillSvgBg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modeRailActivePillSvgShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(8, 14, 24, 0.16)',
+  },
+  modeRailActivePillText: {
+    fontSize: 14.5,
+    letterSpacing: 0.45,
+    textShadowColor: 'rgba(0, 0, 0, 0.35)',
+    textShadowRadius: 3,
+    textShadowOffset: { width: 0, height: 1 },
+  },
+  modeRailHintText: {
+    color: 'rgba(255,255,255,0.86)',
+    fontSize: 9.5,
+    fontWeight: '700',
+    letterSpacing: 0.35,
+    marginTop: 1,
+    textShadowColor: 'rgba(0, 0, 0, 0.35)',
+    textShadowRadius: 2,
+    textShadowOffset: { width: 0, height: 1 },
   },
   modeRailContent: {
     gap: 6,
     alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingHorizontal: 16,
   },
   segmentRowCompact: {
     flex: 1,
@@ -3364,6 +4395,33 @@ const styles = StyleSheet.create({
     color: '#6d7584',
     marginBottom: 6,
   },
+  chartImpactBurstOverlay: {
+    position: 'absolute',
+    left: 52,
+    right: 12,
+    top: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 8,
+  },
+  chartImpactBurstValue: {
+    color: '#1f5fe2',
+    fontSize: 30,
+    lineHeight: 32,
+    fontWeight: '900',
+    letterSpacing: -0.6,
+    textShadowColor: 'rgba(255,255,255,0.9)',
+    textShadowRadius: 10,
+    textShadowOffset: { width: 0, height: 0 },
+  },
+  chartImpactBurstLabel: {
+    marginTop: 2,
+    color: '#5f6e86',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
   visualPlaceholder: {
     minHeight: 210,
     borderRadius: 10,
@@ -3409,6 +4467,13 @@ const styles = StyleSheet.create({
   monthBoundaryLabel: {
     color: '#2f3442',
     fontWeight: '700',
+  },
+  monthImpactLabel: {
+    color: '#1f5fe2',
+    fontWeight: '800',
+    backgroundColor: '#e8f0ff',
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   legendGrid: {
     flexDirection: 'row',
@@ -3789,6 +4854,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  gridContextBadgeStack: {
+    position: 'absolute',
+    top: 2,
+    right: -2,
+    maxWidth: 56,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 2,
+  },
+  gridContextBadge: {
+    minWidth: 16,
+    height: 16,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 0,
+  },
+  gridContextBadgeRequired: {
+    backgroundColor: '#fff2c7',
+    borderColor: '#efd279',
+    borderWidth: 1,
+    minWidth: 24,
+    height: 14,
+    paddingHorizontal: 5,
+  },
   gridCircleConfirmed: {
     borderColor: 'rgba(31, 95, 226, 0.28)',
     backgroundColor: 'rgba(31, 95, 226, 0.045)',
@@ -3796,6 +4887,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.14,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
+  },
+  gridCircleRequired: {
+    borderColor: 'rgba(201, 136, 33, 0.32)',
+    backgroundColor: 'rgba(255, 208, 108, 0.07)',
   },
   gridIcon: {
     fontSize: 38,
@@ -3823,29 +4918,70 @@ const styles = StyleSheet.create({
     color: '#1f5fe2',
     fontWeight: '700',
   },
+  gridContextBadgeText: {
+    color: '#2f3645',
+    fontSize: 12,
+    lineHeight: 13,
+    fontWeight: '700',
+    textShadowColor: 'rgba(255,255,255,0.85)',
+    textShadowRadius: 2,
+    textShadowOffset: { width: 0, height: 0 },
+  },
+  gridContextBadgeTextRequired: {
+    color: '#735413',
+    fontSize: 8,
+    lineHeight: 9,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    textShadowColor: 'transparent',
+    textShadowRadius: 0,
+    textShadowOffset: { width: 0, height: 0 },
+  },
   gridSuccessBadge: {
     position: 'absolute',
     top: 6,
     right: 2,
-    minWidth: 28,
-    height: 22,
+    minWidth: 30,
+    height: 24,
     borderRadius: 999,
-    backgroundColor: '#2f9f56',
+    backgroundColor: '#fff2c7',
     borderWidth: 1,
-    borderColor: '#d8f4df',
+    borderColor: '#f3d677',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
-    shadowColor: '#1e7a41',
+    paddingHorizontal: 5,
+    shadowColor: '#b88714',
     shadowOpacity: 0.18,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
   },
-  gridSuccessBadgeText: {
-    color: '#fff',
-    fontSize: 11,
-    lineHeight: 12,
-    fontWeight: '800',
+  gridSuccessCoinOuter: {
+    width: 15,
+    height: 15,
+    borderRadius: 999,
+    backgroundColor: '#f1b40f',
+    borderWidth: 1,
+    borderColor: '#d19406',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  gridSuccessCoinInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#ffd45a',
+    borderWidth: 1,
+    borderColor: '#efc43d',
+  },
+  gridSuccessCoinHighlight: {
+    position: 'absolute',
+    top: 2,
+    left: 3,
+    width: 4,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.72)',
   },
   emptyPanel: {
     backgroundColor: '#fff',
@@ -3856,24 +4992,34 @@ const styles = StyleSheet.create({
   },
   bottomNav: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: 6,
+    right: 6,
     bottom: 0,
+    zIndex: 90,
+    elevation: 90,
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#e6ebf1',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    overflow: 'hidden',
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingTop: 8,
-    paddingBottom: 16,
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingHorizontal: 10,
+    paddingTop: 2,
+    paddingBottom: 0,
   },
   bottomItem: {
     alignItems: 'center',
-    gap: 2,
-    minWidth: 58,
-    borderRadius: 12,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    justifyContent: 'flex-end',
+    gap: 0,
+    minWidth: 68,
+    minHeight: 68,
+    borderRadius: 20,
+    paddingHorizontal: 4,
+    paddingTop: 4,
+    paddingBottom: 0,
   },
   bottomItemActivePill: {
     backgroundColor: '#eef4ff',
@@ -3901,13 +5047,62 @@ const styles = StyleSheet.create({
     fontSize: 19,
     lineHeight: 19,
   },
+  fxCoinOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: '#f1b40f',
+    borderWidth: 1,
+    borderColor: '#d19406',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    shadowColor: '#b88714',
+    shadowOpacity: 0.22,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  fxCoinOuterTrail: {
+    width: 16,
+    height: 16,
+    opacity: 0.9,
+  },
+  fxCoinInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: '#ffd45a',
+    borderWidth: 1,
+    borderColor: '#efc43d',
+  },
+  fxCoinHighlight: {
+    position: 'absolute',
+    top: 3,
+    left: 4,
+    width: 5,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+  },
   bottomIcon: {
     color: '#a0a8b7',
-    fontSize: 16,
+    fontSize: 15,
+    lineHeight: 16,
+  },
+  bottomIconImage: {
+    width: 62,
+    height: 62,
+  },
+  bottomIconImageInactive: {
+    opacity: 0.88,
+  },
+  bottomIconImageActive: {
+    opacity: 1,
   },
   bottomLabel: {
     color: '#a0a8b7',
     fontSize: 11,
+    lineHeight: 12,
   },
   bottomActive: {
     color: '#1f5fe2',

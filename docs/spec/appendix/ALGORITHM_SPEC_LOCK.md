@@ -53,6 +53,12 @@ Canonical source: `docs/spec/appendix/Master Spec.md` section "Calcs and Algorit
 | ALG-CAL-1 | Adaptive weighting effective weight (`base * multiplier`) | `calculateKpiEffects` | sprint adaptive calibration tests |
 | ALG-CAL-2 | Onboarding multiplier initialization by share ratio | `computeInitializationMultipliers` | sprint adaptive calibration tests |
 | ALG-CAL-3 | Deal-close calibration step update (bounded/trust-weighted) | `computeCalibrationStep` + `runDealCloseCalibration` | sprint adaptive calibration tests |
+| ALG-ONB-2 (planned) | Addendum Part 1 §5.1 backplot span derives from KPI timing window + safety margin | onboarding seed span planner (new) | planned `test:algorithms` addendum cases |
+| ALG-CF-CTY-1 (planned) | Addendum Part 1 §5.3 continuity forecast share split (`real/seeded/provider`) | dashboard/projection aggregator (extended) | planned continuity provenance tests |
+| ALG-CF-CTY-2 (planned) | Addendum Part 1 §5.3 horizon continuity modifier (`clamp(1 - 0.60*share, 0.60, 1.00)`) | confidence horizon adapter (new/extended) | planned confidence continuity tests |
+| ALG-CF-CTY-3 (planned) | Addendum Part 1 §5.2 replacement rule (real logs override overlapping provider continuity events) | projection input merger (new/extended) | planned continuity overlap tests |
+| ALG-CAL-4 (planned) | Addendum Part 1 §6 confidence should reflect predictiveness/trust, not KPI count | confidence explainability extension (planned) | planned regression/scenario tests |
+| ALG-LAB-1 (planned) | Addendum Part 2 Projection Lab scenario runner uses real algorithm on synthetic inputs | admin projection lab runner (planned) | planned admin lab regression harness |
 
 ## Implementation Notes
 - Confidence is display-layer only and does not mutate base projection values.
@@ -70,3 +76,16 @@ Canonical source: `docs/spec/appendix/Master Spec.md` section "Calcs and Algorit
   - storage: `user_kpi_calibration`
   - audit: `user_kpi_calibration_events`
   - applied snapshots on logs: `pc_base_weight_applied`, `pc_user_multiplier_applied`, `pc_effective_weight_applied`
+
+## Addendum Integration Notes (2026-02-25, Planned / Spec-Only)
+- References:
+  - `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_1_PROJECTION_INTEGRITY_CALIBRATION.md`
+  - `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_2_PROJECTION_LAB.md`
+- Continuity projection (planned) is a forecast-only provider layer and must not persist as user-entered logs.
+- Planned horizon confidence outputs will multiply the existing base confidence score by a continuity modifier per horizon.
+- Planned provenance separation for projection accounting:
+  - `PC_from_real_logs`
+  - `PC_from_seeded_history`
+  - `PC_from_provider_forecast`
+- Provider continuity inputs must not affect GP/VP, challenges/leaderboards, or calibration truth updates.
+- Projection Lab traceability rows are admin validation harness references, not core runtime formula changes.

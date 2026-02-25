@@ -6,7 +6,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -31,6 +30,25 @@ import {
   type AdminKpiRow,
   type AdminKpiWritePayload,
 } from '../lib/adminCatalogApi';
+import {
+  fetchAdminUserCalibration,
+  fetchAdminUserCalibrationEvents,
+  fetchAdminUsers,
+  reinitializeAdminUserCalibrationFromOnboarding,
+  resetAdminUserCalibration,
+  updateAdminUserRole,
+  updateAdminUserStatus,
+  updateAdminUserTier,
+  type AdminUserCalibrationEvent,
+  type AdminUserCalibrationRow,
+  type AdminUserCalibrationSnapshot,
+  type AdminUserRow,
+} from '../lib/adminUsersApi';
+import {
+  probeAdminAnalyticsOverview,
+  probeAdminDetailedReports,
+  type EndpointProbeStatus,
+} from '../lib/adminReportsApi';
 import {
   ADMIN_ROUTES,
   AdminRouteDefinition,
@@ -85,7 +103,7 @@ function PlaceholderScreen({
         <View style={styles.placeholderCard}>
           <Text style={styles.placeholderCardLabel}>Next implementation</Text>
           <Text style={styles.placeholderCardValue}>
-            {stage === 'A1 now' ? 'Guard + nav behavior' : stage === 'A2 later' ? 'CRUD screens + API wiring' : 'Ops views + reports'}
+            {stage === 'A1 now' ? 'Guard + nav behavior' : stage === 'A2 now' ? 'CRUD screens + API wiring' : 'Ops views + reports'}
           </Text>
         </View>
         <View style={styles.placeholderCard}>
@@ -192,6 +210,52 @@ type TemplateFormDraft = {
   description: string;
   isActive: boolean;
 };
+
+type UserFormDraft = {
+  id?: string;
+  role: AdminUserRow['role'];
+  tier: AdminUserRow['tier'];
+  accountStatus: AdminUserRow['account_status'];
+};
+
+function emptyUserDraft(): UserFormDraft {
+  return { role: 'agent', tier: 'free', accountStatus: 'active' };
+}
+
+function userDraftFromRow(row: AdminUserRow): UserFormDraft {
+  return {
+    id: row.id,
+    role: row.role,
+    tier: row.tier,
+    accountStatus: row.account_status,
+  };
+}
+
+function formatDateTimeShort(value?: string | null) {
+  if (!value) return 'n/a';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'n/a';
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+function formatProbeStatus(status: EndpointProbeStatus): string {
+  switch (status.kind) {
+    case 'idle':
+      return 'Not checked yet';
+    case 'loading':
+      return 'Checking...';
+    case 'ready':
+      return 'Endpoint responded';
+    case 'not_implemented':
+      return `Not implemented in current backend (${status.status})`;
+    case 'forbidden':
+      return `Forbidden (${status.status})`;
+    case 'error':
+      return status.message;
+    default:
+      return 'Unknown';
+  }
+}
 
 function emptyKpiDraft(): KpiFormDraft {
   return {
@@ -824,6 +888,376 @@ function AdminChallengeTemplatesPanel({
   );
 }
 
+function AdminUsersPanel({
+  rows,
+  loading,
+  error,
+  searchQuery,
+  onSearchQueryChange,
+  roleFilter,
+  onRoleFilterChange,
+  statusFilter,
+  onStatusFilterChange,
+  selectedUser,
+  userDraft,
+  onSelectUser,
+  onUserDraftChange,
+  onRefreshUsers,
+  onSaveUser,
+  onResetCalibration,
+  onReinitializeCalibration,
+  userSaving,
+  userSaveError,
+  userSuccessMessage,
+  calibrationLoading,
+  calibrationError,
+  calibrationSnapshot,
+  calibrationEvents,
+  calibrationActionLoading,
+}: {
+  rows: AdminUserRow[];
+  loading: boolean;
+  error: string | null;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  roleFilter: 'all' | 'agent' | 'team_leader' | 'admin' | 'super_admin';
+  onRoleFilterChange: (value: 'all' | 'agent' | 'team_leader' | 'admin' | 'super_admin') => void;
+  statusFilter: 'all' | 'active' | 'deactivated';
+  onStatusFilterChange: (value: 'all' | 'active' | 'deactivated') => void;
+  selectedUser: AdminUserRow | null;
+  userDraft: UserFormDraft;
+  onSelectUser: (row: AdminUserRow) => void;
+  onUserDraftChange: (patch: Partial<UserFormDraft>) => void;
+  onRefreshUsers: () => void;
+  onSaveUser: () => void;
+  onResetCalibration: () => void;
+  onReinitializeCalibration: () => void;
+  userSaving: boolean;
+  userSaveError: string | null;
+  userSuccessMessage: string | null;
+  calibrationLoading: boolean;
+  calibrationError: string | null;
+  calibrationSnapshot: AdminUserCalibrationSnapshot | null;
+  calibrationEvents: AdminUserCalibrationEvent[];
+  calibrationActionLoading: boolean;
+}) {
+  const filteredRows = rows.filter((row) => {
+    const q = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      row.id.toLowerCase().includes(q) ||
+      (row.role ?? '').toLowerCase().includes(q) ||
+      (row.tier ?? '').toLowerCase().includes(q);
+    const matchesRole = roleFilter === 'all' || row.role === roleFilter;
+    const matchesStatus = statusFilter === 'all' || row.account_status === statusFilter;
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+  const diagnostics = calibrationSnapshot?.diagnostics ?? null;
+  const calibrationRows = calibrationSnapshot?.rows ?? [];
+
+  return (
+    <View style={styles.panel}>
+      <View style={styles.panelTopRow}>
+        <View style={styles.panelTitleBlock}>
+          <Text style={styles.eyebrow}>/admin/users</Text>
+          <Text style={styles.panelTitle}>Users</Text>
+        </View>
+        <View style={[styles.stagePill, { backgroundColor: '#FFF5E6', borderColor: '#F5D9AA' }]}>
+          <Text style={[styles.stagePillText, { color: '#9A5A00' }]}>A3 Now</Text>
+        </View>
+      </View>
+      <Text style={styles.panelBody}>
+        A3 user operations baseline wired to existing admin user and calibration endpoints (role, tier, status, calibration diagnostics).
+      </Text>
+
+      <View style={styles.filterBar}>
+        <View style={[styles.formField, styles.formFieldWide]}>
+          <Text style={styles.formLabel}>Search</Text>
+          <TextInput
+            value={searchQuery}
+            onChangeText={onSearchQueryChange}
+            style={styles.input}
+            placeholder="Search user id / role / tier"
+          />
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Role</Text>
+          <View style={styles.inlineToggleRow}>
+            {(['all', 'agent', 'team_leader', 'admin', 'super_admin'] as const).map((value) => {
+              const selected = roleFilter === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => onRoleFilterChange(value)}
+                  style={[styles.toggleChip, selected && styles.toggleChipOn]}
+                >
+                  <Text style={[styles.toggleChipText, selected && styles.toggleChipTextOn]}>{value}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Status</Text>
+          <View style={styles.inlineToggleRow}>
+            {(['all', 'active', 'deactivated'] as const).map((value) => {
+              const selected = statusFilter === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => onStatusFilterChange(value)}
+                  style={[styles.toggleChip, selected && styles.toggleChipOn]}
+                >
+                  <Text style={[styles.toggleChipText, selected && styles.toggleChipTextOn]}>{value}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+
+      <View style={[styles.summaryRow, styles.summaryRowCompact]}>
+        <View style={[styles.tableWrap, { flex: 1, minWidth: 320 }]}>
+          <View style={[styles.formHeaderRow, { paddingHorizontal: 12, paddingTop: 10 }]}>
+            <Text style={styles.formTitle}>User List</Text>
+            <TouchableOpacity style={styles.smallGhostButton} onPress={onRefreshUsers}>
+              <Text style={styles.smallGhostButtonText}>Refresh</Text>
+            </TouchableOpacity>
+          </View>
+          {loading ? <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Loading users...</Text> : null}
+          {error ? <Text style={[styles.metaRow, styles.errorText, { paddingHorizontal: 12 }]}>Error: {error}</Text> : null}
+          {!loading && !error ? (
+            <>
+              <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Rows shown: {filteredRows.length} of {rows.length}</Text>
+              <View style={styles.tableHeaderRow}>
+                <Text style={[styles.tableHeaderCell, styles.colMd]}>Role</Text>
+                <Text style={[styles.tableHeaderCell, styles.colSm]}>Tier</Text>
+                <Text style={[styles.tableHeaderCell, styles.colSm]}>Status</Text>
+                <Text style={[styles.tableHeaderCell, styles.colSm]}>Last Active</Text>
+                <Text style={[styles.tableHeaderCell, styles.colMd]}>User ID</Text>
+              </View>
+              {filteredRows.slice(0, 16).map((row) => {
+                const selected = selectedUser?.id === row.id;
+                return (
+                  <Pressable
+                    key={row.id}
+                    style={[styles.tableDataRow, selected && { backgroundColor: '#EDF3FF' }]}
+                    onPress={() => onSelectUser(row)}
+                  >
+                    <Text style={[styles.tableCellText, styles.colMd]}>{row.role}</Text>
+                    <Text style={[styles.tableCellText, styles.colSm]}>{row.tier}</Text>
+                    <Text style={[styles.tableCellText, styles.colSm]}>{row.account_status}</Text>
+                    <Text style={[styles.tableCellText, styles.colSm]}>{formatDateShort(row.last_activity_timestamp)}</Text>
+                    <View style={[styles.tableCell, styles.colMd]}>
+                      <Text numberOfLines={1} style={styles.tableSecondary}>{row.id}</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+              {filteredRows.length > 16 ? <Text style={styles.tableFootnote}>Showing first 16 filtered rows for A3 baseline UI.</Text> : null}
+            </>
+          ) : null}
+        </View>
+
+        <View style={[styles.formCard, { flex: 1, minWidth: 320 }]}>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.formTitle}>User Ops</Text>
+            <Text style={styles.metaRow}>{selectedUser ? formatDateTimeShort(selectedUser.updated_at) : 'Select a user'}</Text>
+          </View>
+          {selectedUser ? (
+            <>
+              <Text style={styles.metaRow}>User ID: {selectedUser.id}</Text>
+              <Text style={styles.metaRow}>Created: {formatDateTimeShort(selectedUser.created_at)}</Text>
+              <Text style={styles.metaRow}>Last activity: {formatDateTimeShort(selectedUser.last_activity_timestamp)}</Text>
+              <View style={styles.formGrid}>
+                <View style={styles.formField}>
+                  <Text style={styles.formLabel}>Role</Text>
+                  <View style={styles.chipRow}>
+                    {(['agent', 'team_leader', 'admin', 'super_admin'] as const).map((role) => {
+                      const selected = userDraft.role === role;
+                      return (
+                        <Pressable
+                          key={role}
+                          onPress={() => onUserDraftChange({ role })}
+                          style={[styles.formChip, selected && styles.formChipSelected]}
+                        >
+                          <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>{role}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+                <View style={styles.formField}>
+                  <Text style={styles.formLabel}>Tier</Text>
+                  <View style={styles.chipRow}>
+                    {(['free', 'basic', 'teams', 'enterprise'] as const).map((tier) => {
+                      const selected = userDraft.tier === tier;
+                      return (
+                        <Pressable
+                          key={tier}
+                          onPress={() => onUserDraftChange({ tier })}
+                          style={[styles.formChip, selected && styles.formChipSelected]}
+                        >
+                          <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>{tier}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+                <View style={styles.formField}>
+                  <Text style={styles.formLabel}>Account Status</Text>
+                  <View style={styles.inlineToggleRow}>
+                    {(['active', 'deactivated'] as const).map((status) => {
+                      const selected = userDraft.accountStatus === status;
+                      return (
+                        <Pressable
+                          key={status}
+                          onPress={() => onUserDraftChange({ accountStatus: status })}
+                          style={[styles.toggleChip, selected && styles.toggleChipOn]}
+                        >
+                          <Text style={[styles.toggleChipText, selected && styles.toggleChipTextOn]}>{status}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+              {userSaveError ? <Text style={[styles.metaRow, styles.errorText]}>Error: {userSaveError}</Text> : null}
+              {userSuccessMessage ? <Text style={[styles.metaRow, styles.successText]}>{userSuccessMessage}</Text> : null}
+              <View style={styles.formActionsRow}>
+                <TouchableOpacity style={styles.primaryButton} onPress={onSaveUser} disabled={userSaving}>
+                  <Text style={styles.primaryButtonText}>{userSaving ? 'Saving...' : 'Save User Changes'}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.formActionsRow, { marginTop: 6 }]}>
+                <TouchableOpacity
+                  style={styles.smallGhostButton}
+                  onPress={onResetCalibration}
+                  disabled={calibrationActionLoading}
+                >
+                  <Text style={styles.smallGhostButtonText}>
+                    {calibrationActionLoading ? 'Working...' : 'Reset Calibration'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.smallGhostButton}
+                  onPress={onReinitializeCalibration}
+                  disabled={calibrationActionLoading}
+                >
+                  <Text style={styles.smallGhostButtonText}>Reinitialize From Onboarding</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <Text style={styles.panelBody}>Select a user row to edit role/tier/status and inspect calibration diagnostics.</Text>
+          )}
+        </View>
+      </View>
+
+      <View style={[styles.summaryRow, styles.summaryRowCompact]}>
+        <View style={[styles.summaryCard, { flex: 1 }]}>
+          <Text style={styles.summaryLabel}>Calibration Diagnostics</Text>
+          {calibrationLoading ? <Text style={styles.metaRow}>Loading calibration...</Text> : null}
+          {calibrationError ? <Text style={[styles.metaRow, styles.errorText]}>Error: {calibrationError}</Text> : null}
+          {!calibrationLoading && !calibrationError ? (
+            diagnostics ? (
+              <>
+                {Object.entries(diagnostics).slice(0, 6).map(([key, value]) => (
+                  <Text key={key} style={styles.metaRow}>{key}: {String(value)}</Text>
+                ))}
+                {!Object.keys(diagnostics).length ? <Text style={styles.metaRow}>No diagnostics values returned</Text> : null}
+              </>
+            ) : (
+              <Text style={styles.metaRow}>Select a user to load calibration diagnostics.</Text>
+            )
+          ) : null}
+        </View>
+        <View style={[styles.summaryCard, { flex: 1 }]}>
+          <Text style={styles.summaryLabel}>Calibration Rows</Text>
+          <Text style={styles.metaRow}>Rows: {calibrationRows.length}</Text>
+          {calibrationRows.slice(0, 5).map((row) => (
+            <Text key={`${row.user_id}:${row.kpi_id}`} style={styles.metaRow}>
+              {(row.kpi_name ?? row.kpi_id)} • mult {row.multiplier ?? 1} • n={row.sample_size ?? 0}
+            </Text>
+          ))}
+          {calibrationRows.length > 5 ? <Text style={styles.metaRow}>+ {calibrationRows.length - 5} more rows</Text> : null}
+        </View>
+        <View style={[styles.summaryCard, { flex: 1 }]}>
+          <Text style={styles.summaryLabel}>Calibration Events</Text>
+          <Text style={styles.metaRow}>Events: {calibrationEvents.length}</Text>
+          {calibrationEvents.slice(0, 4).map((event) => (
+            <Text key={event.id} style={styles.metaRow}>
+              {formatDateShort(event.created_at)} • err {event.error_ratio == null ? 'n/a' : String(event.error_ratio)}
+            </Text>
+          ))}
+          {calibrationEvents.length > 4 ? <Text style={styles.metaRow}>+ {calibrationEvents.length - 4} more events</Text> : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function AdminReportsPanel({
+  overviewStatus,
+  detailedStatus,
+  onRefresh,
+  loading,
+}: {
+  overviewStatus: EndpointProbeStatus;
+  detailedStatus: EndpointProbeStatus;
+  onRefresh: () => void;
+  loading: boolean;
+}) {
+  return (
+    <View style={styles.panel}>
+      <View style={styles.panelTopRow}>
+        <View style={styles.panelTitleBlock}>
+          <Text style={styles.eyebrow}>/admin/reports</Text>
+          <Text style={styles.panelTitle}>Analytics + Reports</Text>
+        </View>
+        <View style={[styles.stagePill, { backgroundColor: '#FFF5E6', borderColor: '#F5D9AA' }]}>
+          <Text style={[styles.stagePillText, { color: '#9A5A00' }]}>A3 Now</Text>
+        </View>
+      </View>
+      <Text style={styles.panelBody}>
+        A3 reporting surface validates documented analytics/report contracts. If endpoints are not implemented in the backend yet, this panel reports that clearly without introducing new endpoint families.
+      </Text>
+      <View style={styles.formActionsRow}>
+        <TouchableOpacity style={styles.primaryButton} onPress={onRefresh} disabled={loading}>
+          <Text style={styles.primaryButtonText}>{loading ? 'Checking...' : 'Check Analytics Endpoints'}</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={[styles.summaryRow, styles.summaryRowCompact]}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>GET /admin/analytics/overview</Text>
+          <Text style={styles.summaryValue}>{formatProbeStatus(overviewStatus)}</Text>
+          {'bodyPreview' in overviewStatus ? (
+            <Text style={styles.summaryNote} numberOfLines={6}>{overviewStatus.bodyPreview}</Text>
+          ) : (
+            <Text style={styles.summaryNote}>Documented in spec; this panel probes the live backend response.</Text>
+          )}
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>GET /admin/analytics/detailed-reports</Text>
+          <Text style={styles.summaryValue}>{formatProbeStatus(detailedStatus)}</Text>
+          {'bodyPreview' in detailedStatus ? (
+            <Text style={styles.summaryNote} numberOfLines={6}>{detailedStatus.bodyPreview}</Text>
+          ) : (
+            <Text style={styles.summaryNote}>Documented for A3. If 404, backend implementation is still pending.</Text>
+          )}
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>POST /admin/data-exports</Text>
+          <Text style={styles.summaryValue}>Contract documented (not wired in this backend yet)</Text>
+          <Text style={styles.summaryNote}>
+            A3 UI keeps export entry point visible, but avoids a side-effecting call until backend endpoint implementation lands.
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function UnauthorizedState({
   title,
   message,
@@ -886,7 +1320,6 @@ export default function AdminShellScreen() {
   const [activeRouteKey, setActiveRouteKey] = useState<AdminRouteKey>(() =>
     getInitialAdminRouteKey(process.env.EXPO_PUBLIC_ADMIN_INITIAL_ROUTE)
   );
-  const [showUpcomingRoutes, setShowUpcomingRoutes] = useState(false);
   const [devRolePreview, setDevRolePreview] = useState<'live' | 'super_admin' | 'admin' | 'agent'>('live');
   const [unknownAdminPath, setUnknownAdminPath] = useState<string | null>(null);
   const [lastNavPushPath, setLastNavPushPath] = useState<string | null>(null);
@@ -909,6 +1342,25 @@ export default function AdminShellScreen() {
   const [templateSaving, setTemplateSaving] = useState(false);
   const [templateSaveError, setTemplateSaveError] = useState<string | null>(null);
   const [templateSuccessMessage, setTemplateSuccessMessage] = useState<string | null>(null);
+  const [userRows, setUserRows] = useState<AdminUserRow[]>([]);
+  const [userLoading, setUserLoading] = useState(false);
+  const [userError, setUserError] = useState<string | null>(null);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'agent' | 'team_leader' | 'admin' | 'super_admin'>('all');
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'active' | 'deactivated'>('all');
+  const [selectedUser, setSelectedUser] = useState<AdminUserRow | null>(null);
+  const [userDraft, setUserDraft] = useState<UserFormDraft>(emptyUserDraft);
+  const [userSaving, setUserSaving] = useState(false);
+  const [userSaveError, setUserSaveError] = useState<string | null>(null);
+  const [userSuccessMessage, setUserSuccessMessage] = useState<string | null>(null);
+  const [calibrationLoading, setCalibrationLoading] = useState(false);
+  const [calibrationError, setCalibrationError] = useState<string | null>(null);
+  const [calibrationSnapshot, setCalibrationSnapshot] = useState<AdminUserCalibrationSnapshot | null>(null);
+  const [calibrationEvents, setCalibrationEvents] = useState<AdminUserCalibrationEvent[]>([]);
+  const [calibrationActionLoading, setCalibrationActionLoading] = useState(false);
+  const [reportsProbeLoading, setReportsProbeLoading] = useState(false);
+  const [analyticsOverviewStatus, setAnalyticsOverviewStatus] = useState<EndpointProbeStatus>({ kind: 'idle' });
+  const [analyticsDetailedStatus, setAnalyticsDetailedStatus] = useState<EndpointProbeStatus>({ kind: 'idle' });
 
   const effectiveRoles = useMemo(() => {
     if (!__DEV__ || devRolePreview === 'live') return resolvedRoles;
@@ -922,20 +1374,7 @@ export default function AdminShellScreen() {
   const canOpenActiveRoute = canAccessAdminRoute(effectiveRoles, activeRoute);
   const a1Routes = ADMIN_ROUTES.filter((route) => getAdminRouteStage(route.key) === 'A1 now').length;
   const blockedRoutes = ADMIN_ROUTES.filter((route) => !canAccessRoute(route)).length;
-  const visibleRoutes = ADMIN_ROUTES.filter(
-    (route) => {
-      const stage = getAdminRouteStage(route.key);
-      if (stage === 'A1 now' || stage === 'A2 later') return true;
-      return showUpcomingRoutes;
-    }
-  );
-
-  useEffect(() => {
-    if (showUpcomingRoutes) return;
-    const stage = getAdminRouteStage(activeRouteKey);
-    if (stage === 'A1 now' || stage === 'A2 later') return;
-    setActiveRouteKey('overview');
-  }, [activeRouteKey, showUpcomingRoutes]);
+  const visibleRoutes = ADMIN_ROUTES;
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -1027,6 +1466,60 @@ export default function AdminShellScreen() {
     }
   };
 
+  const refreshUsers = async () => {
+    if (!session?.access_token) return;
+    setUserLoading(true);
+    setUserError(null);
+    try {
+      const rows = await fetchAdminUsers(session.access_token);
+      const sorted = sortRowsByUpdatedDesc(rows);
+      setUserRows(sorted);
+      setSelectedUser((prev) => {
+        if (!prev) return prev;
+        return sorted.find((row) => row.id === prev.id) ?? null;
+      });
+    } catch (error) {
+      setUserError(error instanceof Error ? error.message : 'Failed to load users');
+    } finally {
+      setUserLoading(false);
+    }
+  };
+
+  const refreshSelectedUserCalibration = async (userId: string) => {
+    if (!session?.access_token) return;
+    setCalibrationLoading(true);
+    setCalibrationError(null);
+    try {
+      const [snapshot, events] = await Promise.all([
+        fetchAdminUserCalibration(session.access_token, userId),
+        fetchAdminUserCalibrationEvents(session.access_token, userId),
+      ]);
+      setCalibrationSnapshot(snapshot);
+      setCalibrationEvents(events);
+    } catch (error) {
+      setCalibrationError(error instanceof Error ? error.message : 'Failed to load calibration');
+    } finally {
+      setCalibrationLoading(false);
+    }
+  };
+
+  const probeReportsEndpoints = async () => {
+    if (!session?.access_token) return;
+    setReportsProbeLoading(true);
+    setAnalyticsOverviewStatus({ kind: 'loading' });
+    setAnalyticsDetailedStatus({ kind: 'loading' });
+    try {
+      const [overview, detailed] = await Promise.all([
+        probeAdminAnalyticsOverview(session.access_token),
+        probeAdminDetailedReports(session.access_token),
+      ]);
+      setAnalyticsOverviewStatus(overview);
+      setAnalyticsDetailedStatus(detailed);
+    } finally {
+      setReportsProbeLoading(false);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     if (!session?.access_token) return;
@@ -1038,6 +1531,33 @@ export default function AdminShellScreen() {
     return () => {
       cancelled = true;
     };
+  }, [activeRouteKey, effectiveHasAdminAccess, session?.access_token]);
+
+  useEffect(() => {
+    if (!session?.access_token) return;
+    if (activeRouteKey !== 'users') return;
+    if (!effectiveHasAdminAccess) return;
+    void refreshUsers().catch(() => {});
+  }, [activeRouteKey, effectiveHasAdminAccess, session?.access_token]);
+
+  useEffect(() => {
+    if (!session?.access_token) return;
+    if (!selectedUser?.id) {
+      setCalibrationSnapshot(null);
+      setCalibrationEvents([]);
+      setCalibrationError(null);
+      return;
+    }
+    if (activeRouteKey !== 'users') return;
+    if (!effectiveHasAdminAccess) return;
+    void refreshSelectedUserCalibration(selectedUser.id).catch(() => {});
+  }, [activeRouteKey, effectiveHasAdminAccess, selectedUser?.id, session?.access_token]);
+
+  useEffect(() => {
+    if (!session?.access_token) return;
+    if (activeRouteKey !== 'reports') return;
+    if (!effectiveHasAdminAccess) return;
+    void probeReportsEndpoints().catch(() => {});
   }, [activeRouteKey, effectiveHasAdminAccess, session?.access_token]);
 
   useEffect(() => {
@@ -1197,6 +1717,99 @@ export default function AdminShellScreen() {
     }
   };
 
+  const handleUserSave = async () => {
+    if (!session?.access_token || !selectedUser?.id) return;
+    const original = selectedUser;
+    const userId = original.id;
+    setUserSaving(true);
+    setUserSaveError(null);
+    setUserSuccessMessage(null);
+    try {
+      let latestRow: AdminUserRow = original;
+      const changes: string[] = [];
+      if (userDraft.role !== original.role) {
+        const updated = await updateAdminUserRole(session.access_token, userId, userDraft.role);
+        latestRow = { ...latestRow, ...updated };
+        changes.push(`role -> ${updated.role}`);
+      }
+      if (userDraft.tier !== original.tier) {
+        const updated = await updateAdminUserTier(session.access_token, userId, userDraft.tier);
+        latestRow = { ...latestRow, ...updated };
+        changes.push(`tier -> ${updated.tier}`);
+      }
+      if (userDraft.accountStatus !== original.account_status) {
+        if (userDraft.accountStatus === 'deactivated') {
+          const confirmed = await confirmDangerAction(`Deactivate user ${userId}?`);
+          if (!confirmed) {
+            setUserSaving(false);
+            return;
+          }
+        }
+        const updated = await updateAdminUserStatus(session.access_token, userId, userDraft.accountStatus);
+        latestRow = { ...latestRow, ...updated };
+        changes.push(`status -> ${updated.account_status}`);
+      }
+
+      if (changes.length === 0) {
+        setUserSuccessMessage('No user changes to save');
+        return;
+      }
+
+      setUserRows((prev) =>
+        sortRowsByUpdatedDesc(
+          prev.map((row) =>
+            row.id === userId ? { ...row, ...latestRow, updated_at: new Date().toISOString() } : row
+          )
+        )
+      );
+      setSelectedUser((prev) => (prev?.id === userId ? { ...prev, ...latestRow, updated_at: new Date().toISOString() } : prev));
+      setUserSuccessMessage(`Saved user changes (${changes.join(', ')})`);
+      await refreshUsers();
+    } catch (error) {
+      setUserSaveError(error instanceof Error ? error.message : 'Failed to update user');
+    } finally {
+      setUserSaving(false);
+    }
+  };
+
+  const handleResetCalibration = async () => {
+    if (!session?.access_token || !selectedUser?.id) return;
+    const confirmed = await confirmDangerAction(`Reset all KPI calibration rows for user ${selectedUser.id}?`);
+    if (!confirmed) return;
+    setCalibrationActionLoading(true);
+    setUserSaveError(null);
+    setUserSuccessMessage(null);
+    try {
+      const result = await resetAdminUserCalibration(session.access_token, selectedUser.id);
+      setUserSuccessMessage(`Calibration reset for ${result.rows.length} row(s)`);
+      await refreshSelectedUserCalibration(selectedUser.id);
+    } catch (error) {
+      setUserSaveError(error instanceof Error ? error.message : 'Failed to reset calibration');
+    } finally {
+      setCalibrationActionLoading(false);
+    }
+  };
+
+  const handleReinitializeCalibration = async () => {
+    if (!session?.access_token || !selectedUser?.id) return;
+    const confirmed = await confirmDangerAction(
+      `Reinitialize calibration from onboarding metadata for user ${selectedUser.id}?`
+    );
+    if (!confirmed) return;
+    setCalibrationActionLoading(true);
+    setUserSaveError(null);
+    setUserSuccessMessage(null);
+    try {
+      const result = await reinitializeAdminUserCalibrationFromOnboarding(session.access_token, selectedUser.id);
+      setUserSuccessMessage(`Reinitialized ${result.reinitialized_rows} calibration row(s) from onboarding`);
+      await refreshSelectedUserCalibration(selectedUser.id);
+    } catch (error) {
+      setUserSaveError(error instanceof Error ? error.message : 'Failed to reinitialize calibration');
+    } finally {
+      setCalibrationActionLoading(false);
+    }
+  };
+
   const checklistItems = [
     { label: 'Admin shell layout + navigation scaffold', status: 'done' },
     { label: 'Auth/session wiring (reuse Supabase session)', status: 'done' },
@@ -1222,7 +1835,7 @@ export default function AdminShellScreen() {
               <View style={styles.brandCopy}>
                 <Text style={styles.brandTag}>A1</Text>
                 <Text style={styles.brandTitle}>Admin Shell</Text>
-                <Text style={styles.brandSubtitle}>AuthZ scaffold + route placeholders</Text>
+                <Text style={styles.brandSubtitle}>Admin shell + AuthZ with A2/A3 rollout in progress</Text>
               </View>
             </View>
             <View style={styles.brandMetricsRow}>
@@ -1288,15 +1901,9 @@ export default function AdminShellScreen() {
           <View style={styles.navFooterCard}>
             <View style={styles.navFooterRow}>
               <View style={styles.navFooterCopy}>
-                <Text style={styles.navFooterTitle}>Show A3 routes</Text>
-                <Text style={styles.navFooterText}>A1/A2 stay visible. Toggle reveals A3 placeholders only.</Text>
+                <Text style={styles.navFooterTitle}>A1-A3 routes visible</Text>
+                <Text style={styles.navFooterText}>Current sprint admin routes are now shown by default while A2/A3 rollout continues.</Text>
               </View>
-              <Switch
-                value={showUpcomingRoutes}
-                onValueChange={setShowUpcomingRoutes}
-                trackColor={{ false: '#CFDAEF', true: '#94B5FF' }}
-                thumbColor={showUpcomingRoutes ? '#1F56DA' : '#F8FBFF'}
-              />
             </View>
           </View>
         </View>
@@ -1346,8 +1953,8 @@ export default function AdminShellScreen() {
               </View>
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryLabel}>A1 Coverage</Text>
-                <Text style={styles.summaryValue}>Shell layout, route guards, 403 state, placeholders</Text>
-                <Text style={styles.summaryNote}>A2/A3 routes intentionally scaffold-only</Text>
+                <Text style={styles.summaryValue}>Shell + authz foundation with A2/A3 admin workflow panels</Text>
+                <Text style={styles.summaryNote}>A2 live CRUD, A3 users ops + reports contract validation in progress</Text>
               </View>
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryLabel}>Web Routing</Text>
@@ -1504,6 +2111,54 @@ export default function AdminShellScreen() {
                     saving={templateSaving}
                     saveError={templateSaveError}
                     successMessage={templateSuccessMessage}
+                  />
+                ) : activeRoute.key === 'users' ? (
+                  <AdminUsersPanel
+                    rows={userRows}
+                    loading={userLoading}
+                    error={userError}
+                    searchQuery={userSearchQuery}
+                    onSearchQueryChange={setUserSearchQuery}
+                    roleFilter={userRoleFilter}
+                    onRoleFilterChange={setUserRoleFilter}
+                    statusFilter={userStatusFilter}
+                    onStatusFilterChange={setUserStatusFilter}
+                    selectedUser={selectedUser}
+                    userDraft={userDraft}
+                    onSelectUser={(row) => {
+                      setUserSaveError(null);
+                      setUserSuccessMessage(null);
+                      setSelectedUser(row);
+                      setUserDraft(userDraftFromRow(row));
+                    }}
+                    onUserDraftChange={(patch) => {
+                      setUserSaveError(null);
+                      setUserSuccessMessage(null);
+                      setUserDraft((prev) => ({ ...prev, ...patch }));
+                    }}
+                    onRefreshUsers={() => {
+                      void refreshUsers();
+                    }}
+                    onSaveUser={handleUserSave}
+                    onResetCalibration={handleResetCalibration}
+                    onReinitializeCalibration={handleReinitializeCalibration}
+                    userSaving={userSaving}
+                    userSaveError={userSaveError}
+                    userSuccessMessage={userSuccessMessage}
+                    calibrationLoading={calibrationLoading}
+                    calibrationError={calibrationError}
+                    calibrationSnapshot={calibrationSnapshot}
+                    calibrationEvents={calibrationEvents}
+                    calibrationActionLoading={calibrationActionLoading}
+                  />
+                ) : activeRoute.key === 'reports' ? (
+                  <AdminReportsPanel
+                    overviewStatus={analyticsOverviewStatus}
+                    detailedStatus={analyticsDetailedStatus}
+                    onRefresh={() => {
+                      void probeReportsEndpoints();
+                    }}
+                    loading={reportsProbeLoading}
                   />
                 ) : (
                   <PlaceholderScreen route={activeRoute} rolesLabel={rolesLabel} />

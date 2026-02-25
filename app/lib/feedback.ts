@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { createAudioPlayer, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 
-type FeedbackCue = 'logTap' | 'logSuccess' | 'logError' | 'locked';
+type FeedbackCue = 'logTap' | 'growthTap' | 'vitalityTap' | 'logSuccess' | 'logError' | 'locked' | 'swipe';
 type HapticCue = 'tap' | 'success' | 'error' | 'warning';
 type KpiType = 'PC' | 'GP' | 'VP' | 'Actual' | 'Pipeline_Anchor' | 'Custom';
 
@@ -44,7 +44,8 @@ export async function primeFeedbackAudioAsync() {
   audioPrimeAttempted = true;
   try {
     await setAudioModeAsync({
-      playsInSilentMode: false,
+      // For M3b game-feel testing, SFX should still play when the iPhone silent switch is on.
+      playsInSilentMode: true,
       interruptionMode: 'mixWithOthers',
       allowsRecording: false,
       shouldPlayInBackground: false,
@@ -76,7 +77,7 @@ function getCuePlayer(cue: FeedbackCue) {
   const source = cueSources.get(cue);
   if (!source) return null;
   try {
-    const player = createAudioPlayer(source, { keepAudioSessionActive: false });
+    const player = createAudioPlayer(source, { keepAudioSessionActive: true });
     player.volume = config.volume;
     cuePlayers.set(cue, player);
     return player;
@@ -87,12 +88,17 @@ function getCuePlayer(cue: FeedbackCue) {
 
 export async function playFeedbackCueAsync(cue: FeedbackCue) {
   if (!config.audioEnabled) return false;
-  await primeFeedbackAudioAsync();
+  if (audioPrimed) {
+    // Hot path for tap/gameplay cues: avoid extra async hops once the session is primed.
+  } else {
+    void primeFeedbackAudioAsync();
+  }
   const player = getCuePlayer(cue);
   if (!player) return false;
   try {
     player.volume = config.volume;
-    await player.seekTo(0);
+    // Fire-and-forget seek reduces perceived latency on repeated rapid taps.
+    void player.seekTo(0);
     player.play();
     return true;
   } catch {
@@ -104,7 +110,7 @@ export async function triggerHapticAsync(cue: HapticCue) {
   if (!config.hapticsEnabled) return;
   try {
     if (cue === 'tap') {
-      await Haptics.selectionAsync();
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
       return;
     }
     if (cue === 'success') {
@@ -122,18 +128,19 @@ export async function triggerHapticAsync(cue: HapticCue) {
 }
 
 export async function playKpiTypeCueAsync(kpiType: KpiType) {
-  const cueByType: Record<KpiType, FeedbackCue> = {
+  const cueByType: Partial<Record<KpiType, FeedbackCue>> = {
     PC: 'logTap',
-    GP: 'logTap',
-    VP: 'logTap',
-    Actual: 'logTap',
-    Pipeline_Anchor: 'logTap',
-    Custom: 'logTap',
+    GP: 'growthTap',
+    VP: 'vitalityTap',
   };
-  await playFeedbackCueAsync(cueByType[kpiType]);
+  const cue = cueByType[kpiType];
+  if (!cue) return;
+  await playFeedbackCueAsync(cue);
 }
 
-export async function preloadFeedbackCuesAsync(cues: FeedbackCue[] = ['logTap', 'logSuccess', 'logError', 'locked']) {
+export async function preloadFeedbackCuesAsync(
+  cues: FeedbackCue[] = ['logTap', 'growthTap', 'vitalityTap', 'logSuccess', 'logError', 'locked', 'swipe']
+) {
   await primeFeedbackAudioAsync();
   for (const cue of cues) {
     const player = getCuePlayer(cue);

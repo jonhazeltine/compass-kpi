@@ -75,8 +75,8 @@ Parallel staffing assumption: Mobile-first priority; Admin stream starts once M3
 | M8 Mobile QA + Release Readiness | 5: Hardening + Launch | `docs/spec/05_acceptance_tests.md`, `ops/README.md` | #1, #2, #3, #4, #8 | frontend full regression matrix | no |
 | A1 Admin Shell + AuthZ | 5: Hardening + Launch | `docs/spec/04_api_contracts.md`, `docs/spec/appendix/Master Spec.md` | #8 | #21 authz baseline | no |
 | A2 KPI Catalog + Challenge Templates | 5: Hardening + Launch | `docs/spec/04_api_contracts.md`, `docs/spec/appendix/Master Spec.md` | #8 | #21 CRUD coverage | no |
-| A3 Users + Analytics + Reports | 5: Hardening + Launch | `docs/spec/04_api_contracts.md`, `docs/spec/appendix/Master Spec.md` | #8 | #21 user ops + analytics/report validation | no |
-| A4 Sponsored Admin + Hardening | 5: Hardening + Launch | `docs/spec/04_api_contracts.md`, `docs/spec/05_acceptance_tests.md` | #8 | #22, #23 | no |
+| A3 Users + Analytics + Reports | 5: Hardening + Launch | `docs/spec/04_api_contracts.md`, `docs/spec/appendix/Master Spec.md`, `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_2_PROJECTION_LAB.md` | #8 | #21 user ops + analytics/report validation (+ planned Projection Lab scenario tooling) | no |
+| A4 Sponsored Admin + Hardening | 5: Hardening + Launch | `docs/spec/04_api_contracts.md`, `docs/spec/05_acceptance_tests.md`, `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_2_PROJECTION_LAB.md` | #8 | #22, #23 (+ planned Projection Lab regression/admin hardening) | no |
 
 ## FE-00 Asset Readiness Gate
 
@@ -129,3 +129,16 @@ Parallel staffing assumption: Mobile-first priority; Admin stream starts once M3
 - Deterministic algorithm validation command added: `cd backend && npm run test:algorithms`.
 - Approved scope exception track: adaptive per-user PC weighting calibration (onboarding initialization + deal-close self-correction + admin calibration controls).
 - Approved scope exception track (time-boxed): `M3b Dashboard Gamification + Interaction Polish`, tracked in `docs/spec/appendix/M3B_ANIMATION_AUDIO_CHECKLIST.md`.
+- M3 completion execution guidance (IA + logging surfaces, low-interruption gates) is documented in `docs/spec/appendix/M3_COMPLETION_PLAN_PRIORITY_CONTEXT_SURFACES.md` and should be used to sequence post-M3b dashboard/logging work without re-deciding KPI overlap behavior.
+
+## Planned Addendum Integration (Spec-Only, Implementation Deferred)
+- Addendum references:
+  - `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_1_PROJECTION_INTEGRITY_CALIBRATION.md`
+  - `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_2_PROJECTION_LAB.md`
+- Status: `spec planning integrated`; no active implementation scope change to FE-00/M3b/A* from this note alone.
+- Planned future backend hardening dependency (post-current focus):
+  - projection provenance split (`real`, `seeded_history`, `provider_forecast`)
+  - continuity projection toggle + horizon confidence modifier
+  - onboarding baseline vs target payload separation (backward-compatible migration path)
+- Planned admin roadmap dependency:
+  - `Projection Lab` scenario tooling targeted to `A3` build and `A4` hardening/regression, with backend hooks allowed earlier as a separately approved backend-prep slice.

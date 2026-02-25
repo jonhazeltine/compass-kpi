@@ -1,6 +1,6 @@
 import type { AdminRouteKey } from './adminAuthz';
 
-export type AdminRouteStage = 'A1 now' | 'A2 later' | 'A3 later';
+export type AdminRouteStage = 'A1 now' | 'A2 now' | 'A3 now';
 
 export type AdminRouteStageTone = {
   bg: string;
@@ -18,10 +18,10 @@ export function getAdminRouteStage(routeKey: AdminRouteKey): AdminRouteStage {
       return 'A1 now';
     case 'kpis':
     case 'challengeTemplates':
-      return 'A2 later';
+      return 'A2 now';
     case 'users':
     case 'reports':
-      return 'A3 later';
+      return 'A3 now';
     default:
       return 'A1 now';
   }
@@ -29,7 +29,6 @@ export function getAdminRouteStage(routeKey: AdminRouteKey): AdminRouteStage {
 
 export function getAdminRouteStageTone(stage: AdminRouteStage): AdminRouteStageTone {
   if (stage === 'A1 now') return { bg: '#E8FFF3', text: '#146C43', border: '#B6E6CB' };
-  if (stage === 'A2 later') return { bg: '#EEF3FF', text: '#204ECF', border: '#CEDBFF' };
+  if (stage === 'A2 now') return { bg: '#EEF3FF', text: '#204ECF', border: '#CEDBFF' };
   return { bg: '#FFF5E6', text: '#9A5A00', border: '#F5D9AA' };
 }
-
