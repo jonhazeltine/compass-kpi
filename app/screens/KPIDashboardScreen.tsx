@@ -132,6 +132,9 @@ type HomePanelTile = {
   kpi: DashboardPayload['loggable_kpis'][number];
   context: KpiTileContextMeta;
 };
+type PipelineAnchorNagState =
+  | { severity: 'ok' }
+  | { severity: 'warning' | 'stale'; missingCount: number; staleDays: number; lowConfidence: boolean };
 
 type PendingDirectLog = {
   kpiId: string;
@@ -707,6 +710,42 @@ function rankHomePriorityKpisV1(params: {
       return a.baseIndex - b.baseIndex;
     })
     .map((row) => row.kpi);
+}
+
+function derivePipelineAnchorNagState(payload: DashboardPayload | null): PipelineAnchorNagState {
+  const forceDemo = false; // DEV toggle for visual verification only; keep false in committed code.
+  if (forceDemo) {
+    return { severity: 'warning', missingCount: 1, staleDays: 999, lowConfidence: true };
+  }
+  const anchors = payload?.projection.required_pipeline_anchors ?? [];
+  if (anchors.length === 0) {
+    return { severity: 'warning', missingCount: 1, staleDays: 999, lowConfidence: false };
+  }
+
+  // M3-G3 v1 threshold: anchors older than 7 days are treated as stale (simple, deterministic, tunable later).
+  const STALE_DAYS_THRESHOLD = 7;
+  const nowMs = Date.now();
+  let latestRequiredAnchorMs = 0;
+  let validAnchorCount = 0;
+  for (const anchor of anchors) {
+    const ts = new Date(String(anchor.updated_at ?? '')).getTime();
+    if (!Number.isFinite(ts)) continue;
+    validAnchorCount += 1;
+    if (ts > latestRequiredAnchorMs) latestRequiredAnchorMs = ts;
+  }
+
+  const missingCount = validAnchorCount === 0 ? 1 : 0;
+  const staleDays =
+    latestRequiredAnchorMs > 0 ? Math.max(0, Math.floor((nowMs - latestRequiredAnchorMs) / 86400000)) : 999;
+  const lowConfidence = (payload?.projection.confidence.band ?? 'yellow') === 'red';
+
+  if (missingCount > 0) {
+    return { severity: 'warning', missingCount, staleDays, lowConfidence };
+  }
+  if (staleDays > STALE_DAYS_THRESHOLD) {
+    return { severity: 'stale', missingCount, staleDays, lowConfidence };
+  }
+  return { severity: 'ok' };
 }
 
 function renderContextBadgeLabel(badge: KpiTileContextBadge) {
@@ -1691,6 +1730,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       homePanel === 'Quick' ? homeQuickLog : managedKpis.filter((kpi) => kpi.type === homePanel).slice(0, 6);
     return buildHomePanelTiles(panelKpis, payload ?? null);
   }, [homePanel, homeQuickLog, managedKpis, payload]);
+  const pipelineAnchorNag = useMemo(() => derivePipelineAnchorNagState(payload ?? null), [payload]);
 
   const chartSeries = useMemo(() => chartFromPayload(payload), [payload]);
   const chartSplitX =
@@ -3404,6 +3444,33 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             {renderHudRail()}
 
             <View style={styles.chartCard}>
+              {pipelineAnchorNag.severity !== 'ok' ? (
+                <TouchableOpacity
+                  style={[
+                    styles.anchorNagCard,
+                    pipelineAnchorNag.severity === 'warning' ? styles.anchorNagCardWarning : styles.anchorNagCardStale,
+                  ]}
+                  activeOpacity={0.86}
+                  onPress={() => setViewMode('log')}
+                >
+                  <View style={styles.anchorNagCopy}>
+                    <Text style={styles.anchorNagEyebrow}>Forecast accuracy</Text>
+                    <Text style={styles.anchorNagTitle}>
+                      {pipelineAnchorNag.severity === 'warning'
+                        ? 'Add pipeline anchors'
+                        : `Refresh pipeline anchors (${pipelineAnchorNag.staleDays}d old)`}
+                    </Text>
+                    <Text style={styles.anchorNagText}>
+                      {pipelineAnchorNag.lowConfidence
+                        ? 'Confidence is low. Updating anchors improves forecast reliability.'
+                        : 'Update pipeline anchors to improve forecast confidence and projection quality.'}
+                    </Text>
+                  </View>
+                  <View style={styles.anchorNagCtaPill}>
+                    <Text style={styles.anchorNagCtaText}>Open Logs</Text>
+                  </View>
+                </TouchableOpacity>
+              ) : null}
               <View
                 style={styles.homePanelViewport}
                 onLayout={(e) => setHomeVisualViewportWidth(e.nativeEvent.layout.width)}
@@ -3431,6 +3498,24 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             </View>
 
             {renderGameplayHeader()}
+
+            {pipelineAnchorNag.severity !== 'ok' ? (
+              <TouchableOpacity
+                style={[
+                  styles.homeAnchorNagChip,
+                  pipelineAnchorNag.severity === 'warning' ? styles.homeAnchorNagChipWarning : styles.homeAnchorNagChipStale,
+                ]}
+                activeOpacity={0.9}
+                onPress={() => setViewMode('log')}
+              >
+                <Text style={styles.homeAnchorNagChipText}>
+                  {pipelineAnchorNag.severity === 'warning'
+                    ? 'Update pipeline anchors to improve forecast accuracy'
+                    : `Pipeline anchors are stale (${pipelineAnchorNag.staleDays}d). Refresh to improve forecast accuracy`}
+                </Text>
+                <Text style={styles.homeAnchorNagChipCta}>Open Logs ›</Text>
+              </TouchableOpacity>
+            ) : null}
 
             <View
               style={styles.homePanelViewport}
@@ -4148,9 +4233,95 @@ const styles = StyleSheet.create({
     padding: 8,
     gap: 6,
   },
+  anchorNagCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  anchorNagCardWarning: {
+    backgroundColor: '#fff4de',
+    borderColor: '#f2d28a',
+  },
+  anchorNagCardStale: {
+    backgroundColor: '#f8f2e4',
+    borderColor: '#e7cf9f',
+  },
+  anchorNagCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  anchorNagEyebrow: {
+    color: '#7f6432',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  anchorNagTitle: {
+    marginTop: 1,
+    color: '#4e4020',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  anchorNagText: {
+    marginTop: 2,
+    color: '#6b5a35',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  anchorNagCtaPill: {
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(128,101,45,0.16)',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    alignSelf: 'flex-start',
+  },
+  anchorNagCtaText: {
+    color: '#5a4824',
+    fontSize: 11,
+    fontWeight: '800',
+  },
   gameplayHeader: {
     gap: 2,
     marginBottom: 0,
+  },
+  homeAnchorNagChip: {
+    marginTop: 4,
+    marginBottom: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  homeAnchorNagChipWarning: {
+    backgroundColor: '#fff6e3',
+    borderColor: '#efd79c',
+  },
+  homeAnchorNagChipStale: {
+    backgroundColor: '#faf4e8',
+    borderColor: '#e8d7b3',
+  },
+  homeAnchorNagChipText: {
+    flex: 1,
+    color: '#5a4a27',
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
+  homeAnchorNagChipCta: {
+    color: '#7a5a23',
+    fontSize: 11,
+    fontWeight: '800',
   },
   gameplayHeaderTopRow: {
     flexDirection: 'row',
