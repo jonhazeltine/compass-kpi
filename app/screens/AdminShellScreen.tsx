@@ -1475,8 +1475,8 @@ export default function AdminShellScreen() {
     }
   };
 
-  const refreshUsers = async () => {
-    if (!session?.access_token) return;
+  const refreshUsers = async (): Promise<AdminUserRow[]> => {
+    if (!session?.access_token) return [];
     setUserLoading(true);
     setUserError(null);
     try {
@@ -1487,8 +1487,10 @@ export default function AdminShellScreen() {
         if (!prev) return prev;
         return sorted.find((row) => row.id === prev.id) ?? null;
       });
+      return sorted;
     } catch (error) {
       setUserError(error instanceof Error ? error.message : 'Failed to load users');
+      return [];
     } finally {
       setUserLoading(false);
     }
@@ -1733,33 +1735,32 @@ export default function AdminShellScreen() {
     setUserSaving(true);
     setUserSaveError(null);
     setUserSuccessMessage(null);
+    const appliedChanges: string[] = [];
     try {
       let latestRow: AdminUserRow = original;
-      const changes: string[] = [];
       if (userDraft.role !== original.role) {
         const updated = await updateAdminUserRole(session.access_token, userId, userDraft.role);
         latestRow = { ...latestRow, ...updated };
-        changes.push(`role -> ${updated.role}`);
+        appliedChanges.push(`role -> ${updated.role}`);
       }
       if (userDraft.tier !== original.tier) {
         const updated = await updateAdminUserTier(session.access_token, userId, userDraft.tier);
         latestRow = { ...latestRow, ...updated };
-        changes.push(`tier -> ${updated.tier}`);
+        appliedChanges.push(`tier -> ${updated.tier}`);
       }
       if (userDraft.accountStatus !== original.account_status) {
         if (userDraft.accountStatus === 'deactivated') {
           const confirmed = await confirmDangerAction(`Deactivate user ${userId}?`);
           if (!confirmed) {
-            setUserSaving(false);
             return;
           }
         }
         const updated = await updateAdminUserStatus(session.access_token, userId, userDraft.accountStatus);
         latestRow = { ...latestRow, ...updated };
-        changes.push(`status -> ${updated.account_status}`);
+        appliedChanges.push(`status -> ${updated.account_status}`);
       }
 
-      if (changes.length === 0) {
+      if (appliedChanges.length === 0) {
         setUserSuccessMessage('No user changes to save');
         return;
       }
@@ -1772,10 +1773,21 @@ export default function AdminShellScreen() {
         )
       );
       setSelectedUser((prev) => (prev?.id === userId ? { ...prev, ...latestRow, updated_at: new Date().toISOString() } : prev));
-      setUserSuccessMessage(`Saved user changes (${changes.join(', ')})`);
+      setUserSuccessMessage(`Saved user changes (${appliedChanges.join(', ')})`);
       await refreshUsers();
     } catch (error) {
-      setUserSaveError(error instanceof Error ? error.message : 'Failed to update user');
+      const baseMessage = error instanceof Error ? error.message : 'Failed to update user';
+      const partialMessage =
+        appliedChanges.length > 0
+          ? `Partial save applied (${appliedChanges.join(', ')}), then failed: ${baseMessage}`
+          : baseMessage;
+      setUserSaveError(partialMessage);
+      const refreshed = await refreshUsers();
+      const refreshedRow = refreshed.find((row) => row.id === userId) ?? null;
+      if (refreshedRow) {
+        setSelectedUser(refreshedRow);
+        setUserDraft(userDraftFromRow(refreshedRow));
+      }
     } finally {
       setUserSaving(false);
     }
