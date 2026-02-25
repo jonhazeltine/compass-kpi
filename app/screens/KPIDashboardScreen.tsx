@@ -4303,56 +4303,69 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           <>
             {renderHudRail()}
 
-            <View style={styles.chartCard}>
-              <View
-                style={styles.homePanelViewport}
-                onLayout={(e) => setHomeVisualViewportWidth(e.nativeEvent.layout.width)}
-              >
-                <Animated.View
-                  style={[
-                    styles.homePanelTrack,
-                    {
-                      width: visualPageWidth * homePanelLoopItems.length,
-                      transform: [{ translateX: visualTranslateX }],
-                    },
-                  ]}
-                >
-                  {homePanelLoopItems.map(({ panel, cycleIdx }) => (
-                    <View key={`visual-${cycleIdx}-${panel}`} style={[styles.homePanelPage, { width: visualPageWidth }]}>
-                      {panel === 'Quick' || panel === 'PC'
-                        ? renderChartVisualPanel({
-                            attachLiveChartRefs: cycleIdx === 1 && homePanel === panel,
-                          })
-                        : renderHomeVisualPlaceholder(panel as 'GP' | 'VP')}
-                    </View>
-                  ))}
-                </Animated.View>
-              </View>
-            </View>
-
-            {renderGameplayHeader()}
-
-            <View
-              style={styles.homePanelViewport}
-              onLayout={(e) => setHomeGridViewportWidth(e.nativeEvent.layout.width)}
-            >
-              <Animated.View
-                style={[
-                  styles.homePanelTrack,
-                  {
-                    width: gridPageWidth * homePanelLoopItems.length,
-                    transform: [{ translateX: gridTranslateX }],
-                  },
-                ]}
-              >
-                {homePanelLoopItems.map(({ panel, cycleIdx }) => (
-                  <View key={`grid-${cycleIdx}-${panel}`} style={[styles.homePanelPage, { width: gridPageWidth }]}>
-                    {renderHomeGridPanel(panel, {
-                      attachLiveTileRefs: cycleIdx === 1 && homePanel === panel,
-                    })}
+            <View style={styles.homeCockpitStage}>
+              <View style={styles.homeCockpitVisualShell}>
+                <View style={styles.homeCockpitSectionHeader}>
+                  <Text style={styles.homeCockpitSectionEyebrow}>Forecast View</Text>
+                  <Text style={styles.homeCockpitSectionMeta}>Primary daily cockpit</Text>
+                </View>
+                <View style={styles.chartCard}>
+                  <View
+                    style={styles.homePanelViewport}
+                    onLayout={(e) => setHomeVisualViewportWidth(e.nativeEvent.layout.width)}
+                  >
+                    <Animated.View
+                      style={[
+                        styles.homePanelTrack,
+                        {
+                          width: visualPageWidth * homePanelLoopItems.length,
+                          transform: [{ translateX: visualTranslateX }],
+                        },
+                      ]}
+                    >
+                      {homePanelLoopItems.map(({ panel, cycleIdx }) => (
+                        <View key={`visual-${cycleIdx}-${panel}`} style={[styles.homePanelPage, { width: visualPageWidth }]}>
+                          {panel === 'Quick' || panel === 'PC'
+                            ? renderChartVisualPanel({
+                                attachLiveChartRefs: cycleIdx === 1 && homePanel === panel,
+                              })
+                            : renderHomeVisualPlaceholder(panel as 'GP' | 'VP')}
+                        </View>
+                      ))}
+                    </Animated.View>
                   </View>
-                ))}
-              </Animated.View>
+                </View>
+                {renderGameplayHeader()}
+              </View>
+
+              <View style={styles.homeCockpitActionShell}>
+                <View style={styles.homeCockpitSectionHeader}>
+                  <Text style={styles.homeCockpitSectionEyebrow}>Priority Actions</Text>
+                  <Text style={styles.homeCockpitSectionMeta}>Tap to log</Text>
+                </View>
+                <View
+                  style={styles.homePanelViewport}
+                  onLayout={(e) => setHomeGridViewportWidth(e.nativeEvent.layout.width)}
+                >
+                  <Animated.View
+                    style={[
+                      styles.homePanelTrack,
+                      {
+                        width: gridPageWidth * homePanelLoopItems.length,
+                        transform: [{ translateX: gridTranslateX }],
+                      },
+                    ]}
+                  >
+                    {homePanelLoopItems.map(({ panel, cycleIdx }) => (
+                      <View key={`grid-${cycleIdx}-${panel}`} style={[styles.homePanelPage, { width: gridPageWidth }]}>
+                        {renderHomeGridPanel(panel, {
+                          attachLiveTileRefs: cycleIdx === 1 && homePanel === panel,
+                        })}
+                      </View>
+                    ))}
+                  </Animated.View>
+                </View>
+              </View>
             </View>
 
           </>
@@ -5559,6 +5572,7 @@ const styles = StyleSheet.create({
   },
   hudRailWrap: {
     marginTop: 2,
+    marginBottom: 2,
   },
   hudRailContent: {
     paddingRight: 6,
@@ -5736,6 +5750,51 @@ const styles = StyleSheet.create({
     borderColor: '#e5eaf2',
     padding: 8,
     gap: 6,
+    shadowColor: '#223453',
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  },
+  homeCockpitStage: {
+    gap: 8,
+  },
+  homeCockpitVisualShell: {
+    backgroundColor: '#f2f5fa',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e3e9f3',
+    padding: 8,
+    gap: 6,
+  },
+  homeCockpitActionShell: {
+    backgroundColor: '#f2f5fa',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e3e9f3',
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 6,
+  },
+  homeCockpitSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    gap: 8,
+  },
+  homeCockpitSectionEyebrow: {
+    color: '#5d6a80',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.25,
+    textTransform: 'uppercase',
+  },
+  homeCockpitSectionMeta: {
+    color: '#8893a5',
+    fontSize: 10,
+    fontWeight: '700',
   },
   anchorNagCard: {
     borderRadius: 12,
@@ -5792,7 +5851,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   gameplayHeader: {
-    gap: 2,
+    gap: 4,
     marginBottom: 0,
   },
   homeAnchorNagChip: {
@@ -6607,6 +6666,7 @@ const styles = StyleSheet.create({
     color: '#5f6676',
     fontSize: 11,
     fontWeight: '700',
+    letterSpacing: 0.25,
   },
   todayLogsRow: {
     flexDirection: 'row',
