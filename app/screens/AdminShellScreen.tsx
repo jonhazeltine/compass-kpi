@@ -1382,7 +1382,7 @@ export default function AdminShellScreen() {
   const activeRoute = getAdminRouteByKey(activeRouteKey);
   const canOpenActiveRoute = canAccessAdminRoute(effectiveRoles, activeRoute);
   const a1Routes = ADMIN_ROUTES.filter((route) => getAdminRouteStage(route.key) === 'A1 now').length;
-  const blockedRoutes = ADMIN_ROUTES.filter((route) => !canAccessRoute(route)).length;
+  const blockedRoutes = ADMIN_ROUTES.filter((route) => !canAccessAdminRoute(effectiveRoles, route)).length;
   const visibleRoutes = ADMIN_ROUTES;
 
   useEffect(() => {
@@ -1839,7 +1839,7 @@ export default function AdminShellScreen() {
     { label: 'Unknown /admin/* path handling + not-found state', status: 'done' },
     { label: 'A1 placeholder screens for admin routes', status: 'done' },
     { label: 'A2/A3 route placeholders clearly marked as upcoming', status: 'done' },
-    { label: 'Manual authz acceptance pass (admin vs non-admin)', status: 'pending' },
+    { label: 'Manual authz acceptance pass (admin vs non-admin)', status: 'done' },
   ] as const;
 
   return (
@@ -1998,8 +1998,8 @@ export default function AdminShellScreen() {
 
             <View style={styles.checklistCard}>
               <View style={styles.checklistHeader}>
-                <Text style={styles.checklistTitle}>A1 Checklist</Text>
-                <Text style={styles.checklistSubtitle}>Progress snapshot for this thread (kept in scope)</Text>
+                <Text style={styles.checklistTitle}>Historic A1 Checklist</Text>
+                <Text style={styles.checklistSubtitle}>A1 shell/authz baseline completed; shown here for traceability</Text>
               </View>
               <View style={styles.checklistList}>
                 {checklistItems.map((item) => {
