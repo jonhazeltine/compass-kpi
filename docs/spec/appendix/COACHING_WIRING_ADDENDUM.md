@@ -415,6 +415,73 @@ When launching packaging-aware runtime UI work, classify gaps explicitly:
 - Do not proceed in UI assignment.
 - Create backend-prep assignment and require `DECISIONS_LOG.md` update in implementation change set.
 
+## Backend-Prep Package Read-Model Coverage Map (Planning; Handler-Inspected)
+
+This coverage map is based on current documented contracts in `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md` and read-only handler inspection in `/Users/jon/compass-kpi/backend/src/index.ts`.
+
+### In-scope runtime surfaces / use-cases
+- `coaching_journeys*` package visibility + entitlement-aware rendering
+- `Challenge Details/Results` sponsor/coaching overlay visibility + disclaimers
+- `Team coaching modules` package visibility + targeting-aware surfacing
+- `inbox*` / `channel_thread` package-scoped communication visibility and labels
+
+### Endpoint-family coverage summary (current baseline)
+
+| Runtime surface / use-case | Existing endpoint family candidates | Current coverage | Packaging/entitlement output coverage | Classification |
+|---|---|---|---|---|
+| `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail` | `GET /api/coaching/journeys`, `GET /api/coaching/journeys/{id}`, `GET /api/coaching/progress`, `POST /api/coaching/lessons/{id}/progress` | Journey content + user progress baseline exists | No explicit `package_type`, entitlement outcome, publish visibility state, linked sponsor/challenge refs | `in-family extension` likely (coaching family) |
+| Challenge sponsor/coaching overlay display | `GET /sponsored-challenges`, `GET /sponsored-challenges/{id}` + existing challenge endpoints | Sponsor metadata, tier gating, CTA/disclaimer baseline exists | No explicit linked coaching package assignment/journey refs/channel refs in sponsored challenge payloads | `in-family extension` likely (`/sponsored-challenges*`) |
+| Team coaching module package visibility | `GET /dashboard` and/or `GET /teams/{id}` (documented), `GET /api/coaching/journeys` | Team + dashboard context exists; journey team scoping exists | No explicit package visibility outcome or targeted coaching assignments returned to team modules | `in-family extension` possible, endpoint choice `decision needed` |
+| `inbox_channels` list package-aware labels/visibility | `GET /api/channels`, `GET /api/messages/unread-count` | Channel list + unread summary baseline exists | No package visibility/entitlement labels, sponsor/package attribution, display requirements | `in-family extension` likely (channels family) |
+| `channel_thread` package-aware disclaimers/context | `GET /api/channels/{id}/messages`, `POST /api/channels/{id}/messages`, `POST /api/messages/mark-seen` | Thread read/write + unread reset baseline exists | No package attribution/disclaimer requirements surfaced in thread payload/read model | `in-family extension` likely (channels/messages family) |
+| `coach_broadcast_compose` package-scoped send guards/labels | `POST /api/channels/{id}/broadcast`, `POST /api/coaching/broadcast` | Broadcast write endpoints + role enforcement baseline exists | No explicit package assignment / entitlement validation output for UI preflight context | `in-family extension` possible; path-selection policy `decision needed` |
+
+### Current handler-observed payload baseline (selected)
+- `GET /api/channels` currently returns channel list + membership role + unread counters (`my_role`, `unread_count`, `last_seen_at`) but no package visibility metadata.
+- `GET /api/channels/{id}/messages` returns messages only (`id`, `channel_id`, `sender_user_id`, `body`, `message_type`, `created_at`) with no package/disclaimer context.
+- `GET /api/coaching/journeys` returns journey aggregates (`milestones_count`, `lessons_total`, `lessons_completed`, `completion_percent`) but no package/entitlement metadata.
+- `GET /api/coaching/journeys/{id}` returns journey/milestones/lessons + lesson progress fields but no package assignment metadata.
+- `GET /sponsored-challenges*` returns sponsor metadata + CTA/disclaimer + tier gating baseline, but no linked coaching package/journey/channel identifiers.
+
+## Gap Classification Rules for This Backend-Prep Planning Slice
+
+### `in-family extension` (preferred first)
+Use when the needed runtime packaging/entitlement outputs can be added to an existing family response (coaching, channels/messages, sponsored-challenges, dashboard/team) without introducing a new endpoint family.
+
+Examples:
+- Add packaging visibility outcomes to `GET /api/coaching/journeys*`
+- Add package attribution/disclaimer display metadata to `GET /sponsored-challenges/{id}`
+- Add package/channel context labels to `GET /api/channels`
+
+### `net-new family/schema need` (`decision needed`)
+Use when the runtime requires:
+- a dedicated packaging/entitlement evaluation endpoint family, or
+- structural schema changes that cannot be represented as additive read-model shaping in existing families
+
+This assignment does not approve either; it only isolates and documents them.
+
+## Backend-Prep `Decision Needed` List (Read-Model Outputs)
+
+1. `decision needed` — Preferred endpoint family for Team coaching module package visibility
+- `GET /dashboard` vs `GET /teams/{id}` vs `GET /api/coaching/journeys` composite shaping.
+- Impacts coupling between KPI dashboard payload and coaching packaging read-models.
+
+2. `decision needed` — Broadcast path packaging semantics
+- Should package-scoped broadcast preflight/context be surfaced via channels family, coaching family, or both?
+- Impacts UI path selection and duplication risk between `/api/channels/{id}/broadcast` and `/api/coaching/broadcast`.
+
+3. `decision needed` — Entitlement outcome granularity in runtime payloads
+- Minimal boolean (`allowed`) vs structured outcome (`blocked_not_entitled`, `blocked_schedule`, etc.).
+- UI fallback/gating behavior benefits from structured outcomes; backend complexity may increase.
+
+4. `decision needed` — Sponsored challenge detail linkage source
+- Should sponsor-linked coaching refs live directly on `/sponsored-challenges/{id}` payload or be resolved through coaching family lookup?
+- Affects ownership seam clarity and payload duplication risk.
+
+5. `decision needed` — Cross-family consistency contract
+- Whether packaging read-model fields should be normalized across coaching/channels/sponsored families (same field names) in implementation phase.
+- If yes, implementation likely requires a documented contract standard and may trigger `DECISIONS_LOG.md`.
+
 ### Phase W5 — AI coaching assist (approval-first)
 - Route from coaching surfaces to AI suggestion review/approval queues (leader/admin/coach)
 - No direct AI auto-send path

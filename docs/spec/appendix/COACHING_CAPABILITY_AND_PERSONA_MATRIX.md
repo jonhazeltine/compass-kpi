@@ -215,6 +215,42 @@ These are explicit planning risks and should be carried into implementation prom
 - `COACHING-UI-PACKAGE-VISIBILITY-GATING-A`
   - Goal: apply server-provided packaging/entitlement outcomes to runtime coaching/challenge surfaces without embedding policy logic in UI.
 
+## Backend-Prep Package Read-Model Output Requirements (Planning-Level Matrix)
+
+This matrix translates runtime UI gating/visibility needs into planning-level backend read-model outputs. It does not approve schema or endpoint changes.
+
+| Runtime surface / use-case | Consumer persona(s) | Required output fields (minimum) | Nice-to-have output fields | Candidate endpoint family | Notes |
+|---|---|---|---|---|---|
+| `coaching_journeys` list cards | Leader, Member, Solo | `package_type`, `visibility_state`, `entitlement_result`, `linked_context_refs` (challenge/sponsor/team if any), `display_requirements` (disclaimer/paywall flags) | package label, publish window summary, package badge copy | coaching (`GET /api/coaching/journeys`) | Additive to current journey aggregates. |
+| `coaching_journey_detail` / `coaching_lesson_detail` | Leader, Member, Solo | `entitlement_result`, `display_requirements`, `linked_context_refs`, package assignment ref | package version metadata, audit-safe reason codes | coaching (`GET /api/coaching/journeys/{id}`) | Must remain explicit-user-action for lesson progress writes. |
+| Team coaching module cards | Leader, Member | `visibility_state`, `entitlement_result`, `package_type`, `linked_context_refs`, route-ready destination refs | targeting explanation (why shown), audience label | dashboard/team/coaching family (`decision needed`) | Keep KPI payload ownership separate from coaching packaging logic. |
+| Challenge Details sponsor/coaching overlay | Leader, Member, Solo | sponsor disclaimer flags, `package_type`, `entitlement_result`, linked journey/channel refs, sponsor attribution | activation window summary, campaign phase label | sponsored-challenges family (possibly challenge detail family) | Preserve challenge participation/results ownership. |
+| `inbox_channels` rows | Leader, Member, Solo | package/context labels, `visibility_state` (if hidden/degraded), disclaimer flags where applicable | unread gating reason codes, package badge metadata | channels (`GET /api/channels`) | Existing unread and role fields are a strong baseline. |
+| `channel_thread` header/context | Leader, Member, Solo | package/context attribution, disclaimer requirements, entitlement outcome (if thread display restricted) | moderation/compliance display flags | channels/messages (`GET /api/channels/{id}/messages` + companion channel metadata) | Message rows may not need package fields if thread header carries context. |
+| `coach_broadcast_compose` preflight UI | Leader (Coach/Admin later per policy) | supported broadcast path, scope validation outcome, package linkage eligibility, disclaimer requirements | rate-limit window summary, audience estimate | channels/coaching broadcast families (`decision needed`) | Server remains permission/throttle source of truth. |
+
+## Gap Classification Summary (Backend-Prep Planning)
+
+### `in-family extension` candidates (preferred)
+- coaching journeys family (`/api/coaching/journeys*`)
+- channels/messages family (`/api/channels*`, `/api/messages/*`)
+- sponsored challenge family (`/sponsored-challenges*`)
+
+### `decision needed` / likely cross-family coordination
+- Team coaching module package outputs (endpoint-family host selection)
+- broadcast path preflight semantics across channel vs coaching broadcast endpoints
+- shared field naming/normalization standard across families
+
+## Follow-On Implementation Assignment Recommendations (Post-Planning)
+
+1. `COACHING-BACKEND-IMPL-PACKAGE-READMODEL-INFAMILY-A` (backend-prep implementation; approval-gated)
+- Implement additive packaging/entitlement read-model outputs in existing endpoint families where feasible.
+- Must explicitly stop and split a new assignment if net-new endpoint family/schema changes become necessary.
+
+2. `COACHING-UI-PACKAGE-READMODEL-CONSUME-A` (runtime UI follow-up; queue behind backend-prep outputs or partial backend readiness)
+- Consume server-provided packaging/entitlement outputs on W3/W4 coaching surfaces and replace temporary fallback heuristics with contract-driven gating.
+- Must not embed policy logic or compute entitlement decisions client-side.
+
 ## Intended Surface Hosting Matrix (Where Capabilities Live)
 
 This defines where coaching appears in the app. Coaching is often a module/overlay inside an existing screen, not always a dedicated new screen.
