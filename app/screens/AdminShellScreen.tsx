@@ -53,6 +53,7 @@ import {
 } from '../lib/adminReportsApi';
 import {
   ADMIN_ROUTES,
+  AdminRole,
   AdminRouteDefinition,
   AdminRouteKey,
   canAccessAdminRoute,
@@ -2625,8 +2626,149 @@ function AdminUsersPanel({
   );
 }
 
+type CoachingPortalSurfaceKey = 'coachingUploads' | 'coachingLibrary' | 'coachingCohorts' | 'coachingChannels';
+
+function AdminCoachingPortalFoundationPanel({
+  routeKey,
+  effectiveRoles,
+}: {
+  routeKey: CoachingPortalSurfaceKey;
+  effectiveRoles: AdminRole[];
+}) {
+  const isAdmin = effectiveRoles.includes('platform_admin') || effectiveRoles.includes('super_admin');
+  const isCoach = effectiveRoles.includes('coach');
+  const isTeamLeader = effectiveRoles.includes('team_leader');
+  const isSponsor = effectiveRoles.includes('challenge_sponsor');
+
+  const config: Record<
+    CoachingPortalSurfaceKey,
+    {
+      path: string;
+      title: string;
+      summary: string;
+      scopeRules: string[];
+      runtimeCompanion: string;
+    }
+  > = {
+    coachingUploads: {
+      path: '/admin/coaching/uploads',
+      title: 'Coach Portal Foundation: Uploads',
+      summary: 'Foundation upload shell for coaching and sponsor campaign assets. Authoring and KPI logging remain out of scope.',
+      scopeRules: [
+        'Coach: full upload shell access for coaching assets (runtime companion only).',
+        'Team Leader: team-scoped uploads only; no org-wide authoring ownership and no sponsor package authority.',
+        'Challenge Sponsor: sponsor-scoped upload access only for sponsor campaign contexts.',
+        'No KPI logging or KPI edit actions are available in this surface.',
+      ],
+      runtimeCompanion: 'Feeds content references used by runtime coaching journeys/channels; does not replace runtime host flows.',
+    },
+    coachingLibrary: {
+      path: '/admin/coaching/library',
+      title: 'Coach Portal Foundation: Library',
+      summary: 'Foundation library shell for scoped content lookup/linking and catalog visibility controls.',
+      scopeRules: [
+        'Coach: full library shell access for content operations.',
+        'Challenge Sponsor: sponsor-scoped read/link access only for sponsor campaign contexts.',
+        'Team Leader: no library authoring access in this pass.',
+        'No KPI logging or KPI edit actions are available in this surface.',
+      ],
+      runtimeCompanion: 'Provides references for runtime surfaces/channels; runtime delivery remains in host surfaces.',
+    },
+    coachingCohorts: {
+      path: '/admin/coaching/cohorts',
+      title: 'Coach Portal Foundation: Cohorts',
+      summary: 'Foundation cohort shell for audience segmentation and sponsor-scoped visibility planning.',
+      scopeRules: [
+        'Coach: full cohort planning shell access.',
+        'Challenge Sponsor: sponsor-scoped cohort visibility/constraints only.',
+        'Team Leader: no cohort administration access in this pass.',
+        'No KPI logging or KPI edit actions are available in this surface.',
+      ],
+      runtimeCompanion: 'Complements runtime cohort-channel targeting and does not replace runtime participation flows.',
+    },
+    coachingChannels: {
+      path: '/admin/coaching/channels',
+      title: 'Coach Portal Foundation: Channels',
+      summary: 'Foundation channel-ops shell for scoped communication context and template planning.',
+      scopeRules: [
+        'Coach: full channel-ops shell access in scoped contexts.',
+        'Challenge Sponsor: sponsor-scoped channel access only.',
+        'Team Leader: no channel-ops administration access in this pass.',
+        'No KPI logging or KPI edit actions are available in this surface.',
+      ],
+      runtimeCompanion: 'Companion to runtime inbox/channel-thread paths where communication execution occurs.',
+    },
+  };
+
+  const surface = config[routeKey];
+  const accessSummary = isAdmin
+    ? 'Admin override active: can inspect all coaching portal foundation shells.'
+    : isCoach
+      ? 'Coach access active: primary operator scope enabled.'
+      : isTeamLeader
+        ? 'Team Leader scope active: upload-only boundary applies.'
+        : isSponsor
+          ? 'Challenge Sponsor scope active: sponsor-scoped access only.'
+          : 'Current role has no intended access for this surface.';
+
+  return (
+    <View style={styles.panel}>
+      <View style={styles.panelTopRow}>
+        <View style={styles.panelTitleBlock}>
+          <Text style={styles.eyebrow}>{surface.path}</Text>
+          <Text style={styles.panelTitle}>{surface.title}</Text>
+        </View>
+        <View style={[styles.stagePill, { backgroundColor: '#EEF3FF', borderColor: '#CEDBFF' }]}>
+          <Text style={[styles.stagePillText, { color: '#204ECF' }]}>W7 Foundation</Text>
+        </View>
+      </View>
+      <Text style={styles.panelBody}>{surface.summary}</Text>
+      <View style={styles.noticeBox}>
+        <Text style={styles.noticeTitle}>Role-scoped access boundary</Text>
+        <Text style={styles.noticeText}>{accessSummary}</Text>
+      </View>
+      <View style={styles.usersDiagnosticsGrid}>
+        <View style={[styles.summaryCard, { flex: 1.1 }]}>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.summaryLabel}>Scope Rules</Text>
+            <Text style={styles.metaRow}>Foundation shell only</Text>
+          </View>
+          {surface.scopeRules.map((rule) => (
+            <Text key={rule} style={styles.metaRow}>{rule}</Text>
+          ))}
+        </View>
+        <View style={[styles.summaryCard, { flex: 1 }]}>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.summaryLabel}>Runtime Companion Mapping</Text>
+            <Text style={styles.metaRow}>Non-replacement</Text>
+          </View>
+          <Text style={styles.summaryNote}>{surface.runtimeCompanion}</Text>
+          <View style={styles.keyValueRow}>
+            <Text style={styles.keyValueLabel}>Secondary admin troubleshooting</Text>
+            <Text style={styles.keyValueValue}>`/admin/coaching/audit`</Text>
+          </View>
+          <Text style={styles.fieldHelpText}>
+            Audit remains a secondary troubleshooting/governance surface. Primary coach portal scope is uploads/library/cohorts/channels.
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function AdminCoachingAuditPanel() {
   type AuditSortKey = 'status' | 'requester' | 'scope' | 'surface' | 'updated';
+  type NotificationChannelKey = 'in_app_list' | 'badge' | 'banner' | 'push_placeholder' | 'email_placeholder';
+  type NotificationClassKey =
+    | 'coaching_assignment'
+    | 'coaching_reminder'
+    | 'coaching_progress'
+    | 'channel_message'
+    | 'broadcast_outcome'
+    | 'ai_review_queue'
+    | 'ai_approval_outcome'
+    | 'package_access_change'
+    | 'policy_alert';
   const [rows, setRows] = useState<AdminAiSuggestionQueueItem[]>(() => buildStubAiSuggestionQueue());
   const [statusFilter, setStatusFilter] = useState<'all' | AiSuggestionStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -2635,6 +2777,25 @@ function AdminCoachingAuditPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [visibleRowCount, setVisibleRowCount] = useState(12);
   const [notice, setNotice] = useState<string | null>(null);
+  const [prefsPersona, setPrefsPersona] = useState<'team_leader' | 'team_member' | 'solo_user' | 'coach' | 'admin_operator'>('team_leader');
+  const [prefsChannels, setPrefsChannels] = useState<Record<NotificationChannelKey, boolean>>({
+    in_app_list: true,
+    badge: true,
+    banner: true,
+    push_placeholder: false,
+    email_placeholder: false,
+  });
+  const [prefsClasses, setPrefsClasses] = useState<Record<NotificationClassKey, boolean>>({
+    coaching_assignment: true,
+    coaching_reminder: true,
+    coaching_progress: true,
+    channel_message: true,
+    broadcast_outcome: true,
+    ai_review_queue: true,
+    ai_approval_outcome: true,
+    package_access_change: true,
+    policy_alert: true,
+  });
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -2786,6 +2947,88 @@ function AdminCoachingAuditPanel() {
     'No autonomous send/publish paths; execution remains human-triggered elsewhere.',
   ];
 
+  const notificationVisibilityRows = [
+    {
+      id: 'notif_evt_001',
+      cls: 'ai_review_queue',
+      channel: 'in_app_list',
+      audience: 'Admin operator',
+      status: 'visible',
+      reason: 'Approval queue pending admin review',
+      route: '/admin/coaching/audit',
+      dispatchedAt: null,
+    },
+    {
+      id: 'notif_evt_002',
+      cls: 'ai_approval_outcome',
+      channel: 'banner',
+      audience: 'Coach reviewer',
+      status: 'suppressed',
+      reason: 'Pref shell toggle off for banner in local preview',
+      route: 'coach_ops_audit companion',
+      dispatchedAt: null,
+    },
+    {
+      id: 'notif_evt_003',
+      cls: 'broadcast_outcome',
+      channel: 'in_app_list',
+      audience: 'Team Leader',
+      status: 'visible',
+      reason: 'Existing runtime visibility only; no dispatch control',
+      route: 'inbox_channels / channel_thread',
+      dispatchedAt: new Date(Date.now() - 1000 * 60 * 55).toISOString(),
+    },
+    {
+      id: 'notif_evt_004',
+      cls: 'policy_alert',
+      channel: 'badge',
+      audience: 'Admin operator',
+      status: 'visible',
+      reason: 'Ops governance alert in admin companion view',
+      route: '/admin/coaching/audit',
+      dispatchedAt: null,
+    },
+  ] as const;
+
+  const visibilityCounts = notificationVisibilityRows.reduce(
+    (acc, row) => {
+      acc.total += 1;
+      if (row.status === 'visible') acc.visible += 1;
+      if (row.status === 'suppressed') acc.suppressed += 1;
+      if (row.dispatchedAt) acc.outcomes += 1;
+      return acc;
+    },
+    { total: 0, visible: 0, suppressed: 0, outcomes: 0 }
+  );
+
+  const toggleChannelPref = (key: NotificationChannelKey) => {
+    setPrefsChannels((prev) => ({ ...prev, [key]: !prev[key] }));
+    setNotice('Updated notification channel preference shell (local UI only; no persistence/write performed).');
+  };
+  const toggleClassPref = (key: NotificationClassKey) => {
+    setPrefsClasses((prev) => ({ ...prev, [key]: !prev[key] }));
+    setNotice('Updated notification class preference shell (local UI only; no persistence/write performed).');
+  };
+
+  const channelLabels: Record<NotificationChannelKey, string> = {
+    in_app_list: 'In-app list',
+    badge: 'Badge',
+    banner: 'Banner',
+    push_placeholder: 'Push (placeholder)',
+    email_placeholder: 'Email (placeholder)',
+  };
+  const classLabels: Record<NotificationClassKey, string> = {
+    coaching_assignment: 'Coaching assignment',
+    coaching_reminder: 'Coaching reminder',
+    coaching_progress: 'Progress update',
+    channel_message: 'Channel message',
+    broadcast_outcome: 'Broadcast outcome',
+    ai_review_queue: 'AI review queue',
+    ai_approval_outcome: 'AI approval outcome',
+    package_access_change: 'Package access change',
+    policy_alert: 'Policy alert',
+  };
+
   return (
     <View style={styles.panel}>
       <View style={styles.panelTopRow}>
@@ -2806,6 +3049,73 @@ function AdminCoachingAuditPanel() {
           <Text key={line} style={styles.alertErrorText}>{line}</Text>
         ))}
       </View>
+      <View style={styles.usersDiagnosticsGrid}>
+        <View style={[styles.summaryCard, { flex: 1.05 }]}>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.summaryLabel}>Notification Prefs Shell (W6)</Text>
+            <Text style={styles.metaRow}>UI-only / stub-safe</Text>
+          </View>
+          <Text style={styles.fieldHelpText}>
+            Preference controls are represented here as a coach/admin visibility and policy-check companion. No persistence or dispatch authority is changed in this pass.
+          </Text>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Persona Preview</Text>
+            <View style={styles.chipRow}>
+              {(['team_leader', 'team_member', 'solo_user', 'coach', 'admin_operator'] as const).map((value) => {
+                const selected = prefsPersona === value;
+                return (
+                  <Pressable
+                    key={value}
+                    onPress={() => setPrefsPersona(value)}
+                    style={[styles.formChip, selected && styles.formChipSelected]}
+                  >
+                    <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>{value}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          <Text style={styles.formLabel}>Channels</Text>
+          <View style={styles.inlineToggleRow}>
+            {(Object.keys(channelLabels) as NotificationChannelKey[]).map((key) => {
+              const enabled = prefsChannels[key];
+              return (
+                <Pressable key={key} onPress={() => toggleChannelPref(key)} style={[styles.toggleChip, enabled && styles.toggleChipOn]}>
+                  <Text style={[styles.toggleChipText, enabled && styles.toggleChipTextOn]}>
+                    {enabled ? 'On' : 'Off'} • {channelLabels[key]}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+        <View style={[styles.summaryCard, { flex: 1.15 }]}>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.summaryLabel}>Notification Class Preferences</Text>
+            <Text style={styles.metaRow}>{Object.values(prefsClasses).filter(Boolean).length} enabled</Text>
+          </View>
+          <Text style={styles.fieldHelpText}>
+            W6 shell covers visibility preference intent only. Delivery execution and queue/dispatch ownership remain on existing runtime/backend controls.
+          </Text>
+          <View style={styles.chipRow}>
+            {(Object.keys(classLabels) as NotificationClassKey[]).map((key) => {
+              const enabled = prefsClasses[key];
+              return (
+                <Pressable
+                  key={key}
+                  onPress={() => toggleClassPref(key)}
+                  style={[styles.formChip, enabled && styles.formChipSelected]}
+                >
+                  <Text style={[styles.formChipText, enabled && styles.formChipTextSelected]}>
+                    {enabled ? 'On' : 'Off'} • {classLabels[key]}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+
       <View style={styles.filterBar}>
         <View style={styles.formHeaderRow}>
           <Text style={styles.formTitle}>Queue Filters</Text>
@@ -3060,6 +3370,79 @@ function AdminCoachingAuditPanel() {
           ) : (
             <Text style={styles.panelBody}>Select an AI queue row to inspect approval requirements, safety flags, and audit history.</Text>
           )}
+        </View>
+      </View>
+
+      <View style={styles.usersDiagnosticsGrid}>
+        <View style={[styles.summaryCard, { flex: 1 }]}>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.summaryLabel}>Notification Visibility Companion</Text>
+            <Text style={styles.metaRow}>{visibilityCounts.visible} visible / {visibilityCounts.total}</Text>
+          </View>
+          <Text style={styles.summaryNote}>
+            Ops-facing visibility summary for coaching/AI-relevant notification states in the `coach_ops_audit` companion route (no dispatch controls).
+          </Text>
+          <View style={styles.keyValueRow}>
+            <Text style={styles.keyValueLabel}>Visible</Text>
+            <Text style={styles.keyValueValue}>{visibilityCounts.visible}</Text>
+          </View>
+          <View style={styles.keyValueRow}>
+            <Text style={styles.keyValueLabel}>Suppressed</Text>
+            <Text style={styles.keyValueValue}>{visibilityCounts.suppressed}</Text>
+          </View>
+          <View style={styles.keyValueRow}>
+            <Text style={styles.keyValueLabel}>Dispatch outcomes visible</Text>
+            <Text style={styles.keyValueValue}>{visibilityCounts.outcomes}</Text>
+          </View>
+          <Text style={styles.fieldHelpText}>
+            This surface reports visibility/queue context only. Dispatch ownership remains outside this admin companion and is unchanged.
+          </Text>
+        </View>
+        <View style={[styles.summaryCard, { flex: 1.35 }]}>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.summaryLabel}>Ops Queue / Outcome Rows</Text>
+            <Text style={styles.metaRow}>Preview rows</Text>
+          </View>
+          {notificationVisibilityRows.map((row) => (
+            <View key={row.id} style={styles.compactDataCard}>
+              <View style={styles.formHeaderRow}>
+                <Text style={styles.compactDataTitle}>{row.cls}</Text>
+                <View
+                  style={[
+                    styles.statusChip,
+                    row.status === 'visible'
+                      ? { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' }
+                      : { backgroundColor: '#FFF4F2', borderColor: '#F2C0B9' },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusChipText,
+                      { color: row.status === 'visible' ? '#1D7A4D' : '#B2483A' },
+                    ]}
+                  >
+                    {row.status}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.compactDataRow}>
+                <Text style={styles.compactDataMeta}>Audience / channel</Text>
+                <Text style={styles.compactDataValue}>{row.audience} • {row.channel}</Text>
+              </View>
+              <View style={styles.compactDataRow}>
+                <Text style={styles.compactDataMeta}>Reason</Text>
+                <Text style={styles.compactDataValue}>{row.reason}</Text>
+              </View>
+              <View style={styles.compactDataRow}>
+                <Text style={styles.compactDataMeta}>Route</Text>
+                <Text style={styles.compactDataValue}>{row.route}</Text>
+              </View>
+              <View style={styles.compactDataRow}>
+                <Text style={styles.compactDataMeta}>Dispatch outcome ref</Text>
+                <Text style={styles.compactDataValue}>{row.dispatchedAt ? formatDateTimeShort(row.dispatchedAt) : 'not dispatched / not shown'}</Text>
+              </View>
+            </View>
+          ))}
         </View>
       </View>
     </View>
@@ -3359,7 +3742,9 @@ export default function AdminShellScreen() {
   const [activeRouteKey, setActiveRouteKey] = useState<AdminRouteKey>(() =>
     getInitialAdminRouteKey(process.env.EXPO_PUBLIC_ADMIN_INITIAL_ROUTE)
   );
-  const [devRolePreview, setDevRolePreview] = useState<'live' | 'super_admin' | 'admin' | 'agent'>('live');
+  const [devRolePreview, setDevRolePreview] = useState<
+    'live' | 'super_admin' | 'admin' | 'coach' | 'team_leader' | 'sponsor' | 'agent'
+  >('live');
   const [showImplementationNotes, setShowImplementationNotes] = useState(false);
   const [unknownAdminPath, setUnknownAdminPath] = useState<string | null>(null);
   const [lastNavPushPath, setLastNavPushPath] = useState<string | null>(null);
@@ -3469,13 +3854,13 @@ export default function AdminShellScreen() {
     }
 
     setUnknownAdminPath(getAdminRouteByPath(pathname) ? null : pathname);
-  }, [activeRouteKey, canOpenActiveRoute, effectiveHasAdminAccess]);
+  }, [activeRouteKey, canOpenActiveRoute]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     if (typeof window === 'undefined') return;
     const route = getAdminRouteByKey(activeRouteKey);
-    const shouldShowUnauthorized = !effectiveHasAdminAccess || !canOpenActiveRoute;
+    const shouldShowUnauthorized = !canOpenActiveRoute;
     const nextPath = shouldShowUnauthorized
       ? ADMIN_UNAUTHORIZED_PATH
       : unknownAdminPath
@@ -3487,7 +3872,7 @@ export default function AdminShellScreen() {
       return;
     }
     window.history.replaceState({}, '', nextPath);
-  }, [activeRouteKey, canOpenActiveRoute, effectiveHasAdminAccess, lastNavPushPath, unknownAdminPath]);
+  }, [activeRouteKey, canOpenActiveRoute, lastNavPushPath, unknownAdminPath]);
 
   const refreshKpis = async () => {
     if (!session?.access_token) return;
@@ -4164,6 +4549,9 @@ export default function AdminShellScreen() {
                     ['live', 'Use live role'],
                     ['super_admin', 'Preview super admin'],
                     ['admin', 'Preview admin'],
+                    ['coach', 'Preview coach'],
+                    ['team_leader', 'Preview team leader'],
+                    ['sponsor', 'Preview sponsor'],
                     ['agent', 'Preview non-admin'],
                   ] as const).map(([value, label]) => {
                     const selected = devRolePreview === value;
@@ -4357,6 +4745,11 @@ export default function AdminShellScreen() {
                   />
                 ) : activeRoute.key === 'coachingAudit' ? (
                   <AdminCoachingAuditPanel />
+                ) : activeRoute.key === 'coachingUploads' ||
+                  activeRoute.key === 'coachingLibrary' ||
+                  activeRoute.key === 'coachingCohorts' ||
+                  activeRoute.key === 'coachingChannels' ? (
+                  <AdminCoachingPortalFoundationPanel routeKey={activeRoute.key} effectiveRoles={effectiveRoles} />
                 ) : (
                   <PlaceholderScreen route={activeRoute} rolesLabel={rolesLabel} />
                 )}

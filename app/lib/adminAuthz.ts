@@ -3,6 +3,8 @@ import type { Session } from '@supabase/supabase-js';
 export type AdminRole =
   | 'platform_admin'
   | 'super_admin'
+  | 'coach'
+  | 'challenge_sponsor'
   | 'team_leader'
   | 'team_member'
   | 'individual'
@@ -15,6 +17,10 @@ export type AdminRouteKey =
   | 'kpis'
   | 'challengeTemplates'
   | 'reports'
+  | 'coachingUploads'
+  | 'coachingLibrary'
+  | 'coachingCohorts'
+  | 'coachingChannels'
   | 'coachingAudit';
 
 export type AdminRouteDefinition = {
@@ -32,6 +38,10 @@ const ADMIN_ROLE_ALIASES: Record<string, AdminRole> = {
   superadmin: 'super_admin',
   team_leader: 'team_leader',
   leader: 'team_leader',
+  coach: 'coach',
+  coaching_operator: 'coach',
+  challenge_sponsor: 'challenge_sponsor',
+  sponsor: 'challenge_sponsor',
   team_member: 'team_member',
   member: 'team_member',
   individual: 'individual',
@@ -126,6 +136,34 @@ export const ADMIN_ROUTES: AdminRouteDefinition[] = [
     path: '/admin/reports',
     requiredRoles: ['platform_admin', 'super_admin'],
     description: 'A1 placeholder only. Analytics/report work is in A3.',
+  },
+  {
+    key: 'coachingUploads',
+    label: 'Coach Uploads',
+    path: '/admin/coaching/uploads',
+    requiredRoles: ['platform_admin', 'super_admin', 'coach', 'team_leader', 'challenge_sponsor'],
+    description: 'W7 coach portal companion shell for content uploads with scoped role boundaries.',
+  },
+  {
+    key: 'coachingLibrary',
+    label: 'Coach Library',
+    path: '/admin/coaching/library',
+    requiredRoles: ['platform_admin', 'super_admin', 'coach', 'challenge_sponsor'],
+    description: 'W7 coach portal companion shell for scoped coaching/sponsor content library access.',
+  },
+  {
+    key: 'coachingCohorts',
+    label: 'Coach Cohorts',
+    path: '/admin/coaching/cohorts',
+    requiredRoles: ['platform_admin', 'super_admin', 'coach', 'challenge_sponsor'],
+    description: 'W7 coach portal companion shell for cohort/audience segmentation with scoped sponsor visibility.',
+  },
+  {
+    key: 'coachingChannels',
+    label: 'Coach Channels',
+    path: '/admin/coaching/channels',
+    requiredRoles: ['platform_admin', 'super_admin', 'coach', 'challenge_sponsor'],
+    description: 'W7 coach portal companion shell for scoped channel operations and communication context.',
   },
   {
     key: 'coachingAudit',

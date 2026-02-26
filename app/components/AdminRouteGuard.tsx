@@ -21,19 +21,13 @@ export default function AdminRouteGuard({
 }: AdminRouteGuardProps) {
   const { resolvedRoles, hasAdminAccess } = useAdminAuthz();
   const roles = rolesOverride ?? resolvedRoles;
-  const effectiveHasAdminAccess =
-    rolesOverride !== undefined
-      ? roles.includes('platform_admin') || roles.includes('super_admin')
-      : hasAdminAccess;
+  const effectiveHasAdminAccess = rolesOverride !== undefined ? roles.includes('platform_admin') || roles.includes('super_admin') : hasAdminAccess;
+  const canAccessRoute = canAccessAdminRoute(roles, route);
+  const routeRequiresAdminOnly = route.requiredRoles.every((role) => role === 'platform_admin' || role === 'super_admin');
 
-  if (!effectiveHasAdminAccess) {
-    return <>{fallback({ reason: 'not_admin', route })}</>;
-  }
-
-  if (!canAccessAdminRoute(roles, route)) {
-    return <>{fallback({ reason: 'route_forbidden', route })}</>;
+  if (!canAccessRoute) {
+    return <>{fallback({ reason: !effectiveHasAdminAccess && routeRequiresAdminOnly ? 'not_admin' : 'route_forbidden', route })}</>;
   }
 
   return <>{children}</>;
 }
-

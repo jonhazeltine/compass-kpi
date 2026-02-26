@@ -17,6 +17,9 @@ test('normalizeAdminRole maps aliases to canonical admin roles', () => {
   assert.equal(normalizeAdminRole('SUPER-ADMIN'), 'super_admin');
   assert.equal(normalizeAdminRole('leader'), 'team_leader');
   assert.equal(normalizeAdminRole('member'), 'team_member');
+  assert.equal(normalizeAdminRole('coach'), 'coach');
+  assert.equal(normalizeAdminRole('challenge_sponsor'), 'challenge_sponsor');
+  assert.equal(normalizeAdminRole('sponsor'), 'challenge_sponsor');
 });
 
 test('normalizeAdminRole returns unknown for unmapped non-empty strings', () => {
@@ -30,6 +33,8 @@ test('getAdminRouteByPath matches admin paths and trims trailing slash', () => {
   assert.equal(getAdminRouteByPath('/admin/')?.key, 'overview');
   assert.equal(getAdminRouteByPath('/admin/authz')?.key, 'authz');
   assert.equal(getAdminRouteByPath('/admin/users/')?.key, 'users');
+  assert.equal(getAdminRouteByPath('/admin/coaching/uploads')?.key, 'coachingUploads');
+  assert.equal(getAdminRouteByPath('/admin/coaching/library')?.key, 'coachingLibrary');
   assert.equal(getAdminRouteByPath('/admin/nope'), null);
 });
 
@@ -68,4 +73,6 @@ test('admin routes remain defined for A1 shell placeholders', () => {
   assert.ok(ADMIN_ROUTES.length >= 2);
   assert.ok(ADMIN_ROUTES.some((route) => route.path === '/admin'));
   assert.ok(ADMIN_ROUTES.some((route) => route.path === '/admin/authz'));
+  assert.ok(ADMIN_ROUTES.some((route) => route.path === '/admin/coaching/uploads'));
+  assert.ok(ADMIN_ROUTES.some((route) => route.path === '/admin/coaching/channels'));
 });
