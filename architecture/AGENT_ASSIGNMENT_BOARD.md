@@ -62,7 +62,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `ADMIN-A2-TABLE-OPS-FIXPACK-B` | `committed+pushed` | `A2 (parallel with M6 coaching planning)` | `Admin operator` | `admin KPI catalog + challenge templates table ops` | `/admin/kpis`, `/admin/challenge-templates` (web admin tables/forms only) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web, no Figma parity requirement for this swath) | Accepted and pushed: baseline A2 fixpack + sorting follow-up landed (`91de8d2`, `6854cd1`). Owner cleared baseline manual validation blocker and deferred pagination; sortable KPI/template headers (asc/desc) added. |
 | `COACHING-UI-PACKAGE-VISIBILITY-GATING-A` | `committed+pushed` | `M6 coaching slice (runtime UI gating + fallback behavior)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`package visibility + entitlement UI gating`) | `Challenge Details/Results`, `coaching_journeys*`, `inbox*`, Team coaching modules (existing W3/W4 surfaces) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven + accepted packaging docs (`COACHING-PACKAGING-SPONSORED-PAID-A`) | Accepted and pushed: runtime package visibility/entitlement banners + safe fallback/gated/blocked states across W3/W4 coaching surfaces, with UI-only contract-gap triage and no backend/schema changes. |
 | `COACHING-BACKEND-PREP-PACKAGE-READMODEL-A` | `committed+pushed` | `M6 coaching slice (backend-prep planning/spec)` | `Admin operator`, `Coach`, downstream `Leader/Member/Solo` | `coaching content operations / publishing` (`package read-model + entitlement outputs`) | backend contract/read-model planning only (no runtime UI code) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs/backend-prep planning only; separate worktree preferred) | manual-spec-driven + accepted packaging/docs stack | Accepted and pushed: endpoint-family coverage map, read-model output requirement matrix, gap classification, `decision needed` list, and follow-on backend/UI implementation specs for packaging/entitlement runtime outputs |
-| `ADMIN-A3_5-USERS-LIST-PAGING-SORT-A` | `blocked` | `A3.5 (parallel with M6 backend-prep implementation)` | `Admin operator` | `admin users list/search/sort/paging polish` | `/admin/users` (primary), `/admin/reports` regression check only | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web; preserve existing patterns) | `/admin/users` sorting/paging workflow polish implemented in `AdminShellScreen.tsx` (header asc/desc sorting + row-window/paging clarity improvements); `tsc` green. Blocked pending required manual browser spot-check of `/admin/users` (`/admin/reports` regression check only if touched). |
+| `ADMIN-A3_5-USERS-LIST-PAGING-SORT-A` | `committed+pushed` | `A3.5 (parallel with M6 backend-prep implementation)` | `Admin operator` | `admin users list/search/sort/paging polish` | `/admin/users` (primary), `/admin/reports` regression check only | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web; preserve existing patterns) | Accepted and pushed (`5e59ad1`): `/admin/users` sorting/paging workflow polish (header asc/desc toggles, row-window clarity, reset-sort, show-more count labels, row-window reset on filter/sort changes). Manual browser spot-check remains recommended follow-up. |
 
 ## Blocked Assignments
 
@@ -1124,7 +1124,7 @@ Apply package visibility / entitlement outcome handling to existing coaching run
 ### `COACHING-BACKEND-PREP-PACKAGE-READMODEL-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 coaching slice (backend-prep planning/spec)`
 - `Persona:` `Admin operator`, `Coach`, downstream `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching content operations / publishing` (`package read-model + entitlement outputs`)
@@ -1209,6 +1209,7 @@ Define an implementation-ready backend-prep plan for packaging/entitlement runti
 - `Completion note (2026-02-26, Coach-1):` Implemented additive `packaging_read_model` outputs in existing endpoint families only: `GET /api/channels`, `GET /api/channels/{id}/messages`, `GET /api/coaching/journeys`, `GET /api/coaching/journeys/{id}`, `GET /sponsored-challenges`, and `GET /sponsored-challenges/{id}`. Added shared in-file read-model builders (baseline/partial/inferred status + linked context refs + display requirements), thread-level channel context on messages endpoint, and contract-note updates in `/docs/spec/04_api_contracts.md`.
 - `Validation note (2026-02-26, Coach-1):` `cd /Users/jon/compass-kpi/backend && npm test -- --runInBand` could not run because backend `package.json` has no `test` script. Fallback validation used `cd /Users/jon/compass-kpi/backend && npm run build` (`tsc`) ✅. Contract diff review documented additive response fields in `/docs/spec/04_api_contracts.md`. Manual endpoint smoke checks not run in this session (no local API/env smoke run performed). No net-new endpoint families or schema changes introduced.
 - `Current blocker status (2026-02-26, Coach-1, completion):` `none` for in-family implementation pass. Remaining items are planning/implementation decisions (`team` host family for package outputs, broadcast path semantics normalization, entitlement outcome granularity/field normalization), not blockers for this delivered slice.
+- `Controller review note (2026-02-26):` Accepted and pushed as `2824642` with additive in-family response shaping only (no schema or net-new endpoint families). `DEC-0044` added to `architecture/DECISIONS_LOG.md` for API boundary response-shape changes. Backend generated output + API contracts doc updated in the same change set.
 
 #### Primary Objective
 Implement additive packaging/entitlement read-model outputs within existing endpoint families where feasible, without introducing net-new endpoint families or schema changes unless separately approved:
@@ -1315,7 +1316,7 @@ Consume server-provided packaging/entitlement read-model outputs on existing coa
 ### `ADMIN-A3_5-USERS-LIST-PAGING-SORT-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `committed+pushed`
 - `Program status:` `A3.5 (parallel with M6 backend-prep implementation)`
 - `Persona:` `Admin operator`
 - `Flow:` `admin users list/search/sort/paging polish`
@@ -1327,6 +1328,7 @@ Consume server-provided packaging/entitlement read-model outputs on existing coa
 - `Execution note (2026-02-26):` Worker pickup started on `codex/a2-admin-list-usability-pass`. Executing admin-only `/admin/users` list/search/sort/paging polish in `AdminShellScreen.tsx`; `/admin/reports` limited to regression check only unless a direct consistency issue is found.
 - `Completion note (2026-02-26):` Implemented `/admin/users` table workflow polish in `AdminShellScreen.tsx`: clickable user-table header sorting (asc/desc toggles for visible columns), clearer row-window count/footnote copy, `Show more (N left)` paging label, reset-sort action, and row-window reset on filter/sort/test-focus changes. No `/admin/reports` code changes. `cd app && npx tsc --noEmit --pretty false` passed.
 - `Blocker note (2026-02-26):` Required manual browser validation remains pending (cannot self-perform click-through in terminal-only session). Need `/admin/users` spot-check for header sort toggles, row-window reset behavior, no-results recovery, and selected-row/list coordination; `/admin/reports` regression check only if controller wants explicit runtime confirmation.
+- `Controller review note (2026-02-26):` Accepted and pushed as `5e59ad1` after scoped diff review and fresh app `tsc` check (`npx tsc --noEmit --pretty false`). Runtime browser spot-check remains recommended validation debt, not a push blocker for this admin usability pass.
 
 #### Screens In Scope (Large Swath)
 1. `/admin/users` (primary)
