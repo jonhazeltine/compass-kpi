@@ -8,11 +8,14 @@ This is a planning diagram, not a literal runtime router definition.
 Use with:
 - `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
 - `/Users/jon/compass-kpi/docs/spec/appendix/FIGMA_BUILD_MAPPING.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
 
 ## Key Principles
 - Organize by **persona perspective** (`Solo User`, `Team Member`, `Team Leader`)
 - Reuse **shared flows/screens** where possible
 - Track persona-specific deltas at the screen/CTA level, not by forking the app architecture
+- Model coaching as a cross-cutting capability layer (embedded modules + dedicated flows)
 - Current runtime implementation is state-driven (not React Navigation), so this diagram describes **intended behavior**
 
 ## Global App Entry (Current + Intended)
@@ -45,12 +48,14 @@ flowchart LR
   P --> S4["Team"]
   P --> S5["Profile"]
   P --> S6["Settings & Payment"]
+  P --> S7["Coaching / Communication (cross-cutting)"]
 
   U1["Solo User"] --> S1
   U1 --> S2
   U1 --> S3
   U1 --> S5
   U1 --> S6
+  U1 --> S7
 
   U2["Team Member"] --> S1
   U2 --> S2
@@ -58,6 +63,7 @@ flowchart LR
   U2 --> S4
   U2 --> S5
   U2 --> S6
+  U2 --> S7
 
   U3["Team Leader"] --> S1
   U3 --> S2
@@ -65,6 +71,32 @@ flowchart LR
   U3 --> S4
   U3 --> S5
   U3 --> S6
+  U3 --> S7
+```
+
+## Coaching / Communication Overlay (Intended)
+
+Coaching is a capability layer across Team, Challenge, Home, and Profile, plus new dedicated flows.
+
+```mermaid
+flowchart TD
+  CC["Coaching / Communication Layer"] --> CC1["Inbox / Channels (dedicated)"]
+  CC --> CC2["Coaching Journeys (dedicated)"]
+  CC --> CC3["Embedded Coaching Modules"]
+
+  CC3 --> CC3A["Home / Priority nudges"]
+  CC3 --> CC3B["Team Dashboard coaching summary / broadcast preview"]
+  CC3 --> CC3C["Challenge Details coaching + sponsor campaign blocks"]
+  CC3 --> CC3D["Profile / goals / coaching prefs"]
+
+  CC1 --> CCT["Team channel"]
+  CC1 --> CCC["Challenge channel"]
+  CC1 --> CCS["Sponsor channel"]
+  CC1 --> CCB["Broadcast composer (leader/admin role-gated)"]
+
+  CC2 --> J1["Journey list"]
+  CC2 --> J2["Journey detail"]
+  CC2 --> J3["Lesson detail / progress"]
 ```
 
 ## Member App Shell (Intended)
@@ -75,6 +107,7 @@ This maps to the current `KPIDashboardScreen` state router and its nested subflo
 flowchart TD
   H["Member Home Shell"] --> K["KPI Dashboard Surface"]
   H --> P["Profile / Goals"]
+  H --> I["Inbox / Channels (future dedicated flow)"]
 
   K --> T1["Home / Priority"]
   K --> T2["Challenge"]
@@ -85,6 +118,8 @@ flowchart TD
   T2 --> C1["Challenge List"]
   C1 --> C2["Challenge Details / Progress"]
   C2 --> C3["Challenge Leaderboard / Results"]
+  C2 --> C4["Challenge Channel / Updates (future)"]
+  C2 --> C5["Sponsor Coaching CTA / Content (when sponsored)"]
   C3 --> C2
   C2 --> C1
 
@@ -94,6 +129,8 @@ flowchart TD
   TD --> TK["Team KPI Settings"]
   TD --> TPL["Team Pipeline"]
   TD --> TC["Team Challenges / Single Person Challenges"]
+  TD --> TComm["Team Channel / Broadcast (future)"]
+  TD --> TCoach["Team Coaching Summary (embedded)"]
   TD --> TL["Team Logging (shared KPI logging block)"]
 
   TI --> TD
@@ -121,10 +158,13 @@ flowchart TD
   LDT --> LTK["Team KPI Settings"]
   LDT --> LTPipe["Pipeline"]
   LDT --> LTC["Team Challenges"]
+  LDT --> LB["Broadcast Composer / Team Channel"]
+  LDT --> LJP["Team Coaching Progress / Journey entry"]
 
   LC --> LCC["Create Team Challenge"]
   LC --> LCM["Manage Challenge & Leaderboard"]
   LC --> LCS["Sponsored Challenges"]
+  LCS --> LSC["Sponsor Campaign / Coaching Content Overlays"]
 ```
 
 ## Team Member Perspective (Intended)
@@ -142,11 +182,13 @@ flowchart TD
   MT --> MTD["Team Dashboard (member variant)"]
   MTD --> MTC["Team Challenges"]
   MTD --> MPipe["Pipeline / Team Stats (read-first)"]
+  MTD --> MJP["My Coaching Progress / Lesson prompt"]
   MTD --> MLog["Team Logging (shared KPI logging block)"]
 
   MC --> MCL["Challenge List"]
   MCL --> MCD["Challenge Details"]
   MCD --> MCB["Leaderboard / Results"]
+  MCD --> MCC["Challenge Channel / Updates"]
 ```
 
 ## Solo User Perspective (Intended)
@@ -164,6 +206,23 @@ flowchart TD
   SC --> SCL["Challenge List"]
   SCL --> SCD["Challenge Details / Progress"]
   SCD --> SCB["Leaderboard / Results"]
+  SCD --> SCN["Solo coaching prompt / sponsored content block"]
+```
+
+## Sponsored Challenge + Coaching Overlap (Intended)
+
+This is a deliberate overlap and should be implemented as linked modules, not a merged ownership model.
+
+```mermaid
+flowchart LR
+  SCH["Sponsored Challenge"] --> SCP["Challenge Participation / Progress"]
+  SCH --> SCM["Sponsor Metadata + CTA + Disclaimer"]
+  SCH --> SCC["Sponsor/Challenge Channel (optional)"]
+  SCH --> SCL["Coaching Content / Journey Link (optional)"]
+
+  SCP --> KPI["KPI Logging (single source of activity truth)"]
+  SCL --> CJ["Coaching Journeys / Lessons"]
+  SCC --> INB["Inbox / Channels"]
 ```
 
 ## Team Flow Canonical Screen Wiring (Current Active Parity Program)
@@ -190,10 +249,12 @@ Current nested routing state:
 - challenge subflow: `list`, `details`, `leaderboard`
 - team subflow: `dashboard`, `invite_member`, `pending_invitations`, `kpi_settings`, `pipeline`, `team_challenges`
 
+Coaching/communication runtime routing is not yet established in the member app shell and should follow the destination naming and boundaries in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
+
 ## Next Diagram Update Trigger
 Update this doc whenever:
 - a new Team or Challenge screen becomes navigable
 - a canonical Figma node changes
 - persona-specific deltas become explicit in runtime (leader vs member variants)
+- coaching/communication destinations or embedded module entry points are added
 - the app moves from state-router navigation to a formal navigator
-
