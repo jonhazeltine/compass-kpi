@@ -178,6 +178,7 @@ type ChallengeApiRow = {
   sponsored_challenge_id?: string | null;
   sponsor_id?: string | null;
   package_visibility?: RuntimePackageVisibilityOutcome | null;
+  packaging_read_model?: RuntimePackagingReadModel | null;
   my_participation?: {
     challenge_id?: string | null;
     user_id?: string | null;
@@ -273,6 +274,24 @@ type RuntimePackageDisplayRequirements = {
   disclaimer?: string | null;
   sponsor_attribution?: string | null;
   paywall_cta_required?: boolean | null;
+  sponsor_disclaimer_required?: boolean | null;
+  sponsor_attribution_required?: boolean | null;
+};
+type RuntimePackagingReadModel = {
+  package_type?: string | null;
+  visibility_state?: string | null;
+  entitlement_result?: string | null;
+  linked_context_refs?: {
+    team_id?: string | null;
+    challenge_id?: string | null;
+    sponsored_challenge_id?: string | null;
+    sponsor_id?: string | null;
+    channel_id?: string | null;
+    journey_id?: string | null;
+  } | null;
+  display_requirements?: RuntimePackageDisplayRequirements | null;
+  read_model_status?: string | null;
+  notes?: string[] | null;
 };
 type RuntimePackageVisibilityOutcome = {
   package_type?: string | null;
@@ -282,6 +301,8 @@ type RuntimePackageVisibilityOutcome = {
   entitlement_result?: string | null;
   linked_context_refs?: Record<string, unknown> | null;
   display_requirements?: RuntimePackageDisplayRequirements | null;
+  read_model_status?: string | null;
+  notes?: string[] | null;
 };
 type CoachingPackageGateTone = 'available' | 'gated' | 'blocked' | 'fallback';
 type CoachingPackageGatePresentation = {
@@ -303,10 +324,12 @@ type CoachingJourneyListItem = {
   lessons_completed?: number;
   completion_percent?: number;
   package_visibility?: RuntimePackageVisibilityOutcome | null;
+  packaging_read_model?: RuntimePackagingReadModel | null;
 };
 type CoachingJourneyListResponse = {
   journeys?: CoachingJourneyListItem[];
   package_visibility?: RuntimePackageVisibilityOutcome | null;
+  packaging_read_model?: RuntimePackagingReadModel | null;
   error?: string;
 };
 type CoachingJourneyDetailLesson = {
@@ -328,6 +351,7 @@ type CoachingJourneyDetailResponse = {
   journey?: CoachingJourneyListItem;
   milestones?: CoachingJourneyDetailMilestone[];
   package_visibility?: RuntimePackageVisibilityOutcome | null;
+  packaging_read_model?: RuntimePackagingReadModel | null;
   error?: string;
 };
 type CoachingProgressSummaryResponse = {
@@ -339,6 +363,7 @@ type CoachingProgressSummaryResponse = {
   };
   completion_percent?: number;
   package_visibility?: RuntimePackageVisibilityOutcome | null;
+  packaging_read_model?: RuntimePackagingReadModel | null;
   error?: string;
 };
 type CoachingLessonProgressWriteResponse = {
@@ -363,10 +388,12 @@ type ChannelApiRow = {
   unread_count?: number;
   last_seen_at?: string | null;
   package_visibility?: RuntimePackageVisibilityOutcome | null;
+  packaging_read_model?: RuntimePackagingReadModel | null;
 };
 type ChannelsListResponse = {
   channels?: ChannelApiRow[];
   package_visibility?: RuntimePackageVisibilityOutcome | null;
+  packaging_read_model?: RuntimePackagingReadModel | null;
   error?: string;
 };
 type ChannelMessageRow = {
@@ -377,10 +404,13 @@ type ChannelMessageRow = {
   message_type?: 'message' | 'broadcast' | string;
   created_at?: string | null;
   package_visibility?: RuntimePackageVisibilityOutcome | null;
+  packaging_read_model?: RuntimePackagingReadModel | null;
 };
 type ChannelMessagesResponse = {
+  channel?: ChannelApiRow | null;
   messages?: ChannelMessageRow[];
   package_visibility?: RuntimePackageVisibilityOutcome | null;
+  packaging_read_model?: RuntimePackagingReadModel | null;
   error?: string;
 };
 type ChannelMessageWriteResponse = {
@@ -534,6 +564,43 @@ function normalizeChannelTypeToScope(type?: string | null): CoachingChannelScope
   return null;
 }
 
+function normalizePackagingReadModelToVisibilityOutcome(
+  readModel?: RuntimePackagingReadModel | null
+): RuntimePackageVisibilityOutcome | null {
+  if (!readModel) return null;
+  const hasAnySignal =
+    readModel.package_type != null ||
+    readModel.visibility_state != null ||
+    readModel.entitlement_result != null ||
+    readModel.read_model_status != null ||
+    readModel.linked_context_refs != null ||
+    readModel.display_requirements != null;
+  if (!hasAnySignal) return null;
+  const refs = readModel.linked_context_refs ?? null;
+  const dr = readModel.display_requirements ?? null;
+  const inferredSponsorAttr =
+    dr?.sponsor_attribution_required || refs?.sponsor_id || refs?.sponsored_challenge_id ? 'Sponsor-linked coaching' : null;
+  const inferredDisclaimer = dr?.sponsor_disclaimer_required
+    ? 'Sponsor disclaimer is required for this package-linked coaching surface.'
+    : null;
+  return {
+    package_type: readModel.package_type ?? null,
+    visibility_state: readModel.visibility_state ?? null,
+    entitlement_result: readModel.entitlement_result ?? null,
+    target_match: null,
+    linked_context_refs: (refs as Record<string, unknown> | null) ?? null,
+    display_requirements: {
+      sponsor_disclaimer_required: dr?.sponsor_disclaimer_required ?? null,
+      sponsor_attribution_required: dr?.sponsor_attribution_required ?? null,
+      paywall_cta_required: dr?.paywall_cta_required ?? null,
+      sponsor_attribution: inferredSponsorAttr,
+      disclaimer: inferredDisclaimer,
+    },
+    read_model_status: readModel.read_model_status ?? null,
+    notes: Array.isArray(readModel.notes) ? readModel.notes.filter((v): v is string => typeof v === 'string') : null,
+  };
+}
+
 function pickRuntimePackageVisibility(
   ...candidates: Array<RuntimePackageVisibilityOutcome | null | undefined>
 ): RuntimePackageVisibilityOutcome | null {
@@ -545,7 +612,8 @@ function pickRuntimePackageVisibility(
       candidate.visibility_state != null ||
       candidate.entitlement_result != null ||
       candidate.target_match != null ||
-      candidate.display_requirements != null;
+      candidate.display_requirements != null ||
+      candidate.read_model_status != null;
     if (hasAnySignal) return candidate;
   }
   return null;
@@ -563,6 +631,10 @@ function deriveCoachingPackageGatePresentation(
   const sponsorAttr = displayReq?.sponsor_attribution?.trim() || null;
   const explicitDisclaimer = displayReq?.disclaimer?.trim() || null;
   const paywallRequired = Boolean(displayReq?.paywall_cta_required);
+  const sponsorDisclaimerRequired = Boolean(displayReq?.sponsor_disclaimer_required);
+  const sponsorAttributionRequired = Boolean(displayReq?.sponsor_attribution_required);
+  const readModelStatus = String(outcome?.read_model_status ?? '').toLowerCase();
+  const notes = Array.isArray(outcome?.notes) ? outcome?.notes.filter((v): v is string => typeof v === 'string') : [];
 
   const boundaryNote =
     packageType === 'sponsored_challenge_coaching_campaign'
@@ -593,7 +665,11 @@ function deriveCoachingPackageGatePresentation(
     visibilityState.includes('hidden') ||
     visibilityState.includes('retired') ||
     visibilityState.includes('paused');
-  const allowedByEntitlement = entitlementResult === 'allowed';
+  const allowedByEntitlement =
+    entitlementResult === 'allowed' ||
+    entitlementResult === 'allowed_channel_member' ||
+    entitlementResult === 'allowed_tier_gated';
+  const notEvaluated = entitlementResult === 'not_evaluated' || entitlementResult === 'unknown';
   const available = allowedByEntitlement && targetMatch !== false && !blockedByVisibility;
 
   if (available) {
@@ -602,7 +678,14 @@ function deriveCoachingPackageGatePresentation(
       title: 'Package Available',
       summary: `${surfaceLabel} is visible under the current runtime package/entitlement outcome.`,
       detail:
-        [sponsorAttr ? `Sponsor: ${sponsorAttr}` : null, explicitDisclaimer, paywallRequired ? 'Paywall CTA may be required on linked access paths.' : null]
+        [
+          sponsorAttr ? `Sponsor: ${sponsorAttr}` : null,
+          sponsorAttributionRequired ? 'Sponsor attribution required.' : null,
+          sponsorDisclaimerRequired ? 'Sponsor disclaimer required.' : null,
+          explicitDisclaimer,
+          paywallRequired ? 'Paywall CTA may be required on linked access paths.' : null,
+          readModelStatus ? `read-model: ${readModelStatus}` : null,
+        ]
           .filter(Boolean)
           .join(' ') || boundaryNote || null,
       policyNote: 'UI is reflecting server-provided visibility/entitlement outcomes only.',
@@ -632,6 +715,27 @@ function deriveCoachingPackageGatePresentation(
       summary: `${surfaceLabel} is not available for this context right now.`,
       detail: [reason, sponsorAttr ? `Sponsor: ${sponsorAttr}` : null, explicitDisclaimer].filter(Boolean).join(' • '),
       policyNote: boundaryNote ?? 'UI is displaying server outcomes and not computing local package policy.',
+    };
+  }
+
+  if (notEvaluated) {
+    return {
+      tone: 'fallback',
+      title: 'Package Outcome Not Evaluated',
+      summary: `${surfaceLabel} received a server package read-model, but entitlement remains ${entitlementResult || 'unknown'} for this endpoint family.`,
+      detail:
+        [
+          readModelStatus ? `read-model: ${readModelStatus}` : null,
+          sponsorAttributionRequired ? 'Sponsor attribution required.' : null,
+          sponsorDisclaimerRequired ? 'Sponsor disclaimer required.' : null,
+          paywallRequired ? 'Paywall CTA may be required on linked access paths.' : null,
+          ...notes.slice(0, 2),
+        ]
+          .filter(Boolean)
+          .join(' • ') || null,
+      policyNote:
+        boundaryNote ??
+        'UI keeps fallback CTA behavior until this endpoint family returns a decisive entitlement outcome.',
     };
   }
 
@@ -4881,6 +4985,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const challengeIsPlaceholderOnly = !challengeHasApiBackedDetail;
   const challengeLeaderboardHasRealRows = (challengeSelected?.leaderboardPreview?.length ?? 0) > 0;
   const challengeCoachingPackageOutcome = pickRuntimePackageVisibility(
+    normalizePackagingReadModelToVisibilityOutcome(challengeSelected?.raw?.packaging_read_model ?? null),
     challengeSelected?.raw?.package_visibility ?? null
   );
   const challengeCoachingGatePresentation = deriveCoachingPackageGatePresentation(
@@ -4997,11 +5102,21 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       if (!response.ok) {
         setCoachingJourneysError(String(body.error ?? `Journeys request failed (${response.status})`));
         setCoachingJourneys([]);
-        setCoachingJourneysPackageVisibility(body.package_visibility ?? null);
+        setCoachingJourneysPackageVisibility(
+          pickRuntimePackageVisibility(
+            normalizePackagingReadModelToVisibilityOutcome(body.packaging_read_model ?? null),
+            body.package_visibility ?? null
+          )
+        );
         return;
       }
       setCoachingJourneys(Array.isArray(body.journeys) ? body.journeys : []);
-      setCoachingJourneysPackageVisibility(body.package_visibility ?? null);
+      setCoachingJourneysPackageVisibility(
+        pickRuntimePackageVisibility(
+          normalizePackagingReadModelToVisibilityOutcome(body.packaging_read_model ?? null),
+          body.package_visibility ?? null
+        )
+      );
     } catch (err) {
       setCoachingJourneysError(err instanceof Error ? err.message : 'Failed to load coaching journeys');
       setCoachingJourneys([]);
@@ -5137,12 +5252,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       if (!response.ok) {
         setChannelsError(String(body.error ?? `Channels request failed (${response.status})`));
         setChannelsApiRows([]);
-        setChannelsPackageVisibility(body.package_visibility ?? null);
+        setChannelsPackageVisibility(
+          pickRuntimePackageVisibility(
+            normalizePackagingReadModelToVisibilityOutcome(body.packaging_read_model ?? null),
+            body.package_visibility ?? null
+          )
+        );
         return;
       }
       const rows = Array.isArray(body.channels) ? body.channels : [];
       setChannelsApiRows(rows);
-      setChannelsPackageVisibility(body.package_visibility ?? null);
+      setChannelsPackageVisibility(
+        pickRuntimePackageVisibility(
+          normalizePackagingReadModelToVisibilityOutcome(body.packaging_read_model ?? null),
+          body.package_visibility ?? null
+        )
+      );
       setSelectedChannelId((prev) => (prev && rows.some((r) => String(r.id) === prev) ? prev : prev));
     } catch (err) {
       setChannelsError(err instanceof Error ? err.message : 'Failed to load channels');
@@ -5178,11 +5303,26 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         if (!response.ok) {
           setChannelMessagesError(String(body.error ?? `Channel messages request failed (${response.status})`));
           setChannelMessages([]);
-          setChannelThreadPackageVisibility(body.package_visibility ?? null);
+          setChannelThreadPackageVisibility(
+            pickRuntimePackageVisibility(
+              normalizePackagingReadModelToVisibilityOutcome(body.packaging_read_model ?? null),
+              normalizePackagingReadModelToVisibilityOutcome(body.channel?.packaging_read_model ?? null),
+              body.package_visibility ?? null
+            )
+          );
           return;
         }
         setChannelMessages(Array.isArray(body.messages) ? body.messages : []);
-        setChannelThreadPackageVisibility(body.package_visibility ?? null);
+        setChannelThreadPackageVisibility(
+          pickRuntimePackageVisibility(
+            normalizePackagingReadModelToVisibilityOutcome(body.packaging_read_model ?? null),
+            normalizePackagingReadModelToVisibilityOutcome(body.channel?.packaging_read_model ?? null),
+            body.package_visibility ?? null
+          )
+        );
+        if (body.channel?.name && (!selectedChannelName || String(selectedChannelId) === String(channelId))) {
+          setSelectedChannelName(String(body.channel.name));
+        }
         if (markSeen) {
           await fetch(`${API_URL}/api/messages/mark-seen`, {
             method: 'POST',
@@ -5203,7 +5343,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         setChannelMessagesLoading(false);
       }
     },
-    [fetchChannels, session?.access_token]
+    [fetchChannels, selectedChannelId, selectedChannelName, session?.access_token]
   );
 
   const sendChannelMessage = useCallback(
@@ -7105,30 +7245,38 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const shellPackageOutcome =
                 coachingShellScreen === 'inbox' || coachingShellScreen === 'inbox_channels'
                   ? pickRuntimePackageVisibility(
-                      channelsPackageVisibility,
-                      selectedChannelRow?.package_visibility ?? null
-                    )
+                    channelsPackageVisibility,
+                    normalizePackagingReadModelToVisibilityOutcome(selectedChannelRow?.packaging_read_model ?? null),
+                    selectedChannelRow?.package_visibility ?? null
+                  )
                   : coachingShellScreen === 'channel_thread'
                     ? pickRuntimePackageVisibility(
                         channelThreadPackageVisibility,
+                        normalizePackagingReadModelToVisibilityOutcome(selectedChannelRow?.packaging_read_model ?? null),
                         selectedChannelRow?.package_visibility ?? null,
                         channelsPackageVisibility
                       )
                     : coachingShellScreen === 'coach_broadcast_compose'
                       ? pickRuntimePackageVisibility(
+                          normalizePackagingReadModelToVisibilityOutcome(selectedChannelRow?.packaging_read_model ?? null),
                           selectedChannelRow?.package_visibility ?? null,
                           channelsPackageVisibility
                         )
                       : coachingShellScreen === 'coaching_journeys'
                         ? pickRuntimePackageVisibility(
                             coachingJourneysPackageVisibility,
+                            normalizePackagingReadModelToVisibilityOutcome(coachingProgressSummary?.packaging_read_model ?? null),
                             coachingProgressSummary?.package_visibility ?? null,
+                            normalizePackagingReadModelToVisibilityOutcome(journeyListRows[0]?.packaging_read_model ?? null),
                             journeyListRows[0]?.package_visibility ?? null
                           )
                         : pickRuntimePackageVisibility(
+                            normalizePackagingReadModelToVisibilityOutcome(coachingJourneyDetail?.packaging_read_model ?? null),
                             coachingJourneyDetail?.package_visibility ?? null,
+                            normalizePackagingReadModelToVisibilityOutcome(coachingJourneyDetail?.journey?.packaging_read_model ?? null),
                             coachingJourneyDetail?.journey?.package_visibility ?? null,
                             coachingJourneysPackageVisibility,
+                            normalizePackagingReadModelToVisibilityOutcome(coachingProgressSummary?.packaging_read_model ?? null),
                             coachingProgressSummary?.package_visibility ?? null
                           );
               const shellPackageGatePresentation = deriveCoachingPackageGatePresentation(meta.title, shellPackageOutcome);

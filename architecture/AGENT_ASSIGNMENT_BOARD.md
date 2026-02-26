@@ -1196,7 +1196,7 @@ Define an implementation-ready backend-prep plan for packaging/entitlement runti
 ### `COACHING-BACKEND-IMPL-PACKAGE-READMODEL-INFAMILY-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 coaching slice (backend-prep implementation; in-family read-model shaping)`
 - `Persona:` `Admin operator`, `Coach`, downstream `Leader/Member/Solo`
 - `Flow:` `coaching content operations / publishing` (`package read-model + entitlement outputs`)
@@ -1259,7 +1259,7 @@ Implement additive packaging/entitlement read-model outputs within existing endp
 ### `COACHING-UI-PACKAGE-READMODEL-CONSUME-A`
 
 #### Snapshot
-- `Status:` `queued`
+- `Status:` `review`
 - `Program status:` `M6 coaching slice (runtime UI follow-up; package read-model consumption)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`package visibility + entitlement outputs consumption`)
@@ -1267,6 +1267,12 @@ Implement additive packaging/entitlement read-model outputs within existing endp
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred)
 - `Figma refs:` `manual-spec-driven`
 - `Dependency note:` Run after backend-prep outputs land for targeted endpoint families, or scope to partially available outputs with explicit controller approval
+- `Worker pickup note (2026-02-26, Mobile-1):` Board status/blocker check complete. Executing UI follow-up to consume backend-added package read-model outputs on existing W3/W4 coaching/comms surfaces and reduce fallback-only gating where contracts now provide outcomes.
+- `Current blocker status (2026-02-26, Mobile-1):` `none` at start. Will report exact endpoint/field gaps if backend payloads differ from accepted backend-prep implementation notes or remain unavailable on targeted surfaces.
+- `Completion note (2026-02-26, Mobile-1):` Consumed backend `packaging_read_model` outputs (additive in-family read-model shape) across existing coaching/comms runtime surfaces by normalizing `packaging_read_model` into UI gate presentation state and preferring it over temporary `package_visibility` fields. Wired consumption for `GET /api/channels`, `GET /api/channels/{id}/messages` (including top-level thread `channel` context metadata), `GET /api/coaching/journeys`, and `GET /api/coaching/journeys/{id}` where payloads are already used by W3/W4 UI. Fallback behavior remains only where endpoint families do not yet expose package outputs on the current mobile path.
+- `Current blocker status (2026-02-26, Mobile-1, completion):` `partial contract coverage (non-blocking)` — `/challenges` payloads used by Challenge list/details still do not document/emit `packaging_read_model`, and Team/Home/Profile embedded coaching modules are not backed by package-output endpoint families in current mobile path. UI preserves explicit fallback states on those surfaces.
+- `Validation note (2026-02-26, Mobile-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` ✅ passed. Route checks completed via code-path review for touched W3/W4 coaching/comms shells. Runtime screenshots remain pending controller/device validation.
+- `Controller review note (2026-02-26):` Accepted and pushed. UI now prefers additive backend `packaging_read_model` outputs on W3/W4 coaching/comms surfaces and normalizes them into the existing gate presentation model without introducing client-side entitlement policy logic. Partial coverage gaps are explicitly preserved as fallback states (`/challenges`, Home/Team/Profile embedded coaching modules) and documented as non-blocking until those endpoint families expose package outputs.
 
 #### Primary Objective
 Consume server-provided packaging/entitlement read-model outputs on existing coaching/challenge/comms surfaces and replace temporary fallback heuristics with contract-driven gating:
