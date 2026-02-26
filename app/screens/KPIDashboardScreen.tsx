@@ -239,6 +239,14 @@ type TeamFlowScreen =
   | 'kpi_settings'
   | 'pipeline'
   | 'team_challenges';
+type CoachingShellScreen =
+  | 'inbox'
+  | 'inbox_channels'
+  | 'channel_thread'
+  | 'coach_broadcast_compose'
+  | 'coaching_journeys'
+  | 'coaching_journey_detail'
+  | 'coaching_lesson_detail';
 
 type PendingDirectLog = {
   kpiId: string;
@@ -1390,6 +1398,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [challengeMemberCreateModalVisible, setChallengeMemberCreateModalVisible] = useState(false);
   const [challengeMemberCreateMode, setChallengeMemberCreateMode] = useState<'public' | 'team'>('team');
   const [teamFlowScreen, setTeamFlowScreen] = useState<TeamFlowScreen>('dashboard');
+  const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox');
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
@@ -3908,6 +3917,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setViewMode('log');
       return;
     }
+    if (tab === 'user') {
+      setViewMode('log');
+      setCoachingShellScreen('inbox');
+      return;
+    }
     Alert.alert('Coming next', 'This section is planned for later sprint scope.');
   };
 
@@ -4582,6 +4596,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         : 'Join to track progress and appear on the leaderboard.';
   const challengeMemberResultsRequiresUpgrade =
     teamPersonaVariant === 'member' && challengeIsCompleted && !challengeSelected?.joined;
+  const openCoachingShell = useCallback((screen: CoachingShellScreen) => {
+    setCoachingShellScreen(screen);
+    setActiveTab('user');
+    setViewMode('log');
+  }, []);
 
   if (state === 'loading') {
     return (
@@ -5258,6 +5277,34 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     )}
                   </TouchableOpacity>
 
+                  <View style={styles.coachingEntryCard}>
+                    <View style={styles.coachingEntryHeaderRow}>
+                      <Text style={styles.coachingEntryTitle}>
+                        {challengeIsCompleted ? 'Challenge Coaching & Updates' : 'Challenge Updates & Coaching'}
+                      </Text>
+                      <Text style={styles.coachingEntryBadge}>W1 shell</Text>
+                    </View>
+                    <Text style={styles.coachingEntrySub}>
+                      Manual-spec-driven placeholder CTAs for challenge updates and coaching prompts. Challenge progress/results ownership stays on this screen.
+                    </Text>
+                    <View style={styles.coachingEntryButtonRow}>
+                      <TouchableOpacity
+                        style={styles.coachingEntryPrimaryBtn}
+                        onPress={() => openCoachingShell('inbox_channels')}
+                      >
+                        <Text style={styles.coachingEntryPrimaryBtnText}>Challenge Updates</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.coachingEntrySecondaryBtn}
+                        onPress={() =>
+                          openCoachingShell(challengeIsCompleted ? 'coaching_journeys' : 'coaching_journey_detail')
+                        }
+                      >
+                        <Text style={styles.coachingEntrySecondaryBtnText}>Coaching Prompt</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
                   <View style={styles.challengeDetailsCtaBlock}>
                     {(() => {
                       const isJoinSubmitting = challengeJoinSubmittingId === challengeSelected.id;
@@ -5835,6 +5882,30 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         <Text style={styles.teamMemberPerformanceValue}>80%</Text>
                       </TouchableOpacity>
 
+                      <View style={styles.coachingEntryCard}>
+                        <View style={styles.coachingEntryHeaderRow}>
+                          <Text style={styles.coachingEntryTitle}>My Coaching Progress</Text>
+                          <Text style={styles.coachingEntryBadge}>W1 shell</Text>
+                        </View>
+                        <Text style={styles.coachingEntrySub}>
+                          Placeholder coaching progress and team updates entry points for Team Member participation.
+                        </Text>
+                        <View style={styles.coachingEntryButtonRow}>
+                          <TouchableOpacity
+                            style={styles.coachingEntryPrimaryBtn}
+                            onPress={() => openCoachingShell('coaching_journeys')}
+                          >
+                            <Text style={styles.coachingEntryPrimaryBtnText}>Open Journeys</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.coachingEntrySecondaryBtn}
+                            onPress={() => openCoachingShell('inbox_channels')}
+                          >
+                            <Text style={styles.coachingEntrySecondaryBtnText}>Team Updates</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
                       <Text style={styles.teamMemberSectionLabel}>Team Members</Text>
                       <View style={styles.teamMemberRowsCard}>
                         {[
@@ -6017,6 +6088,36 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       ))}
                     </View>
 
+                    <View style={styles.coachingEntryCard}>
+                      <View style={styles.coachingEntryHeaderRow}>
+                        <Text style={styles.coachingEntryTitle}>Team Coaching Summary</Text>
+                        <Text style={styles.coachingEntryBadge}>W1 shell</Text>
+                      </View>
+                      <Text style={styles.coachingEntrySub}>
+                        Leader coaching summary, updates, and role-gated broadcast compose placeholders. Functional comms send remains deferred to W2.
+                      </Text>
+                      <View style={styles.coachingEntryButtonRow}>
+                        <TouchableOpacity
+                          style={styles.coachingEntryPrimaryBtn}
+                          onPress={() => openCoachingShell('coaching_journeys')}
+                        >
+                          <Text style={styles.coachingEntryPrimaryBtnText}>Coaching Journeys</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.coachingEntrySecondaryBtn}
+                          onPress={() => openCoachingShell('inbox_channels')}
+                        >
+                          <Text style={styles.coachingEntrySecondaryBtnText}>Team Updates</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.coachingEntryDarkBtn}
+                        onPress={() => openCoachingShell('coach_broadcast_compose')}
+                      >
+                        <Text style={styles.coachingEntryDarkBtnText}>Broadcast Preview (Role-Gated Shell)</Text>
+                      </TouchableOpacity>
+                    </View>
+
                     <View style={styles.teamParityRouteChipsRow}>
                       <TouchableOpacity style={styles.teamParityRouteChip} onPress={() => setTeamFlowScreen('invite_member')}>
                         <Text style={styles.teamParityRouteChipText}>Invite Member</Text>
@@ -6032,6 +6133,164 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   )}
 
                   {teamLoggingBlock}
+                </>
+              );
+            })()}
+          </View>
+        ) : activeTab === 'user' ? (
+          <View style={styles.coachingShellWrap}>
+            {(() => {
+              const shellMeta: Record<
+                CoachingShellScreen,
+                { title: string; sub: string; badge: string; primary?: { label: string; to: CoachingShellScreen }[] }
+              > = {
+                inbox: {
+                  title: 'Inbox',
+                  sub: 'Manual-spec-driven W1 shell for communication entry and coaching preferences routing.',
+                  badge: 'communication',
+                  primary: [
+                    { label: 'Open Channels', to: 'inbox_channels' },
+                    { label: 'Coaching Journeys', to: 'coaching_journeys' },
+                  ],
+                },
+                inbox_channels: {
+                  title: 'Inbox / Channels',
+                  sub: 'Placeholder channel list shell. Team/challenge/sponsor context filtering is deferred to W2.',
+                  badge: 'communication',
+                  primary: [{ label: 'Open Channel Thread', to: 'channel_thread' }],
+                },
+                channel_thread: {
+                  title: 'Channel Thread',
+                  sub: 'Placeholder thread shell for team/challenge/sponsor updates. No message send/read behavior in W1.',
+                  badge: 'communication',
+                },
+                coach_broadcast_compose: {
+                  title: 'Broadcast Composer',
+                  sub: 'Role-gated compose shell only. Functional send flow is deferred to W2 and backend contract validation.',
+                  badge: 'leader-gated',
+                },
+                coaching_journeys: {
+                  title: 'Coaching Journeys',
+                  sub: 'Placeholder journey list shell for all personas. Content depth and progress writes remain deferred.',
+                  badge: 'coaching_content',
+                  primary: [{ label: 'Open Journey Detail', to: 'coaching_journey_detail' }],
+                },
+                coaching_journey_detail: {
+                  title: 'Coaching Journey Detail',
+                  sub: 'Placeholder journey detail shell with lesson CTA routing only.',
+                  badge: 'coaching_content',
+                  primary: [{ label: 'Open Lesson Detail', to: 'coaching_lesson_detail' }],
+                },
+                coaching_lesson_detail: {
+                  title: 'Coaching Lesson Detail',
+                  sub: 'Placeholder lesson/progress shell. No lesson progress writes in W1.',
+                  badge: 'coaching_content',
+                },
+              };
+              const meta = shellMeta[coachingShellScreen];
+              const channelRows = [
+                { label: 'Team Updates', context: 'team channel (placeholder)' },
+                { label: 'Challenge Updates', context: 'challenge channel (placeholder)' },
+                { label: 'Sponsor Updates', context: 'sponsor channel (placeholder)' },
+              ];
+              return (
+                <>
+                  <View style={styles.coachingShellCard}>
+                    <View style={styles.coachingShellTopRow}>
+                      <Text style={styles.coachingShellTitle}>{meta.title}</Text>
+                      <View style={styles.coachingShellBadge}>
+                        <Text style={styles.coachingShellBadgeText}>{meta.badge}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.coachingShellSub}>{meta.sub}</Text>
+                    <View style={styles.coachingShellActionRow}>
+                      <TouchableOpacity
+                        style={styles.coachingShellActionBtn}
+                        onPress={() => setCoachingShellScreen('inbox')}
+                      >
+                        <Text style={styles.coachingShellActionBtnText}>Inbox</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.coachingShellActionBtn}
+                        onPress={() => setCoachingShellScreen('inbox_channels')}
+                      >
+                        <Text style={styles.coachingShellActionBtnText}>Channels</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.coachingShellActionBtn}
+                        onPress={() => setCoachingShellScreen('coaching_journeys')}
+                      >
+                        <Text style={styles.coachingShellActionBtnText}>Journeys</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {meta.primary?.map((action) => (
+                      <TouchableOpacity
+                        key={`${coachingShellScreen}-${action.to}`}
+                        style={styles.coachingShellPrimaryBtn}
+                        onPress={() => setCoachingShellScreen(action.to)}
+                      >
+                        <Text style={styles.coachingShellPrimaryBtnText}>{action.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    {coachingShellScreen === 'inbox_channels' ? (
+                      <View style={styles.coachingShellList}>
+                        {channelRows.map((row) => (
+                          <TouchableOpacity
+                            key={row.label}
+                            style={styles.coachingShellListRow}
+                            onPress={() => setCoachingShellScreen('channel_thread')}
+                          >
+                            <View style={styles.coachingShellListIcon}>
+                              <Text style={styles.coachingShellListIconText}>#</Text>
+                            </View>
+                            <View style={styles.coachingShellListCopy}>
+                              <Text style={styles.coachingShellListTitle}>{row.label}</Text>
+                              <Text style={styles.coachingShellListSubText}>{row.context}</Text>
+                            </View>
+                            <Text style={styles.coachingShellListChevron}>›</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
+                    {coachingShellScreen === 'coach_broadcast_compose' ? (
+                      <View style={styles.coachingShellComposeCard}>
+                        <Text style={styles.coachingShellComposeTitle}>Broadcast Compose (Shell)</Text>
+                        <Text style={styles.coachingShellComposeSub}>
+                          Role-gated placeholder only. Message body, audience selectors, and send action will be added in W2.
+                        </Text>
+                        <View style={styles.coachingShellInputGhost}>
+                          <Text style={styles.coachingShellInputGhostText}>Subject / audience selectors (placeholder)</Text>
+                        </View>
+                        <View style={[styles.coachingShellInputGhost, styles.coachingShellInputGhostTall]}>
+                          <Text style={styles.coachingShellInputGhostText}>Message body (placeholder)</Text>
+                        </View>
+                        <TouchableOpacity style={[styles.coachingShellPrimaryBtn, styles.disabled]} disabled>
+                          <Text style={styles.coachingShellPrimaryBtnText}>Send (W2)</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.coachingShellCard}>
+                    <Text style={styles.coachingShellTitle}>Profile / Settings Coaching Allocation</Text>
+                    <Text style={styles.coachingShellSub}>
+                      W1 placeholder entry points for coaching preferences and notifications (`manual-spec-driven`, no backend writes).
+                    </Text>
+                    <View style={styles.coachingEntryButtonRow}>
+                      <TouchableOpacity
+                        style={styles.coachingEntrySecondaryBtn}
+                        onPress={() => setCoachingShellScreen('inbox')}
+                      >
+                        <Text style={styles.coachingEntrySecondaryBtnText}>Notifications / Inbox</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.coachingEntrySecondaryBtn}
+                        onPress={() => setCoachingShellScreen('coaching_journeys')}
+                      >
+                        <Text style={styles.coachingEntrySecondaryBtnText}>Coaching Preferences</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </>
               );
             })()}
@@ -6094,6 +6353,30 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ))}
                   </Animated.View>
                 </View>
+              </View>
+            </View>
+
+            <View style={styles.coachingEntryCard}>
+              <View style={styles.coachingEntryHeaderRow}>
+                <Text style={styles.coachingEntryTitle}>Coaching Nudge (W1 Allocation)</Text>
+                <Text style={styles.coachingEntryBadge}>manual-spec-driven</Text>
+              </View>
+              <Text style={styles.coachingEntrySub}>
+                Placeholder Home / Priority coaching entry. KPI logging behavior remains unchanged; this only reserves CTA placement and route shell intent.
+              </Text>
+              <View style={styles.coachingEntryButtonRow}>
+                <TouchableOpacity
+                  style={styles.coachingEntryPrimaryBtn}
+                  onPress={() => openCoachingShell('coaching_journeys')}
+                >
+                  <Text style={styles.coachingEntryPrimaryBtnText}>Open Coaching Journeys</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.coachingEntrySecondaryBtn}
+                  onPress={() => openCoachingShell('inbox')}
+                >
+                  <Text style={styles.coachingEntrySecondaryBtnText}>Inbox</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -9406,6 +9689,236 @@ const styles = StyleSheet.create({
   },
   teamChallengesProgressFillYellow: {
     backgroundColor: '#e7cb53',
+  },
+  coachingEntryCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e1eaf5',
+    padding: 12,
+    gap: 8,
+  },
+  coachingEntryHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  coachingEntryTitle: {
+    color: '#2f3442',
+    fontSize: 13,
+    fontWeight: '800',
+    flex: 1,
+  },
+  coachingEntryBadge: {
+    color: '#6f7d93',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  coachingEntrySub: {
+    color: '#7a8699',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  coachingEntryButtonRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  coachingEntryPrimaryBtn: {
+    flex: 1,
+    borderRadius: 9,
+    backgroundColor: '#1f5fe2',
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachingEntryPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  coachingEntrySecondaryBtn: {
+    flex: 1,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: '#d9e4f7',
+    backgroundColor: '#f8fbff',
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachingEntrySecondaryBtnText: {
+    color: '#35557f',
+    fontSize: 11,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  coachingEntryDarkBtn: {
+    borderRadius: 9,
+    backgroundColor: '#2f3442',
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachingEntryDarkBtnText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  coachingShellWrap: {
+    gap: 12,
+  },
+  coachingShellCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e1eaf5',
+    padding: 12,
+    gap: 10,
+  },
+  coachingShellTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  coachingShellTitle: {
+    color: '#2f3442',
+    fontSize: 15,
+    fontWeight: '800',
+    flex: 1,
+  },
+  coachingShellBadge: {
+    borderRadius: 999,
+    backgroundColor: '#eef4ff',
+    borderWidth: 1,
+    borderColor: '#d8e5ff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  coachingShellBadgeText: {
+    color: '#2d63e1',
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  coachingShellSub: {
+    color: '#778395',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  coachingShellActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  coachingShellActionBtn: {
+    flex: 1,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#dfe7f5',
+    backgroundColor: '#f7faff',
+    paddingVertical: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachingShellActionBtnText: {
+    color: '#35557f',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  coachingShellPrimaryBtn: {
+    borderRadius: 10,
+    backgroundColor: '#1f5fe2',
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachingShellPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  coachingShellList: {
+    gap: 8,
+  },
+  coachingShellListRow: {
+    borderRadius: 10,
+    backgroundColor: '#eef0f4',
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  coachingShellListIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#dce7f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachingShellListIconText: {
+    color: '#3c5e8f',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  coachingShellListCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  coachingShellListTitle: {
+    color: '#404858',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  coachingShellListSubText: {
+    color: '#858f9d',
+    fontSize: 10,
+    lineHeight: 13,
+    marginTop: 1,
+  },
+  coachingShellListChevron: {
+    color: '#556277',
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: -1,
+  },
+  coachingShellComposeCard: {
+    borderRadius: 10,
+    backgroundColor: '#eef0f4',
+    padding: 10,
+    gap: 8,
+  },
+  coachingShellComposeTitle: {
+    color: '#404858',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  coachingShellComposeSub: {
+    color: '#7a8699',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  coachingShellInputGhost: {
+    minHeight: 36,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#dfe5ef',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  coachingShellInputGhostTall: {
+    minHeight: 70,
+    justifyContent: 'flex-start',
+    paddingTop: 10,
+  },
+  coachingShellInputGhostText: {
+    color: '#9aa3b0',
+    fontSize: 11,
   },
   participationFocusCard: {
     backgroundColor: '#fff',

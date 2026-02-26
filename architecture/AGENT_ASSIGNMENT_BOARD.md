@@ -53,7 +53,7 @@ Only use long custom prompts when the board is missing required details or a one
 
 | ID | Status | Program status | Persona | Flow | Screens in scope | Owner | Branch / Worktree | Figma refs | Deliverable |
 |---|---|---|---|---|---|---|---|---|---|
-| `COACHING-UI-W1-ALLOCATION-SHELLS` | `active` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`W1 allocation + route shells`) | `Home/Priority`, `Challenge Details/Results`, `Team Dashboard (leader/member)`, `Profile/Settings`, dedicated shells (`Inbox/Channels`, `Coaching Journeys`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven (`COACHING_*` docs + intended wiring docs) | Large-swatch W1 coaching route shells + embedded entry-point placeholders (no backend/API changes) |
+| `COACHING-UI-W2-COMMS-ENTRYPOINTS` | `active` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`W2 comms entry points`) | `Team Dashboard (leader/member)`, `Challenge Details/Results`, `User/Coaching shells` (`Inbox/Channels`, `Channel Thread`, `Broadcast Composer`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven (`COACHING_*` docs + intended wiring docs; W1 shells required) | Large-swatch W2 communication entry-point wiring pass (team/challenge/sponsor channel context entry flows + leader broadcast shell-to-flow tightening) |
 
 ## Blocked Assignments
 
@@ -68,6 +68,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `TEAM-PARITY-A` | `committed` | `M3/M3b + approved M5 overlap` | `Team Leader` | `Team Dashboard`, `Invite Member`, `Pending Invitations`, `Team KPI Settings`, `Pipeline`, `Single Person Challenges / Team Challenges` | `9e572e1` | Team Leader mobile flow parity swath completed; docs sync rule satisfied in same commit. |
 | `TEAM-MEMBER-PARITY-A` | `pushed` | `M3/M3b + approved M5 overlap` | `Team Member` | `Team Dashboard (member)`, `Team Challenges`, `Challenge List`, `Challenge Details`, `Challenge Leaderboard / Results` | `1372ddf` | Team Member parity + wiring pass accepted by controller; screenshot folder verified (`app/test-results/team-member-parity-a`). Duplicate Mobile-1/Mobile-2 execution reconciled; accepted result is `1372ddf`. |
 | `COACHING-INTEGRATION-A` | `committed` | `M3/M3b baseline + approved M6 planning overlap (docs-only)` | `Team Leader`, `Team Member`, `Solo User` | Coaching matrix/addendum + intended wiring/screenmap + next-wave assignment specs | `(this change set)` | Docs-only planning package accepted pending commit/push: W1/W2 route naming lock, coaching insert-point status table, persona coaching rows, and `COACHING-UI-W1/W2` assignment specs. |
+| `COACHING-UI-W1-ALLOCATION-SHELLS` | `committed+pushed` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)` | `Team Leader`, `Team Member`, `Solo User` | Home/Challenge/Team/Profile coaching placeholder CTAs + `user` coaching shell destinations | `(this change set)` | W1 shell destinations + placeholder CTA allocation landed in `KPIDashboardScreen.tsx`; screenmap/wiring docs updated to `🟡 stub`; runtime screenshots pending follow-up validation. |
 | `ADMIN-A2-USABILITY` | `committed` | `A2` | `Admin operator` | `Admin KPI Catalog`, `Challenge Templates` (web admin) | `0a45742` | Row-window reset, no-results recovery, show-more count, template ID visibility |
 | `MOBILE-CHALLENGE-RESCUE` | `committed` | `M3/M3b` | `Solo/User + Team contexts (challenge flow)` | `Challenge List`, `Challenge Details`, `Challenge Leaderboard` | `020ce4d` | CTA/link audit + misleading CTA fixes |
 | `FIGMA-TEAM-EXPORTS` | `committed+pushed` | `control-plane` | `N/A` | Team flow canonical exports/docs | `1638282`, `df8c825` | Added isolated Team exports; corrected Team Dashboard canonical node to `173-29934` |
@@ -297,7 +298,7 @@ Produce the first implementation-ready coaching integration planning package (ma
 ### `COACHING-UI-W1-ALLOCATION-SHELLS`
 
 #### Snapshot
-- `Status:` `queued`
+- `Status:` `committed+pushed`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W1 allocation + route shells`)
@@ -305,6 +306,10 @@ Produce the first implementation-ready coaching integration planning package (ma
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred)
 - `Figma refs:` `manual-spec-driven` (no coaching Figma exports locked yet)
 - `Controller seed note (2026-02-26):` Destination naming + entry-point intent locked by `COACHING-INTEGRATION-A`; implement shells/placeholders only, no functional comms behavior.
+- `Worker note (2026-02-26, Mobile-1 execution start):` Picked up `COACHING-UI-W1-ALLOCATION-SHELLS` on `codex/a2-admin-list-usability-pass`. Will add route/state shell destinations + placeholder CTAs only, preserve KPI logging behavior, and avoid backend/API/schema changes.
+- `Worker completion note (2026-02-26, Mobile-1):` W1 coaching shell destinations implemented in `KPIDashboardScreen.tsx` (`inbox`, `inbox_channels`, `channel_thread`, `coach_broadcast_compose`, `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail`) with placeholder entry CTAs on Home, Challenge Details/Results, Team Dashboard (leader/member), and User/Profile coaching shell host. Updated `INTENDED_WIRING_DIAGRAM.md` + `INTENDED_PERSONA_FLOW_SCREENMAP.md` statuses/wiring notes to reflect W1 stub availability.
+- `Worker validation note (2026-02-26, Mobile-1):` `cd app && npx tsc --noEmit --pretty false` passed. Backend/API/schema files untouched and KPI logging behavior not intentionally modified. Runtime route walkthrough + screenshots not captured in this environment and remain pending controller/device validation.
+- `Controller review note (2026-02-26):` Accepted. Scope stayed within W1 shell/placeholder allocation, docs sync rule satisfied (`INTENDED_PERSONA_FLOW_SCREENMAP.md` + `INTENDED_WIRING_DIAGRAM.md`), and local `tsc` re-check passed. Runtime screenshots remain a follow-up validation gap but do not block this shell-only landing.
 
 #### Primary Objective
 Create `W1` coaching allocation + shell placeholders in the mobile member app without changing backend/API/schema behavior:
@@ -366,7 +371,7 @@ Create `W1` coaching allocation + shell placeholders in the mobile member app wi
 ### `COACHING-UI-W2-COMMS-ENTRYPOINTS`
 
 #### Snapshot
-- `Status:` `queued`
+- `Status:` `active`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (communication-first coaching integration)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W2 communication entry points`)
@@ -374,6 +379,7 @@ Create `W1` coaching allocation + shell placeholders in the mobile member app wi
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree required if app code is active elsewhere)
 - `Figma refs:` `manual-spec-driven` unless controller later locks coaching exports
 - `Controller seed note (2026-02-26):` Execute after `COACHING-UI-W1-ALLOCATION-SHELLS` lands (or equivalent route shells exist).
+- `Controller activation note (2026-02-26):` Activated after W1 shell destinations landed and docs statuses were updated to `🟡 stub`.
 
 #### Primary Objective
 Implement the first functional communication entry points on existing Compass surfaces using documented contracts where available:

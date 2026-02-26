@@ -145,14 +145,14 @@ Manual-spec-driven planning only (no Figma-backed coaching screens identified in
 
 | Hosting surface / module | Persona(s) | Capability group | Destination / route intent | W1 status | W2 status | Entry point intent | Notes |
 |---|---|---|---|---|---|---|---|
-| Home / Priority coaching nudge | Team Leader, Team Member, Solo User | `goal_setting_momentum`, `coaching_content` | `coaching_journeys` (primary), `inbox` (secondary optional) | `⚪ planned` | `🟡 recommended` | embedded nudge card CTA | W1 allocates slot only; W2 may wire one CTA first. |
-| Team Dashboard leader coaching summary / broadcast preview | Team Leader | `communication`, `coaching_content` | `coach_broadcast_compose`, `coaching_journeys`, `inbox_channels` | `⚪ planned` | `🟡 recommended` | embedded module CTAs | Broadcast send remains role-gated; no KPI logging ownership changes. |
-| Team Dashboard member coaching progress / updates | Team Member | `communication`, `coaching_content` | `coaching_journeys`, `inbox_channels` | `⚪ planned` | `🟡 recommended` | embedded module CTAs | Member flow is participant-only for comms actions. |
-| Challenge Details / Results coaching block | Team Leader, Team Member, Solo User | `sponsor_challenge_coaching`, `communication` | `inbox_channels`, `channel_thread`, `coaching_journey_detail` | `⚪ planned` | `🟡 recommended` | challenge detail CTA/link block | Sponsor/challenge payload ownership remains separate from coaching content. |
-| Profile / Settings coaching prefs / notifications | Team Leader, Team Member, Solo User | `goal_setting_momentum`, `communication` | `inbox`, profile prefs subsection (manual-spec-driven) | `⚪ planned` | `🟡 recommended` | settings CTA / subsection | W1 names and placement only; W2 can wire prefs entry points. |
-| Inbox / Channels dedicated flow | Team Leader, Team Member, Solo User | `communication` | `inbox`, `inbox_channels`, `channel_thread` | `⚪ missing` | `🟡 stub target` | dedicated flow shell | First coding wave should create shells and route placeholders. |
-| Broadcast composer (leader/admin role-gated) | Team Leader (Admin/Coach later per DEP-003) | `communication` | `coach_broadcast_compose` | `⚪ missing` | `🟡 stub target` | Team Dashboard + Inbox role-gated CTA | Functional send flow belongs to W2 communication wave. |
-| Coaching Journeys dedicated flow | Team Leader, Team Member, Solo User | `coaching_content` | `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail` | `⚪ missing` | `🟡 stub target` | Home/Team/Challenge embedded CTA | W2 may keep journeys shell-only if comms consumes capacity. |
+| Home / Priority coaching nudge | Team Leader, Team Member, Solo User | `goal_setting_momentum`, `coaching_content` | `coaching_journeys` (primary), `inbox` (secondary optional) | `🟡 stub` | `🟡 recommended` | embedded nudge card CTA | W1 placeholder CTA shell added in `KPIDashboardScreen` home surface; no coaching content payload wiring yet. |
+| Team Dashboard leader coaching summary / broadcast preview | Team Leader | `communication`, `coaching_content` | `coach_broadcast_compose`, `coaching_journeys`, `inbox_channels` | `🟡 stub` | `🟡 recommended` | embedded module CTAs | Leader placeholder coaching summary + role-gated broadcast shell CTA added; no send behavior. |
+| Team Dashboard member coaching progress / updates | Team Member | `communication`, `coaching_content` | `coaching_journeys`, `inbox_channels` | `🟡 stub` | `🟡 recommended` | embedded module CTAs | Member placeholder coaching progress / updates CTA block added. |
+| Challenge Details / Results coaching block | Team Leader, Team Member, Solo User | `sponsor_challenge_coaching`, `communication` | `inbox_channels`, `channel_thread`, `coaching_journey_detail` | `🟡 stub` | `🟡 recommended` | challenge detail CTA/link block | Placeholder challenge coaching/updates block added; sponsor/challenge payload ownership remains separate. |
+| Profile / Settings coaching prefs / notifications | Team Leader, Team Member, Solo User | `goal_setting_momentum`, `communication` | `inbox`, profile prefs subsection (manual-spec-driven) | `🟡 stub` | `🟡 recommended` | settings CTA / subsection | W1 placeholder prefs/notifications allocation implemented inside `user` coaching shell surface. |
+| Inbox / Channels dedicated flow | Team Leader, Team Member, Solo User | `communication` | `inbox`, `inbox_channels`, `channel_thread` | `🟡 stub` | `🟡 stub target` | dedicated flow shell | W1 route shells added in state-driven `KPIDashboardScreen` user tab. |
+| Broadcast composer (leader/admin role-gated) | Team Leader (Admin/Coach later per DEP-003) | `communication` | `coach_broadcast_compose` | `🟡 stub` | `🟡 stub target` | Team Dashboard + Inbox role-gated CTA | Functional send flow still deferred to W2 communication wave. |
+| Coaching Journeys dedicated flow | Team Leader, Team Member, Solo User | `coaching_content` | `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail` | `🟡 stub` | `🟡 stub target` | Home/Team/Challenge embedded CTA | W1 list/detail/lesson shell destinations added; no lesson progress writes. |
 
 ## Member App Shell (Intended)
 
@@ -168,7 +168,7 @@ flowchart TD
   K --> T2["Challenge"]
   K -.-> T3["New KPI (future/limited)"]
   K --> T4["Team"]
-  K -.-> T5["User (future)"]
+  K --> T5["User / Coaching Shells (W1 stub)"]
 
   T2 --> C1["Challenge List"]
   C1 --> C2["Challenge Details / Progress"]
@@ -184,8 +184,8 @@ flowchart TD
   TD --> TK["Team KPI Settings"]
   TD --> TPL["Team Pipeline"]
   TD --> TC["Team Challenges / Single Person Challenges"]
-  TD -.-> TComm["⚪ Team Channel / Broadcast (future)"]
-  TD -.-> TCoach["⚪ Team Coaching Summary (embedded)"]
+  TD --> TComm["🟡 Team Channel / Broadcast Shell CTAs (W1)"]
+  TD --> TCoach["🟡 Team Coaching Summary (embedded CTA shell)"]
   TD --> TL["Team Logging (shared KPI logging block)"]
 
   TI --> TD
@@ -200,8 +200,8 @@ flowchart TD
   classDef missing fill:#f3f4f6,stroke:#9ca3af,color:#111827,stroke-width:2px;
 
   class H,K,T1,T2,C1,C2,C3 mvp;
-  class P,T4,TD,TI,TP,TK,TPL,TC,TL framed;
-  class I,T3,T5,C4,C5,TComm,TCoach missing;
+  class P,T4,TD,TI,TP,TK,TPL,TC,TL,T5,TComm,TCoach,C4,C5 framed;
+  class I,T3 missing;
 ```
 
 ## Team Leader Perspective (Intended)
