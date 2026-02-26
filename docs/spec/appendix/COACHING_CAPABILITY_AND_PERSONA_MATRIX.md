@@ -130,6 +130,32 @@ Build wave markers:
 - Sponsor campaign coaching content modules beyond CTA/link placement
 - AI coach assist (`approval-first`)
 
+## Post-W2 Accepted State and Next Coding-Wave Planning Notes
+
+### Accepted baseline from W1/W2 (implementation landed)
+- `W1` shell destinations + placeholder CTA allocation are landed.
+- `W2` context-aware communication entry routing is landed for Team/Challenge surfaces.
+- Current accepted state still defers:
+  - API-backed message read/send behavior
+  - broadcast send writes
+  - journey content rendering beyond shell depth
+  - lesson progress writes from UI actions
+
+### Next coding-wave recommendation (planning order after accepted W2)
+1. `W3 coaching_content integration` (UI-first on existing coaching endpoints if payloads are sufficient)
+- Focus on `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail`
+- Use `GET /api/coaching/journeys`, `GET /api/coaching/journeys/{id}`, `GET /api/coaching/progress`
+- Allow `POST /api/coaching/lessons/{id}/progress` only for explicit user actions
+
+2. `W4 communication API integration` (UI + contract verification; backend-prep only if needed and approved)
+- Inbox/channel thread read/send + broadcast send integration on existing channel/coaching endpoint families
+- If mobile read-model payload gaps appear, split backend-prep into a separate approval-gated assignment rather than expanding the UI assignment ad hoc
+
+### Contract-boundary reminder (post-W2)
+- Coaching UI may consume coaching/channel contracts and context metadata, but must not mutate KPI engine values or write KPI logs.
+- Sponsored challenge flows continue to own participation/progress/results; coaching overlays link content/comms only.
+- Server-side role/tier enforcement remains backend-owned even when role-gated CTA visibility exists in UI.
+
 ## Overlap with Sponsored Challenge Creation (Important)
 This is the overlap you called out and should be treated as explicit design/implementation territory.
 

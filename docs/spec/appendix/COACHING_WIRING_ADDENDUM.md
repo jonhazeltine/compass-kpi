@@ -144,9 +144,51 @@ This keeps the app coherent and avoids fragmenting the user experience.
 - Journey list/detail/lesson progress wiring
 - Embedded coaching module cards route into journey/lesson screens
 
+### W3 contract boundary notes (post-W2 accepted baseline)
+- `W2 accepted baseline` means:
+  - shell destinations exist (`inbox*`, `channel_thread`, `coaching_journeys*`, `coach_broadcast_compose`)
+  - context-aware entry routing exists for Team/Challenge surfaces
+  - messaging reads/writes and journey content payload rendering are still placeholder/shell depth
+- `W3` should prioritize coaching content (`coaching_journeys*`) using already documented coaching endpoints before expanding comms API behavior.
+- `W3` UI may use documented endpoints:
+  - `GET /api/coaching/journeys`
+  - `GET /api/coaching/journeys/{id}`
+  - `GET /api/coaching/progress`
+  - `POST /api/coaching/lessons/{id}/progress` (explicit user action only)
+- `W3` UI must not:
+  - infer or write KPI logging activity from journey/lesson views
+  - auto-complete lessons on screen view without explicit user action
+  - mutate forecast base values or confidence inputs
+- `W3` backend/API work is not required if current payloads support list/detail/progress rendering for shell destinations.
+
 ### Phase W4 — Sponsor/challenge coaching integration
 - Sponsor challenge detail wiring to coaching/channel modules
 - CTA and messaging consistency across challenge + coaching surfaces
+
+### W4 / post-W3 communication API contract boundary notes
+- `W4` comms API-backed UI integration (inbox list, channel thread reads/sends, broadcast send) may proceed only within documented channel/coaching endpoint families unless explicit scope approval extends backend work.
+- Existing documented baseline (verify payload shape before coding UI assumptions):
+  - `GET /api/channels`
+  - `GET /api/channels/{id}/messages`
+  - `POST /api/channels/{id}/messages`
+  - `POST /api/channels/{id}/broadcast`
+  - `POST /api/coaching/broadcast`
+- UI ownership in `W4`:
+  - context routing, screen state, loading/error handling, role-gated CTA visibility
+  - choosing the correct broadcast path based on scoped destination/context
+- Backend/contract ownership in `W4` (approval-gated if changes are needed):
+  - read-model shaping for mobile inbox/channel contexts (unread, audience labels, scoped metadata)
+  - server-side role/tier enforcement and throttles
+  - audit logging and write semantics
+- If payload shape gaps block `W4` UI, create a separate backend-prep assignment and mark it as requiring explicit sprint-scope approval when it introduces net-new endpoint behavior.
+
+## Post-W2 Contract Boundary Checklist (Use Before Launching W3/W4 Workers)
+1. Confirm destination ID remains within naming lock (`inbox*`, `channel_thread`, `coaching_journeys*`, `coach_broadcast_compose`).
+2. Confirm capability group + persona + hosting surface are explicit in the assignment.
+3. Confirm whether work is `UI on existing contracts` vs `backend-prep / contract change`.
+4. If backend-prep is needed, state whether it fits current documented endpoint families or needs explicit scope approval.
+5. Re-state sponsored challenge boundary (challenge participation state stays challenge-owned).
+6. Re-state KPI non-negotiables (no KPI engine/confidence/base-value mutation by coaching UI).
 
 ### Phase W5 — AI coaching assist (approval-first)
 - Route from coaching surfaces to AI suggestion review/approval queues (leader/admin/coach)
@@ -173,7 +215,7 @@ Use stable destination names by capability and context, for example:
 - `coaching_lesson_detail`
 - `coach_broadcast_compose`
 
-## Assignment Hand-off Naming Lock (W1/W2)
+## Assignment Hand-off Naming Lock (W1+)
 Use these exact destination IDs in next-wave UI assignment specs unless a controller-approved rename is logged:
 - `inbox`
 - `inbox_channels`

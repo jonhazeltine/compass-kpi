@@ -203,7 +203,7 @@ If screen availability/wiring/status changes, update BOTH in the same change set
 ### `COACHING-INTEGRATION-A`
 
 #### Snapshot
-- `Status:` `active` (`post-W2 planning continuation`)
+- `Status:` `committed+pushed` (`post-W2 planning continuation accepted`)
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (docs-only)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (manual-spec-driven integration planning)
@@ -217,6 +217,9 @@ If screen availability/wiring/status changes, update BOTH in the same change set
 - `Controller review note (2026-02-26):` Docs package accepted. Next coding wave proceeds via `COACHING-UI-W1-ALLOCATION-SHELLS`, with `COACHING-UI-W2-COMMS-ENTRYPOINTS` remaining queued behind W1 shell landing.
 - `Worker note (2026-02-26, Coach-1 post-W2 continuation start):` Reopened docs-only coaching planning from latest accepted `COACHING-UI-W2-COMMS-ENTRYPOINTS` state to define next coding-wave specs (`W3+`) and explicit contract-boundary notes for UI/backend separation.
 - `Current blocker status (2026-02-26, Coach-1, post-W2 planning continuation):` `none` at start. Using accepted W2 shell/context routing state and existing `/docs/spec/04_api_contracts.md` coaching/channel endpoints as baseline; will document gaps/boundaries instead of proposing schema/API changes.
+- `Completion note (2026-02-26, Coach-1 post-W2 continuation):` Added post-W2 contract-boundary notes in coaching planning docs (W3 content integration vs W4 comms API integration, UI/backend ownership split, approval-gated backend-prep trigger) and appended next coding-wave assignment specs `COACHING-UI-W3-JOURNEYS-CONTENT-INTEGRATION` + `COACHING-UI-W4-COMMS-API-INTEGRATION`.
+- `Validation note (2026-02-26, Coach-1 post-W2 continuation):` Docs-only changes; no app/backend/schema/API contract files edited. Naming lock and non-negotiable boundaries revalidated against existing coaching addendum/matrix and accepted W2 notes. `DECISIONS_LOG.md` remains deferred unless runtime or endpoint-family boundaries change in implementation.
+- `Controller review note (2026-02-26, post-W2 continuation):` Accepted. Useful contract-boundary notes and next-wave assignment specs (`W3`/`W4`) added without widening scope into backend/API changes. `COACHING-UI-W3-JOURNEYS-CONTENT-INTEGRATION` is now the preferred next mobile coaching wave; `W4` remains queued behind `W3` or explicit reprioritization.
 
 #### Surfaces In Scope (Large Swath)
 1. `Home / Priority` (coaching nudge allocation only; no UI implementation)
@@ -449,6 +452,165 @@ Implement the first functional communication entry points on existing Compass su
 #### Worker Launch (Short Form)
 `Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-UI-W2-COMMS-ENTRYPOINTS exactly as written. Follow the assignment block, validation requirements, and report-back format.`
 
+### `COACHING-UI-W3-JOURNEYS-CONTENT-INTEGRATION`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven coaching content integration)`
+- `Persona:` `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `coaching / communication` (`W3 coaching_content integration`)
+- `Owner:` worker (mobile UI)
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree required if app code worker is active elsewhere)
+- `Figma refs:` `manual-spec-driven` unless coaching Figma exports are later locked
+- `Dependency note:` `COACHING-UI-W1-ALLOCATION-SHELLS` and `COACHING-UI-W2-COMMS-ENTRYPOINTS` accepted (`committed+pushed`)
+- `Controller seed note (2026-02-26):` Prioritize API-backed journeys/progress rendering on existing shell destinations before expanding comms read/write behavior.
+- `Controller activation note (2026-02-26):` Activated after accepted W2 shell/context routing and post-W2 contract-boundary planning update from `Coach-1`.
+
+#### Primary Objective
+Implement the first functional coaching content layer on the accepted W1/W2 shells:
+- wire `coaching_journeys`, `coaching_journey_detail`, and `coaching_lesson_detail` to documented coaching endpoints
+- render journey list/detail/lesson progress states for leader/member/solo personas (role/tier visibility stays server-enforced)
+- route embedded coaching CTAs (Home/Team/Challenge) into content screens with context-preserving parameters
+- keep messaging/comms send/read API integration out of scope unless explicitly approved in a separate assignment
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+
+#### Contract-Boundary Notes (Hard)
+- Use documented coaching endpoints only:
+  - `GET /api/coaching/journeys`
+  - `GET /api/coaching/journeys/{id}`
+  - `GET /api/coaching/progress`
+  - `POST /api/coaching/lessons/{id}/progress` (explicit user action only)
+- Do not introduce net-new backend endpoint behavior, schema changes, or API contract edits in this assignment.
+- Do not write KPI logs from coaching content actions.
+- Do not infer challenge completion/progress from lesson progress.
+- Do not auto-complete lesson progress on view/mount; only explicit user action can write progress.
+- Preserve W1/W2 destination naming lock (`coaching_journeys*`, `inbox*`, `channel_thread`, `coach_broadcast_compose`).
+
+#### Implementation Focus (Recommended)
+1. Journey list + loading/empty/error states (`coaching_journeys`)
+2. Journey detail + milestones/lessons (`coaching_journey_detail`)
+3. Lesson detail + explicit progress action (`coaching_lesson_detail`)
+4. Embedded CTA context propagation from Home/Team/Challenge coaching modules
+5. Docs status updates if any coaching destinations advance from `🟡 stub` to `🟡 partial`
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Route checks for `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail`
+- API assumption validation against `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- Confirm KPI logging behavior unchanged
+- Screenshot proof for each persona path touched + journey/lesson screens
+- Docs sync if screen availability/wiring/status changes:
+  - `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+  - `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `Capability group(s)`
+- `Journeys screens/destinations changed`
+- `Embedded CTA routes updated` (host surface -> destination)
+- `What became functional vs remains shell`
+- `Contract assumptions used` (endpoint list)
+- `Files touched` (with line refs)
+- `KPI logging unchanged?` (`yes/no`)
+- `tsc result`
+- `Screenshot paths`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-UI-W3-JOURNEYS-CONTENT-INTEGRATION exactly as written. Follow the assignment block, validation requirements, and report-back format.`
+
+### `COACHING-UI-W4-COMMS-API-INTEGRATION`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven comms API integration)`
+- `Persona:` `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `coaching / communication` (`W4 comms API-backed inbox/thread/broadcast`)
+- `Owner:` worker (mobile UI; backend-prep only if separately approved)
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree required if app code worker is active elsewhere)
+- `Figma refs:` `manual-spec-driven` unless coaching comms Figma exports are later locked
+- `Dependency note:` Run after `COACHING-UI-W3-JOURNEYS-CONTENT-INTEGRATION` or with explicit controller reprioritization
+- `Controller seed note (2026-02-26):` W4 may proceed on documented channel/coaching endpoint families only; split backend-prep if payload gaps block UI work.
+
+#### Primary Objective
+Upgrade accepted W2 comms entry routing from shell/context-only to API-backed behavior where existing documented contracts allow:
+- `inbox_channels` list fetch/render
+- `channel_thread` message read + send flow (role/member scoped)
+- `coach_broadcast_compose` send flow (leader role-gated) using documented broadcast path
+- maintain scoped context labels (team/challenge/sponsor/community) and role/tier UI gating
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+
+#### Contract-Boundary Notes (Hard)
+- Start with documented endpoint families only:
+  - `GET /api/channels`
+  - `GET /api/channels/{id}/messages`
+  - `POST /api/channels/{id}/messages`
+  - `POST /api/channels/{id}/broadcast`
+  - `POST /api/coaching/broadcast` (if scoped broadcast path requires coaching namespace)
+- Do not add net-new endpoint families or schema changes without explicit approval (current sprint out-of-scope rule applies).
+- If mobile payload/read-model gaps appear (unread counters, scoped metadata, audience labels), stop and split a backend-prep assignment rather than widening this UI assignment.
+- UI owns routing/state/loading/errors/CTA gating; backend owns role enforcement, throttles, audit logging, and write semantics.
+- Preserve sponsored overlap boundary (challenge owns participation/results; coaching/comms owns content/messaging surfaces).
+- No KPI engine/confidence/KPI logging behavior changes.
+
+#### Implementation Focus (Recommended)
+1. `inbox_channels` list fetch + scoped context rendering
+2. `channel_thread` read + send (basic reliable flow, no real-time requirement)
+3. `coach_broadcast_compose` send path (leader-only) with clear scope labels
+4. Graceful fallback states when payload shape is insufficient (log + blocker note, no silent assumptions)
+5. Docs status updates if comms surfaces advance beyond `🟡 partial`
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Route checks for leader/member/solo comms paths
+- Role-gating checks for broadcast composer visibility + send action
+- API assumption validation against `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- Screenshot proof for inbox list, channel thread, and broadcast composer (leader)
+- Docs sync if screen availability/wiring/status changes (`screenmap` + `intended wiring`)
+- If blocked by payload gaps, capture exact gap and endpoint/field expectation in board note
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `Capability group(s)`
+- `Comms destinations made functional`
+- `Broadcast path used` (`/api/channels/{id}/broadcast`, `/api/coaching/broadcast`, or deferred with reason)
+- `Contract assumptions / gaps` (exact endpoints + missing fields if blocked)
+- `Sponsored overlap boundaries honored` (what stayed separate)
+- `Files touched` (with line refs)
+- `KPI logging unchanged?` (`yes/no`)
+- `tsc result`
+- `Screenshot paths`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-UI-W4-COMMS-API-INTEGRATION exactly as written. Follow the assignment block, validation requirements, and report-back format.`
+
 ### `ADMIN-A3-USERS-OPS-POLISH-A`
 
 #### Snapshot
@@ -460,6 +622,7 @@ Implement the first functional communication entry points on existing Compass su
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred)
 - `Figma refs:` `N/A` (admin usability/polish swath; follow existing admin UI patterns)
 - `Controller seed note (2026-02-26):` Run in parallel with coaching docs work. Admin-only scope to avoid collision with mobile/coaching router surfaces.
+- `Worker note (2026-02-26):` Execution started. Scope locked to admin web `/admin/users` + `/admin/reports` in existing admin shell patterns; no mobile/backend changes.
 
 #### Screens In Scope (Large Swath)
 1. `/admin/users`
