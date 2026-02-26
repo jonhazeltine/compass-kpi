@@ -76,7 +76,7 @@ Legend:
 | Capability group | Team Leader | Team Member | Solo User | Coach (runtime operator) | Challenge Sponsor | Notes |
 |---|---|---|---|---|---|---|
 | `communication` | `full` | `participant` | `participant/limited` | `full` (coach-scoped channels/cohorts/broadcasts within server-enforced scope) | `limited` (sponsor-scoped channels/broadcast tools only) | Solo access may be community/challenge scoped, no team admin comms. Coach runtime channels may include cohort-based channels for non-team individuals. Sponsor scope must remain challenge/sponsor constrained. |
-| `coaching_content` | `full` (assign/broadcast + view progress) | `participant` | `participant` | `full/participant` (deliver coaching guidance, assign/present approved content, view progress in scope) | `limited` (sponsor-scoped content library access/linking; no canonical lesson authoring by default) | Team leader may also be coach depending on DEP-003. Coach authoring ownership is modeled in the authoring/ops matrix below. |
+| `coaching_content` | `full` (assign/broadcast + view progress; team-scoped `content_upload` only) | `participant` | `participant` | `full/participant` (deliver coaching guidance, assign/present approved content, view progress in scope) | `limited` (sponsor-scoped content library access/linking; no canonical lesson authoring by default) | Team leader may also be coach depending on DEP-003. Team Leader upload rights are team-scoped and do not grant org-wide authoring ownership or sponsor package authority. Coach authoring ownership is modeled in the authoring/ops matrix below. |
 | `goal_setting_momentum` | `full` (team view + own) | `participant` (own + team visibility) | `participant` (own) | `limited` (guidance context + member/cohort visibility in scope, no KPI logging) | `none` (challenge member KPI visibility only; no KPI logging) | Must not mutate KPI source-of-truth. |
 | `sponsor_challenge_coaching` | `full/limited` (campaign delivery) | `participant` | `participant` | `full/limited` (coach participation in sponsor-linked coaching delivery within scope) | `full/limited` (sponsor campaign comms/content + member KPI visibility within sponsor scope) | Overlaps sponsored challenges and challenge participation flows. |
 | `ai_coach_assist` | `full` (approval + send) | `none/limited` | `none/limited` | `full` (coach-facing recommendations / next-best-actions, approval-first) | `none/limited` (policy-limited sponsor review inputs later) | Phase-later; approval-first required. Admin audit remains secondary oversight, not primary coach workflow. |
@@ -115,13 +115,18 @@ Legend:
 
 This section defines the minimum W7 portal foundation surface set as a companion to runtime host surfaces/channels.
 
-| Foundation surface | Coach | Admin operator | Challenge Sponsor | Runtime companion role | KPI boundary |
-|---|---|---|---|---|---|
-| `content_upload` | `full` | `ops/review` | `limited` (sponsor campaign uploads only) | feeds `content_library` and sponsor-linked runtime content references | no KPI logging/edit actions |
-| `content_library` | `full` | `ops` | `limited` (sponsor-scoped library access/linking) | supports runtime journeys/challenge overlays/channel templates | no KPI source mutation |
-| `journeys` | `full` | `ops/governance` | `none/limited` (view linked published journeys only) | publishes content consumed by runtime `coaching_journeys*`/embedded modules | no runtime draft editing; no sponsor KPI logging |
-| `cohorts` | `full` | `ops` | `limited` (sponsor-linked cohort visibility/constraints) | supports cohort-based channels and targeting for non-team individuals | no challenge participation ownership, no KPI logging |
-| `channels` | `full` | `ops` | `limited` (sponsor/challenge/cohort comms contexts only) | complements runtime `inbox_channels`/`channel_thread` participation and context ops | comms-only for sponsor persona; no KPI logging |
+| Foundation surface | Coach | Team Leader | Admin operator | Challenge Sponsor | Runtime companion role | KPI boundary |
+|---|---|---|---|---|---|---|
+| `content_upload` | `full` | `limited` (team-scoped uploads only) | `ops/review` | `limited` (sponsor campaign uploads only) | feeds `content_library` and sponsor-linked runtime content references | no KPI logging/edit actions; Team Leader upload does not grant org-wide authoring or sponsor package authority |
+| `content_library` | `full` | `none/limited` (team-scoped view of own-team uploads only, if enabled) | `ops` | `limited` (sponsor-scoped library access/linking) | supports runtime journeys/challenge overlays/channel templates | no KPI source mutation; Team Leader is not org-wide catalog owner |
+| `journeys` | `full` | `none` | `ops/governance` | `none/limited` (view linked published journeys only) | publishes content consumed by runtime `coaching_journeys*`/embedded modules | no runtime draft editing; no sponsor KPI logging |
+| `cohorts` | `full` | `none` | `ops` | `limited` (sponsor-linked cohort visibility/constraints) | supports cohort-based channels and targeting for non-team individuals | no challenge participation ownership, no KPI logging |
+| `channels` | `full` | `none/limited` (team channel context only if policy allows) | `ops` | `limited` (sponsor/challenge/cohort comms contexts only) | complements runtime `inbox_channels`/`channel_thread` participation and context ops | comms-only for sponsor persona; no KPI logging |
+
+Team Leader boundary note (W7 portal foundation):
+- Team Leader content upload rights are strictly team-scoped.
+- Team Leader does not gain org-wide authoring ownership.
+- Team Leader does not gain sponsor-scoped package authority.
 
 ## Authoring vs Delivery Ownership Model (Canonical Planning Boundary)
 
