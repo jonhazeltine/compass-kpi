@@ -328,6 +328,59 @@ type AIAssistShellContext = {
   targetLabel: string;
   approvedInsertOnly: boolean;
 };
+type AIAssistRequestIntent = 'draft_reply' | 'draft_broadcast' | 'reflection_prompt' | 'rewrite' | 'draft_support_note';
+type AiSuggestionQueueReadModel = {
+  source_surface?: string | null;
+  request_intent?: string | null;
+  target_scope_summary?: string | null;
+  required_approval_tier?: string | null;
+  read_model_status?: string | null;
+  notes?: string[] | null;
+  approval_queue?: {
+    queue_status?: string | null;
+    approval_authority_model?: string | null;
+    escalation_required?: boolean | null;
+  } | null;
+  audit_summary?: {
+    created_at?: string | null;
+    updated_at?: string | null;
+    review_decision?: string | null;
+  } | null;
+};
+type AiSuggestionApiRow = {
+  id: string;
+  user_id?: string | null;
+  scope?: string | null;
+  proposed_message?: string | null;
+  status?: string | null;
+  created_by?: string | null;
+  approved_by?: string | null;
+  rejected_by?: string | null;
+  sent_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  ai_queue_read_model?: AiSuggestionQueueReadModel | null;
+};
+type AiSuggestionQueueSummary = {
+  total?: number;
+  by_status?: {
+    pending?: number;
+    approved?: number;
+    rejected?: number;
+  } | null;
+  approval_authority_model?: string | null;
+  read_model_status?: string | null;
+  notes?: string[] | null;
+};
+type AiSuggestionCreateResponse = {
+  suggestion?: AiSuggestionApiRow;
+  error?: string;
+};
+type AiSuggestionsListResponse = {
+  suggestions?: AiSuggestionApiRow[];
+  queue_summary?: AiSuggestionQueueSummary | null;
+  error?: string;
+};
 type CoachingJourneyListItem = {
   id: string;
   title: string;
@@ -1592,6 +1645,13 @@ function monthLabelFromIsoMonthStart(isoValue: string) {
   return monthLabel(`${year}-${String(month).padStart(2, '0')}`);
 }
 
+function aiAssistIntentForHost(host: AIAssistHostSurface): AIAssistRequestIntent {
+  if (host === 'channel_thread') return 'draft_reply';
+  if (host === 'coach_broadcast_compose') return 'draft_broadcast';
+  if (host === 'coaching_lesson_detail') return 'reflection_prompt';
+  return 'draft_support_note';
+}
+
 function formatLogDateHeading(isoDay: string) {
   const dt = new Date(`${isoDay}T12:00:00.000Z`);
   if (Number.isNaN(dt.getTime())) return isoDay;
@@ -1844,6 +1904,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [aiAssistDraftText, setAiAssistDraftText] = useState('');
   const [aiAssistGenerating, setAiAssistGenerating] = useState(false);
   const [aiAssistNotice, setAiAssistNotice] = useState<string | null>(null);
+  const [aiSuggestionQueueSubmitting, setAiSuggestionQueueSubmitting] = useState(false);
+  const [aiSuggestionQueueError, setAiSuggestionQueueError] = useState<string | null>(null);
+  const [aiSuggestionQueueSuccess, setAiSuggestionQueueSuccess] = useState<string | null>(null);
+  const [aiSuggestionRows, setAiSuggestionRows] = useState<AiSuggestionApiRow[] | null>(null);
+  const [aiSuggestionQueueSummary, setAiSuggestionQueueSummary] = useState<AiSuggestionQueueSummary | null>(null);
+  const [aiSuggestionListLoading, setAiSuggestionListLoading] = useState(false);
+  const [aiSuggestionListError, setAiSuggestionListError] = useState<string | null>(null);
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
@@ -5112,6 +5179,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setAiAssistPrompt(String(seed?.prompt ?? '').trim());
       setAiAssistDraftText(String(seed?.draft ?? '').trim());
       setAiAssistNotice(null);
+      setAiSuggestionQueueError(null);
+      setAiSuggestionQueueSuccess(null);
       setAiAssistGenerating(false);
       setAiAssistVisible(true);
     },
@@ -5161,6 +5230,127 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
     setAiAssistNotice('Draft is ready for manual review/copy. No send/publish action is available from AI assist.');
   }, [aiAssistContext, aiAssistDraftText]);
+
+  const buildAiSuggestionScopeForCurrentContext = useCallback(
+    (ctx: AIAssistShellContext) => {
+      const intent = aiAssistIntentForHost(ctx.host);
+      const segments = [
+        'w5_mobile_ai_assist',
+        `host:${ctx.host}`,
+        `intent:${intent}`,
+        `source:${coachingShellContext.source}`,
+      ];
+      if (selectedChannelId) segments.push(`channel_id:${selectedChannelId}`);
+      if (selectedChannelName) segments.push(`channel_name:${selectedChannelName.replace(/[:|]/g, '_')}`);
+      if (coachingShellContext.selectedJourneyId) segments.push(`journey_id:${coachingShellContext.selectedJourneyId}`);
+      if (coachingShellContext.selectedLessonId) segments.push(`lesson_id:${coachingShellContext.selectedLessonId}`);
+      if (challengeSelectedId) segments.push(`challenge_id:${challengeSelectedId}`);
+      if (teamFlowScreen) segments.push(`team_screen:${teamFlowScreen}`);
+      if (coachingShellContext.preferredChannelScope) segments.push(`channel_scope:${coachingShellContext.preferredChannelScope}`);
+      return segments.join('|');
+    },
+    [
+      challengeSelectedId,
+      coachingShellContext.preferredChannelScope,
+      coachingShellContext.selectedJourneyId,
+      coachingShellContext.selectedLessonId,
+      coachingShellContext.source,
+      selectedChannelId,
+      selectedChannelName,
+      teamFlowScreen,
+    ]
+  );
+
+  const fetchAiSuggestions = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) {
+      setAiSuggestionRows(null);
+      setAiSuggestionQueueSummary(null);
+      setAiSuggestionListError('Sign in is required to load AI suggestion queue status.');
+      return;
+    }
+    setAiSuggestionListLoading(true);
+    setAiSuggestionListError(null);
+    try {
+      const response = await fetch(`${API_URL}/api/ai/suggestions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as AiSuggestionsListResponse;
+      if (!response.ok) {
+        setAiSuggestionRows(null);
+        setAiSuggestionQueueSummary(null);
+        setAiSuggestionListError(String(body.error ?? `AI suggestions request failed (${response.status})`));
+        return;
+      }
+      setAiSuggestionRows(Array.isArray(body.suggestions) ? body.suggestions : []);
+      setAiSuggestionQueueSummary(body.queue_summary ?? null);
+    } catch (err) {
+      setAiSuggestionRows(null);
+      setAiSuggestionQueueSummary(null);
+      setAiSuggestionListError(err instanceof Error ? err.message : 'AI suggestions request failed');
+    } finally {
+      setAiSuggestionListLoading(false);
+    }
+  }, [session?.access_token]);
+
+  const queueAiSuggestionForApproval = useCallback(async () => {
+    const token = session?.access_token;
+    const ctx = aiAssistContext;
+    const proposedMessage = aiAssistDraftText.trim();
+    if (!token) {
+      setAiSuggestionQueueError('Sign in is required to queue AI suggestions.');
+      setAiSuggestionQueueSuccess(null);
+      return;
+    }
+    if (!ctx) {
+      setAiSuggestionQueueError('AI assist context is missing.');
+      setAiSuggestionQueueSuccess(null);
+      return;
+    }
+    if (!proposedMessage) {
+      setAiSuggestionQueueError('Generate or enter a draft before queueing for approval.');
+      setAiSuggestionQueueSuccess(null);
+      return;
+    }
+    setAiSuggestionQueueSubmitting(true);
+    setAiSuggestionQueueError(null);
+    setAiSuggestionQueueSuccess(null);
+    try {
+      const payload = {
+        scope: buildAiSuggestionScopeForCurrentContext(ctx),
+        proposed_message: proposedMessage,
+      };
+      const response = await fetch(`${API_URL}/api/ai/suggestions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const body = (await response.json().catch(() => ({}))) as AiSuggestionCreateResponse;
+      if (!response.ok) {
+        setAiSuggestionQueueError(String(body.error ?? `Queue request failed (${response.status})`));
+        return;
+      }
+      const queued = body.suggestion ?? null;
+      const queueStatus = queued?.ai_queue_read_model?.approval_queue?.queue_status ?? queued?.status ?? 'pending';
+      setAiSuggestionQueueSuccess(
+        `Queued for approval (${String(queueStatus)}). No send/publish occurred; human approval remains required.`
+      );
+      setAiAssistNotice('AI suggestion queued for approval review. Human send/publish still uses existing explicit actions only.');
+      await fetchAiSuggestions();
+    } catch (err) {
+      setAiSuggestionQueueError(err instanceof Error ? err.message : 'Queue request failed');
+    } finally {
+      setAiSuggestionQueueSubmitting(false);
+    }
+  }, [aiAssistContext, aiAssistDraftText, buildAiSuggestionScopeForCurrentContext, fetchAiSuggestions, session?.access_token]);
+
+  useEffect(() => {
+    if (!aiAssistVisible) return;
+    void fetchAiSuggestions();
+  }, [aiAssistVisible, fetchAiSuggestions]);
 
   const fetchCoachingJourneys = useCallback(async () => {
     const token = session?.access_token;
@@ -8766,6 +8956,78 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 style={[styles.aiAssistInput, styles.aiAssistDraftInput]}
               />
             </View>
+            <View style={styles.aiAssistQueueCard}>
+              <View style={styles.aiAssistQueueCardTopRow}>
+                <Text style={styles.aiAssistQueueTitle}>Approval Queue Status</Text>
+                {aiSuggestionListLoading ? <ActivityIndicator size="small" /> : null}
+              </View>
+              {aiSuggestionListError ? <Text style={styles.aiAssistQueueError}>{aiSuggestionListError}</Text> : null}
+              {aiSuggestionQueueError ? <Text style={styles.aiAssistQueueError}>{aiSuggestionQueueError}</Text> : null}
+              {aiSuggestionQueueSuccess ? <Text style={styles.aiAssistQueueSuccess}>{aiSuggestionQueueSuccess}</Text> : null}
+              {aiSuggestionQueueSummary ? (
+                <Text style={styles.aiAssistQueueSummaryText}>
+                  Queue summary: {Number(aiSuggestionQueueSummary.total ?? 0)} total • pending{' '}
+                  {Number(aiSuggestionQueueSummary.by_status?.pending ?? 0)} • approved{' '}
+                  {Number(aiSuggestionQueueSummary.by_status?.approved ?? 0)} • rejected{' '}
+                  {Number(aiSuggestionQueueSummary.by_status?.rejected ?? 0)}
+                </Text>
+              ) : (
+                <Text style={styles.aiAssistQueueSummaryText}>
+                  Queue summary unavailable in this session. You can still queue a draft for approval.
+                </Text>
+              )}
+              {(() => {
+                const hostKey = aiAssistContext?.host ?? null;
+                const hostMatches = (aiSuggestionRows ?? []).filter((row) => {
+                  const source = String(row.ai_queue_read_model?.source_surface ?? '');
+                  if (!hostKey) return true;
+                  if (hostKey === 'coaching_journeys') return source === 'coaching_journey_detail' || source === 'coaching_journey_list';
+                  if (hostKey === 'coaching_journey_detail') return source === 'coaching_journey_detail';
+                  if (hostKey === 'coaching_lesson_detail') return source === 'coaching_lesson_detail';
+                  if (hostKey === 'coach_broadcast_compose') return source === 'coach_broadcast_compose';
+                  if (hostKey === 'channel_thread') return source === 'channel_thread';
+                  if (hostKey === 'challenge_coaching_module') return source === 'challenge_coaching_block';
+                  if (hostKey === 'team_member_coaching_module' || hostKey === 'team_leader_coaching_module') {
+                    return source === 'team_coaching_module';
+                  }
+                  return true;
+                });
+                const rows = (hostMatches.length > 0 ? hostMatches : aiSuggestionRows ?? []).slice(0, 3);
+                if (rows.length === 0) {
+                  return (
+                    <Text style={styles.aiAssistQueueRecentEmpty}>
+                      No AI suggestions returned yet for this user/context. Queueing remains approval-first and advisory only.
+                    </Text>
+                  );
+                }
+                return (
+                  <View style={styles.aiAssistQueueRecentList}>
+                    {rows.map((row, idx) => {
+                      const queueStatus = String(
+                        row.ai_queue_read_model?.approval_queue?.queue_status ?? row.status ?? 'unknown'
+                      );
+                      const createdAt = fmtMonthDayTime(row.created_at ?? null);
+                      return (
+                        <View
+                          key={`ai-suggestion-recent-${row.id}`}
+                          style={[styles.aiAssistQueueRecentRow, idx > 0 ? styles.aiAssistQueueRecentRowDivider : null]}
+                        >
+                          <View style={styles.aiAssistQueueRecentRowCopy}>
+                            <Text style={styles.aiAssistQueueRecentStatus}>{queueStatus}</Text>
+                            <Text style={styles.aiAssistQueueRecentMeta}>
+                              {row.ai_queue_read_model?.target_scope_summary ?? row.scope ?? 'scope unavailable'}
+                            </Text>
+                            <Text style={styles.aiAssistQueueRecentMeta}>
+                              {createdAt ? `Created ${createdAt}` : `Suggestion ${row.id}`}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                );
+              })()}
+            </View>
             {aiAssistNotice ? <Text style={styles.aiAssistNotice}>{aiAssistNotice}</Text> : null}
             <View style={styles.aiAssistActionRow}>
               <TouchableOpacity
@@ -8785,8 +9047,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 </Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity style={[styles.aiAssistPrimaryBtn, styles.disabled]} disabled onPress={() => undefined}>
-              <Text style={styles.aiAssistPrimaryBtnText}>Queue AI Suggestion (W5 Backend Follow-on)</Text>
+            <TouchableOpacity
+              style={[
+                styles.aiAssistPrimaryBtn,
+                (aiSuggestionQueueSubmitting || aiAssistGenerating || !aiAssistDraftText.trim()) ? styles.disabled : null,
+              ]}
+              disabled={aiSuggestionQueueSubmitting || aiAssistGenerating || !aiAssistDraftText.trim()}
+              onPress={() => void queueAiSuggestionForApproval()}
+            >
+              <Text style={styles.aiAssistPrimaryBtnText}>
+                {aiSuggestionQueueSubmitting ? 'Queueing…' : 'Queue AI Suggestion (Approval-First)'}
+              </Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>
@@ -11972,6 +12243,75 @@ const styles = StyleSheet.create({
   },
   aiAssistDraftInput: {
     minHeight: 118,
+  },
+  aiAssistQueueCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dce4ef',
+    backgroundColor: '#f8fbff',
+    padding: 10,
+    gap: 6,
+  },
+  aiAssistQueueCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  aiAssistQueueTitle: {
+    color: '#304258',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  aiAssistQueueSummaryText: {
+    color: '#55677f',
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  aiAssistQueueError: {
+    color: '#b42318',
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
+  aiAssistQueueSuccess: {
+    color: '#1d6f42',
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
+  aiAssistQueueRecentEmpty: {
+    color: '#697a90',
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  aiAssistQueueRecentList: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e3eaf3',
+    backgroundColor: '#fff',
+  },
+  aiAssistQueueRecentRow: {
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+  },
+  aiAssistQueueRecentRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#edf1f6',
+  },
+  aiAssistQueueRecentRowCopy: {
+    gap: 2,
+  },
+  aiAssistQueueRecentStatus: {
+    color: '#33465f',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  aiAssistQueueRecentMeta: {
+    color: '#65778f',
+    fontSize: 10,
+    lineHeight: 13,
   },
   aiAssistNotice: {
     color: '#4c5f79',
