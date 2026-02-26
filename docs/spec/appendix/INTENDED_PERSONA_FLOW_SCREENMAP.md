@@ -118,7 +118,7 @@ Exports in repo:
 | Team Dashboard coaching summary + broadcast preview (embedded) | Leader coaching summary + role-gated broadcast entry point | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 wires leader Team Dashboard updates CTA to team-scoped `inbox_channels` and role-gated broadcast composer entry context. |
 | Inbox / Channels | Leader comms hub (team/challenge/sponsor channels) | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 adds context-aware channel list/thread shell routing from Team/Challenge surfaces; API-backed messages still deferred. |
 | Broadcast Composer (role-gated) | Compose/send team or scoped coaching broadcast | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 leader-only entry routing + audience context labels added; send/write remains placeholder pending API integration. |
-| Coaching Journeys | Journey list/detail/lesson progress destination | `manual-spec-driven (COACHING_* docs)` | `🟡 stub` | W1 shells added: `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail`. |
+| Coaching Journeys | Journey list/detail/lesson progress destination | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W3 adds API-backed journey list/detail rendering and explicit lesson progress actions on `coaching_journeys*`; no KPI log writes and no auto-complete on view. |
 | Sponsored challenge coaching overlays (embedded) | Sponsor CTA + coaching link modules on challenge detail | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 routes challenge/sponsor updates CTA into scoped `channel_thread` shell context; challenge ownership remains separate from coaching content/messaging. |
 
 #### `profile`
@@ -157,7 +157,7 @@ Exports in repo:
 | Team Dashboard member coaching progress (embedded) | Coaching progress snapshot + updates entry | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 wires Team Member updates CTA to team-scoped `inbox_channels`; coaching journeys remain shell-depth only. |
 | Challenge Details coaching + updates (embedded) | Challenge channel/update CTA + coaching content prompt | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 routes challenge updates CTA directly to scoped `channel_thread` shell context (`challenge`/`sponsor`). |
 | Inbox / Channels | Member communication inbox and channels | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 adds context-aware channel list/thread shell routing from Team and Challenge entry points; participant messaging behavior still deferred. |
-| Coaching Journeys | Journey and lesson progress destination | `manual-spec-driven (COACHING_* docs)` | `🟡 stub` | W1 shell routes added (`coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail`). |
+| Coaching Journeys | Journey and lesson progress destination | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W3 adds API-backed journey list/detail rendering and explicit lesson progress actions on `coaching_journeys*`; participant visibility remains server-enforced. |
 
 #### `profile`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
@@ -195,7 +195,7 @@ Exports in repo:
 | Home / Priority coaching nudge (embedded) | Lightweight solo coaching reminder / journey CTA allocation | `manual-spec-driven (COACHING_* docs)` | `🟡 stub` | W1 placeholder Home CTA shell added; no coaching content payload wiring. |
 | Challenge Details coaching / sponsor content block (embedded) | Sponsor/challenge coaching CTA or content link module | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 routes challenge updates CTA into scoped `channel_thread` shell context (challenge/sponsor) while keeping challenge payload ownership separate. |
 | Inbox / Channels (scoped) | Solo comms inbox/channel entry (challenge/sponsor/community scoped) | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 challenge CTA can land in scoped `channel_thread`; no team-admin/broadcast controls exposed for solo flows. |
-| Coaching Journeys | Solo journey/lesson progress destination | `manual-spec-driven (COACHING_* docs)` | `🟡 stub` | W1 shell routes added; functional content/progress remains deferred. |
+| Coaching Journeys | Solo journey/lesson progress destination | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W3 adds API-backed journey list/detail rendering and explicit lesson progress actions on `coaching_journeys*`; solo scope visibility remains server-enforced. |
 
 #### `profile`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |

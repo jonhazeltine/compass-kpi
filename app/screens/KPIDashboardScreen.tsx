@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -263,6 +263,66 @@ type CoachingShellContext = {
   threadSub: string | null;
   broadcastAudienceLabel: string | null;
   broadcastRoleAllowed: boolean;
+  selectedJourneyId: string | null;
+  selectedJourneyTitle: string | null;
+  selectedLessonId: string | null;
+  selectedLessonTitle: string | null;
+};
+type CoachingJourneyListItem = {
+  id: string;
+  title: string;
+  description?: string | null;
+  team_id?: string | null;
+  is_active?: boolean | null;
+  created_at?: string | null;
+  milestones_count?: number;
+  lessons_total?: number;
+  lessons_completed?: number;
+  completion_percent?: number;
+};
+type CoachingJourneyListResponse = {
+  journeys?: CoachingJourneyListItem[];
+  error?: string;
+};
+type CoachingJourneyDetailLesson = {
+  id: string;
+  title: string;
+  body?: string | null;
+  sort_order?: number;
+  progress_status?: 'not_started' | 'in_progress' | 'completed' | string;
+  completed_at?: string | null;
+};
+type CoachingJourneyDetailMilestone = {
+  id: string;
+  journey_id?: string;
+  title: string;
+  sort_order?: number;
+  lessons?: CoachingJourneyDetailLesson[];
+};
+type CoachingJourneyDetailResponse = {
+  journey?: CoachingJourneyListItem;
+  milestones?: CoachingJourneyDetailMilestone[];
+  error?: string;
+};
+type CoachingProgressSummaryResponse = {
+  total_progress_rows?: number;
+  status_counts?: {
+    not_started?: number;
+    in_progress?: number;
+    completed?: number;
+  };
+  completion_percent?: number;
+  error?: string;
+};
+type CoachingLessonProgressWriteResponse = {
+  progress?: {
+    lesson_id?: string;
+    user_id?: string;
+    status?: 'not_started' | 'in_progress' | 'completed' | string;
+    completed_at?: string | null;
+    updated_at?: string | null;
+  };
+  error?: string;
 };
 
 type PendingDirectLog = {
@@ -383,6 +443,18 @@ function fmtShortMonthDay(iso?: string | null) {
   return d.toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
+  });
+}
+
+function fmtMonthDayTime(iso?: string | null) {
+  if (!iso) return '';
+  const d = new Date(String(iso));
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
   });
 }
 
@@ -1424,7 +1496,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     threadSub: null,
     broadcastAudienceLabel: null,
     broadcastRoleAllowed: false,
+    selectedJourneyId: null,
+    selectedJourneyTitle: null,
+    selectedLessonId: null,
+    selectedLessonTitle: null,
   });
+  const [coachingJourneys, setCoachingJourneys] = useState<CoachingJourneyListItem[] | null>(null);
+  const [coachingJourneysLoading, setCoachingJourneysLoading] = useState(false);
+  const [coachingJourneysError, setCoachingJourneysError] = useState<string | null>(null);
+  const [coachingProgressSummary, setCoachingProgressSummary] = useState<CoachingProgressSummaryResponse | null>(null);
+  const [coachingProgressLoading, setCoachingProgressLoading] = useState(false);
+  const [coachingProgressError, setCoachingProgressError] = useState<string | null>(null);
+  const [coachingJourneyDetail, setCoachingJourneyDetail] = useState<CoachingJourneyDetailResponse | null>(null);
+  const [coachingJourneyDetailLoading, setCoachingJourneyDetailLoading] = useState(false);
+  const [coachingJourneyDetailError, setCoachingJourneyDetailError] = useState<string | null>(null);
+  const [coachingLessonProgressSubmittingId, setCoachingLessonProgressSubmittingId] = useState<string | null>(null);
+  const [coachingLessonProgressError, setCoachingLessonProgressError] = useState<string | null>(null);
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
@@ -3954,6 +4041,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         threadSub: null,
         broadcastAudienceLabel: null,
         broadcastRoleAllowed: false,
+        selectedJourneyId: null,
+        selectedJourneyTitle: null,
+        selectedLessonId: null,
+        selectedLessonTitle: null,
       });
       return;
     }
@@ -4642,6 +4733,185 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     setActiveTab('user');
     setViewMode('log');
   }, []);
+
+  const fetchCoachingJourneys = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) {
+      setCoachingJourneysError('Sign in is required to view coaching journeys.');
+      setCoachingJourneys([]);
+      return;
+    }
+    setCoachingJourneysLoading(true);
+    setCoachingJourneysError(null);
+    try {
+      const response = await fetch(`${API_URL}/api/coaching/journeys`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as CoachingJourneyListResponse;
+      if (!response.ok) {
+        setCoachingJourneysError(String(body.error ?? `Journeys request failed (${response.status})`));
+        setCoachingJourneys([]);
+        return;
+      }
+      setCoachingJourneys(Array.isArray(body.journeys) ? body.journeys : []);
+    } catch (err) {
+      setCoachingJourneysError(err instanceof Error ? err.message : 'Failed to load coaching journeys');
+      setCoachingJourneys([]);
+    } finally {
+      setCoachingJourneysLoading(false);
+    }
+  }, [session?.access_token]);
+
+  const fetchCoachingProgressSummary = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) {
+      setCoachingProgressError('Sign in is required to view coaching progress.');
+      setCoachingProgressSummary(null);
+      return;
+    }
+    setCoachingProgressLoading(true);
+    setCoachingProgressError(null);
+    try {
+      const response = await fetch(`${API_URL}/api/coaching/progress`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as CoachingProgressSummaryResponse;
+      if (!response.ok) {
+        setCoachingProgressError(String(body.error ?? `Progress request failed (${response.status})`));
+        setCoachingProgressSummary(null);
+        return;
+      }
+      setCoachingProgressSummary(body);
+    } catch (err) {
+      setCoachingProgressError(err instanceof Error ? err.message : 'Failed to load coaching progress');
+      setCoachingProgressSummary(null);
+    } finally {
+      setCoachingProgressLoading(false);
+    }
+  }, [session?.access_token]);
+
+  const fetchCoachingJourneyDetail = useCallback(
+    async (journeyId: string) => {
+      const token = session?.access_token;
+      if (!token) {
+        setCoachingJourneyDetailError('Sign in is required to view this journey.');
+        setCoachingJourneyDetail(null);
+        return;
+      }
+      if (!journeyId) {
+        setCoachingJourneyDetailError('Journey id is required.');
+        setCoachingJourneyDetail(null);
+        return;
+      }
+      setCoachingJourneyDetailLoading(true);
+      setCoachingJourneyDetailError(null);
+      try {
+        const response = await fetch(`${API_URL}/api/coaching/journeys/${encodeURIComponent(journeyId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = (await response.json().catch(() => ({}))) as CoachingJourneyDetailResponse;
+        if (!response.ok) {
+          setCoachingJourneyDetailError(String(body.error ?? `Journey detail request failed (${response.status})`));
+          setCoachingJourneyDetail(null);
+          return;
+        }
+        setCoachingJourneyDetail(body);
+      } catch (err) {
+        setCoachingJourneyDetailError(err instanceof Error ? err.message : 'Failed to load journey detail');
+        setCoachingJourneyDetail(null);
+      } finally {
+        setCoachingJourneyDetailLoading(false);
+      }
+    },
+    [session?.access_token]
+  );
+
+  const submitCoachingLessonProgress = useCallback(
+    async (lessonId: string, status: 'not_started' | 'in_progress' | 'completed') => {
+      const token = session?.access_token;
+      if (!token) {
+        setCoachingLessonProgressError('Sign in is required to update lesson progress.');
+        return;
+      }
+      setCoachingLessonProgressSubmittingId(lessonId);
+      setCoachingLessonProgressError(null);
+      try {
+        const response = await fetch(`${API_URL}/api/coaching/lessons/${encodeURIComponent(lessonId)}/progress`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ status }),
+        });
+        const body = (await response.json().catch(() => ({}))) as CoachingLessonProgressWriteResponse;
+        if (!response.ok) {
+          setCoachingLessonProgressError(String(body.error ?? `Lesson progress update failed (${response.status})`));
+          return;
+        }
+        const activeJourneyId = coachingShellContext.selectedJourneyId;
+        if (activeJourneyId) {
+          await Promise.all([fetchCoachingJourneyDetail(activeJourneyId), fetchCoachingJourneys(), fetchCoachingProgressSummary()]);
+        } else {
+          await Promise.all([fetchCoachingJourneys(), fetchCoachingProgressSummary()]);
+        }
+      } catch (err) {
+        setCoachingLessonProgressError(err instanceof Error ? err.message : 'Failed to update lesson progress');
+      } finally {
+        setCoachingLessonProgressSubmittingId(null);
+      }
+    },
+    [
+      coachingShellContext.selectedJourneyId,
+      fetchCoachingJourneyDetail,
+      fetchCoachingJourneys,
+      fetchCoachingProgressSummary,
+      session?.access_token,
+    ]
+  );
+
+  useEffect(() => {
+    if (activeTab !== 'user') return;
+    if (
+      coachingShellScreen === 'coaching_journeys' ||
+      coachingShellScreen === 'coaching_journey_detail' ||
+      coachingShellScreen === 'coaching_lesson_detail'
+    ) {
+      if (!coachingJourneys && !coachingJourneysLoading) {
+        void fetchCoachingJourneys();
+      }
+      if (!coachingProgressSummary && !coachingProgressLoading) {
+        void fetchCoachingProgressSummary();
+      }
+    }
+  }, [
+    activeTab,
+    coachingJourneys,
+    coachingJourneysLoading,
+    coachingProgressLoading,
+    coachingProgressSummary,
+    coachingShellScreen,
+    fetchCoachingJourneys,
+    fetchCoachingProgressSummary,
+  ]);
+
+  useEffect(() => {
+    if (activeTab !== 'user') return;
+    if (coachingShellScreen !== 'coaching_journey_detail' && coachingShellScreen !== 'coaching_lesson_detail') return;
+    const desiredJourneyId =
+      coachingShellContext.selectedJourneyId ??
+      (Array.isArray(coachingJourneys) && coachingJourneys.length > 0 ? String(coachingJourneys[0].id) : null);
+    if (!desiredJourneyId) return;
+    if (coachingJourneyDetail?.journey?.id && String(coachingJourneyDetail.journey.id) === desiredJourneyId) return;
+    void fetchCoachingJourneyDetail(desiredJourneyId);
+  }, [
+    activeTab,
+    coachingJourneyDetail?.journey?.id,
+    coachingJourneys,
+    coachingShellContext.selectedJourneyId,
+    coachingShellScreen,
+    fetchCoachingJourneyDetail,
+  ]);
 
   if (state === 'loading') {
     return (
@@ -5352,7 +5622,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <TouchableOpacity
                         style={styles.coachingEntrySecondaryBtn}
                         onPress={() =>
-                          openCoachingShell(challengeIsCompleted ? 'coaching_journeys' : 'coaching_journey_detail')
+                          openCoachingShell(challengeIsCompleted ? 'coaching_journeys' : 'coaching_journey_detail', {
+                            source: 'challenge_details',
+                            selectedJourneyId: null,
+                            selectedJourneyTitle: null,
+                            selectedLessonId: null,
+                            selectedLessonTitle: null,
+                          })
                         }
                       >
                         <Text style={styles.coachingEntrySecondaryBtnText}>Coaching Prompt</Text>
@@ -5948,7 +6224,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         <View style={styles.coachingEntryButtonRow}>
                           <TouchableOpacity
                             style={styles.coachingEntryPrimaryBtn}
-                            onPress={() => openCoachingShell('coaching_journeys')}
+                            onPress={() =>
+                              openCoachingShell('coaching_journeys', {
+                                source: 'team_member_dashboard',
+                                selectedJourneyId: null,
+                                selectedJourneyTitle: null,
+                                selectedLessonId: null,
+                                selectedLessonTitle: null,
+                              })
+                            }
                           >
                             <Text style={styles.coachingEntryPrimaryBtnText}>Open Journeys</Text>
                           </TouchableOpacity>
@@ -6164,7 +6448,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <View style={styles.coachingEntryButtonRow}>
                         <TouchableOpacity
                           style={styles.coachingEntryPrimaryBtn}
-                          onPress={() => openCoachingShell('coaching_journeys')}
+                          onPress={() =>
+                            openCoachingShell('coaching_journeys', {
+                              source: 'team_leader_dashboard',
+                              selectedJourneyId: null,
+                              selectedJourneyTitle: null,
+                              selectedLessonId: null,
+                              selectedLessonTitle: null,
+                            })
+                          }
                         >
                           <Text style={styles.coachingEntryPrimaryBtnText}>Coaching Journeys</Text>
                         </TouchableOpacity>
@@ -6236,6 +6528,27 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const preferredChannelScope = coachingShellContext.preferredChannelScope;
               const sourceLabel = sourceLabelByKey[coachingShellContext.source];
               const roleCanOpenBroadcast = teamPersonaVariant === 'leader' || coachingShellContext.broadcastRoleAllowed;
+              const journeyListRows = Array.isArray(coachingJourneys) ? coachingJourneys : [];
+              const selectedJourneyId =
+                coachingShellContext.selectedJourneyId ?? (journeyListRows[0]?.id ? String(journeyListRows[0].id) : null);
+              const selectedJourneyTitle =
+                coachingShellContext.selectedJourneyTitle ??
+                (journeyListRows.find((row) => String(row.id) === selectedJourneyId)?.title ?? null);
+              const milestoneRows = Array.isArray(coachingJourneyDetail?.milestones) ? coachingJourneyDetail.milestones : [];
+              const allLessonRows = milestoneRows.flatMap((milestone) =>
+                (Array.isArray(milestone.lessons) ? milestone.lessons : []).map((lesson) => ({
+                  ...lesson,
+                  milestoneTitle: milestone.title,
+                }))
+              );
+              const selectedLessonId =
+                coachingShellContext.selectedLessonId ?? (allLessonRows[0]?.id ? String(allLessonRows[0].id) : null);
+              const selectedLesson =
+                allLessonRows.find((lesson) => String(lesson.id) === selectedLessonId) ?? null;
+              const selectedLessonStatus = String(selectedLesson?.progress_status ?? 'not_started') as
+                | 'not_started'
+                | 'in_progress'
+                | 'completed';
               const contextualThreadTitle = coachingShellContext.threadTitle ?? 'Channel Thread';
               const contextualThreadSub =
                 coachingShellContext.threadSub ??
@@ -6281,19 +6594,23 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 },
                 coaching_journeys: {
                   title: 'Coaching Journeys',
-                  sub: 'Placeholder journey list shell for all personas. Content depth and progress writes remain deferred.',
+                  sub: 'W3 content integration: API-backed journey list and progress summary using documented coaching endpoints.',
                   badge: 'coaching_content',
                   primary: [{ label: 'Open Journey Detail', to: 'coaching_journey_detail' }],
                 },
                 coaching_journey_detail: {
                   title: 'Coaching Journey Detail',
-                  sub: 'Placeholder journey detail shell with lesson CTA routing only.',
+                  sub: selectedJourneyTitle
+                    ? `W3 content integration: milestone/lesson detail for ${selectedJourneyTitle}.`
+                    : 'W3 content integration: milestone/lesson detail (select a journey first).',
                   badge: 'coaching_content',
                   primary: [{ label: 'Open Lesson Detail', to: 'coaching_lesson_detail' }],
                 },
                 coaching_lesson_detail: {
                   title: 'Coaching Lesson Detail',
-                  sub: 'Placeholder lesson/progress shell. No lesson progress writes in W1.',
+                  sub: selectedLesson
+                    ? 'W3 content integration: explicit lesson progress actions are enabled (no auto-complete on view).'
+                    : 'W3 content integration: choose a lesson from journey detail first.',
                   badge: 'coaching_content',
                 },
               };
@@ -6419,6 +6736,280 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </TouchableOpacity>
                       </View>
                     ) : null}
+                    {coachingShellScreen === 'coaching_journeys' ? (
+                      <View style={styles.coachingJourneyModule}>
+                        <View style={styles.coachingJourneySummaryRow}>
+                          <View style={styles.coachingJourneySummaryCard}>
+                            <Text style={styles.coachingJourneySummaryLabel}>Progress Rows</Text>
+                            <Text style={styles.coachingJourneySummaryValue}>
+                              {coachingProgressLoading ? '…' : String(coachingProgressSummary?.total_progress_rows ?? 0)}
+                            </Text>
+                          </View>
+                          <View style={styles.coachingJourneySummaryCard}>
+                            <Text style={styles.coachingJourneySummaryLabel}>Completed</Text>
+                            <Text style={styles.coachingJourneySummaryValue}>
+                              {coachingProgressLoading
+                                ? '…'
+                                : String(coachingProgressSummary?.status_counts?.completed ?? 0)}
+                            </Text>
+                          </View>
+                          <View style={styles.coachingJourneySummaryCard}>
+                            <Text style={styles.coachingJourneySummaryLabel}>Completion</Text>
+                            <Text style={styles.coachingJourneySummaryValue}>
+                              {coachingProgressLoading
+                                ? '…'
+                                : `${Math.round(Number(coachingProgressSummary?.completion_percent ?? 0))}%`}
+                            </Text>
+                          </View>
+                        </View>
+                        {coachingProgressError ? (
+                          <Text style={styles.coachingJourneyInlineError}>{coachingProgressError}</Text>
+                        ) : null}
+                        {coachingJourneysLoading ? (
+                          <View style={styles.coachingJourneyEmptyCard}>
+                            <ActivityIndicator size="small" />
+                            <Text style={styles.coachingJourneyEmptyTitle}>Loading coaching journeys…</Text>
+                          </View>
+                        ) : coachingJourneysError ? (
+                          <View style={styles.coachingJourneyEmptyCard}>
+                            <Text style={styles.coachingJourneyEmptyTitle}>Journeys failed to load</Text>
+                            <Text style={styles.coachingJourneyEmptySub}>{coachingJourneysError}</Text>
+                            <TouchableOpacity
+                              style={styles.coachingJourneyRetryBtn}
+                              onPress={() => {
+                                void fetchCoachingJourneys();
+                                void fetchCoachingProgressSummary();
+                              }}
+                            >
+                              <Text style={styles.coachingJourneyRetryBtnText}>Retry Journeys</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : journeyListRows.length === 0 ? (
+                          <View style={styles.coachingJourneyEmptyCard}>
+                            <Text style={styles.coachingJourneyEmptyTitle}>No journeys available</Text>
+                            <Text style={styles.coachingJourneyEmptySub}>
+                              The current coaching payload returned no visible journeys for this account/team scope.
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={styles.coachingJourneyListCard}>
+                            {journeyListRows.map((journey, idx) => {
+                              const lessonsTotal = Number(journey.lessons_total ?? 0);
+                              const lessonsCompleted = Number(journey.lessons_completed ?? 0);
+                              const pct = Math.max(0, Math.round(Number(journey.completion_percent ?? 0)));
+                              const isSelected = String(journey.id) === String(selectedJourneyId ?? '');
+                              return (
+                                <TouchableOpacity
+                                  key={`coaching-journey-${journey.id}`}
+                                  style={[
+                                    styles.coachingJourneyRow,
+                                    idx > 0 && styles.coachingJourneyRowDivider,
+                                    isSelected ? styles.coachingJourneyRowSelected : null,
+                                  ]}
+                                  onPress={() =>
+                                    openCoachingShell('coaching_journey_detail', {
+                                      source: coachingShellContext.source,
+                                      selectedJourneyId: String(journey.id),
+                                      selectedJourneyTitle: journey.title,
+                                      selectedLessonId: null,
+                                      selectedLessonTitle: null,
+                                    })
+                                  }
+                                >
+                                  <View style={styles.coachingJourneyRowCopy}>
+                                    <Text numberOfLines={1} style={styles.coachingJourneyRowTitle}>{journey.title}</Text>
+                                    <Text numberOfLines={2} style={styles.coachingJourneyRowSub}>
+                                      {(journey.description || 'No journey description yet.').trim()}
+                                    </Text>
+                                    <Text style={styles.coachingJourneyRowMeta}>
+                                      {Number(journey.milestones_count ?? 0)} milestones • {lessonsCompleted}/{lessonsTotal} lessons completed
+                                    </Text>
+                                  </View>
+                                  <View style={styles.coachingJourneyRowMetricWrap}>
+                                    <Text style={styles.coachingJourneyRowMetric}>{pct}%</Text>
+                                    <Text style={styles.coachingJourneyRowChevron}>›</Text>
+                                  </View>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </View>
+                    ) : null}
+                    {coachingShellScreen === 'coaching_journey_detail' ? (
+                      <View style={styles.coachingJourneyModule}>
+                        {!selectedJourneyId ? (
+                          <View style={styles.coachingJourneyEmptyCard}>
+                            <Text style={styles.coachingJourneyEmptyTitle}>Choose a journey first</Text>
+                            <Text style={styles.coachingJourneyEmptySub}>
+                              Open `Coaching Journeys` to select a journey before viewing milestones and lessons.
+                            </Text>
+                          </View>
+                        ) : coachingJourneyDetailLoading ? (
+                          <View style={styles.coachingJourneyEmptyCard}>
+                            <ActivityIndicator size="small" />
+                            <Text style={styles.coachingJourneyEmptyTitle}>Loading journey detail…</Text>
+                          </View>
+                        ) : coachingJourneyDetailError ? (
+                          <View style={styles.coachingJourneyEmptyCard}>
+                            <Text style={styles.coachingJourneyEmptyTitle}>Journey detail failed to load</Text>
+                            <Text style={styles.coachingJourneyEmptySub}>{coachingJourneyDetailError}</Text>
+                            <TouchableOpacity
+                              style={styles.coachingJourneyRetryBtn}
+                              onPress={() => {
+                                if (selectedJourneyId) void fetchCoachingJourneyDetail(selectedJourneyId);
+                              }}
+                            >
+                              <Text style={styles.coachingJourneyRetryBtnText}>Retry Detail</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <>
+                            <View style={styles.coachingJourneyDetailHeader}>
+                              <Text style={styles.coachingJourneyDetailTitle}>
+                                {coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'Journey Detail'}
+                              </Text>
+                              <Text style={styles.coachingJourneyDetailSub}>
+                                {String(coachingJourneyDetail?.journey?.description ?? 'Milestones and lessons loaded from coaching endpoints.')}
+                              </Text>
+                            </View>
+                            {milestoneRows.length === 0 ? (
+                              <View style={styles.coachingJourneyEmptyCard}>
+                                <Text style={styles.coachingJourneyEmptyTitle}>No milestones found</Text>
+                                <Text style={styles.coachingJourneyEmptySub}>
+                                  This journey currently has no visible milestones/lessons in the API response.
+                                </Text>
+                              </View>
+                            ) : (
+                              <View style={styles.coachingJourneyListCard}>
+                                {milestoneRows.map((milestone, milestoneIdx) => (
+                                  <View
+                                    key={`coaching-milestone-${milestone.id}`}
+                                    style={[
+                                      styles.coachingMilestoneBlock,
+                                      milestoneIdx > 0 ? styles.coachingJourneyRowDivider : null,
+                                    ]}
+                                  >
+                                    <Text style={styles.coachingMilestoneTitle}>{milestone.title}</Text>
+                                    {(milestone.lessons ?? []).length === 0 ? (
+                                      <Text style={styles.coachingMilestoneEmpty}>No active lessons yet.</Text>
+                                    ) : (
+                                      (milestone.lessons ?? []).map((lesson, lessonIdx) => {
+                                        const statusLabel = String(lesson.progress_status ?? 'not_started').replace('_', ' ');
+                                        const isActiveLesson = String(lesson.id) === String(selectedLessonId ?? '');
+                                        return (
+                                          <TouchableOpacity
+                                            key={`coaching-lesson-${lesson.id}`}
+                                            style={[
+                                              styles.coachingLessonRow,
+                                              lessonIdx > 0 ? styles.coachingLessonRowDivider : null,
+                                              isActiveLesson ? styles.coachingLessonRowSelected : null,
+                                            ]}
+                                            onPress={() =>
+                                              openCoachingShell('coaching_lesson_detail', {
+                                                selectedJourneyId: selectedJourneyId ?? null,
+                                                selectedJourneyTitle:
+                                                  coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
+                                                selectedLessonId: String(lesson.id),
+                                                selectedLessonTitle: lesson.title,
+                                              })
+                                            }
+                                          >
+                                            <View style={styles.coachingLessonRowCopy}>
+                                              <Text numberOfLines={1} style={styles.coachingLessonRowTitle}>{lesson.title}</Text>
+                                              <Text numberOfLines={2} style={styles.coachingLessonRowSub}>
+                                                {lesson.body?.trim() || 'Lesson content body available on lesson detail.'}
+                                              </Text>
+                                            </View>
+                                            <View style={styles.coachingLessonRowStatusPill}>
+                                              <Text style={styles.coachingLessonRowStatusText}>{statusLabel}</Text>
+                                            </View>
+                                          </TouchableOpacity>
+                                        );
+                                      })
+                                    )}
+                                  </View>
+                                ))}
+                              </View>
+                            )}
+                          </>
+                        )}
+                      </View>
+                    ) : null}
+                    {coachingShellScreen === 'coaching_lesson_detail' ? (
+                      <View style={styles.coachingJourneyModule}>
+                        {!selectedLesson ? (
+                          <View style={styles.coachingJourneyEmptyCard}>
+                            <Text style={styles.coachingJourneyEmptyTitle}>Choose a lesson first</Text>
+                            <Text style={styles.coachingJourneyEmptySub}>
+                              Open a lesson from `Coaching Journey Detail` before using progress actions.
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={styles.coachingJourneyListCard}>
+                            <View style={styles.coachingLessonDetailHeader}>
+                              <Text style={styles.coachingLessonDetailTitle}>
+                                {coachingShellContext.selectedLessonTitle ?? selectedLesson.title}
+                              </Text>
+                              <Text style={styles.coachingLessonDetailMeta}>
+                                {selectedLesson.milestoneTitle} • {selectedJourneyTitle ?? coachingJourneyDetail?.journey?.title ?? 'Journey'}
+                              </Text>
+                              <Text style={styles.coachingLessonDetailBody}>
+                                {selectedLesson.body?.trim() || 'Lesson body is empty in the current payload. Progress actions are still available explicitly.'}
+                              </Text>
+                            </View>
+                            <View style={styles.coachingLessonProgressCard}>
+                              <Text style={styles.coachingLessonProgressTitle}>Lesson Progress</Text>
+                              <Text style={styles.coachingLessonProgressStatus}>
+                                Current status: {selectedLessonStatus.replace('_', ' ')}
+                              </Text>
+                              {selectedLesson.completed_at ? (
+                                <Text style={styles.coachingLessonProgressTime}>
+                                  Completed: {fmtMonthDayTime(selectedLesson.completed_at)}
+                                </Text>
+                              ) : null}
+                              {coachingLessonProgressError ? (
+                                <Text style={styles.coachingJourneyInlineError}>{coachingLessonProgressError}</Text>
+                              ) : null}
+                              <View style={styles.coachingLessonActionRow}>
+                                {(['not_started', 'in_progress', 'completed'] as const).map((status) => {
+                                  const isCurrent = selectedLessonStatus === status;
+                                  const isSubmitting =
+                                    coachingLessonProgressSubmittingId === String(selectedLesson.id);
+                                  return (
+                                    <TouchableOpacity
+                                      key={`lesson-progress-${status}`}
+                                      style={[
+                                        styles.coachingLessonActionBtn,
+                                        isCurrent ? styles.coachingLessonActionBtnActive : null,
+                                        isSubmitting ? styles.disabled : null,
+                                      ]}
+                                      disabled={isSubmitting}
+                                      onPress={() => void submitCoachingLessonProgress(String(selectedLesson.id), status)}
+                                    >
+                                      <Text
+                                        style={[
+                                          styles.coachingLessonActionBtnText,
+                                          isCurrent ? styles.coachingLessonActionBtnTextActive : null,
+                                        ]}
+                                      >
+                                        {isSubmitting && isCurrent
+                                          ? 'Saving…'
+                                          : status === 'not_started'
+                                            ? 'Reset'
+                                            : status === 'in_progress'
+                                              ? 'Start'
+                                              : 'Complete'}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    ) : null}
                   </View>
 
                   <View style={styles.coachingShellCard}>
@@ -6527,7 +7118,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               <View style={styles.coachingEntryButtonRow}>
                 <TouchableOpacity
                   style={styles.coachingEntryPrimaryBtn}
-                  onPress={() => openCoachingShell('coaching_journeys')}
+                  onPress={() =>
+                    openCoachingShell('coaching_journeys', {
+                      source: 'home',
+                      selectedJourneyId: null,
+                      selectedJourneyTitle: null,
+                      selectedLessonId: null,
+                      selectedLessonTitle: null,
+                    })
+                  }
                 >
                   <Text style={styles.coachingEntryPrimaryBtnText}>Open Coaching Journeys</Text>
                 </TouchableOpacity>
@@ -10079,6 +10678,272 @@ const styles = StyleSheet.create({
   coachingShellInputGhostText: {
     color: '#9aa3b0',
     fontSize: 11,
+  },
+  coachingJourneyModule: {
+    gap: 10,
+  },
+  coachingJourneySummaryRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  coachingJourneySummaryCard: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: '#eef4ff',
+    borderWidth: 1,
+    borderColor: '#dbe7ff',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 3,
+  },
+  coachingJourneySummaryLabel: {
+    color: '#5c6f8f',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  coachingJourneySummaryValue: {
+    color: '#2f3442',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  coachingJourneyInlineError: {
+    color: '#b54444',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  coachingJourneyEmptyCard: {
+    borderRadius: 10,
+    backgroundColor: '#f4f6fa',
+    borderWidth: 1,
+    borderColor: '#e4e9f1',
+    padding: 10,
+    gap: 6,
+    alignItems: 'flex-start',
+  },
+  coachingJourneyEmptyTitle: {
+    color: '#3b4556',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  coachingJourneyEmptySub: {
+    color: '#7d8899',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  coachingJourneyRetryBtn: {
+    borderRadius: 8,
+    backgroundColor: '#1f5fe2',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 2,
+  },
+  coachingJourneyRetryBtnText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  coachingJourneyListCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f2',
+    backgroundColor: '#f7f9fc',
+    overflow: 'hidden',
+  },
+  coachingJourneyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    backgroundColor: '#f7f9fc',
+  },
+  coachingJourneyRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#e3e8f0',
+  },
+  coachingJourneyRowSelected: {
+    backgroundColor: '#edf4ff',
+  },
+  coachingJourneyRowCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  coachingJourneyRowTitle: {
+    color: '#364052',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  coachingJourneyRowSub: {
+    color: '#798596',
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  coachingJourneyRowMeta: {
+    color: '#5f6f86',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 1,
+  },
+  coachingJourneyRowMetricWrap: {
+    alignItems: 'flex-end',
+    gap: 0,
+  },
+  coachingJourneyRowMetric: {
+    color: '#2a4f9f',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  coachingJourneyRowChevron: {
+    color: '#627089',
+    fontSize: 16,
+    marginTop: -2,
+  },
+  coachingJourneyDetailHeader: {
+    borderRadius: 10,
+    backgroundColor: '#eef4ff',
+    borderWidth: 1,
+    borderColor: '#dbe7ff',
+    padding: 10,
+    gap: 4,
+  },
+  coachingJourneyDetailTitle: {
+    color: '#314056',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  coachingJourneyDetailSub: {
+    color: '#6f7f95',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  coachingMilestoneBlock: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  coachingMilestoneTitle: {
+    color: '#4a5569',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  coachingMilestoneEmpty: {
+    color: '#8a93a3',
+    fontSize: 11,
+  },
+  coachingLessonRow: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e1e7f0',
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  coachingLessonRowDivider: {
+    marginTop: 6,
+  },
+  coachingLessonRowSelected: {
+    borderColor: '#cfe0ff',
+    backgroundColor: '#f2f7ff',
+  },
+  coachingLessonRowCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  coachingLessonRowTitle: {
+    color: '#394455',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  coachingLessonRowSub: {
+    color: '#7f8999',
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  coachingLessonRowStatusPill: {
+    borderRadius: 999,
+    backgroundColor: '#eef2f8',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  coachingLessonRowStatusText: {
+    color: '#5d6b81',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'capitalize',
+  },
+  coachingLessonDetailHeader: {
+    gap: 4,
+  },
+  coachingLessonDetailTitle: {
+    color: '#334055',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  coachingLessonDetailMeta: {
+    color: '#738097',
+    fontSize: 11,
+  },
+  coachingLessonDetailBody: {
+    color: '#4f5d72',
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 4,
+  },
+  coachingLessonProgressCard: {
+    borderRadius: 10,
+    backgroundColor: '#f3f6fb',
+    borderWidth: 1,
+    borderColor: '#e2e8f1',
+    padding: 10,
+    gap: 7,
+  },
+  coachingLessonProgressTitle: {
+    color: '#394658',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  coachingLessonProgressStatus: {
+    color: '#637186',
+    fontSize: 11,
+  },
+  coachingLessonProgressTime: {
+    color: '#7c8798',
+    fontSize: 10,
+  },
+  coachingLessonActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 2,
+  },
+  coachingLessonActionBtn: {
+    flex: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d7e0ee',
+    backgroundColor: '#fff',
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachingLessonActionBtnActive: {
+    borderColor: '#1f5fe2',
+    backgroundColor: '#1f5fe2',
+  },
+  coachingLessonActionBtnText: {
+    color: '#55647a',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  coachingLessonActionBtnTextActive: {
+    color: '#fff',
   },
   participationFocusCard: {
     backgroundColor: '#fff',

@@ -54,7 +54,8 @@ Only use long custom prompts when the board is missing required details or a one
 | ID | Status | Program status | Persona | Flow | Screens in scope | Owner | Branch / Worktree | Figma refs | Deliverable |
 |---|---|---|---|---|---|---|---|---|---|
 | `COACHING-UI-W2-COMMS-ENTRYPOINTS` | `committed+pushed` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`W2 comms entry points`) | `Team Dashboard (leader/member)`, `Challenge Details/Results`, `User/Coaching shells` (`Inbox/Channels`, `Channel Thread`, `Broadcast Composer`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven (`COACHING_*` docs + intended wiring docs; W1 shells required) | Large-swatch W2 communication entry-point wiring pass accepted: context-aware channel/thread shell routing + leader broadcast composer entry context labels; API-backed messaging/send remains deferred |
-| `ADMIN-A3-USERS-OPS-POLISH-A` | `review` | `A3 (parallel with M5/M6)` | `Admin operator` | `admin users + reports ops workflow` | `/admin/users`, `/admin/reports` (operator lists/actions only) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web, no Figma parity requirement for this swath) | Admin users/reports operator usability pass implemented in `AdminShellScreen.tsx`; `tsc` passed; awaiting controller review |
+| `ADMIN-A3-USERS-OPS-POLISH-A` | `committed+pushed` | `A3 (parallel with M5/M6)` | `Admin operator` | `admin users + reports ops workflow` | `/admin/users`, `/admin/reports` (operator lists/actions only) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web, no Figma parity requirement for this swath) | Accepted and pushed (`fc85b3b`): users/reports operator workflow usability improvements in `AdminShellScreen.tsx`; manual browser spot-check still recommended follow-up |
+| `COACHING-UI-W3-JOURNEYS-CONTENT-INTEGRATION` | `committed+pushed` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven coaching content integration)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`W3 coaching_content integration`) | `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail` + embedded CTA routes from `Home`, `Team`, `Challenge` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree required if app code worker is active elsewhere) | manual-spec-driven unless coaching Figma exports are later locked | Accepted: API-backed journeys list/detail/progress + explicit lesson progress actions on W1/W2 shells; docs statuses advanced to `🟡 partial` |
 
 ## Blocked Assignments
 
@@ -455,7 +456,7 @@ Implement the first functional communication entry points on existing Compass su
 ### `COACHING-UI-W3-JOURNEYS-CONTENT-INTEGRATION`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `committed+pushed` (`accepted after blocker-resolution + local tsc recheck`)
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven coaching content integration)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W3 coaching_content integration`)
@@ -467,6 +468,15 @@ Implement the first functional communication entry points on existing Compass su
 - `Controller activation note (2026-02-26):` Activated after accepted W2 shell/context routing and post-W2 contract-boundary planning update from `Coach-1`.
 - `Worker pickup note (2026-02-26, Mobile-1):` Picked up on `codex/a2-admin-list-usability-pass` for W3 coaching content integration; proceeding on accepted W1/W2 destination naming and shell baseline.
 - `Current blocker status (2026-02-26, Mobile-1):` `none` at start for UI-on-existing-contracts attempt; payload-shape mismatches (if any) will be documented without widening backend scope.
+- `Completion note (2026-02-26, Mobile-1):` W3 coaching content integration completed on accepted `coaching_journeys*` shells in `KPIDashboardScreen.tsx`: API-backed journeys list/detail rendering (`GET /api/coaching/journeys`, `GET /api/coaching/journeys/{id}`), progress summary (`GET /api/coaching/progress`), and explicit lesson progress actions (`POST /api/coaching/lessons/{id}/progress`) with no auto-complete on view. Embedded Home/Team/Challenge coaching CTAs now propagate journey-context source/reset parameters into W3 content destinations.
+- `Validation note (2026-02-26, Mobile-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` ✅. Route checks for `coaching_journeys`, `coaching_journey_detail`, and `coaching_lesson_detail` completed via code-path review; KPI logging codepaths untouched. API assumptions verified against `docs/spec/04_api_contracts.md` for `GET /api/coaching/journeys`, `GET /api/coaching/journeys/{id}`, `GET /api/coaching/progress`, and `POST /api/coaching/lessons/{id}/progress`. Runtime screenshots not captured in this environment; controller/device validation still required.
+- `Current blocker status (2026-02-26, Mobile-1, post-pass):` `none` for code deliverable; remaining validation gap is screenshot proof/runtime walkthrough only.
+- `Controller follow-up note (2026-02-26):` Re-enter W3 in blocker-resolution mode first; restore runtime renderability and `tsc` green before any further feature work. Report exact fixes (regression callout included missing `useEffect` import + incomplete W3 symbols/styles).
+- `Blocker triage note (2026-02-26, Mobile-1):` Investigating reported W3 runtime/compile regression in `KPIDashboardScreen.tsx` before any additional W3 scope. Will confirm import/symbol/style integrity and rerun `tsc`.
+- `Blocker-resolution note (2026-02-26, Mobile-1):` Verified current `KPIDashboardScreen.tsx` already includes `useEffect` import, W3 journey helper `fmtMonthDayTime(...)`, and W3 styles (`coachingJourneyModule`, `coachingLessonActionBtnTextActive`, related symbols). No additional code patch was required in this pass.
+- `Validation note (2026-02-26, Mobile-1, blocker-resolution pass):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` ✅ (green). W3 render-symbol/style regression callouts were rechecked by direct file inspection.
+- `Current blocker status (2026-02-26, Mobile-1, blocker-resolution pass):` `resolved` for compile/render-symbol regression; screenshot/runtime walkthrough proof remains pending controller/device validation.
+- `Controller review note (2026-02-26):` Accepted. Blocker regression is resolved, local `tsc` is green, and W3 stayed within documented coaching endpoints with explicit lesson progress writes only (no auto-complete on view, no KPI logging writes). Docs sync rule satisfied (`INTENDED_PERSONA_FLOW_SCREENMAP.md` + `INTENDED_WIRING_DIAGRAM.md`). Screenshot/runtime walkthrough remains validation debt, not a merge blocker for this wave.
 
 #### Primary Objective
 Implement the first functional coaching content layer on the accepted W1/W2 shells:
@@ -616,7 +626,7 @@ Upgrade accepted W2 comms entry routing from shell/context-only to API-backed be
 ### `ADMIN-A3-USERS-OPS-POLISH-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `committed+pushed`
 - `Program status:` `A3 (parallel with M5/M6)`
 - `Persona:` `Admin operator`
 - `Flow:` `admin users + reports ops workflow`
@@ -626,6 +636,7 @@ Upgrade accepted W2 comms entry routing from shell/context-only to API-backed be
 - `Controller seed note (2026-02-26):` Run in parallel with coaching docs work. Admin-only scope to avoid collision with mobile/coaching router surfaces.
 - `Worker note (2026-02-26):` Execution started. Scope locked to admin web `/admin/users` + `/admin/reports` in existing admin shell patterns; no mobile/backend changes.
 - `Worker completion note (2026-02-26):` Implemented operator workflow friction fixes in `/admin/users` and `/admin/reports` (filter/no-results recovery, visible-count clarity, filtered-selection warning, reports probe summary/copy-all status). `tsc` passed. Manual browser spot-check not completed in this session (no browser automation path used).
+- `Controller review note (2026-02-26):` Accepted and pushed as `fc85b3b`. Scope stayed admin-only and aligns with `A3` operator usability polish. Manual browser spot-check remains recommended before merge to `main`, but not a blocker for branch progress.
 
 #### Screens In Scope (Large Swath)
 1. `/admin/users`
