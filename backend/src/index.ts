@@ -197,6 +197,161 @@ type MeProfileUpdatePayload = {
   pipeline_buyers_uc?: number;
 };
 
+type PackagingReadModel = {
+  package_type: "team_coaching_program" | "sponsored_challenge_coaching_campaign" | "paid_coaching_product" | null;
+  visibility_state: "published" | "unavailable" | "unknown";
+  entitlement_result:
+    | "allowed"
+    | "allowed_channel_member"
+    | "allowed_tier_gated"
+    | "not_evaluated"
+    | "unknown";
+  linked_context_refs: {
+    team_id: string | null;
+    challenge_id: string | null;
+    sponsored_challenge_id: string | null;
+    sponsor_id: string | null;
+    channel_id: string | null;
+    journey_id: string | null;
+  };
+  display_requirements: {
+    sponsor_disclaimer_required: boolean;
+    sponsor_attribution_required: boolean;
+    paywall_cta_required: boolean;
+  };
+  read_model_status: "inferred_baseline" | "partial_in_family" | "not_evaluated";
+  notes?: string[];
+};
+
+function buildPackagingReadModel(
+  partial: Partial<PackagingReadModel> & Pick<PackagingReadModel, "linked_context_refs">
+): PackagingReadModel {
+  return {
+    package_type: partial.package_type ?? null,
+    visibility_state: partial.visibility_state ?? "unknown",
+    entitlement_result: partial.entitlement_result ?? "unknown",
+    linked_context_refs: {
+      team_id: partial.linked_context_refs.team_id ?? null,
+      challenge_id: partial.linked_context_refs.challenge_id ?? null,
+      sponsored_challenge_id: partial.linked_context_refs.sponsored_challenge_id ?? null,
+      sponsor_id: partial.linked_context_refs.sponsor_id ?? null,
+      channel_id: partial.linked_context_refs.channel_id ?? null,
+      journey_id: partial.linked_context_refs.journey_id ?? null,
+    },
+    display_requirements: {
+      sponsor_disclaimer_required: partial.display_requirements?.sponsor_disclaimer_required ?? false,
+      sponsor_attribution_required: partial.display_requirements?.sponsor_attribution_required ?? false,
+      paywall_cta_required: partial.display_requirements?.paywall_cta_required ?? false,
+    },
+    read_model_status: partial.read_model_status ?? "not_evaluated",
+    ...(partial.notes ? { notes: partial.notes } : {}),
+  };
+}
+
+function packagingReadModelForChannel(channel: {
+  id?: unknown;
+  type?: unknown;
+  team_id?: unknown;
+  context_id?: unknown;
+  is_active?: unknown;
+}): PackagingReadModel {
+  const channelType = String(channel.type ?? "");
+  const contextId = String(channel.context_id ?? "") || null;
+  const teamId = String(channel.team_id ?? "") || null;
+  const packageType: PackagingReadModel["package_type"] =
+    channelType === "team"
+      ? "team_coaching_program"
+      : channelType === "sponsor"
+        ? "sponsored_challenge_coaching_campaign"
+        : null;
+
+  return buildPackagingReadModel({
+    package_type: packageType,
+    visibility_state: Boolean(channel.is_active ?? true) ? "published" : "unavailable",
+    entitlement_result: "allowed_channel_member",
+    linked_context_refs: {
+      team_id: teamId,
+      challenge_id: channelType === "challenge" ? contextId : null,
+      sponsored_challenge_id: channelType === "sponsor" ? contextId : null,
+      sponsor_id: channelType === "sponsor" ? contextId : null,
+      channel_id: String(channel.id ?? "") || null,
+      journey_id: null,
+    },
+    display_requirements: {
+      sponsor_disclaimer_required: channelType === "sponsor",
+      sponsor_attribution_required: channelType === "sponsor",
+      paywall_cta_required: false,
+    },
+    read_model_status: packageType ? "inferred_baseline" : "partial_in_family",
+    notes:
+      channelType === "challenge"
+        ? ["challenge channel may require package attribution from linked challenge/sponsor context"]
+        : channelType === "direct" || channelType === "cohort"
+          ? ["package attribution unavailable in current channel payload baseline"]
+          : undefined,
+  });
+}
+
+function packagingReadModelForJourney(journey: {
+  id?: unknown;
+  team_id?: unknown;
+  is_active?: unknown;
+}): PackagingReadModel {
+  const teamId = String(journey.team_id ?? "") || null;
+  return buildPackagingReadModel({
+    package_type: teamId ? "team_coaching_program" : null,
+    visibility_state: Boolean(journey.is_active ?? true) ? "published" : "unavailable",
+    entitlement_result: "not_evaluated",
+    linked_context_refs: {
+      team_id: teamId,
+      challenge_id: null,
+      sponsored_challenge_id: null,
+      sponsor_id: null,
+      channel_id: null,
+      journey_id: String(journey.id ?? "") || null,
+    },
+    display_requirements: {
+      sponsor_disclaimer_required: false,
+      sponsor_attribution_required: false,
+      paywall_cta_required: false,
+    },
+    read_model_status: "partial_in_family",
+    notes: [
+      "entitlement_result is not evaluated in current coaching journey handlers; server-side package entitlement output remains an in-family extension gap",
+    ],
+  });
+}
+
+function packagingReadModelForSponsoredChallenge(row: {
+  id?: unknown;
+  sponsors?: { id?: unknown } | null;
+  disclaimer?: unknown;
+}): PackagingReadModel {
+  const sponsorId = String((row.sponsors as { id?: unknown } | null)?.id ?? "") || null;
+  return buildPackagingReadModel({
+    package_type: "sponsored_challenge_coaching_campaign",
+    visibility_state: "published",
+    entitlement_result: "allowed_tier_gated",
+    linked_context_refs: {
+      team_id: null,
+      challenge_id: null,
+      sponsored_challenge_id: String(row.id ?? "") || null,
+      sponsor_id: sponsorId,
+      channel_id: null,
+      journey_id: null,
+    },
+    display_requirements: {
+      sponsor_disclaimer_required: Boolean(row.disclaimer),
+      sponsor_attribution_required: true,
+      paywall_cta_required: false,
+    },
+    read_model_status: "partial_in_family",
+    notes: [
+      "linked coaching journey/channel refs are not present in current sponsored challenge payload baseline",
+    ],
+  });
+}
+
 type UserMetadata = {
   selected_kpis?: string[];
   kpi_weekly_inputs?: Record<string, { historicalWeeklyAverage: number; targetWeeklyCount: number }>;
@@ -1009,6 +1164,7 @@ app.get("/api/channels", async (req, res) => {
         my_role: membershipByChannel.get(String(channel.id)) ?? "member",
         unread_count: unreadByChannel.get(String(channel.id))?.unread_count ?? 0,
         last_seen_at: unreadByChannel.get(String(channel.id))?.last_seen_at ?? null,
+        packaging_read_model: packagingReadModelForChannel(channel),
       })),
     });
   } catch (err) {
@@ -1102,6 +1258,15 @@ app.get("/api/channels/:id/messages", async (req, res) => {
     if (!membership.ok) return res.status(membership.status).json({ error: membership.error });
     if (!membership.member) return res.status(403).json({ error: "Not a channel member" });
 
+    const { data: channel, error: channelError } = await dataClient
+      .from("channels")
+      .select("id,type,name,team_id,context_id,is_active,created_at")
+      .eq("id", channelId)
+      .single();
+    if (channelError) {
+      return handleSupabaseError(res, "Failed to fetch channel context", channelError);
+    }
+
     const { data: messages, error: messagesError } = await dataClient
       .from("channel_messages")
       .select("id,channel_id,sender_user_id,body,message_type,created_at")
@@ -1112,7 +1277,11 @@ app.get("/api/channels/:id/messages", async (req, res) => {
       return handleSupabaseError(res, "Failed to fetch channel messages", messagesError);
     }
 
-    return res.json({ messages: messages ?? [] });
+    return res.json({
+      channel,
+      packaging_read_model: packagingReadModelForChannel(channel),
+      messages: messages ?? [],
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in GET /api/channels/:id/messages", err);
@@ -1449,6 +1618,7 @@ app.get("/api/coaching/journeys", async (req, res) => {
           lessons_completed: lessonsCompleted,
           completion_percent:
             lessonsTotal > 0 ? Number(((lessonsCompleted / lessonsTotal) * 100).toFixed(2)) : 0,
+          packaging_read_model: packagingReadModelForJourney(j),
         };
       }),
     });
@@ -1546,7 +1716,10 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
     }
 
     return res.json({
-      journey,
+      journey: {
+        ...journey,
+        packaging_read_model: packagingReadModelForJourney(journey as { id?: unknown; team_id?: unknown; is_active?: unknown }),
+      },
       milestones: (milestones ?? []).map((m) => ({
         ...m,
         lessons: lessonsByMilestone.get(String(m.id)) ?? [],
@@ -2640,6 +2813,7 @@ app.get("/sponsored-challenges", async (req, res) => {
         start_at: row.start_at,
         end_at: row.end_at,
         sponsor: (row as { sponsors?: unknown }).sponsors ?? null,
+        packaging_read_model: packagingReadModelForSponsoredChallenge(row as { id?: unknown; sponsors?: { id?: unknown } | null; disclaimer?: unknown }),
       }));
 
     return res.json({ sponsored_challenges: challenges });
@@ -2704,6 +2878,7 @@ app.get("/sponsored-challenges/:id", async (req, res) => {
         start_at: row.start_at,
         end_at: row.end_at,
         sponsor: (row as { sponsors?: unknown }).sponsors ?? null,
+        packaging_read_model: packagingReadModelForSponsoredChallenge(row as { id?: unknown; sponsors?: { id?: unknown } | null; disclaimer?: unknown }),
       },
     });
   } catch (err) {

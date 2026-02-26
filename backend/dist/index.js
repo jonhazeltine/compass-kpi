@@ -36,6 +36,112 @@ const authClient = supabaseUrl && supabaseAnonKey
 const dataClient = supabaseUrl && (supabaseServiceRoleKey || supabaseAnonKey)
     ? (0, supabase_js_1.createClient)(supabaseUrl, supabaseServiceRoleKey || supabaseAnonKey)
     : null;
+function buildPackagingReadModel(partial) {
+    return {
+        package_type: partial.package_type ?? null,
+        visibility_state: partial.visibility_state ?? "unknown",
+        entitlement_result: partial.entitlement_result ?? "unknown",
+        linked_context_refs: {
+            team_id: partial.linked_context_refs.team_id ?? null,
+            challenge_id: partial.linked_context_refs.challenge_id ?? null,
+            sponsored_challenge_id: partial.linked_context_refs.sponsored_challenge_id ?? null,
+            sponsor_id: partial.linked_context_refs.sponsor_id ?? null,
+            channel_id: partial.linked_context_refs.channel_id ?? null,
+            journey_id: partial.linked_context_refs.journey_id ?? null,
+        },
+        display_requirements: {
+            sponsor_disclaimer_required: partial.display_requirements?.sponsor_disclaimer_required ?? false,
+            sponsor_attribution_required: partial.display_requirements?.sponsor_attribution_required ?? false,
+            paywall_cta_required: partial.display_requirements?.paywall_cta_required ?? false,
+        },
+        read_model_status: partial.read_model_status ?? "not_evaluated",
+        ...(partial.notes ? { notes: partial.notes } : {}),
+    };
+}
+function packagingReadModelForChannel(channel) {
+    const channelType = String(channel.type ?? "");
+    const contextId = String(channel.context_id ?? "") || null;
+    const teamId = String(channel.team_id ?? "") || null;
+    const packageType = channelType === "team"
+        ? "team_coaching_program"
+        : channelType === "sponsor"
+            ? "sponsored_challenge_coaching_campaign"
+            : null;
+    return buildPackagingReadModel({
+        package_type: packageType,
+        visibility_state: Boolean(channel.is_active ?? true) ? "published" : "unavailable",
+        entitlement_result: "allowed_channel_member",
+        linked_context_refs: {
+            team_id: teamId,
+            challenge_id: channelType === "challenge" ? contextId : null,
+            sponsored_challenge_id: channelType === "sponsor" ? contextId : null,
+            sponsor_id: channelType === "sponsor" ? contextId : null,
+            channel_id: String(channel.id ?? "") || null,
+            journey_id: null,
+        },
+        display_requirements: {
+            sponsor_disclaimer_required: channelType === "sponsor",
+            sponsor_attribution_required: channelType === "sponsor",
+            paywall_cta_required: false,
+        },
+        read_model_status: packageType ? "inferred_baseline" : "partial_in_family",
+        notes: channelType === "challenge"
+            ? ["challenge channel may require package attribution from linked challenge/sponsor context"]
+            : channelType === "direct" || channelType === "cohort"
+                ? ["package attribution unavailable in current channel payload baseline"]
+                : undefined,
+    });
+}
+function packagingReadModelForJourney(journey) {
+    const teamId = String(journey.team_id ?? "") || null;
+    return buildPackagingReadModel({
+        package_type: teamId ? "team_coaching_program" : null,
+        visibility_state: Boolean(journey.is_active ?? true) ? "published" : "unavailable",
+        entitlement_result: "not_evaluated",
+        linked_context_refs: {
+            team_id: teamId,
+            challenge_id: null,
+            sponsored_challenge_id: null,
+            sponsor_id: null,
+            channel_id: null,
+            journey_id: String(journey.id ?? "") || null,
+        },
+        display_requirements: {
+            sponsor_disclaimer_required: false,
+            sponsor_attribution_required: false,
+            paywall_cta_required: false,
+        },
+        read_model_status: "partial_in_family",
+        notes: [
+            "entitlement_result is not evaluated in current coaching journey handlers; server-side package entitlement output remains an in-family extension gap",
+        ],
+    });
+}
+function packagingReadModelForSponsoredChallenge(row) {
+    const sponsorId = String(row.sponsors?.id ?? "") || null;
+    return buildPackagingReadModel({
+        package_type: "sponsored_challenge_coaching_campaign",
+        visibility_state: "published",
+        entitlement_result: "allowed_tier_gated",
+        linked_context_refs: {
+            team_id: null,
+            challenge_id: null,
+            sponsored_challenge_id: String(row.id ?? "") || null,
+            sponsor_id: sponsorId,
+            channel_id: null,
+            journey_id: null,
+        },
+        display_requirements: {
+            sponsor_disclaimer_required: Boolean(row.disclaimer),
+            sponsor_attribution_required: true,
+            paywall_cta_required: false,
+        },
+        read_model_status: "partial_in_family",
+        notes: [
+            "linked coaching journey/channel refs are not present in current sponsored challenge payload baseline",
+        ],
+    });
+}
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 app.use((0, morgan_1.default)("dev"));
@@ -763,6 +869,7 @@ app.get("/api/channels", async (req, res) => {
                 my_role: membershipByChannel.get(String(channel.id)) ?? "member",
                 unread_count: unreadByChannel.get(String(channel.id))?.unread_count ?? 0,
                 last_seen_at: unreadByChannel.get(String(channel.id))?.last_seen_at ?? null,
+                packaging_read_model: packagingReadModelForChannel(channel),
             })),
         });
     }
@@ -850,6 +957,14 @@ app.get("/api/channels/:id/messages", async (req, res) => {
             return res.status(membership.status).json({ error: membership.error });
         if (!membership.member)
             return res.status(403).json({ error: "Not a channel member" });
+        const { data: channel, error: channelError } = await dataClient
+            .from("channels")
+            .select("id,type,name,team_id,context_id,is_active,created_at")
+            .eq("id", channelId)
+            .single();
+        if (channelError) {
+            return handleSupabaseError(res, "Failed to fetch channel context", channelError);
+        }
         const { data: messages, error: messagesError } = await dataClient
             .from("channel_messages")
             .select("id,channel_id,sender_user_id,body,message_type,created_at")
@@ -859,7 +974,11 @@ app.get("/api/channels/:id/messages", async (req, res) => {
         if (messagesError) {
             return handleSupabaseError(res, "Failed to fetch channel messages", messagesError);
         }
-        return res.json({ messages: messages ?? [] });
+        return res.json({
+            channel,
+            packaging_read_model: packagingReadModelForChannel(channel),
+            messages: messages ?? [],
+        });
     }
     catch (err) {
         // eslint-disable-next-line no-console
@@ -1173,6 +1292,7 @@ app.get("/api/coaching/journeys", async (req, res) => {
                     lessons_total: lessonsTotal,
                     lessons_completed: lessonsCompleted,
                     completion_percent: lessonsTotal > 0 ? Number(((lessonsCompleted / lessonsTotal) * 100).toFixed(2)) : 0,
+                    packaging_read_model: packagingReadModelForJourney(j),
                 };
             }),
         });
@@ -1261,7 +1381,10 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
             lessonsByMilestone.set(String(lesson.milestone_id), arr);
         }
         return res.json({
-            journey,
+            journey: {
+                ...journey,
+                packaging_read_model: packagingReadModelForJourney(journey),
+            },
             milestones: (milestones ?? []).map((m) => ({
                 ...m,
                 lessons: lessonsByMilestone.get(String(m.id)) ?? [],
@@ -2241,6 +2364,7 @@ app.get("/sponsored-challenges", async (req, res) => {
             start_at: row.start_at,
             end_at: row.end_at,
             sponsor: row.sponsors ?? null,
+            packaging_read_model: packagingReadModelForSponsoredChallenge(row),
         }));
         return res.json({ sponsored_challenges: challenges });
     }
@@ -2302,6 +2426,7 @@ app.get("/sponsored-challenges/:id", async (req, res) => {
                 start_at: row.start_at,
                 end_at: row.end_at,
                 sponsor: row.sponsors ?? null,
+                packaging_read_model: packagingReadModelForSponsoredChallenge(row),
             },
         });
     }
@@ -3255,6 +3380,52 @@ app.post("/challenge-participants", async (req, res) => {
     catch (err) {
         // eslint-disable-next-line no-console
         console.error("Error in /challenge-participants", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.delete("/challenge-participants/:challengeId", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok) {
+            return res.status(auth.status).json({ error: auth.error });
+        }
+        if (!dataClient) {
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        }
+        const challengeId = String(req.params.challengeId ?? "").trim();
+        if (!challengeId) {
+            return res.status(422).json({ error: "challenge id is required" });
+        }
+        const { data: existingRows, error: existingError } = await dataClient
+            .from("challenge_participants")
+            .select("id,challenge_id,user_id")
+            .eq("challenge_id", challengeId)
+            .eq("user_id", auth.user.id)
+            .order("joined_at", { ascending: false });
+        if (existingError) {
+            return handleSupabaseError(res, "Failed to load challenge participation", existingError);
+        }
+        if (!existingRows || existingRows.length === 0) {
+            return res.status(404).json({ error: "Challenge participation not found" });
+        }
+        const { error: deleteError } = await dataClient
+            .from("challenge_participants")
+            .delete()
+            .eq("challenge_id", challengeId)
+            .eq("user_id", auth.user.id);
+        if (deleteError) {
+            return handleSupabaseError(res, "Failed to leave challenge", deleteError);
+        }
+        return res.json({
+            left: true,
+            challenge_id: challengeId,
+            user_id: auth.user.id,
+            deleted_count: existingRows.length,
+        });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Error in DELETE /challenge-participants/:challengeId", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 });

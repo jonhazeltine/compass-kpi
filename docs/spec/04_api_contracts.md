@@ -238,6 +238,13 @@
   - Returns challenge list with caller participation summary and leaderboard baseline payload.
 - `GET /api/channels`
   - Returns only channels where caller is a member.
+  - Additive response fields (package read-model shaping baseline):
+    - `channels[].packaging_read_model`
+    - includes baseline/partial packaging visibility + entitlement context (`read_model_status` indicates inferred/partial coverage)
+- `GET /api/channels/{id}/messages`
+  - Additive response fields (package read-model shaping baseline):
+    - top-level `channel` (thread context metadata for runtime header/context)
+    - top-level `packaging_read_model` (thread/package visibility + entitlement context baseline)
 - `POST /api/channels/{id}/messages`
   - Enforces membership checks and updates unread counters for other members.
 - `POST /api/channels/{id}/broadcast`
@@ -247,6 +254,11 @@
   - Resets unread count for caller in specified channel.
 - `GET /api/coaching/journeys`
   - Returns active journeys enriched with milestone/lesson totals plus user completion percent.
+  - Additive response fields (package read-model shaping baseline):
+    - `journeys[].packaging_read_model`
+- `GET /api/coaching/journeys/{id}`
+  - Additive response fields (package read-model shaping baseline):
+    - `journey.packaging_read_model`
 - `POST /api/coaching/lessons/{id}/progress`
   - Supports `status: not_started | in_progress | completed` with upsert semantics.
 - `POST /api/coaching/broadcast`
@@ -266,6 +278,8 @@
 - `GET /sponsored-challenges` and `GET /sponsored-challenges/{id}`
   - Enforce active window and `required_tier` access checks.
   - Return sponsor branding metadata plus CTA/disclaimer fields for eligible users.
+  - Additive response fields (package read-model shaping baseline):
+    - `packaging_read_model` on sponsored challenge payload(s), including sponsored package type baseline, tier-gated entitlement outcome, and display requirement flags
 - `POST /api/forecast-confidence/snapshot`
   - Persists confidence snapshot metadata with algorithm parity components (HA/PH/IN) and weighted score.
   - Confidence computation remains display-layer; does not mutate KPI base values.
