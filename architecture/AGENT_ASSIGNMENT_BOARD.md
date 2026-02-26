@@ -53,7 +53,7 @@ Only use long custom prompts when the board is missing required details or a one
 
 | ID | Status | Program status | Persona | Flow | Screens in scope | Owner | Branch / Worktree | Figma refs | Deliverable |
 |---|---|---|---|---|---|---|---|---|---|
-| `COACHING-UI-W2-COMMS-ENTRYPOINTS` | `active` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`W2 comms entry points`) | `Team Dashboard (leader/member)`, `Challenge Details/Results`, `User/Coaching shells` (`Inbox/Channels`, `Channel Thread`, `Broadcast Composer`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven (`COACHING_*` docs + intended wiring docs; W1 shells required) | Large-swatch W2 communication entry-point wiring pass (team/challenge/sponsor channel context entry flows + leader broadcast shell-to-flow tightening) |
+| `COACHING-UI-W2-COMMS-ENTRYPOINTS` | `committed+pushed` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`W2 comms entry points`) | `Team Dashboard (leader/member)`, `Challenge Details/Results`, `User/Coaching shells` (`Inbox/Channels`, `Channel Thread`, `Broadcast Composer`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven (`COACHING_*` docs + intended wiring docs; W1 shells required) | Large-swatch W2 communication entry-point wiring pass accepted: context-aware channel/thread shell routing + leader broadcast composer entry context labels; API-backed messaging/send remains deferred |
 
 ## Blocked Assignments
 
@@ -69,6 +69,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `TEAM-MEMBER-PARITY-A` | `pushed` | `M3/M3b + approved M5 overlap` | `Team Member` | `Team Dashboard (member)`, `Team Challenges`, `Challenge List`, `Challenge Details`, `Challenge Leaderboard / Results` | `1372ddf` | Team Member parity + wiring pass accepted by controller; screenshot folder verified (`app/test-results/team-member-parity-a`). Duplicate Mobile-1/Mobile-2 execution reconciled; accepted result is `1372ddf`. |
 | `COACHING-INTEGRATION-A` | `committed` | `M3/M3b baseline + approved M6 planning overlap (docs-only)` | `Team Leader`, `Team Member`, `Solo User` | Coaching matrix/addendum + intended wiring/screenmap + next-wave assignment specs | `(this change set)` | Docs-only planning package accepted pending commit/push: W1/W2 route naming lock, coaching insert-point status table, persona coaching rows, and `COACHING-UI-W1/W2` assignment specs. |
 | `COACHING-UI-W1-ALLOCATION-SHELLS` | `committed+pushed` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)` | `Team Leader`, `Team Member`, `Solo User` | Home/Challenge/Team/Profile coaching placeholder CTAs + `user` coaching shell destinations | `(this change set)` | W1 shell destinations + placeholder CTA allocation landed in `KPIDashboardScreen.tsx`; screenmap/wiring docs updated to `🟡 stub`; runtime screenshots pending follow-up validation. |
+| `COACHING-UI-W2-COMMS-ENTRYPOINTS` | `committed+pushed` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)` | `Team Leader`, `Team Member`, `Solo User` | Team/Challenge coaching comms entry points + user coaching shells context routing | `(this change set)` | W2 comms entry-point wiring landed in `KPIDashboardScreen.tsx`; docs statuses advanced from `🟡 stub` to `🟡 partial` for comms surfaces; runtime screenshots pending follow-up validation. |
 | `ADMIN-A2-USABILITY` | `committed` | `A2` | `Admin operator` | `Admin KPI Catalog`, `Challenge Templates` (web admin) | `0a45742` | Row-window reset, no-results recovery, show-more count, template ID visibility |
 | `MOBILE-CHALLENGE-RESCUE` | `committed` | `M3/M3b` | `Solo/User + Team contexts (challenge flow)` | `Challenge List`, `Challenge Details`, `Challenge Leaderboard` | `020ce4d` | CTA/link audit + misleading CTA fixes |
 | `FIGMA-TEAM-EXPORTS` | `committed+pushed` | `control-plane` | `N/A` | Team flow canonical exports/docs | `1638282`, `df8c825` | Added isolated Team exports; corrected Team Dashboard canonical node to `173-29934` |
@@ -371,7 +372,7 @@ Create `W1` coaching allocation + shell placeholders in the mobile member app wi
 ### `COACHING-UI-W2-COMMS-ENTRYPOINTS`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `committed+pushed`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (communication-first coaching integration)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W2 communication entry points`)
@@ -380,6 +381,12 @@ Create `W1` coaching allocation + shell placeholders in the mobile member app wi
 - `Figma refs:` `manual-spec-driven` unless controller later locks coaching exports
 - `Controller seed note (2026-02-26):` Execute after `COACHING-UI-W1-ALLOCATION-SHELLS` lands (or equivalent route shells exist).
 - `Controller activation note (2026-02-26):` Activated after W1 shell destinations landed and docs statuses were updated to `🟡 stub`.
+- `Worker pickup note (2026-02-26, Mobile-1):` Picked up for implementation on `codex/a2-admin-list-usability-pass`; W1 shell routes already present in local branch/worktree.
+- `Current blocker status (2026-02-26, Mobile-1):` `none` at start (manual-spec-driven W2 pass proceeding; runtime screenshot capture may require controller/device validation follow-up).
+- `Completion note (2026-02-26, Mobile-1):` W2 comms entry-point wiring pass completed in `KPIDashboardScreen.tsx`: Team leader/member coaching modules now route into context-aware `inbox_channels`; Challenge Details routes `Challenge Updates` into scoped `channel_thread` (challenge/sponsor shell context); leader broadcast CTA routes into role-gated `coach_broadcast_compose` with audience context labels. No KPI logging behavior changes.
+- `Validation note (2026-02-26, Mobile-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` ✅. Route/role-gating checks completed via code-path review (leader-only broadcast CTA remains leader dashboard branch). API assumptions checked against `docs/spec/04_api_contracts.md` (`GET /api/channels`, `GET/POST /api/channels/{id}/messages`, `POST /api/channels/{id}/broadcast`, `POST /api/coaching/broadcast`). Runtime screenshots not captured in this environment; controller/device validation still required.
+- `Current blocker status (2026-02-26, Mobile-1, post-pass):` `none` for code deliverable; remaining validation gap is screenshot proof/runtime walkthrough only.
+- `Controller review note (2026-02-26):` Accepted. W2 stayed within manual-spec-driven comms entry routing (context labels/scopes and leader-gated composer shell access) without introducing backend/API writes or KPI logging regressions. Docs sync rule satisfied; local `tsc` re-check passed. Runtime screenshots remain validation debt but not a block for shell/context routing.
 
 #### Primary Objective
 Implement the first functional communication entry points on existing Compass surfaces using documented contracts where available:

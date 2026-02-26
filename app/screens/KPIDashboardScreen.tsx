@@ -247,6 +247,23 @@ type CoachingShellScreen =
   | 'coaching_journeys'
   | 'coaching_journey_detail'
   | 'coaching_lesson_detail';
+type CoachingChannelScope = 'team' | 'challenge' | 'sponsor' | 'community';
+type CoachingShellEntrySource =
+  | 'home'
+  | 'challenge_details'
+  | 'team_leader_dashboard'
+  | 'team_member_dashboard'
+  | 'user_tab'
+  | 'unknown';
+type CoachingShellContext = {
+  source: CoachingShellEntrySource;
+  preferredChannelScope: CoachingChannelScope | null;
+  preferredChannelLabel: string | null;
+  threadTitle: string | null;
+  threadSub: string | null;
+  broadcastAudienceLabel: string | null;
+  broadcastRoleAllowed: boolean;
+};
 
 type PendingDirectLog = {
   kpiId: string;
@@ -1399,6 +1416,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [challengeMemberCreateMode, setChallengeMemberCreateMode] = useState<'public' | 'team'>('team');
   const [teamFlowScreen, setTeamFlowScreen] = useState<TeamFlowScreen>('dashboard');
   const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox');
+  const [coachingShellContext, setCoachingShellContext] = useState<CoachingShellContext>({
+    source: 'unknown',
+    preferredChannelScope: null,
+    preferredChannelLabel: null,
+    threadTitle: null,
+    threadSub: null,
+    broadcastAudienceLabel: null,
+    broadcastRoleAllowed: false,
+  });
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
@@ -3920,6 +3946,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     if (tab === 'user') {
       setViewMode('log');
       setCoachingShellScreen('inbox');
+      setCoachingShellContext({
+        source: 'user_tab',
+        preferredChannelScope: null,
+        preferredChannelLabel: null,
+        threadTitle: null,
+        threadSub: null,
+        broadcastAudienceLabel: null,
+        broadcastRoleAllowed: false,
+      });
       return;
     }
     Alert.alert('Coming next', 'This section is planned for later sprint scope.');
@@ -4596,8 +4631,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         : 'Join to track progress and appear on the leaderboard.';
   const challengeMemberResultsRequiresUpgrade =
     teamPersonaVariant === 'member' && challengeIsCompleted && !challengeSelected?.joined;
-  const openCoachingShell = useCallback((screen: CoachingShellScreen) => {
+  const openCoachingShell = useCallback((screen: CoachingShellScreen, contextPatch?: Partial<CoachingShellContext>) => {
     setCoachingShellScreen(screen);
+    if (contextPatch) {
+      setCoachingShellContext((prev) => ({
+        ...prev,
+        ...contextPatch,
+      }));
+    }
     setActiveTab('user');
     setViewMode('log');
   }, []);
@@ -5282,15 +5323,29 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <Text style={styles.coachingEntryTitle}>
                         {challengeIsCompleted ? 'Challenge Coaching & Updates' : 'Challenge Updates & Coaching'}
                       </Text>
-                      <Text style={styles.coachingEntryBadge}>W1 shell</Text>
+                      <Text style={styles.coachingEntryBadge}>W2 comms</Text>
                     </View>
                     <Text style={styles.coachingEntrySub}>
-                      Manual-spec-driven placeholder CTAs for challenge updates and coaching prompts. Challenge progress/results ownership stays on this screen.
+                      Manual-spec-driven comms entry wiring for challenge/sponsor updates plus coaching prompts. Challenge progress/results ownership stays on this screen.
                     </Text>
                     <View style={styles.coachingEntryButtonRow}>
                       <TouchableOpacity
                         style={styles.coachingEntryPrimaryBtn}
-                        onPress={() => openCoachingShell('inbox_channels')}
+                        onPress={() =>
+                          openCoachingShell('channel_thread', {
+                            source: 'challenge_details',
+                            preferredChannelScope: challengeHasSponsorSignal ? 'sponsor' : 'challenge',
+                            preferredChannelLabel: challengeHasSponsorSignal ? 'Sponsor / Challenge Updates' : 'Challenge Updates',
+                            threadTitle: challengeHasSponsorSignal
+                              ? `${challengeSelected?.title ?? 'Challenge'} Sponsor Channel`
+                              : `${challengeSelected?.title ?? 'Challenge'} Channel`,
+                            threadSub: challengeHasSponsorSignal
+                              ? 'Scoped sponsor/challenge communication thread shell (W2 entry routing).'
+                              : 'Scoped challenge communication thread shell (W2 entry routing).',
+                            broadcastAudienceLabel: null,
+                            broadcastRoleAllowed: false,
+                          })
+                        }
                       >
                         <Text style={styles.coachingEntryPrimaryBtnText}>Challenge Updates</Text>
                       </TouchableOpacity>
@@ -5885,10 +5940,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <View style={styles.coachingEntryCard}>
                         <View style={styles.coachingEntryHeaderRow}>
                           <Text style={styles.coachingEntryTitle}>My Coaching Progress</Text>
-                          <Text style={styles.coachingEntryBadge}>W1 shell</Text>
+                          <Text style={styles.coachingEntryBadge}>W2 comms</Text>
                         </View>
                         <Text style={styles.coachingEntrySub}>
-                          Placeholder coaching progress and team updates entry points for Team Member participation.
+                          Team Member coaching progress shell plus team updates channel entry routing (W2 comms entry point pass).
                         </Text>
                         <View style={styles.coachingEntryButtonRow}>
                           <TouchableOpacity
@@ -5899,7 +5954,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={styles.coachingEntrySecondaryBtn}
-                            onPress={() => openCoachingShell('inbox_channels')}
+                            onPress={() =>
+                              openCoachingShell('inbox_channels', {
+                                source: 'team_member_dashboard',
+                                preferredChannelScope: 'team',
+                                preferredChannelLabel: 'Team Updates',
+                                threadTitle: 'Team Updates',
+                                threadSub: 'Team-scoped communication thread shell from Team Member dashboard.',
+                                broadcastAudienceLabel: null,
+                                broadcastRoleAllowed: false,
+                              })
+                            }
                           >
                             <Text style={styles.coachingEntrySecondaryBtnText}>Team Updates</Text>
                           </TouchableOpacity>
@@ -6091,10 +6156,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <View style={styles.coachingEntryCard}>
                       <View style={styles.coachingEntryHeaderRow}>
                         <Text style={styles.coachingEntryTitle}>Team Coaching Summary</Text>
-                        <Text style={styles.coachingEntryBadge}>W1 shell</Text>
+                        <Text style={styles.coachingEntryBadge}>W2 comms</Text>
                       </View>
                       <Text style={styles.coachingEntrySub}>
-                        Leader coaching summary, updates, and role-gated broadcast compose placeholders. Functional comms send remains deferred to W2.
+                        Leader coaching summary with team updates channel entry and role-gated broadcast composer entry. Broadcast send/write remains deferred pending API wiring.
                       </Text>
                       <View style={styles.coachingEntryButtonRow}>
                         <TouchableOpacity
@@ -6105,16 +6170,36 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.coachingEntrySecondaryBtn}
-                          onPress={() => openCoachingShell('inbox_channels')}
+                          onPress={() =>
+                            openCoachingShell('inbox_channels', {
+                              source: 'team_leader_dashboard',
+                              preferredChannelScope: 'team',
+                              preferredChannelLabel: 'Team Updates',
+                              threadTitle: 'Team Updates',
+                              threadSub: 'Team-scoped communication channel/thread entry from Team Leader dashboard.',
+                              broadcastAudienceLabel: 'The Elite Group',
+                              broadcastRoleAllowed: true,
+                            })
+                          }
                         >
                           <Text style={styles.coachingEntrySecondaryBtnText}>Team Updates</Text>
                         </TouchableOpacity>
                       </View>
                       <TouchableOpacity
                         style={styles.coachingEntryDarkBtn}
-                        onPress={() => openCoachingShell('coach_broadcast_compose')}
+                        onPress={() =>
+                          openCoachingShell('coach_broadcast_compose', {
+                            source: 'team_leader_dashboard',
+                            preferredChannelScope: 'team',
+                            preferredChannelLabel: 'Team Updates',
+                            threadTitle: 'Team Broadcast Thread',
+                            threadSub: 'Leader-scoped team communication context for broadcast compose shell.',
+                            broadcastAudienceLabel: 'The Elite Group',
+                            broadcastRoleAllowed: true,
+                          })
+                        }
                       >
-                        <Text style={styles.coachingEntryDarkBtnText}>Broadcast Preview (Role-Gated Shell)</Text>
+                        <Text style={styles.coachingEntryDarkBtnText}>Broadcast Composer (Role-Gated)</Text>
                       </TouchableOpacity>
                     </View>
 
@@ -6140,13 +6225,31 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         ) : activeTab === 'user' ? (
           <View style={styles.coachingShellWrap}>
             {(() => {
+              const sourceLabelByKey: Record<CoachingShellEntrySource, string> = {
+                home: 'Home / Priority',
+                challenge_details: 'Challenge Details',
+                team_leader_dashboard: 'Team Dashboard (Leader)',
+                team_member_dashboard: 'Team Dashboard (Member)',
+                user_tab: 'User Tab',
+                unknown: 'Direct Shell',
+              };
+              const preferredChannelScope = coachingShellContext.preferredChannelScope;
+              const sourceLabel = sourceLabelByKey[coachingShellContext.source];
+              const roleCanOpenBroadcast = teamPersonaVariant === 'leader' || coachingShellContext.broadcastRoleAllowed;
+              const contextualThreadTitle = coachingShellContext.threadTitle ?? 'Channel Thread';
+              const contextualThreadSub =
+                coachingShellContext.threadSub ??
+                'Context-scoped communication thread shell. Message send/read behavior remains deferred in W2.';
+              const contextualChannelSub = preferredChannelScope
+                ? `W2 scoped channel entry from ${sourceLabel}. Preferred context: ${coachingShellContext.preferredChannelLabel ?? preferredChannelScope}.`
+                : 'W2 channel list shell with context-aware entry routing. Team/challenge/sponsor data fetch remains deferred.';
               const shellMeta: Record<
                 CoachingShellScreen,
                 { title: string; sub: string; badge: string; primary?: { label: string; to: CoachingShellScreen }[] }
               > = {
                 inbox: {
                   title: 'Inbox',
-                  sub: 'Manual-spec-driven W1 shell for communication entry and coaching preferences routing.',
+                  sub: 'Manual-spec-driven shell for communication entry and coaching preferences routing (W2 entry-point wiring active).',
                   badge: 'communication',
                   primary: [
                     { label: 'Open Channels', to: 'inbox_channels' },
@@ -6155,19 +6258,26 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 },
                 inbox_channels: {
                   title: 'Inbox / Channels',
-                  sub: 'Placeholder channel list shell. Team/challenge/sponsor context filtering is deferred to W2.',
+                  sub: contextualChannelSub,
                   badge: 'communication',
-                  primary: [{ label: 'Open Channel Thread', to: 'channel_thread' }],
+                  primary: [
+                    {
+                      label: preferredChannelScope ? `Open ${coachingShellContext.preferredChannelLabel ?? 'Context'} Thread` : 'Open Channel Thread',
+                      to: 'channel_thread',
+                    },
+                  ],
                 },
                 channel_thread: {
-                  title: 'Channel Thread',
-                  sub: 'Placeholder thread shell for team/challenge/sponsor updates. No message send/read behavior in W1.',
+                  title: contextualThreadTitle,
+                  sub: contextualThreadSub,
                   badge: 'communication',
                 },
                 coach_broadcast_compose: {
                   title: 'Broadcast Composer',
-                  sub: 'Role-gated compose shell only. Functional send flow is deferred to W2 and backend contract validation.',
-                  badge: 'leader-gated',
+                  sub: roleCanOpenBroadcast
+                    ? `Role-gated compose shell entry from ${sourceLabel}. Audience context: ${coachingShellContext.broadcastAudienceLabel ?? 'team/channel scope TBD'}. Send/write remains deferred pending API integration.`
+                    : 'Leader-only broadcast composer. Current persona is not allowed to open/send broadcasts.',
+                  badge: roleCanOpenBroadcast ? 'leader-gated' : 'blocked',
                 },
                 coaching_journeys: {
                   title: 'Coaching Journeys',
@@ -6188,11 +6298,23 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 },
               };
               const meta = shellMeta[coachingShellScreen];
-              const channelRows = [
-                { label: 'Team Updates', context: 'team channel (placeholder)' },
-                { label: 'Challenge Updates', context: 'challenge channel (placeholder)' },
-                { label: 'Sponsor Updates', context: 'sponsor channel (placeholder)' },
-              ];
+              const channelRows = ([
+                { scope: 'team', label: 'Team Updates', context: 'team channel shell' },
+                { scope: 'challenge', label: 'Challenge Updates', context: 'challenge channel shell' },
+                { scope: 'sponsor', label: 'Sponsor Updates', context: 'sponsor channel shell' },
+                { scope: 'community', label: 'Community Updates', context: 'community channel shell' },
+              ] as const)
+                .filter((row) => {
+                  if (!preferredChannelScope) return true;
+                  return row.scope === preferredChannelScope || row.scope === 'community';
+                })
+                .map((row) => ({
+                  ...row,
+                  context:
+                    preferredChannelScope === row.scope
+                      ? `${row.context} • linked from ${sourceLabel}`
+                      : `${row.context} • optional`,
+                }));
               return (
                 <>
                   <View style={styles.coachingShellCard}>
@@ -6206,19 +6328,29 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <View style={styles.coachingShellActionRow}>
                       <TouchableOpacity
                         style={styles.coachingShellActionBtn}
-                        onPress={() => setCoachingShellScreen('inbox')}
+                        onPress={() =>
+                          openCoachingShell('inbox', {
+                            source: 'user_tab',
+                            preferredChannelScope: null,
+                            preferredChannelLabel: null,
+                            threadTitle: null,
+                            threadSub: null,
+                            broadcastAudienceLabel: null,
+                            broadcastRoleAllowed: false,
+                          })
+                        }
                       >
                         <Text style={styles.coachingShellActionBtnText}>Inbox</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.coachingShellActionBtn}
-                        onPress={() => setCoachingShellScreen('inbox_channels')}
+                        onPress={() => openCoachingShell('inbox_channels')}
                       >
                         <Text style={styles.coachingShellActionBtnText}>Channels</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.coachingShellActionBtn}
-                        onPress={() => setCoachingShellScreen('coaching_journeys')}
+                        onPress={() => openCoachingShell('coaching_journeys')}
                       >
                         <Text style={styles.coachingShellActionBtnText}>Journeys</Text>
                       </TouchableOpacity>
@@ -6227,7 +6359,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <TouchableOpacity
                         key={`${coachingShellScreen}-${action.to}`}
                         style={styles.coachingShellPrimaryBtn}
-                        onPress={() => setCoachingShellScreen(action.to)}
+                        onPress={() => openCoachingShell(action.to)}
                       >
                         <Text style={styles.coachingShellPrimaryBtnText}>{action.label}</Text>
                       </TouchableOpacity>
@@ -6238,7 +6370,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           <TouchableOpacity
                             key={row.label}
                             style={styles.coachingShellListRow}
-                            onPress={() => setCoachingShellScreen('channel_thread')}
+                            onPress={() =>
+                              openCoachingShell('channel_thread', {
+                                preferredChannelScope: row.scope,
+                                preferredChannelLabel: row.label,
+                                threadTitle: row.label,
+                                threadSub: `${row.context}. Placeholder thread surface only; send/read integration deferred.`,
+                                broadcastAudienceLabel:
+                                  row.scope === 'team' && roleCanOpenBroadcast ? coachingShellContext.broadcastAudienceLabel ?? 'The Elite Group' : null,
+                                broadcastRoleAllowed: row.scope === 'team' ? roleCanOpenBroadcast : false,
+                              })
+                            }
                           >
                             <View style={styles.coachingShellListIcon}>
                               <Text style={styles.coachingShellListIconText}>#</Text>
@@ -6256,16 +6398,24 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <View style={styles.coachingShellComposeCard}>
                         <Text style={styles.coachingShellComposeTitle}>Broadcast Compose (Shell)</Text>
                         <Text style={styles.coachingShellComposeSub}>
-                          Role-gated placeholder only. Message body, audience selectors, and send action will be added in W2.
+                          {roleCanOpenBroadcast
+                            ? `Leader-gated entry is wired. Audience context: ${coachingShellContext.broadcastAudienceLabel ?? 'team/channel scope TBD'}. Message send remains placeholder until API integration wiring.`
+                            : 'Broadcast is hidden for non-leader flows; this shell is shown only as a blocked fallback if opened directly.'}
                         </Text>
                         <View style={styles.coachingShellInputGhost}>
-                          <Text style={styles.coachingShellInputGhostText}>Subject / audience selectors (placeholder)</Text>
+                          <Text style={styles.coachingShellInputGhostText}>
+                            {roleCanOpenBroadcast
+                              ? `Audience selector: ${coachingShellContext.broadcastAudienceLabel ?? 'Scoped team/channel'} (placeholder)`
+                              : 'Audience selector unavailable for this persona'}
+                          </Text>
                         </View>
                         <View style={[styles.coachingShellInputGhost, styles.coachingShellInputGhostTall]}>
                           <Text style={styles.coachingShellInputGhostText}>Message body (placeholder)</Text>
                         </View>
                         <TouchableOpacity style={[styles.coachingShellPrimaryBtn, styles.disabled]} disabled>
-                          <Text style={styles.coachingShellPrimaryBtnText}>Send (W2)</Text>
+                          <Text style={styles.coachingShellPrimaryBtnText}>
+                            {roleCanOpenBroadcast ? 'Send (API wiring deferred)' : 'Leader Only'}
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     ) : null}
@@ -6279,13 +6429,23 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <View style={styles.coachingEntryButtonRow}>
                       <TouchableOpacity
                         style={styles.coachingEntrySecondaryBtn}
-                        onPress={() => setCoachingShellScreen('inbox')}
+                        onPress={() =>
+                          openCoachingShell('inbox', {
+                            source: 'user_tab',
+                            preferredChannelScope: null,
+                            preferredChannelLabel: null,
+                            threadTitle: null,
+                            threadSub: null,
+                            broadcastAudienceLabel: null,
+                            broadcastRoleAllowed: false,
+                          })
+                        }
                       >
                         <Text style={styles.coachingEntrySecondaryBtnText}>Notifications / Inbox</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.coachingEntrySecondaryBtn}
-                        onPress={() => setCoachingShellScreen('coaching_journeys')}
+                        onPress={() => openCoachingShell('coaching_journeys')}
                       >
                         <Text style={styles.coachingEntrySecondaryBtnText}>Coaching Preferences</Text>
                       </TouchableOpacity>
