@@ -368,6 +368,53 @@ Runtime delivery surfaces should consume a published handoff artifact/read model
 - It is not an approved schema or endpoint addition.
 - If implementation requires new endpoint families or structural schema changes, mark `decision needed` and update `DECISIONS_LOG.md` in the implementation change set.
 
+## Sponsored vs Paid Packaging Runtime Consumption Rules (Planning)
+
+This section formalizes how runtime delivery surfaces should treat sponsored and paid coaching packages without absorbing authoring or entitlement policy logic.
+
+### Sponsored coaching package runtime rules
+- Runtime may render:
+  - sponsor attribution/disclaimer requirements
+  - linked challenge context CTA(s)
+  - linked channel/journey entry points
+- Runtime must not:
+  - compute sponsor eligibility rules locally
+  - redefine challenge participation/results ownership
+  - treat sponsor-linked coaching content as challenge state
+- Required boundary remains:
+  - challenge system owns participation/eligibility/progress/results
+  - coaching runtime surfaces render content/comms experiences linked to sponsor/challenge context
+
+### Paid coaching product runtime rules
+- Runtime may render:
+  - entitlement-gated access states (allowed/blocked) using server-provided results
+  - paywall/upgrade CTA routing if provided by product policy
+  - package-linked journeys/channels when entitlement passes
+- Runtime must not:
+  - compute billing entitlement rules locally
+  - embed billing-authority-specific assumptions in coaching content rendering flows
+  - couple package access state to journey authoring state
+
+### Runtime fallback behavior when packaging/entitlement fields are missing
+- Show safe fallback (`unavailable` / `not currently accessible`) with non-destructive UX.
+- Do not infer entitlement from partial metadata.
+- Log/flag exact field gaps for backend-prep follow-on planning.
+
+## Packaging / Entitlement Contract-Gap Triage (Use Before UI Implementation)
+
+When launching packaging-aware runtime UI work, classify gaps explicitly:
+
+1. `UI-only` (no contract gap)
+- Existing endpoints/read models already provide package visibility + entitlement outcome + linked refs.
+
+2. `Backend-prep within existing endpoint families` (`decision needed` if scope impact is non-trivial)
+- Existing endpoint families can be extended/read-model shaped without net-new families.
+- Requires approval if it expands current sprint scope materially.
+
+3. `Net-new endpoint family or structural schema need` (`decision needed`, explicit approval required)
+- Do not proceed in UI assignment.
+- Create backend-prep assignment and require `DECISIONS_LOG.md` update in implementation change set.
+
 ### Phase W5 — AI coaching assist (approval-first)
 - Route from coaching surfaces to AI suggestion review/approval queues (leader/admin/coach)
 - No direct AI auto-send path

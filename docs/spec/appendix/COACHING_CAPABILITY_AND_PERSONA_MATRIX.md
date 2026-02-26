@@ -128,6 +128,93 @@ Planning model only; no schema/API changes implied by this section.
 - `Paid coaching` entitlement gating is an access/packaging concern, not a journey-authoring concern.
 - Runtime delivery surfaces consume published package assignments and content metadata; they do not mutate package definitions.
 
+## Packaging Lifecycle + Ownership Approval Matrix (Implementation-Ready Planning)
+
+Planning-level only. These are target states/workflows for future UI/backend work and are not approved schema enums.
+
+| Package type | Lifecycle states (minimum) | Coach | Admin operator | Sponsor ops | Runtime delivery impact |
+|---|---|---|---|---|---|
+| `team_coaching_program` | `draft -> in_review -> approved -> scheduled -> published -> paused/retired/rolled_back` | authors content/bundle, targeting intent | approves/publishes/pauses/rolls back (or policy-configured coach self-publish) | none | Team modules + journeys/comms visible only when published + targeted + entitled |
+| `sponsored_challenge_coaching_campaign` | `draft -> sponsor_review -> admin_review -> approved -> scheduled -> published -> paused/retired/rolled_back` | authors coaching content/campaign package | governance + final approval + rollback | campaign constraints/assets/audience approvals in sponsor scope | Challenge overlays + linked channels/journeys visible only to eligible sponsor-targeted participants |
+| `paid_coaching_product` | `draft -> in_review -> approved_catalog -> scheduled -> published -> paused/retired/rolled_back` | authors content and package composition | catalog governance, entitlement policy ops, rollback | none (except optional sponsor-funded paid-like offers if explicitly approved) | Runtime surfaces require positive entitlement + visibility gating outcome |
+
+### Ownership / approval rules by package type (required)
+- `team_coaching_program`
+  - Coach owns content/bundle authoring.
+  - Admin operator owns governance and operational lifecycle controls.
+  - Team leader/member runtime users are delivery consumers only.
+- `sponsored_challenge_coaching_campaign`
+  - Coach owns coaching content authoring.
+  - Sponsor ops owns sponsor campaign constraints/assets and sponsor approval inputs.
+  - Admin operator owns platform governance and final operational approval/rollback.
+  - Challenge system continues to own challenge participation/results lifecycle independently.
+- `paid_coaching_product`
+  - Coach owns content authoring and package composition intent.
+  - Admin operator owns catalog visibility, entitlement policy, and operational lifecycle.
+  - Billing authority implementation details remain `decision needed` and are not implied by this planning model.
+
+## Runtime Consumption Contract Assumptions (Packaging + Entitlements)
+
+Member runtime delivery surfaces should consume packaging/entitlement outcomes as read-model inputs, not compute packaging rules locally.
+
+### Assumed runtime inputs (planning-level)
+- `package_type`
+- `package_id` / published assignment reference
+- `visibility_state` (runtime-usable state derived from lifecycle)
+- `target_match` (whether current user/context matches package targeting)
+- `entitlement_result`
+  - `allowed`
+  - `blocked_not_entitled`
+  - `blocked_not_in_audience`
+  - `blocked_schedule`
+  - `blocked_policy`
+- `linked_context_refs`
+  - challenge / sponsor / team / channel / journey identifiers as applicable
+- `display_requirements`
+  - disclaimer / sponsor attribution / paywall CTA requirements
+
+### Runtime behavior boundaries (required)
+- Runtime may:
+  - show/hide CTAs/modules based on entitlement/visibility outcomes
+  - render disclaimers and package-linked content references
+  - route to linked coaching/channel/challenge surfaces
+- Runtime must not:
+  - decide package approval/lifecycle transitions
+  - rewrite package targeting rules
+  - infer sponsor or paid entitlement rules beyond server-provided outcomes
+  - mutate KPI logging/forecast base values as part of packaging logic
+
+## Packaging Risks and `Decision Needed` Items (Planning)
+
+These are explicit planning risks and should be carried into implementation prompts / RFCs.
+
+1. `decision needed` — Billing authority and entitlement source-of-truth
+- Paid coaching product gating depends on unresolved billing authority (`DEP-001` adjacent impact).
+- Implementation phase must log a decision if packaging/entitlement boundaries introduce structural schema/API changes.
+
+2. `decision needed` — Sponsor approval workflow depth
+- Whether sponsor approval is mandatory for every sponsor-linked content revision vs package-level approvals only.
+- Impacts lifecycle state complexity and audit requirements.
+
+3. `decision needed` — Entitlement read-model location and shape
+- Runtime UI needs stable entitlement outcomes; if current endpoints cannot provide them, backend-prep may be required.
+- Any new endpoint/read-model family beyond documented contracts requires explicit scope approval.
+
+4. `decision needed` — Multi-tenant packaging reuse rules
+- Can one coach-authored package be reused across orgs/sponsors with localized disclaimers, or must publishing be org/sponsor-specific?
+- Impacts package identity/versioning semantics (planning only for now).
+
+5. `decision needed` — Role overlap (`Coach` vs `Team Leader`)
+- If leaders can author or self-publish coaching content in some orgs, approval and audit paths may fork.
+- Must remain server-enforced; UI visibility alone is insufficient.
+
+## Follow-On Assignment Suggestions (If Contract Gaps Block Implementation)
+
+- `COACHING-BACKEND-PREP-PACKAGE-READMODEL-A` (approval-gated)
+  - Goal: define/implement runtime packaging + entitlement read-models within existing endpoint families where possible; flag net-new endpoint behavior explicitly.
+- `COACHING-UI-PACKAGE-VISIBILITY-GATING-A`
+  - Goal: apply server-provided packaging/entitlement outcomes to runtime coaching/challenge surfaces without embedding policy logic in UI.
+
 ## Intended Surface Hosting Matrix (Where Capabilities Live)
 
 This defines where coaching appears in the app. Coaching is often a module/overlay inside an existing screen, not always a dedicated new screen.
