@@ -1542,9 +1542,12 @@ function AdminUsersPanel({
   calibrationEvents: AdminUserCalibrationEvent[];
   calibrationActionLoading: boolean;
 }) {
+  type UserSortKey = 'user' | 'role' | 'tier' | 'status' | 'last_active' | 'user_id';
   const [showAllCalibrationRows, setShowAllCalibrationRows] = useState(false);
   const [showAllCalibrationEvents, setShowAllCalibrationEvents] = useState(false);
   const [userActivityFeed, setUserActivityFeed] = useState<Array<{ id: string; tone: 'success' | 'error' | 'info'; text: string; at: string }>>([]);
+  const [sortKey, setSortKey] = useState<UserSortKey | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const pushUserActivity = (tone: 'success' | 'error' | 'info', text: string) => {
     setUserActivityFeed((prev) => {
@@ -1606,9 +1609,51 @@ function AdminUsersPanel({
     const bTime = new Date(b.created_at ?? b.updated_at ?? 0).getTime();
     return bTime - aTime;
   });
+  const sortedFilteredRows = useMemo(() => {
+    if (!sortKey) return filteredRows;
+    return [...filteredRows].sort((a, b) => {
+      let result = 0;
+      switch (sortKey) {
+        case 'user': {
+          const aName = (a.name ?? '').trim();
+          const bName = (b.name ?? '').trim();
+          const aEmail = (a.email ?? knownUserEmailsById[a.id] ?? '').trim();
+          const bEmail = (b.email ?? knownUserEmailsById[b.id] ?? '').trim();
+          result = compareStrings(aName || aEmail || a.id, bName || bEmail || b.id);
+          break;
+        }
+        case 'role':
+          result = compareStrings(a.role ?? '', b.role ?? '') || compareStrings(a.id, b.id);
+          break;
+        case 'tier':
+          result = compareStrings(a.tier ?? '', b.tier ?? '') || compareStrings(a.id, b.id);
+          break;
+        case 'status':
+          result = compareStrings(a.account_status ?? '', b.account_status ?? '') || compareStrings(a.id, b.id);
+          break;
+        case 'last_active':
+          result = compareDates(a.last_activity_timestamp, b.last_activity_timestamp) || compareStrings(a.id, b.id);
+          break;
+        case 'user_id':
+          result = compareStrings(a.id, b.id);
+          break;
+      }
+
+      if (result !== 0) return applySortDirection(result, sortDirection);
+
+      if (showRecentFirst) {
+        const aKnown = knownUserEmailsById[a.id] ?? '';
+        const bKnown = knownUserEmailsById[b.id] ?? '';
+        const aIsCreatedInSession = aKnown ? 1 : 0;
+        const bIsCreatedInSession = bKnown ? 1 : 0;
+        if (aIsCreatedInSession !== bIsCreatedInSession) return bIsCreatedInSession - aIsCreatedInSession;
+      }
+      return 0;
+    });
+  }, [filteredRows, knownUserEmailsById, showRecentFirst, sortDirection, sortKey]);
   const diagnostics = calibrationSnapshot?.diagnostics ?? null;
   const calibrationRows = calibrationSnapshot?.rows ?? [];
-  const selectedVisibleRows = filteredRows.slice(0, rowLimit);
+  const selectedVisibleRows = sortedFilteredRows.slice(0, rowLimit);
   const selectedUserEmail = selectedUser ? selectedUser.email ?? knownUserEmailsById[selectedUser.id] ?? null : null;
   const hasPendingUserChanges = Boolean(
     selectedUser &&
@@ -1639,8 +1684,9 @@ function AdminUsersPanel({
     (testUsersOnly ? 1 : 0);
   const hasNoUserResults = !loading && !error && rows.length > 0 && filteredRows.length === 0;
   const selectedUserHiddenByFilters = Boolean(
-    selectedUser && !filteredRows.some((row) => row.id === selectedUser.id)
+    selectedUser && !sortedFilteredRows.some((row) => row.id === selectedUser.id)
   );
+  const activeSortLabel = sortKey ? `${sortKey.replace('_', ' ')} (${sortDirection})` : (showRecentFirst ? 'recent-first heuristic' : 'default order');
   const clearUserFiltersAndRecovery = () => {
     onSearchQueryChange('');
     onRoleFilterChange('all');
@@ -1649,6 +1695,20 @@ function AdminUsersPanel({
     if (!showRecentFirst) onToggleShowRecentFirst();
     onResetRowLimit();
   };
+  const onUserSortHeaderPress = (nextKey: UserSortKey) => {
+    if (sortKey === nextKey) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(nextKey);
+      setSortDirection(nextKey === 'last_active' ? 'desc' : 'asc');
+    }
+  };
+  const userSortLabel = (key: UserSortKey, label: string) =>
+    `${label}${sortKey === key ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''}`;
+
+  useEffect(() => {
+    onResetRowLimit();
+  }, [searchQuery, roleFilter, statusFilter, testUsersOnly, showRecentFirst, sortKey, sortDirection]);
 
   return (
     <View style={styles.panel}>
@@ -1858,6 +1918,7 @@ function AdminUsersPanel({
             {filteredRows.length} filtered / {rows.length} total
             {activeUserFilterCount ? ` • ${activeUserFilterCount} filter${activeUserFilterCount === 1 ? '' : 's'} active` : ' • no filters'}
             {showRecentFirst ? ' • recent-first sort' : ''}
+            {sortKey ? ` • column sort: ${activeSortLabel}` : ''}
           </Text>
           <View style={styles.formActionsRow}>
             {activeUserFilterCount > 0 || !showRecentFirst ? (
@@ -1868,6 +1929,11 @@ function AdminUsersPanel({
             {searchQuery.trim() ? (
               <TouchableOpacity style={styles.smallGhostButton} onPress={() => onSearchQueryChange('')}>
                 <Text style={styles.smallGhostButtonText}>Clear search</Text>
+              </TouchableOpacity>
+            ) : null}
+            {sortKey ? (
+              <TouchableOpacity style={styles.smallGhostButton} onPress={() => setSortKey(null)}>
+                <Text style={styles.smallGhostButtonText}>Reset sort</Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -1971,12 +2037,16 @@ function AdminUsersPanel({
           {!loading && !error ? (
             <>
               <View style={[styles.formHeaderRow, { paddingHorizontal: 12 }]}>
-                <Text style={styles.metaRow}>Rows shown: {Math.min(selectedVisibleRows.length, filteredRows.length)} of {filteredRows.length} filtered ({rows.length} total)</Text>
+                <Text style={styles.metaRow}>
+                  {filteredRows.length === 0
+                    ? (rows.length === 0 ? 'No user rows loaded yet.' : `No users match current filters (${rows.length} total loaded)`)
+                    : `Showing ${selectedVisibleRows.length} of ${filteredRows.length} filtered rows (${rows.length} total loaded)`}
+                </Text>
                 <View style={styles.formActionsRow}>
                   {filteredRows.length > rowLimit ? (
                     <TouchableOpacity style={styles.smallGhostButton} onPress={onShowMoreRows}>
                       <Text style={styles.smallGhostButtonText}>
-                        Show {Math.min(16, filteredRows.length - rowLimit)} more
+                        Show more ({Math.max(0, filteredRows.length - rowLimit)} left)
                       </Text>
                     </TouchableOpacity>
                   ) : null}
@@ -1988,12 +2058,36 @@ function AdminUsersPanel({
                 </View>
               </View>
               <View style={styles.tableHeaderRow}>
-                <Text style={[styles.tableHeaderCell, styles.colMd]}>User</Text>
-                <Text style={[styles.tableHeaderCell, styles.colMd]}>Role</Text>
-                <Text style={[styles.tableHeaderCell, styles.colSm]}>Tier</Text>
-                <Text style={[styles.tableHeaderCell, styles.colSm]}>Status</Text>
-                <Text style={[styles.tableHeaderCell, styles.colSm]}>Last Active</Text>
-                <Text style={[styles.tableHeaderCell, styles.colMd]}>User ID</Text>
+                <Pressable style={styles.colMd} onPress={() => onUserSortHeaderPress('user')} accessibilityRole="button">
+                  <Text style={[styles.tableHeaderCell, sortKey === 'user' && styles.tableHeaderCellActive]}>
+                    {userSortLabel('user', 'User')}
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.colMd} onPress={() => onUserSortHeaderPress('role')} accessibilityRole="button">
+                  <Text style={[styles.tableHeaderCell, sortKey === 'role' && styles.tableHeaderCellActive]}>
+                    {userSortLabel('role', 'Role')}
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.colSm} onPress={() => onUserSortHeaderPress('tier')} accessibilityRole="button">
+                  <Text style={[styles.tableHeaderCell, sortKey === 'tier' && styles.tableHeaderCellActive]}>
+                    {userSortLabel('tier', 'Tier')}
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.colSm} onPress={() => onUserSortHeaderPress('status')} accessibilityRole="button">
+                  <Text style={[styles.tableHeaderCell, sortKey === 'status' && styles.tableHeaderCellActive]}>
+                    {userSortLabel('status', 'Status')}
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.colSm} onPress={() => onUserSortHeaderPress('last_active')} accessibilityRole="button">
+                  <Text style={[styles.tableHeaderCell, sortKey === 'last_active' && styles.tableHeaderCellActive]}>
+                    {userSortLabel('last_active', 'Last Active')}
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.colMd} onPress={() => onUserSortHeaderPress('user_id')} accessibilityRole="button">
+                  <Text style={[styles.tableHeaderCell, sortKey === 'user_id' && styles.tableHeaderCellActive]}>
+                    {userSortLabel('user_id', 'User ID')}
+                  </Text>
+                </Pressable>
               </View>
               {selectedVisibleRows.map((row) => {
                 const selected = selectedUser?.id === row.id;
@@ -2039,7 +2133,19 @@ function AdminUsersPanel({
                   </Pressable>
                 );
               })}
-              {filteredRows.length > rowLimit ? <Text style={styles.tableFootnote}>Showing first {rowLimit} filtered rows. Use “Show more” to inspect more users.</Text> : null}
+              {filteredRows.length === 0 ? (
+                <Text style={styles.tableFootnote}>
+                  {rows.length === 0
+                    ? 'No users are loaded yet. Refresh users or create a test user to continue.'
+                    : 'No users match the current filters. Use Reset filters or Refresh users to restore the list.'}
+                </Text>
+              ) : filteredRows.length > rowLimit ? (
+                <Text style={styles.tableFootnote}>
+                  More users are available. Use “Show more” to continue browsing without losing the selected user panel.
+                </Text>
+              ) : (
+                <Text style={styles.tableFootnote}>End of filtered user results.</Text>
+              )}
               {hasNoUserResults ? (
                 <View style={styles.usersNoResultsCard}>
                   <Text style={styles.usersNoResultsTitle}>No users match the current filters</Text>
