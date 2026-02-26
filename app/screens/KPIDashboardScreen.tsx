@@ -5336,7 +5336,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       const queued = body.suggestion ?? null;
       const queueStatus = queued?.ai_queue_read_model?.approval_queue?.queue_status ?? queued?.status ?? 'pending';
       setAiSuggestionQueueSuccess(
-        `Queued for approval (${String(queueStatus)}). No send/publish occurred; human approval remains required.`
+        `Queued for approval review (${String(queueStatus).replace(/_/g, ' ')}). No send/publish occurred; human approval remains required.`
       );
       setAiAssistNotice('AI suggestion queued for approval review. Human send/publish still uses existing explicit actions only.');
       await fetchAiSuggestions();
@@ -8958,7 +8958,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             </View>
             <View style={styles.aiAssistQueueCard}>
               <View style={styles.aiAssistQueueCardTopRow}>
-                <Text style={styles.aiAssistQueueTitle}>Approval Queue Status</Text>
+                <Text style={styles.aiAssistQueueTitle}>Approval Queue (Review-Only)</Text>
                 {aiSuggestionListLoading ? <ActivityIndicator size="small" /> : null}
               </View>
               {aiSuggestionListError ? <Text style={styles.aiAssistQueueError}>{aiSuggestionListError}</Text> : null}
@@ -8973,7 +8973,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 </Text>
               ) : (
                 <Text style={styles.aiAssistQueueSummaryText}>
-                  Queue summary unavailable in this session. You can still queue a draft for approval.
+                  Queue summary unavailable in this session. Queueing still creates a pending review item only (no send/publish).
                 </Text>
               )}
               {(() => {
@@ -8996,7 +8996,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 if (rows.length === 0) {
                   return (
                     <Text style={styles.aiAssistQueueRecentEmpty}>
-                      No AI suggestions returned yet for this user/context. Queueing remains approval-first and advisory only.
+                      No recent AI review items for this user/context yet. Queueing remains approval-first and advisory only.
                     </Text>
                   );
                 }
@@ -9056,7 +9056,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               onPress={() => void queueAiSuggestionForApproval()}
             >
               <Text style={styles.aiAssistPrimaryBtnText}>
-                {aiSuggestionQueueSubmitting ? 'Queueing…' : 'Queue AI Suggestion (Approval-First)'}
+                {aiSuggestionQueueSubmitting ? 'Queueing For Review…' : 'Queue For Approval Review'}
               </Text>
             </TouchableOpacity>
           </Pressable>

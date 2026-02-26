@@ -318,7 +318,7 @@ Produce the first implementation-ready coaching integration planning package (ma
 ### `COACHING-UI-W1-ALLOCATION-SHELLS`
 
 #### Snapshot
-- `Status:` `committed+pushed`
+- `Status:` `review`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W1 allocation + route shells`)
@@ -1480,6 +1480,10 @@ Define an implementation-ready W5 AI coach assist boundary package before any AI
 - `Continuation completion note (2026-02-26, Mobile-1):` Integrated W5 mobile AI assist review modal with backend `/api/ai/suggestions*` endpoints: queue submit (`POST /api/ai/suggestions`) now sends approval-first draft requests using host/context-derived scope strings, and modal queue status panel reads recent suggestions + queue summary from `GET /api/ai/suggestions`. Human send/publish flows remain separate and explicit; no AI execution path was added.
 - `Continuation validation note (2026-02-26, Mobile-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` ✅ pass after API integration. Route/CTA gating reviewed on approved insert points; queueing is disabled without draft text and still does not trigger any message/broadcast/challenge/KPI writes.
 - `Controller review note (2026-02-26, continuation):` Accepted and pushed as `eb128e8`. Mobile W5 AI assist shell now integrates with backend `/api/ai/suggestions*` for approval-first queue submit/read feedback while keeping human send/publish actions separate and preserving all disallowed mutation boundaries.
+- `Validation-refinement pickup note (2026-02-26, Mobile-1):` Starting W5 mobile validation-refinement pass to run seeded coaching journeys/channels + AI draft queue flow end-to-end, capture video-worthy screenshots, and tighten approval-first UX copy/feedback only (no backend/schema/API boundary changes).
+- `Current blocker status (2026-02-26, Mobile-1, validation-refinement completion):` `partial tooling limitation` — Simulator tap automation was reliable enough to capture seeded coaching journeys/channels + AI modal review states, but not reliable enough to reproducibly capture the final in-UI queue-success state after repeated screenshot-focus context switches. Queue success was verified end-to-end via authenticated `/api/ai/suggestions*` create+list calls against the same local backend and seeded runtime account.
+- `Validation-refinement completion note (2026-02-26, Mobile-1):` Captured runtime screenshots for seeded coaching journey detail, seeded inbox/channels list, and W5 AI approval-first review modal states in Expo Go on iOS Simulator, then ran authenticated end-to-end queue validation (`POST /api/ai/suggestions` + `GET /api/ai/suggestions`) confirming `pending` suggestion creation and `pending_review` queue read-model status. Applied copy-only refinements in the AI modal queue panel/button/success messaging to reinforce review-only/no-send behavior.
+- `Validation-refinement validation note (2026-02-26, Mobile-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` ✅ pass after copy refinements. Local backend (`HOST=0.0.0.0 PORT=4000`) + Expo (`localhost:8081`) runtime used for screenshots; no backend/schema/API boundary changes. Screenshot evidence paths and redacted API validation output included in worker report-back.
 
 #### Primary Objective
 Implement manual-spec-driven W5 AI draft request/review UI shells and approved insert-point CTAs without introducing autonomous AI actions:
