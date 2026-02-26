@@ -38,6 +38,9 @@ Only use long custom prompts when the board is missing required details or a one
 - Prefer separate worktrees for concurrent code workers.
 - One active code worker owns a high-conflict file/surface at a time (e.g. `app/screens/KPIDashboardScreen.tsx`).
 - If an assignment needs a shared file owned by another active assignment, worker must stop and report blocker.
+- One assignment should have exactly one active worker session by default.
+- If multiple workers are intentionally assigned to the same assignment, mark it explicitly in the assignment row/block as `shared coverage` (or `pairing`) and name each worker session.
+- If duplicate work starts unintentionally on the same assignment, controller must reconcile ownership in the board immediately and stop one worker before more code is written.
 - Board is the authority for assignment ownership and status; chat summaries do not override the board.
 
 ## Program Status (Current)
@@ -51,7 +54,7 @@ Only use long custom prompts when the board is missing required details or a one
 | ID | Status | Program status | Persona | Flow | Screens in scope | Owner | Branch / Worktree | Figma refs | Deliverable |
 |---|---|---|---|---|---|---|---|---|---|
 | `TEAM-MEMBER-PARITY-A` | `review` | `M3/M3b + approved M5 overlap` | `Team Member` | `team + challenge participation` | `Team Dashboard (member perspective)`, `Team Challenges`, `Challenge List`, `Challenge Details`, `Challenge Leaderboard / Results` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (recommend dedicated worktree) | `389-19791`, `389-21273`, `168-16436`, `173-13190`, `388-11502` | Large-swatch Team Member participation parity + wiring pass (role-appropriate CTA cleanup, member-view modules, team/challenge cross-surface consistency, docs status updates) |
-| `COACHING-INTEGRATION-A` | `active` | `M3/M3b baseline + approved M6 planning overlap (docs-only)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` | host surfaces across `Home`, `Challenge`, `Team`, `Profile` + future `Inbox/Journeys` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven (`COACHING_*` docs + intended wiring docs) | Large-swatch coaching integration allocation + wiring planning package (manual/non-Figma) with implementation-ready assignment specs for next coding wave |
+| `COACHING-INTEGRATION-A` | `review` | `M3/M3b baseline + approved M6 planning overlap (docs-only)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` | host surfaces across `Home`, `Challenge`, `Team`, `Profile` + future `Inbox/Journeys` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven (`COACHING_*` docs + intended wiring docs) | Large-swatch coaching integration allocation + wiring planning package completed; docs synced and next-wave `COACHING-UI-W1/W2` specs added (pending controller review) |
 
 ## Blocked Assignments
 
@@ -204,6 +207,8 @@ If screen availability/wiring/status changes, update BOTH in the same change set
 - `Controller note (2026-02-26):` Activated in parallel with `TEAM-MEMBER-PARITY-A` because it is docs-only and does not touch mobile app code.
 - `Approval note (2026-02-26):` User explicitly approved coaching planning integration and requested minimal chat handoff via assignment board.
 - `Worker note (2026-02-26, Coach-1 execution start):` Board status/blocker check complete; executing docs-only planning package now (`matrix`, `coaching wiring addendum`, `intended wiring`, `persona screenmap`) and will add next-wave assignment specs before returning for review.
+- `Completion note (2026-02-26, Coach-1):` Docs-only planning package completed. Added `W1`/`W2` route naming lock + entry points, coaching insert-point status table in intended wiring, persona-specific coaching screenmap rows (`manual-spec-driven`), tightened capability matrix with `build now / later` markers, and two next-wave implementation assignment specs.
+- `Validation note (2026-02-26, Coach-1):` Persona labels, destination names, and status legend checked for consistency across matrix/addendum/wiring/screenmap. No app/backend code files changed. Route naming changes remain planning-only; `DECISIONS_LOG.md` deferred until runtime implementation changes boundaries.
 
 #### Surfaces In Scope (Large Swath)
 1. `Home / Priority` (coaching nudge allocation only; no UI implementation)
@@ -285,6 +290,145 @@ Produce the first implementation-ready coaching integration planning package (ma
 
 #### Worker Launch (Short Form)
 `Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-INTEGRATION-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
+
+### `COACHING-UI-W1-ALLOCATION-SHELLS`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)`
+- `Persona:` `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `coaching / communication` (`W1 allocation + route shells`)
+- `Owner:` worker (mobile UI)
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred)
+- `Figma refs:` `manual-spec-driven` (no coaching Figma exports locked yet)
+- `Controller seed note (2026-02-26):` Destination naming + entry-point intent locked by `COACHING-INTEGRATION-A`; implement shells/placeholders only, no functional comms behavior.
+
+#### Primary Objective
+Create `W1` coaching allocation + shell placeholders in the mobile member app without changing backend/API/schema behavior:
+- reserve route/state destination names and shell screens for:
+  - `inbox`
+  - `inbox_channels`
+  - `channel_thread`
+  - `coach_broadcast_compose` (role-gated shell)
+  - `coaching_journeys`
+  - `coaching_journey_detail`
+  - `coaching_lesson_detail`
+- add lightweight placeholder entry points/CTAs on approved host surfaces
+- preserve existing KPI logging, challenge, and team flow behavior
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+
+#### Constraints (Hard)
+- UI-only shell/allocation work; no backend/API/schema changes
+- `manual-spec-driven` only (do not claim Figma parity)
+- No KPI engine/confidence/KPI logging behavior changes
+- Role-gated actions remain placeholder-only in `W1`
+- If shared-file ownership conflicts with another active assignment, stop and report blocker
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime route checks for each new shell destination
+- Confirm no backend/API/schema files changed
+- Confirm KPI logging behavior unchanged
+- If screen availability/wiring/status changes, update both:
+  - `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+  - `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `Capability group(s)`
+- `Screens / shell destinations added`
+- `Entry points added` (by host surface)
+- `What is placeholder-only vs functional`
+- `Files touched` (with line refs)
+- `KPI logging unchanged?` (`yes/no`)
+- `tsc result`
+- `Screenshot paths`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-UI-W1-ALLOCATION-SHELLS exactly as written. Follow the assignment block, validation requirements, and report-back format.`
+
+### `COACHING-UI-W2-COMMS-ENTRYPOINTS`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M3/M3b baseline + approved M6 planning overlap (communication-first coaching integration)`
+- `Persona:` `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `coaching / communication` (`W2 communication entry points`)
+- `Owner:` worker (mobile UI; backend contract verification only unless separately approved)
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree required if app code is active elsewhere)
+- `Figma refs:` `manual-spec-driven` unless controller later locks coaching exports
+- `Controller seed note (2026-02-26):` Execute after `COACHING-UI-W1-ALLOCATION-SHELLS` lands (or equivalent route shells exist).
+
+#### Primary Objective
+Implement the first functional communication entry points on existing Compass surfaces using documented contracts where available:
+- `Team Leader`
+  - Team Dashboard -> `inbox_channels`
+  - Team Dashboard -> `coach_broadcast_compose` (role-gated)
+- `Team Member`
+  - Team Dashboard member coaching module -> `inbox_channels`
+  - Challenge Details -> `channel_thread` (challenge context)
+- `Solo User`
+  - Challenge Details -> `inbox_channels` or `channel_thread` (sponsor/challenge/community scoped only)
+- Keep coaching journeys depth limited unless explicitly added to assignment scope
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+
+#### Constraints (Hard)
+- Respect sponsored overlap boundary:
+  - challenge owns participation/progress/results
+  - coaching/comms owns messaging/content delivery surfaces
+- No KPI engine/confidence/KPI logging behavior changes
+- `manual-spec-driven` unless coaching Figma refs are explicitly added
+- Document API/read-model gaps; do not invent schema/API changes without approval
+- Structural route/boundary changes beyond W1 naming lock require explicit note + decision-log assessment
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Route checks for leader/member/solo entry paths
+- Role-gating checks for broadcast entry visibility
+- API assumption validation against `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- Screenshot proof for each touched host surface + comms destination
+- Docs sync if statuses/wiring change (`screenmap` + `intended wiring`)
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `Capability group(s)`
+- `Host surfaces changed`
+- `Functional entry points wired` (persona + destination)
+- `Sponsored overlap boundaries honored` (what stayed separate)
+- `API assumptions / gaps`
+- `Files touched` (with line refs)
+- `tsc result`
+- `Screenshot paths`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-UI-W2-COMMS-ENTRYPOINTS exactly as written. Follow the assignment block, validation requirements, and report-back format.`
 
 ## Controller Review Checklist (Reference)
 - Sprint scope alignment (`CURRENT_SPRINT.md`) and explicit exception approval if applicable
