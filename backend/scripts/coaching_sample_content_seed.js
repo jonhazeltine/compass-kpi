@@ -1,0 +1,438 @@
+#!/usr/bin/env node
+/* eslint-disable no-console */
+require("dotenv").config();
+const { spawn } = require("child_process");
+const { Client } = require("pg");
+
+const BACKEND_URL = "http://127.0.0.1:4000";
+const PASSWORD = "TempPass!23456";
+const LABEL_PREFIX = "Seed Sample Coaching";
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+async function request(url, options = {}) {
+  const response = await fetch(url, options);
+  const text = await response.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = text;
+  }
+  return { status: response.status, data };
+}
+
+async function waitForHealth(timeoutMs = 10000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const health = await request(`${BACKEND_URL}/health`);
+      if (health.status === 200) return;
+    } catch {
+      // retry
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("backend health check timed out");
+}
+
+async function createAuthUser(email, password) {
+  const out = await request(`${process.env.SUPABASE_URL}/auth/v1/admin/users`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+    body: JSON.stringify({ email, password, email_confirm: true }),
+  });
+  assert(out.status < 300, `create auth user failed (${email}): ${out.status}`);
+  return out.data.id;
+}
+
+async function signIn(email, password) {
+  const out = await request(`${process.env.SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      apikey: process.env.SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ email, password }),
+  });
+  assert(out.status < 300, `sign in failed (${email}): ${out.status}`);
+  assert(out.data.access_token, `missing access token for ${email}`);
+  return out.data.access_token;
+}
+
+async function main() {
+  const required = [
+    "SUPABASE_URL",
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_DATABASE_URL",
+  ];
+  for (const key of required) assert(process.env[key], `${key} is required`);
+
+  const stamp = Date.now();
+  const seedTag = `seed-${stamp}`;
+
+  const emails = {
+    admin: `${seedTag}.coachadmin@example.com`,
+    leader: `${seedTag}.coachleader@example.com`,
+    member: `${seedTag}.coachmember@example.com`,
+    solo: `${seedTag}.coachsolo@example.com`,
+  };
+
+  const ids = {
+    adminUserId: null,
+    leaderUserId: null,
+    memberUserId: null,
+    soloUserId: null,
+    teamId: null,
+    journeys: [],
+    channels: [],
+  };
+
+  const server = spawn("node", ["dist/index.js"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  server.stdout.on("data", (chunk) => process.stdout.write(`[backend] ${String(chunk)}`));
+  server.stderr.on("data", (chunk) => process.stderr.write(`[backend] ${String(chunk)}`));
+
+  const db = new Client({
+    connectionString: process.env.SUPABASE_DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+  });
+  let dbConnected = false;
+
+  try {
+    await waitForHealth();
+    await db.connect();
+    dbConnected = true;
+
+    const tableCheck = await db.query(
+      `select
+        to_regclass('public.journeys')::text as journeys,
+        to_regclass('public.milestones')::text as milestones,
+        to_regclass('public.lessons')::text as lessons,
+        to_regclass('public.lesson_progress')::text as lesson_progress,
+        to_regclass('public.channels')::text as channels,
+        to_regclass('public.channel_messages')::text as channel_messages`
+    );
+    const t = tableCheck.rows[0];
+    assert(t.journeys === "journeys", "Missing coaching tables. Apply backend/sql/006_sprint4_coaching_ai_core.sql.");
+    assert(t.channels === "channels", "Missing communication tables. Apply backend/sql/005_sprint3_communication_core.sql.");
+
+    ids.adminUserId = await createAuthUser(emails.admin, PASSWORD);
+    ids.leaderUserId = await createAuthUser(emails.leader, PASSWORD);
+    ids.memberUserId = await createAuthUser(emails.member, PASSWORD);
+    ids.soloUserId = await createAuthUser(emails.solo, PASSWORD);
+
+    const tokens = {
+      admin: await signIn(emails.admin, PASSWORD),
+      leader: await signIn(emails.leader, PASSWORD),
+      member: await signIn(emails.member, PASSWORD),
+      solo: await signIn(emails.solo, PASSWORD),
+    };
+
+    await db.query(
+      `insert into public.users (id, role)
+       values ($1,'admin'), ($2,'agent'), ($3,'agent'), ($4,'agent')
+       on conflict (id) do update set role = excluded.role`,
+      [ids.adminUserId, ids.leaderUserId, ids.memberUserId, ids.soloUserId]
+    );
+
+    const teamOut = await request(`${BACKEND_URL}/teams`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${tokens.leader}`,
+      },
+      body: JSON.stringify({ name: `${LABEL_PREFIX} Team ${stamp}` }),
+    });
+    assert(teamOut.status === 201, `team create failed: ${teamOut.status}`);
+    ids.teamId = teamOut.data.team.id;
+
+    const addMember = await request(`${BACKEND_URL}/teams/${ids.teamId}/members`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${tokens.leader}`,
+      },
+      body: JSON.stringify({ user_id: ids.memberUserId }),
+    });
+    assert(addMember.status === 201, `team member add failed: ${addMember.status}`);
+
+    // Team-scoped journey for leader/member visibility and package read model coverage.
+    const teamJourneyInsert = await db.query(
+      `insert into public.journeys (title, description, team_id, created_by, is_active)
+       values ($1, $2, $3, $4, true)
+       returning id, title`,
+      [
+        `${LABEL_PREFIX}: Prospecting Reset (${seedTag})`,
+        "Seeded team coaching journey with mixed lesson progress states for runtime UI review.",
+        ids.teamId,
+        ids.leaderUserId,
+      ]
+    );
+    const teamJourney = { id: teamJourneyInsert.rows[0].id, title: teamJourneyInsert.rows[0].title };
+    ids.journeys.push(teamJourney);
+
+    const milestoneRows = [];
+    for (const [title, sortOrder] of [
+      ["Week 1: Pipeline Foundations", 1],
+      ["Week 2: Follow-up Discipline", 2],
+    ]) {
+      const out = await db.query(
+        `insert into public.milestones (journey_id, title, sort_order)
+         values ($1, $2, $3)
+         returning id, title, sort_order`,
+        [teamJourney.id, title, sortOrder]
+      );
+      milestoneRows.push(out.rows[0]);
+    }
+
+    const lessonRows = [];
+    const lessonBlueprints = [
+      [milestoneRows[0].id, "Call Block Setup", "Create a 60-minute power block and define your call list.", 1],
+      [milestoneRows[0].id, "First 25 Outreach Attempts", "Complete first outreach set and note objections.", 2],
+      [milestoneRows[1].id, "Follow-up Cadence", "Apply a two-touch follow-up cadence to warm leads.", 1],
+      [milestoneRows[1].id, "Conversation Scorecard", "Review conversation quality and next-step rates.", 2],
+    ];
+    for (const [milestoneId, title, body, sortOrder] of lessonBlueprints) {
+      const out = await db.query(
+        `insert into public.lessons (milestone_id, title, body, sort_order, is_active)
+         values ($1, $2, $3, $4, true)
+         returning id, milestone_id, title`,
+        [milestoneId, title, body, sortOrder]
+      );
+      lessonRows.push(out.rows[0]);
+    }
+
+    // Member progress: explicit examples of all three states.
+    const now = new Date();
+    await db.query(
+      `insert into public.lesson_progress (lesson_id, user_id, status, completed_at, updated_at)
+       values
+         ($1, $4, 'completed', $5, $6),
+         ($2, $4, 'in_progress', null, $6),
+         ($3, $4, 'not_started', null, $6)
+       on conflict (lesson_id, user_id) do update
+       set status = excluded.status,
+           completed_at = excluded.completed_at,
+           updated_at = excluded.updated_at`,
+      [
+        lessonRows[0].id,
+        lessonRows[1].id,
+        lessonRows[2].id,
+        ids.memberUserId,
+        new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
+        now.toISOString(),
+      ]
+    );
+
+    // Leader sees one in-progress row too.
+    await db.query(
+      `insert into public.lesson_progress (lesson_id, user_id, status, completed_at, updated_at)
+       values ($1, $2, 'in_progress', null, $3)
+       on conflict (lesson_id, user_id) do update
+       set status = excluded.status, completed_at = excluded.completed_at, updated_at = excluded.updated_at`,
+      [lessonRows[3].id, ids.leaderUserId, now.toISOString()]
+    );
+
+    // Solo/global journey for solo persona baseline list/detail visibility.
+    const soloJourneyInsert = await db.query(
+      `insert into public.journeys (title, description, team_id, created_by, is_active)
+       values ($1, $2, null, $3, true)
+       returning id, title`,
+      [
+        `${LABEL_PREFIX}: Solo Momentum Builder (${seedTag})`,
+        "Seeded solo coaching journey for non-team scoped visibility checks.",
+        ids.adminUserId,
+      ]
+    );
+    const soloJourney = { id: soloJourneyInsert.rows[0].id, title: soloJourneyInsert.rows[0].title };
+    ids.journeys.push(soloJourney);
+
+    const soloMilestone = await db.query(
+      `insert into public.milestones (journey_id, title, sort_order)
+       values ($1, $2, 1)
+       returning id`,
+      [soloJourney.id, "Solo Sprint"]
+    );
+    const soloLesson = await db.query(
+      `insert into public.lessons (milestone_id, title, body, sort_order, is_active)
+       values ($1, $2, $3, 1, true)
+       returning id`,
+      [soloMilestone.rows[0].id, "Daily Review Ritual", "Use a 10-minute closeout checklist after activity blocks."]
+    );
+    await db.query(
+      `insert into public.lesson_progress (lesson_id, user_id, status, completed_at, updated_at)
+       values ($1, $2, 'completed', $3, $4)
+       on conflict (lesson_id, user_id) do update
+       set status = excluded.status, completed_at = excluded.completed_at, updated_at = excluded.updated_at`,
+      [soloLesson.rows[0].id, ids.soloUserId, now.toISOString(), now.toISOString()]
+    );
+
+    // Channels/messages: team + sponsor for message thread and sponsor/package attribution visibility.
+    const channelInserts = [
+      {
+        type: "team",
+        name: `${LABEL_PREFIX} Team Coaching Room (${seedTag})`,
+        teamId: ids.teamId,
+        contextId: null,
+        createdBy: ids.leaderUserId,
+      },
+      {
+        type: "sponsor",
+        name: `${LABEL_PREFIX} Sponsor Coaching Bulletin (${seedTag})`,
+        teamId: ids.teamId,
+        contextId: ids.teamId, // UUID placeholder context for sponsor/channel linkage visibility
+        createdBy: ids.adminUserId,
+      },
+    ];
+    for (const ch of channelInserts) {
+      const out = await db.query(
+        `insert into public.channels (type, name, team_id, context_id, created_by, is_active)
+         values ($1, $2, $3, $4, $5, true)
+         returning id, type, name`,
+        [ch.type, ch.name, ch.teamId, ch.contextId, ch.createdBy]
+      );
+      ids.channels.push(out.rows[0]);
+    }
+
+    const teamChannel = ids.channels.find((c) => c.type === "team");
+    const sponsorChannel = ids.channels.find((c) => c.type === "sponsor");
+    assert(teamChannel, "seeded team channel missing");
+    assert(sponsorChannel, "seeded sponsor channel missing");
+
+    const membershipRows = [
+      [teamChannel.id, ids.leaderUserId, "admin"],
+      [teamChannel.id, ids.memberUserId, "member"],
+      [sponsorChannel.id, ids.memberUserId, "member"],
+      [sponsorChannel.id, ids.adminUserId, "admin"],
+    ];
+    for (const [channelId, userId, role] of membershipRows) {
+      await db.query(
+        `insert into public.channel_memberships (channel_id, user_id, role)
+         values ($1, $2, $3)
+         on conflict (channel_id, user_id) do update set role = excluded.role`,
+        [channelId, userId, role]
+      );
+      await db.query(
+        `insert into public.message_unreads (channel_id, user_id, unread_count, last_seen_at, updated_at)
+         values ($1, $2, 0, now(), now())
+         on conflict (channel_id, user_id) do update set updated_at = excluded.updated_at`,
+        [channelId, userId]
+      );
+    }
+
+    await db.query(
+      `insert into public.channel_messages (channel_id, sender_user_id, body, message_type)
+       values
+         ($1, $2, $3, 'message'),
+         ($1, $4, $5, 'message'),
+         ($6, $7, $8, 'broadcast'),
+         ($6, $4, $9, 'message')`,
+      [
+        teamChannel.id,
+        ids.leaderUserId,
+        `${LABEL_PREFIX}: Welcome to the team coaching room. Use this thread for weekly wins + blockers.`,
+        ids.memberUserId,
+        `${LABEL_PREFIX}: I completed the first call block and logged notes for objection patterns.`,
+        sponsorChannel.id,
+        ids.adminUserId,
+        `${LABEL_PREFIX}: Sponsor spotlight coaching tip of the week is now available.`,
+        `${LABEL_PREFIX}: Thanks — reviewing the sponsor challenge prep guide tonight.`,
+      ]
+    );
+
+    // Endpoint smoke verification for required families.
+    const memberJourneys = await request(`${BACKEND_URL}/api/coaching/journeys`, {
+      headers: { authorization: `Bearer ${tokens.member}` },
+    });
+    assert(memberJourneys.status === 200, `/api/coaching/journeys failed: ${memberJourneys.status}`);
+    assert(Array.isArray(memberJourneys.data.journeys), "journeys payload missing journeys[]");
+    const teamJourneyListItem = memberJourneys.data.journeys.find((j) => j.id === teamJourney.id);
+    assert(teamJourneyListItem, "member journeys list missing seeded team journey");
+    assert(teamJourneyListItem.packaging_read_model, "journeys list missing packaging_read_model");
+
+    const teamJourneyDetail = await request(`${BACKEND_URL}/api/coaching/journeys/${teamJourney.id}`, {
+      headers: { authorization: `Bearer ${tokens.member}` },
+    });
+    assert(teamJourneyDetail.status === 200, `/api/coaching/journeys/:id failed: ${teamJourneyDetail.status}`);
+    assert(Array.isArray(teamJourneyDetail.data.milestones) && teamJourneyDetail.data.milestones.length >= 2, "journey detail missing seeded milestones");
+    const detailLessons = teamJourneyDetail.data.milestones.flatMap((m) => m.lessons || []);
+    assert(detailLessons.some((l) => l.progress_status === "in_progress"), "journey detail missing in_progress lesson");
+    assert(detailLessons.some((l) => l.progress_status === "completed"), "journey detail missing completed lesson");
+
+    const memberProgress = await request(`${BACKEND_URL}/api/coaching/progress`, {
+      headers: { authorization: `Bearer ${tokens.member}` },
+    });
+    assert(memberProgress.status === 200, `/api/coaching/progress failed: ${memberProgress.status}`);
+    assert(Number(memberProgress.data.status_counts.in_progress) >= 1, "progress summary missing in_progress count");
+    assert(Number(memberProgress.data.status_counts.completed) >= 1, "progress summary missing completed count");
+    assert(Number(memberProgress.data.status_counts.not_started) >= 1, "progress summary missing not_started count");
+
+    const memberChannels = await request(`${BACKEND_URL}/api/channels`, {
+      headers: { authorization: `Bearer ${tokens.member}` },
+    });
+    assert(memberChannels.status === 200, `/api/channels failed: ${memberChannels.status}`);
+    assert(Array.isArray(memberChannels.data.channels), "channels payload missing channels[]");
+    const sponsorChannelListItem = memberChannels.data.channels.find((c) => c.id === sponsorChannel.id);
+    assert(sponsorChannelListItem, "member channels list missing seeded sponsor channel");
+    assert(
+      sponsorChannelListItem.packaging_read_model?.display_requirements?.sponsor_attribution_required === true,
+      "sponsor channel packaging attribution flag missing"
+    );
+
+    const teamChannelMessages = await request(`${BACKEND_URL}/api/channels/${teamChannel.id}/messages`, {
+      headers: { authorization: `Bearer ${tokens.member}` },
+    });
+    assert(teamChannelMessages.status === 200, `/api/channels/:id/messages failed: ${teamChannelMessages.status}`);
+    assert(Array.isArray(teamChannelMessages.data.messages), "channel messages payload missing messages[]");
+    assert(teamChannelMessages.data.messages.length >= 2, "seeded message thread should contain messages");
+
+    const summary = {
+      seed_tag: seedTag,
+      users: {
+        admin: { email: emails.admin, id: ids.adminUserId },
+        leader: { email: emails.leader, id: ids.leaderUserId },
+        member: { email: emails.member, id: ids.memberUserId },
+        solo: { email: emails.solo, id: ids.soloUserId },
+      },
+      team: { id: ids.teamId },
+      journeys: ids.journeys,
+      channels: ids.channels,
+      verified_endpoints: [
+        "/api/coaching/journeys",
+        `/api/coaching/journeys/${teamJourney.id}`,
+        "/api/coaching/progress",
+        "/api/channels",
+        `/api/channels/${teamChannel.id}/messages`,
+      ],
+      examples_verified: {
+        active_journey: true,
+        in_progress_lesson: true,
+        completed_lesson: true,
+        message_thread_with_messages: true,
+        sponsor_package_attribution_visible: true,
+      },
+      cleanup_hint: `Delete rows with names/titles containing '${seedTag}' and auth users with emails starting '${seedTag}.'`,
+    };
+
+    console.log(JSON.stringify(summary, null, 2));
+    console.log("Coaching sample content seed + endpoint smoke checks passed.");
+  } finally {
+    if (dbConnected) await db.end();
+    server.kill("SIGTERM");
+  }
+}
+
+main().catch((err) => {
+  console.error(err.message);
+  process.exit(1);
+});
