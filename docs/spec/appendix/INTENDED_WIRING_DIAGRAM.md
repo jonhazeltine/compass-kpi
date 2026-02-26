@@ -307,12 +307,12 @@ Use these exact references for active Team implementation work:
 
 | Screen | Canonical node | Export | Current runtime status |
 |---|---:|---|---|
-| Team Dashboard | `173-29934` | `team_dashboard_v1.png` | `🟡 partial` (active parity chunk) |
-| Invite Member | `173-4448` | `team_invite_member_v1.png` | `🟡 stub` |
-| Pending Invitations | `173-4612` | `team_pending_invitations_v1.png` | `🟡 stub` |
-| Team KPI Settings | `173-4531` | `team_kpi_settings_v1.png` | `🟡 stub` |
-| Pipeline | `168-16300` | `team_pipeline_v1.png` | `🟡 stub` |
-| Single Person Challenges / Team Challenges | `173-4905` | `team_single_person_challenges_v1.png` | `🟡 stub` |
+| Team Dashboard | `173-29934` | `team_dashboard_v1.png` | `🟡 partial` (leader parity implemented; iterate visuals/data) |
+| Invite Member | `173-4448` | `team_invite_member_v1.png` | `🟡 partial` |
+| Pending Invitations | `173-4612` | `team_pending_invitations_v1.png` | `🟡 partial` |
+| Team KPI Settings | `173-4531` | `team_kpi_settings_v1.png` | `🟡 partial` |
+| Pipeline | `168-16300` | `team_pipeline_v1.png` | `🟡 partial` |
+| Single Person Challenges / Team Challenges | `173-4905` | `team_single_person_challenges_v1.png` | `🟡 partial` |
 
 ## Current Runtime Router Reality (Implementation Constraint)
 

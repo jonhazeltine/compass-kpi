@@ -5165,6 +5165,37 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 { icon: '🎧', title: 'Sarah logged 10 calls', time: '2 hours ago' },
                 { icon: '✓', title: "Mark completed today's goal", time: '2 hours ago' },
               ] as const;
+              const teamInviteHistory = [
+                { name: 'Sarah Johnson', status: 'Pending', statusTone: 'pending', action: 'send' },
+                { name: 'Philip Antony', status: 'Joined', statusTone: 'joined', action: 'check' },
+                { name: 'James Matew', status: 'Declined', statusTone: 'declined', action: 'send' },
+              ] as const;
+              const teamPendingRows = [
+                { name: 'Sarah Johnson', email: 'sarah@company.com', sentAt: 'Sent on Oct 30, 2025', status: 'Pending' },
+                { name: 'Philip Antony', email: 'philip@company.com', sentAt: 'Sent on Oct 30, 2025', status: 'Expired' },
+              ] as const;
+              const teamKpiSettingRows: Array<{
+                title: string;
+                sub: string;
+                enabled: boolean;
+                tone: 'mint' | 'sand' | 'lavender' | 'rose' | 'locked';
+                badge?: string;
+              }> = [
+                { title: 'Sphere Calls', sub: 'Daily outreach calls', enabled: true, tone: 'mint' },
+                { title: 'Appointments', sub: 'Client meetings scheduled', enabled: true, tone: 'sand' },
+                { title: 'Closing', sub: 'Completed transactions', enabled: true, tone: 'lavender' },
+                { title: 'Listing Taken', sub: 'New property listings', enabled: false, tone: 'rose' },
+                { title: 'Advanced Analytics', sub: 'Detailed performance', enabled: false, tone: 'locked', badge: 'Pro' },
+              ];
+              const teamPipelineRows = [
+                { name: 'Sarah Johnson', pending: 4, current: 3 },
+                { name: 'Philip Antony', pending: 4, current: 2 },
+                { name: 'James Matew', pending: 6, current: 1 },
+              ] as const;
+              const teamChallengeRows = [
+                { title: '30 Day Listing Challenge', started: 'Started Oct 15, 2025', due: 'Till Nov 30, 2025', daysLeft: '12 days left', progress: 60, tone: 'green' },
+                { title: '30 Day Listing Challenge', started: 'Started Oct 15, 2025', due: 'Till Nov 30, 2025', daysLeft: '12 days left', progress: 35, tone: 'yellow' },
+              ] as const;
 
               const teamLoggingBlock = (
                 <View style={styles.challengeSectionsWrap}>
@@ -5208,34 +5239,287 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 </View>
               );
 
-              if (teamFlowScreen !== 'dashboard') {
-                const meta = teamRouteMeta[teamFlowScreen];
+              const renderTeamRouteScreen = (screen: Exclude<TeamFlowScreen, 'dashboard'>) => {
+                const meta = teamRouteMeta[screen];
                 return (
-                  <View style={styles.teamRouteShellWrap}>
-                    <View style={styles.teamRouteShellCard}>
-                      <View style={styles.teamRouteShellNavRow}>
-                        <TouchableOpacity style={styles.teamRouteShellBackBtn} onPress={() => setTeamFlowScreen('dashboard')}>
-                          <Text style={styles.teamRouteShellBackBtnText}>‹</Text>
-                        </TouchableOpacity>
-                        <Text style={styles.teamRouteShellTitle}>{meta.title}</Text>
-                        <View style={styles.teamRouteShellBackBtn} />
-                      </View>
-                      <Text style={styles.teamRouteShellSub}>
-                        Team management route shell for chunk A routing validation. Figma parity for this screen is scheduled in later chunks.
-                      </Text>
-                      <View style={styles.teamRouteShellInfoCard}>
-                        <Text style={styles.teamRouteShellInfoTitle}>{meta.title}</Text>
-                        <Text style={styles.teamRouteShellInfoMeta}>Figma node {meta.figmaNode}</Text>
-                        <Text style={styles.teamRouteShellInfoBody}>
-                          Destination route is intentionally navigable now so dashboard CTA wiring can be validated before individual screen parity passes.
-                        </Text>
-                      </View>
-                      <TouchableOpacity style={styles.teamRouteShellPrimaryBtn} onPress={() => setTeamFlowScreen('dashboard')}>
-                        <Text style={styles.teamRouteShellPrimaryBtnText}>Back to Team Dashboard</Text>
+                  <View style={styles.teamRouteScreenWrap}>
+                    <View style={styles.teamRouteScreenNavRow}>
+                      <TouchableOpacity style={styles.teamRouteScreenBackBtn} onPress={() => setTeamFlowScreen('dashboard')}>
+                        <Text style={styles.teamRouteScreenBackBtnText}>‹</Text>
                       </TouchableOpacity>
+                      <Text style={styles.teamRouteScreenNavTitle}>{meta.title}</Text>
+                      <View style={styles.teamRouteScreenNavSpacer} />
                     </View>
+
+                    {screen === 'invite_member' ? (
+                      <>
+                        <View style={styles.teamRouteInfoBanner}>
+                          <Text style={styles.teamRouteInfoIcon}>i</Text>
+                          <Text style={styles.teamRouteInfoBannerText}>
+                            Add teammates to your group by sending them an invite.
+                          </Text>
+                        </View>
+                        <Text style={styles.teamRouteFieldLabel}>Send Invite by Email or Username</Text>
+                        <View style={styles.teamRouteInlineInputRow}>
+                          <View style={styles.teamRouteInputGhost}>
+                            <Text style={styles.teamRouteInputGhostText}>Enter friend's name or email</Text>
+                          </View>
+                          <TouchableOpacity style={styles.teamRouteSmallPrimaryBtn} onPress={() => setTeamFlowScreen('pending_invitations')}>
+                            <Text style={styles.teamRouteSmallPrimaryBtnText}>Send</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={styles.teamRouteFieldLabel}>Share Challenge Link</Text>
+                        <TouchableOpacity style={styles.teamRoutePrimaryBtn} onPress={() => setTeamFlowScreen('team_challenges')}>
+                          <Text style={styles.teamRoutePrimaryBtnText}>Copy Challenge Link</Text>
+                        </TouchableOpacity>
+                        <View style={styles.teamRouteSectionHeaderRow}>
+                          <Text style={styles.teamRouteSectionTitle}>Invite History</Text>
+                          <TouchableOpacity onPress={() => setTeamFlowScreen('pending_invitations')}>
+                            <Text style={styles.teamRouteSectionLink}>View All</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <View style={styles.teamRouteStack}>
+                          {teamInviteHistory.map((row) => (
+                            <View key={`${row.name}-${row.status}`} style={styles.teamRouteCardRow}>
+                              <View style={styles.teamRouteAvatarCircle}>
+                                <Text style={styles.teamRouteAvatarText}>
+                                  {row.name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()}
+                                </Text>
+                              </View>
+                              <View style={styles.teamRouteCardRowCopy}>
+                                <Text style={styles.teamRouteCardRowTitle}>{row.name}</Text>
+                                <Text style={styles.teamRouteCardRowSub}>{row.status}</Text>
+                              </View>
+                              <View style={styles.teamRouteTrailingActions}>
+                                {row.action === 'send' ? (
+                                  <TouchableOpacity style={styles.teamRouteIconGhostBtn}>
+                                    <Text style={styles.teamRouteIconGhostBtnText}>↗</Text>
+                                  </TouchableOpacity>
+                                ) : (
+                                  <TouchableOpacity style={styles.teamRouteIconGhostBtn}>
+                                    <Text style={styles.teamRouteIconGhostBtnText}>✓</Text>
+                                  </TouchableOpacity>
+                                )}
+                                {row.statusTone === 'pending' ? (
+                                  <TouchableOpacity style={styles.teamRouteIconGhostBtn}>
+                                    <Text style={styles.teamRouteIconGhostBtnText}>×</Text>
+                                  </TouchableOpacity>
+                                ) : null}
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      </>
+                    ) : null}
+
+                    {screen === 'pending_invitations' ? (
+                      <>
+                        <View style={styles.teamRouteInfoBanner}>
+                          <Text style={styles.teamRouteInfoIcon}>i</Text>
+                          <Text style={styles.teamRouteInfoBannerText}>
+                            Manage pending invites or approve join requests from new members.
+                          </Text>
+                        </View>
+                        <View style={styles.teamRouteStack}>
+                          {teamPendingRows.map((row) => (
+                            <View key={`${row.name}-${row.status}`} style={styles.teamRoutePendingCard}>
+                              <View style={styles.teamRoutePendingTopRow}>
+                                <View style={styles.teamRouteAvatarCircle}>
+                                  <Text style={styles.teamRouteAvatarText}>
+                                    {row.name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()}
+                                  </Text>
+                                </View>
+                                <View style={styles.teamRouteCardRowCopy}>
+                                  <Text style={styles.teamRouteCardRowTitle}>{row.name}</Text>
+                                  <Text style={styles.teamRouteCardRowSub}>{row.email}</Text>
+                                  <Text style={styles.teamRouteCardRowSub}>{row.sentAt}</Text>
+                                </View>
+                                <View
+                                  style={[
+                                    styles.teamRouteStatusBadge,
+                                    row.status === 'Pending' ? styles.teamRouteStatusBadgePending : styles.teamRouteStatusBadgeExpired,
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.teamRouteStatusBadgeText,
+                                      row.status === 'Pending' ? styles.teamRouteStatusBadgeTextPending : styles.teamRouteStatusBadgeTextExpired,
+                                    ]}
+                                  >
+                                    {row.status}
+                                  </Text>
+                                </View>
+                              </View>
+                              <View style={styles.teamRouteInlineButtonsRow}>
+                                <TouchableOpacity style={styles.teamRouteSmallPrimaryBtn}>
+                                  <Text style={styles.teamRouteSmallPrimaryBtnText}>Resend</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.teamRouteSmallSecondaryBtn}>
+                                  <Text style={styles.teamRouteSmallSecondaryBtnText}>Cancel</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                        <TouchableOpacity style={styles.teamRoutePrimaryBtn} onPress={() => setTeamFlowScreen('dashboard')}>
+                          <Text style={styles.teamRoutePrimaryBtnText}>Save Changes</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : null}
+
+                    {screen === 'kpi_settings' ? (
+                      <>
+                        <View style={styles.teamRouteInfoBanner}>
+                          <Text style={styles.teamRouteInfoIcon}>i</Text>
+                          <Text style={styles.teamRouteInfoBannerText}>
+                            Select the KPIs your team will be required to track. These KPIs will appear on every member's dashboard.
+                          </Text>
+                        </View>
+                        <View style={styles.teamRouteStack}>
+                          {teamKpiSettingRows.map((row, idx) => (
+                            <View key={row.title} style={[styles.teamRouteKpiRow, idx > 0 && styles.teamRouteKpiRowDivider]}>
+                              <View
+                                style={[
+                                  styles.teamRouteKpiIconWrap,
+                                  row.tone === 'mint'
+                                    ? styles.teamRouteKpiIconMint
+                                    : row.tone === 'sand'
+                                      ? styles.teamRouteKpiIconSand
+                                      : row.tone === 'lavender'
+                                        ? styles.teamRouteKpiIconLavender
+                                        : row.tone === 'rose'
+                                          ? styles.teamRouteKpiIconRose
+                                          : styles.teamRouteKpiIconGray,
+                                ]}
+                              >
+                                <Text style={styles.teamRouteKpiIconText}>
+                                  {row.tone === 'locked' ? '🔒' : row.tone === 'mint' ? '🎧' : row.tone === 'sand' ? '📖' : row.tone === 'lavender' ? '🤝' : '🏠'}
+                                </Text>
+                              </View>
+                              <View style={styles.teamRouteCardRowCopy}>
+                                <Text style={[styles.teamRouteCardRowTitle, row.tone === 'locked' && styles.teamRouteMutedText]}>{row.title}</Text>
+                                <Text style={[styles.teamRouteCardRowSub, row.tone === 'locked' && styles.teamRouteMutedText]}>{row.sub}</Text>
+                              </View>
+                              {row.badge ? (
+                                <View style={styles.teamRouteProBadge}>
+                                  <Text style={styles.teamRouteProBadgeText}>{row.badge}</Text>
+                                </View>
+                              ) : (
+                                <View style={[styles.teamRouteToggle, row.enabled && styles.teamRouteToggleOn]}>
+                                  <View style={[styles.teamRouteToggleKnob, row.enabled && styles.teamRouteToggleKnobOn]} />
+                                </View>
+                              )}
+                            </View>
+                          ))}
+                        </View>
+                        <TouchableOpacity style={styles.teamRoutePrimaryBtn} onPress={() => setTeamFlowScreen('dashboard')}>
+                          <Text style={styles.teamRoutePrimaryBtnText}>Save Changes</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : null}
+
+                    {screen === 'pipeline' ? (
+                      <>
+                        <View style={[styles.teamRouteInfoBanner, styles.teamRouteInfoBannerLavender]}>
+                          <Text style={styles.teamRouteInfoIcon}>⚡</Text>
+                          <View style={styles.teamRouteCardRowCopy}>
+                            <Text style={styles.teamRouteCardRowTitle}>14 Pending Deals</Text>
+                            <Text style={styles.teamRouteCardRowSub}>Team Deal Closed</Text>
+                          </View>
+                        </View>
+                        <View style={styles.teamRouteStack}>
+                          {teamPipelineRows.map((row) => (
+                            <View key={row.name} style={styles.teamRouteCardRow}>
+                              <View style={styles.teamRouteAvatarCircle}>
+                                <Text style={styles.teamRouteAvatarText}>
+                                  {row.name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()}
+                                </Text>
+                              </View>
+                              <View style={styles.teamRouteCardRowCopy}>
+                                <Text style={styles.teamRouteCardRowTitle}>{row.name}</Text>
+                                <Text style={styles.teamRouteCardRowSub}>{row.pending} Deals Pending</Text>
+                                <Text style={styles.teamRouteCardRowSub}>{row.current} Current Deals</Text>
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      </>
+                    ) : null}
+
+                    {screen === 'team_challenges' ? (
+                      <>
+                        <View style={styles.teamChallengesHeroRow}>
+                          <View style={styles.teamChallengesUpcomingCard}>
+                            <View style={styles.teamChallengesUpcomingIcon}>
+                              <Text style={styles.teamChallengesUpcomingIconText}>⚡</Text>
+                            </View>
+                            <View style={styles.teamRouteCardRowCopy}>
+                              <Text style={styles.teamRouteCardRowTitle}>Upcoming</Text>
+                              <Text style={styles.teamRouteCardRowSub}>New challenge on</Text>
+                            </View>
+                            <Text style={styles.teamChallengesUpcomingDate}>Nov 8</Text>
+                          </View>
+                          <TouchableOpacity style={styles.teamChallengesCreateBtn} onPress={() => setTeamFlowScreen('invite_member')}>
+                            <Text style={styles.teamChallengesCreateBtnText}>Create ⊕</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <View style={styles.teamChallengesStatsRow}>
+                          <View style={[styles.teamChallengesStatCard, styles.teamParityStatCardGreen]}>
+                            <Text style={styles.teamParityStatTitle}>Active</Text>
+                            <Text style={styles.teamParityStatValue}>02</Text>
+                            <Text style={styles.teamParityStatFoot}>Challenges</Text>
+                          </View>
+                          <View style={[styles.teamChallengesStatCard, styles.teamParityStatCardPurple]}>
+                            <Text style={styles.teamParityStatTitle}>Completed</Text>
+                            <Text style={styles.teamParityStatValue}>03</Text>
+                            <Text style={styles.teamParityStatFoot}>Challenges</Text>
+                          </View>
+                        </View>
+                        <View style={styles.teamChallengesSegmentRow}>
+                          <View style={[styles.teamChallengesSegmentPill, styles.teamChallengesSegmentPillActive]}>
+                            <Text style={[styles.teamChallengesSegmentPillText, styles.teamChallengesSegmentPillTextActive]}>Active</Text>
+                          </View>
+                          <View style={styles.teamChallengesSegmentPill}>
+                            <Text style={styles.teamChallengesSegmentPillText}>Completed</Text>
+                          </View>
+                        </View>
+                        <View style={styles.teamRouteStack}>
+                          {teamChallengeRows.map((row) => (
+                            <TouchableOpacity key={`${row.title}-${row.progress}`} style={styles.teamChallengesCard}>
+                              <View style={styles.teamChallengesCardTopRow}>
+                                <View style={styles.teamRouteCardRowCopy}>
+                                  <Text style={styles.teamRouteCardRowTitle}>{row.title}</Text>
+                                  <Text style={styles.teamRouteCardRowSub}>{row.started}</Text>
+                                </View>
+                                <View style={styles.teamChallengesActiveBadge}>
+                                  <Text style={styles.teamChallengesActiveBadgeText}>Active</Text>
+                                </View>
+                              </View>
+                              <View style={styles.teamChallengesCardMetaRow}>
+                                <Text style={styles.teamChallengesMetaStrong}>{row.due}</Text>
+                                <Text style={styles.teamRouteCardRowSub}>{row.daysLeft}</Text>
+                              </View>
+                              <View style={styles.teamChallengesProgressTrack}>
+                                <View
+                                  style={[
+                                    styles.teamChallengesProgressFill,
+                                    row.tone === 'yellow' && styles.teamChallengesProgressFillYellow,
+                                    { width: `${row.progress}%` },
+                                  ]}
+                                />
+                              </View>
+                              <Text style={styles.teamRouteCardRowSub}>Progress: {row.progress}%</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </>
+                    ) : null}
                   </View>
                 );
+              };
+
+              if (teamFlowScreen !== 'dashboard') {
+                return renderTeamRouteScreen(teamFlowScreen);
               }
 
               return (
@@ -7869,6 +8153,433 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '800',
+  },
+  teamRouteScreenWrap: {
+    gap: 12,
+  },
+  teamRouteScreenNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  teamRouteScreenBackBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamRouteScreenBackBtnText: {
+    color: '#2f3442',
+    fontSize: 22,
+    lineHeight: 22,
+    fontWeight: '500',
+    marginTop: -2,
+  },
+  teamRouteScreenNavTitle: {
+    color: '#3a4250',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  teamRouteScreenNavSpacer: {
+    width: 28,
+    height: 28,
+  },
+  teamRouteInfoBanner: {
+    borderRadius: 10,
+    backgroundColor: '#eef0f4',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  teamRouteInfoBannerLavender: {
+    backgroundColor: '#e4e0f8',
+    alignItems: 'center',
+  },
+  teamRouteInfoIcon: {
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#cdd5e3',
+    color: '#47556c',
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 16,
+    marginTop: 1,
+  },
+  teamRouteInfoBannerText: {
+    flex: 1,
+    color: '#5f6878',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  teamRouteFieldLabel: {
+    color: '#4f586a',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  teamRouteInlineInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  teamRouteInputGhost: {
+    flex: 1,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#eef0f4',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  teamRouteInputGhostText: {
+    color: '#9aa3b0',
+    fontSize: 11,
+  },
+  teamRouteSmallPrimaryBtn: {
+    borderRadius: 8,
+    backgroundColor: '#343c49',
+    paddingHorizontal: 14,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 68,
+  },
+  teamRouteSmallPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamRoutePrimaryBtn: {
+    borderRadius: 8,
+    backgroundColor: '#1f5fe2',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  teamRoutePrimaryBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  teamRouteSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 4,
+  },
+  teamRouteSectionTitle: {
+    color: '#666f7e',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.25,
+  },
+  teamRouteSectionLink: {
+    color: '#5c6474',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  teamRouteStack: {
+    gap: 10,
+  },
+  teamRouteCardRow: {
+    borderRadius: 10,
+    backgroundColor: '#eef0f4',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  teamRouteAvatarCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#dce7f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamRouteAvatarText: {
+    color: '#3c5e8f',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  teamRouteCardRowCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  teamRouteCardRowTitle: {
+    color: '#404858',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  teamRouteCardRowSub: {
+    color: '#858f9d',
+    fontSize: 11,
+    lineHeight: 13,
+  },
+  teamRouteTrailingActions: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+  },
+  teamRouteIconGhostBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamRouteIconGhostBtnText: {
+    color: '#4c5565',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  teamRoutePendingCard: {
+    borderRadius: 10,
+    backgroundColor: '#eef0f4',
+    padding: 10,
+    gap: 8,
+  },
+  teamRoutePendingTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  teamRouteStatusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 2,
+  },
+  teamRouteStatusBadgePending: {
+    backgroundColor: '#fff3e4',
+  },
+  teamRouteStatusBadgeExpired: {
+    backgroundColor: '#ffe4e4',
+  },
+  teamRouteStatusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  teamRouteStatusBadgeTextPending: {
+    color: '#f08a18',
+  },
+  teamRouteStatusBadgeTextExpired: {
+    color: '#f14a4a',
+  },
+  teamRouteInlineButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingLeft: 42,
+  },
+  teamRouteSmallSecondaryBtn: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4d5562',
+    backgroundColor: '#fff',
+    paddingHorizontal: 14,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamRouteSmallSecondaryBtnText: {
+    color: '#4d5562',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamRouteKpiRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+  },
+  teamRouteKpiRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#e2e7ee',
+  },
+  teamRouteKpiIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamRouteKpiIconMint: { backgroundColor: '#dff5ef' },
+  teamRouteKpiIconSand: { backgroundColor: '#f4ecd9' },
+  teamRouteKpiIconLavender: { backgroundColor: '#e8e1f8' },
+  teamRouteKpiIconRose: { backgroundColor: '#f7e1e3' },
+  teamRouteKpiIconGray: { backgroundColor: '#e9ebef' },
+  teamRouteKpiIconText: {
+    fontSize: 13,
+  },
+  teamRouteToggle: {
+    width: 34,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: '#e1e5eb',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  teamRouteToggleOn: {
+    backgroundColor: '#1f5fe2',
+  },
+  teamRouteToggleKnob: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+  },
+  teamRouteToggleKnobOn: {
+    alignSelf: 'flex-end',
+  },
+  teamRouteProBadge: {
+    borderRadius: 999,
+    backgroundColor: '#b3b3b3',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  teamRouteProBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  teamRouteMutedText: {
+    color: '#b0b5be',
+  },
+  teamChallengesHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  teamChallengesUpcomingCard: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: '#f0ead7',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  teamChallengesUpcomingIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff7dd',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamChallengesUpcomingIconText: {
+    fontSize: 11,
+  },
+  teamChallengesUpcomingDate: {
+    color: '#3f4653',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  teamChallengesCreateBtn: {
+    borderRadius: 999,
+    backgroundColor: '#0f1218',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  teamChallengesCreateBtnText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  teamChallengesStatsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  teamChallengesStatCard: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 5,
+  },
+  teamChallengesSegmentRow: {
+    flexDirection: 'row',
+    backgroundColor: '#eceff4',
+    borderRadius: 999,
+    padding: 3,
+    gap: 4,
+  },
+  teamChallengesSegmentPill: {
+    flex: 1,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  teamChallengesSegmentPillActive: {
+    backgroundColor: '#1f5fe2',
+  },
+  teamChallengesSegmentPillText: {
+    color: '#4e5c71',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamChallengesSegmentPillTextActive: {
+    color: '#fff',
+  },
+  teamChallengesCard: {
+    borderRadius: 10,
+    backgroundColor: '#eef0f4',
+    padding: 10,
+    gap: 8,
+  },
+  teamChallengesCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  teamChallengesActiveBadge: {
+    borderRadius: 999,
+    backgroundColor: '#a7df5f',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 2,
+  },
+  teamChallengesActiveBadgeText: {
+    color: '#35451f',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  teamChallengesCardMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  teamChallengesMetaStrong: {
+    color: '#474f5f',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamChallengesProgressTrack: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#dde2e8',
+    overflow: 'hidden',
+  },
+  teamChallengesProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#4fd15f',
+  },
+  teamChallengesProgressFillYellow: {
+    backgroundColor: '#e7cb53',
   },
   participationFocusCard: {
     backgroundColor: '#fff',

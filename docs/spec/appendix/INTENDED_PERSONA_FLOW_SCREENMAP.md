@@ -96,12 +96,12 @@ Exports in repo:
 #### `team`
 | Destination | Figma node | Export | Runtime status | Wiring status | Notes |
 |---|---:|---|---|---|---|
-| Team Dashboard | `173-29934` | `team_dashboard_v1.png` | `🟡 partial` | `🟡 partial` | Active Team parity Chunk A target. Team Logging must remain below dashboard. |
-| Invite Member | `173-4448` | `team_invite_member_v1.png` | `🟡 stub` | `🟡 stub` | Route shell exists in Team sub-router; parity pending. |
-| Pending Invitations | `173-4612` | `team_pending_invitations_v1.png` | `🟡 stub` | `🟡 stub` | Route shell exists; parity pending. |
-| Team KPI Settings | `173-4531` | `team_kpi_settings_v1.png` | `🟡 stub` | `🟡 stub` | Route shell exists; parity pending. |
-| Pipeline | `168-16300` | `team_pipeline_v1.png` | `🟡 stub` | `🟡 stub` | Route shell exists; parity pending. |
-| Single Person Challenges / Team Challenges | `173-4905` | `team_single_person_challenges_v1.png` | `🟡 stub` | `🟡 stub` | Route shell exists as `team_challenges`; parity pending. |
+| Team Dashboard | `173-29934` | `team_dashboard_v1.png` | `🟡 partial` | `🟢 wired` | Team dashboard parity implemented in Team sub-router; Team Logging remains below dashboard. |
+| Invite Member | `173-4448` | `team_invite_member_v1.png` | `🟡 partial` | `🟢 wired` | Team sub-router screen implemented with parity-first placeholder data; dashboard CTA wired. |
+| Pending Invitations | `173-4612` | `team_pending_invitations_v1.png` | `🟡 partial` | `🟢 wired` | Team sub-router screen implemented with parity-first placeholder data; dashboard CTA wired. |
+| Team KPI Settings | `173-4531` | `team_kpi_settings_v1.png` | `🟡 partial` | `🟢 wired` | Team sub-router screen implemented with parity-first placeholder data; dashboard CTA wired. |
+| Pipeline | `168-16300` | `team_pipeline_v1.png` | `🟡 partial` | `🟢 wired` | Team sub-router screen implemented with parity-first placeholder data; dashboard CTA wired. |
+| Single Person Challenges / Team Challenges | `173-4905` | `team_single_person_challenges_v1.png` | `🟡 partial` | `🟢 wired` | Team sub-router screen implemented with parity-first placeholder data as `team_challenges`; dashboard CTA wired. |
 
 #### `challenge`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
