@@ -111,6 +111,18 @@ Legend:
   - mutate KPI source-of-truth records
   - assume challenge participation/results ownership
 
+## W7 Coach Portal Foundation Surface Permissions (Planning)
+
+This section defines the minimum W7 portal foundation surface set as a companion to runtime host surfaces/channels.
+
+| Foundation surface | Coach | Admin operator | Challenge Sponsor | Runtime companion role | KPI boundary |
+|---|---|---|---|---|---|
+| `content_upload` | `full` | `ops/review` | `limited` (sponsor campaign uploads only) | feeds `content_library` and sponsor-linked runtime content references | no KPI logging/edit actions |
+| `content_library` | `full` | `ops` | `limited` (sponsor-scoped library access/linking) | supports runtime journeys/challenge overlays/channel templates | no KPI source mutation |
+| `journeys` | `full` | `ops/governance` | `none/limited` (view linked published journeys only) | publishes content consumed by runtime `coaching_journeys*`/embedded modules | no runtime draft editing; no sponsor KPI logging |
+| `cohorts` | `full` | `ops` | `limited` (sponsor-linked cohort visibility/constraints) | supports cohort-based channels and targeting for non-team individuals | no challenge participation ownership, no KPI logging |
+| `channels` | `full` | `ops` | `limited` (sponsor/challenge/cohort comms contexts only) | complements runtime `inbox_channels`/`channel_thread` participation and context ops | comms-only for sponsor persona; no KPI logging |
+
 ## Authoring vs Delivery Ownership Model (Canonical Planning Boundary)
 
 | Capability group | Authoring / ops owner (portal surfaces) | Runtime delivery owner (member app surfaces) | Packaging / entitlement owner | Boundary note |

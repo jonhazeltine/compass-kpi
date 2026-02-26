@@ -222,8 +222,11 @@ Coach portal host recommendation (planning, manual-spec-driven):
 #### `coach_ops_authoring`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
 |---|---|---|---|---|
+| Content Upload | Upload/import coaching assets and sponsor-approved campaign media inputs | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal foundation surface (`content_upload`); companion to `Coach Content Library`, no KPI logging/edit actions. |
 | Coach Content Library | Manage/categorize coaching content assets, journeys, lessons, and templates | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_content_library`); authoring/curation only, not member runtime delivery UI. |
 | Journey Authoring Studio | Compose/edit journey structure, lesson order, and draft lifecycle | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_journey_authoring`); no runtime journey rendering ownership. |
+| Cohorts / Audience Segments | Manage targeting cohorts/segments (including non-team individuals) for coach/sponsor delivery planning | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal foundation surface (`cohorts`); complements runtime cohort-channel participation and targeting, not challenge participation ownership. |
+| Channel Operations (portal) | Manage scoped channel context, templates, and coach/sponsor comms prep for runtime-linked channels | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal foundation surface (`channels`); complements runtime `inbox_channels`/`channel_thread`, no KPI logging actions. |
 | Publishing & Targeting | Publish bundles, define audiences, link channels/challenges, schedule activation | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_publish_targeting`); handoff produces delivery assignments for runtime surfaces. |
 | Coaching Packages / Entitlements | Configure team/sponsored/paid coaching package visibility and access policy | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_packages_entitlements`); packaging/access layer, not content authoring. |
 | Coach Ops Audit / Approvals | Approvals, rollback, moderation, audit trail review for coaching publishing actions | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | Admin shell extension route `/admin/coaching/audit` now provides approval-first AI suggestion moderation queue + audit detail companion surface (UI-first/stub-safe, no send/publish execution actions). |
@@ -231,8 +234,11 @@ Coach portal host recommendation (planning, manual-spec-driven):
 #### `coach_ops_authoring` route grouping (portal planning)
 | Route group (provisional) | Host surface | Persona access | Runtime status | Notes |
 |---|---|---|---|---|
+| `admin/coaching/uploads` | `Admin Shell extension` (recommended) | Coach, Admin operator, Challenge Sponsor (limited sponsor campaign uploads) | `⚪ missing` | W7 foundation surface for `content_upload`; sponsor access is sponsor-scoped and policy-gated. |
 | `admin/coaching/library` | `Admin Shell extension` (recommended) | Coach, Admin operator | `⚪ missing` | Maps to `coach_content_library`. |
 | `admin/coaching/authoring` | `Admin Shell extension` (recommended) | Coach | `⚪ missing` | Maps to `coach_journey_authoring`. |
+| `admin/coaching/cohorts` | `Admin Shell extension` (recommended) | Coach, Admin operator, Challenge Sponsor (limited sponsor cohorts) | `⚪ missing` | W7 foundation surface for `cohorts`; supports non-team individual cohort targeting visibility. |
+| `admin/coaching/channels` | `Admin Shell extension` (recommended) | Coach, Admin operator, Challenge Sponsor (limited sponsor scopes) | `⚪ missing` | W7 foundation surface for portal channel ops; companion to runtime channel participation surfaces. |
 | `admin/coaching/publishing` | `Admin Shell extension` (recommended) | Coach, Admin operator, Challenge Sponsor (limited sponsor scopes) | `⚪ missing` | Maps to `coach_publish_targeting`; publish/target/schedule/link handoff. |
 | `admin/coaching/packages` | `Admin Shell extension` (recommended) | Admin operator, Coach (limited), Challenge Sponsor (limited sponsor scopes) | `⚪ missing` | Maps to `coach_packages_entitlements`; packaging/entitlement policy ops. |
 | `admin/coaching/audit` | `Admin Shell extension` (recommended) | Admin operator | `🟡 partial` | Maps to `coach_ops_audit`; approval-first AI moderation queue + audit detail companion UI implemented in admin shell (`AdminShellScreen.tsx`). |
@@ -265,6 +271,7 @@ Challenge Sponsor is a distinct persona for sponsored challenge funding/campaign
 #### `sponsor_ops_portal`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
 |---|---|---|---|---|
+| Sponsor Content Upload (scoped) | Upload sponsor campaign assets/media for sponsored coaching/challenge experiences | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Sponsor-scoped `content_upload` subset only; approval/policy gated and no KPI logging/edit actions. |
 | Sponsor Content Library (scoped) | Access sponsor-scoped content assets/library entries for sponsored challenge campaigns | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Companion to coach portal `content_library`; sponsor-scoped access only, no canonical lesson authoring by default. |
 | Sponsor Cohorts / Audience Visibility | View sponsor-linked challenge cohorts/segments and eligibility views | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Sponsor-scoped cohort visibility only; no challenge participation state ownership transfer. |
 | Sponsor Channels (scoped) | Sponsor-scoped comms/channel tools for approved challenge/cohort communications | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Uses sponsor/challenge/cohort channel contexts only; no team-admin channel controls. |

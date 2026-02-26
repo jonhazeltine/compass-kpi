@@ -288,8 +288,8 @@ These are planning targets only and intentionally separate from current member-a
 | ----------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------- |
 | `coach_content_library`       | Coach, Admin operator                                                                  | `coaching_content`, `communication` templates                  | Published assets/bundles -> `coaching_journeys*`, `inbox*`                  | `⚪ planned` | Manual-spec-driven; no Figma parity yet.                    |
 | `coach_journey_authoring`     | Coach                                                                                  | `coaching_content`                                             | Published journeys/lessons -> `coaching_journeys*`                          | `⚪ planned` | Authoring concern only; no member runtime ownership.        |
-| `coach_publish_targeting`     | Coach, Admin operator, Sponsor ops (limited)                                           | `communication`, `sponsor_challenge_coaching`                  | Assignment/targeting metadata -> Team/Challenge/Profile overlays + `inbox*` | `⚪ planned` | Explicitly separate from challenge participation logic.     |
-| `coach_packages_entitlements` | Admin operator, Coach (limited authoring view), Sponsor ops (limited sponsor packages) | `sponsor_challenge_coaching`, paid packaging                   | Entitlement/package assignment -> runtime visibility                        | `⚪ planned` | Packaging/access policy layer; no content editing required. |
+| `coach_publish_targeting`     | Coach, Admin operator, Challenge Sponsor (limited sponsor scopes)                      | `communication`, `sponsor_challenge_coaching`                  | Assignment/targeting metadata -> Team/Challenge/Profile overlays + `inbox*` | `⚪ planned` | Explicitly separate from challenge participation logic; no sponsor KPI logging actions. |
+| `coach_packages_entitlements` | Admin operator, Coach (limited authoring view), Challenge Sponsor (limited sponsor packages) | `sponsor_challenge_coaching`, paid packaging               | Entitlement/package assignment -> runtime visibility                        | `⚪ planned` | Packaging/access policy layer; no content editing required; sponsor access is sponsor-scoped only. |
 | `coach_ops_audit`             | Admin operator                                                                         | `communication`, `coaching_content`, `ai_coach_assist` (later) | Audit/approval constraints -> runtime allowed actions                       | `⚪ planned` | Ops/governance layer; UI implementation deferred.           |
 
 
@@ -312,8 +312,8 @@ These are planning targets only and intentionally separate from current member-a
 | --------------------------- | ----------------------- | ----------------------------- | ------------------------------------------------------ | ----------- | ------------------------------------------------------------------ |
 | `admin/coaching/library`    | Admin Shell extension   | `coach_content_library`       | Coach, Admin operator                                  | `⚪ planned` | Content catalog/curation and template management.                  |
 | `admin/coaching/authoring`  | Admin Shell extension   | `coach_journey_authoring`     | Coach                                                  | `⚪ planned` | Journey/lesson draft editing and review prep.                      |
-| `admin/coaching/publishing` | Admin Shell extension   | `coach_publish_targeting`     | Coach, Admin operator, Sponsor ops (limited)           | `⚪ planned` | Publish/target/schedule/link to channels/challenges.               |
-| `admin/coaching/packages`   | Admin Shell extension   | `coach_packages_entitlements` | Admin operator, Coach (limited), Sponsor ops (limited) | `⚪ planned` | Team/sponsored/paid package visibility and entitlement policy ops. |
+| `admin/coaching/publishing` | Admin Shell extension   | `coach_publish_targeting`     | Coach, Admin operator, Challenge Sponsor (limited sponsor scopes)           | `⚪ planned` | Publish/target/schedule/link to channels/challenges; sponsor inputs remain sponsor-scoped.               |
+| `admin/coaching/packages`   | Admin Shell extension   | `coach_packages_entitlements` | Admin operator, Coach (limited), Challenge Sponsor (limited sponsor scopes) | `⚪ planned` | Team/sponsored/paid package visibility and entitlement policy ops; no sponsor KPI logging actions. |
 | `admin/coaching/audit`      | Admin Shell extension   | `coach_ops_audit`             | Admin operator                                         | `⚪ planned` | Approvals, rollback, moderation, audit review.                     |
 
 
@@ -326,6 +326,25 @@ These are planning targets only and intentionally separate from current member-a
   - `coach-portal/packages`
 - Keep `coach_ops_audit` in admin governance routes unless coach governance ownership is explicitly widened.
 - `DECISIONS_LOG.md` update required in implementation phase if route host ownership or module boundary changes are adopted.
+
+## W7 Coach Portal Foundation Surface Set (Docs-First Package)
+
+This section advances the W7 portal foundation package using accepted W6/W7 rescope direction. The portal is a companion to runtime host surfaces/channels and does not replace coach runtime operator workflows.
+
+| Foundation surface | Primary purpose | Primary persona(s) | Challenge Sponsor access | Runtime companion mapping (non-replacement) | Boundary rules |
+|---|---|---|---|---|---|
+| `content_upload` | Upload/import coaching assets and sponsor-approved campaign media/doc inputs | Coach, Admin operator (QA/governance support) | `limited` (sponsor campaign asset uploads only if policy allows) | feeds `content_library` -> runtime `coaching_journeys*`, challenge coaching blocks, `channel_thread` attachments/templates | no KPI logging/edit routes; sponsor uploads remain sponsor-scope and approval-gated |
+| `content_library` | Curate/search/tag reusable coaching and sponsor-linked content assets/templates | Coach, Admin operator | `limited` (sponsor-scoped library visibility + linking inputs) | supports runtime coaching content references, sponsor CTA/content blocks, comms templates | sponsor access is read/link scoped unless explicit authoring rights are granted; no canonical KPI data mutation |
+| `journeys` | Compose/manage journey drafts, versions, lesson sequencing, publish readiness | Coach (primary), Admin operator (governance) | `none/limited` (view/link sponsor-linked published journey refs only) | publishes versions consumed by runtime `coaching_journeys*` and embedded modules | authoring lifecycle remains portal-owned; runtime never edits drafts; no sponsor KPI logging |
+| `cohorts` | Define/view coach/sponsor targeting cohorts and audience segments (including non-team individuals) | Coach, Admin operator | `limited` (sponsor-linked cohort visibility/constraints for sponsored challenges) | aligns runtime cohort-based channels + challenge/coaching notification targeting | cohort visibility does not grant challenge participation ownership or KPI logging |
+| `channels` | Coach/sponsor channel management, templates, scoped broadcast prep, channel roster/context ops | Coach, Admin operator | `limited` (sponsor/challenge/cohort channel contexts only) | complements runtime `inbox_channels`/`channel_thread` where coaches operate as first-class runtime operators | no sponsor/team-member KPI logging actions; channel ops remain comms-only and server-authz enforced |
+
+### W7 foundation sequencing guidance (planning)
+
+1. Build portal IA/shells and role gating for the five foundation surfaces first.
+2. Preserve runtime coach operator and sponsor channel participation paths in app surfaces/channels while portal surfaces come online.
+3. Defer `/admin/coaching/audit` expansion; keep it as secondary super-admin troubleshooting/governance.
+4. If host choice shifts from `Admin Shell extension` to hybrid portal, preserve touchpoint IDs/surface names and log structural boundary changes in implementation phase.
 
 ## Coach Ops Touchpoint Workflow Sequences (Authoring -> Publishing -> Runtime)
 

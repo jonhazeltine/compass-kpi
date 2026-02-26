@@ -72,12 +72,12 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W5-OPS-AI-AUDIT-RUNTIME-VALIDATION-REFINEMENT-A` | `blocked` | `M6 coaching slice (W5 AI moderation/audit runtime validation/refinement)` | `Admin operator`, `Coach` (reviewer), `Sponsor ops` limited | `coaching / AI assist` (`admin moderation/audit runtime validation + refinement`) | `/admin/coaching/audit` queue/detail/history views | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree preferred) | manual-spec-driven + accepted W5 boundary/docs | Blocked/deferred by owner direction: admin audit is not the primary coach AI workflow; pause runtime validation/refinement pending W5 AI coach-persona realignment. Do not continue dialog-copy refinements in this assignment. |
 | `COACHING-W5-AI-COACH-PERSONA-REALIGNMENT-A` | `committed+pushed` | `M6 coaching slice (W5 AI coach-persona realignment; planning/spec)` | `Coach`, downstream `Team Leader`, `Team Member`, `Solo User`; `Admin operator` oversight | `coaching / AI assist` (`coach recommendations + queue role realignment`) | coach-facing AI recommendation surfaces in app (`Home`, `Team`, `Challenge`, `coaching_journeys*`, `channel_thread`, `coach_broadcast_compose`) + `/admin/coaching/audit` oversight boundary (planning only) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + accepted W5 AI/UI/backend/admin stack | Accepted and pushed: W5 AI realignment now centers coach-responsibility-aware recommendations (individual/challenge/team) in app surfaces, repositions `/api/ai/suggestions*` as coach recommendation queue/read-model contract, and demotes `/admin/coaching/audit` to secondary oversight/exception workflow. |
 | `COACHING-W6-NOTIFICATIONS-READINESS-BOUNDARY-A` | `committed+pushed` | `M6 broader scope (notifications + coaching integration readiness; planning-only)` | `Coach`, `Admin operator`, `Team Leader`, `Team Member`, `Solo User` | `notifications / coaching` (`readiness boundary + insertion map + assignment specs`) | notification entry points across `Home`, `Team`, `Challenge`, `coaching_journeys*`, `inbox*`, admin/ops policy surfaces (planning only) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + accepted M6 coaching stack | Accepted and pushed: W6 notifications/coaching readiness package (class taxonomy, channel/gating policy, insertion-point maps, minimum read-model outputs, `build now` vs `defer`, and next implementation swaths). |
-| `COACHING-W6-UI-NOTIFICATION-SURFACES-A` | `blocked` | `M6 broader scope (W6 notifications/coaching UI insertion pass)` | `Team Leader`, `Team Member`, `Solo User`, `Coach` (first-class runtime operator in host surfaces/channels) | `notifications / coaching` (`runtime banners/badges/inbox rows + host/channel entry points`) | `Home`, `Team`, `Challenge`, `coaching_journeys*`, `coaching_lesson_detail`, `inbox*`, `channel_thread` (approved host/runtime insert points; includes cohort channel entry points for non-team individuals) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred) | manual-spec-driven + accepted W6 notifications boundary docs + W6/W7 rescope package | Blocked pending owner acceptance of W6/W7 surface-boundary rescope (coach portal + app notification placement) before more W6 mobile notification UI buildup. |
+| `COACHING-W6-UI-NOTIFICATION-SURFACES-A` | `active` | `M6 broader scope (W6 notifications/coaching UI insertion pass)` | `Team Leader`, `Team Member`, `Solo User`, `Coach` (first-class runtime operator in host surfaces/channels) | `notifications / coaching` (`runtime banners/badges/inbox rows + host/channel entry points`) | `Home`, `Team`, `Challenge`, `coaching_journeys*`, `coaching_lesson_detail`, `inbox*`, `channel_thread` (approved host/runtime insert points; includes cohort channel entry points for non-team individuals) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred) | manual-spec-driven + accepted W6 notifications boundary docs + W6/W7 rescope package | Unblocked by owner-approved W6/W7 coach/sponsor/cohort rescope direction; implement W6 in-app coaching notification surfaces on accepted app-surface + coach-runtime/cohort-channel model (no backend/schema/API changes). |
 | `COACHING-W6-BACKEND-NOTIFICATION-READMODEL-INFAMILY-A` | `committed+pushed` | `M6 broader scope (W6 notifications/coaching backend in-family read-model shaping)` | `Coach`, `Admin operator`, `Team Leader`, `Team Member`, `Solo User` | `notifications / coaching` (`in-family summary/items shaping`) | existing `channels/messages`, `coaching`, and `notifications` endpoint families + contract docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (backend worktree strongly preferred) | N/A (backend/contract; W6 notifications boundary docs) | Accepted and pushed (`2dd5eea`): additive notification summary/item read-model outputs in existing endpoint families + `/docs/spec/04_api_contracts.md` updates + `DEC-0046`; no schema/net-new endpoint family changes. |
 | `COACHING-W6-PREFS-OPS-NOTIFICATION-VISIBILITY-A` | `blocked` | `M6 broader scope (W6 notification prefs + ops visibility surfaces)` | `Admin operator`, `Coach`, `Team Leader`, `Team Member`, `Solo User` | `notifications / coaching` (`prefs UI + ops queue visibility`) | profile/settings coaching notification prefs + `coach_ops_audit` admin extension notification visibility companion | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + accepted W6 notifications boundary docs | Blocked/deferred by owner direction: coaching notifications belong primarily in app surfaces and a separate coach web portal, not mixed into `/admin/coaching/audit`. Do not continue expanding `/admin/coaching/audit` UI under this assignment. |
 | `COACHING-OPS-SURFACE-BOUNDARY-CLARITY-SPEC-A` | `review` | `M6 broader scope (docs-only follow-up: admin coaching ops surface purpose + boundary split)` | `Admin operator`, `Coach`, downstream `Team Leader`, `Team Member`, `Solo User` | `coaching / notifications / admin ops` (`surface purpose + boundary clarification`) | `/admin/coaching/audit`, separate notification ops view (if justified), coach-facing in-app AI + notification surfaces (planning only) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + accepted W5/W6 AI/notifications stack | Owner direction tightened: `/admin/coaching/audit` is likely optional super-admin AI troubleshooting only (not primary workflow); coaching notifications belong in app surfaces + separate coach web portal. Follow-on W6/W7 rescoping package/spec required for portal surface set + sequencing. |
 | `COACHING-W6-W7-COACH-PORTAL-NOTIFICATION-RESCOPE-A` | `review` | `M6/W7 coaching+notifications rescoping (docs-only sequencing/package split)` | `Coach` (first-class runtime operator), `Challenge Sponsor` (distinct persona), `Admin operator` (super-admin troubleshooting only), downstream `Team Leader`, `Team Member`, `Solo User` | `coaching / notifications / portal` (`W6/W7 rescope + sequencing`) | app coaching notification host surfaces/channels (including cohort-based channels for non-team individuals) + coach web portal (`content_upload`, `content_library`, `journeys`, `cohorts`, `channels`) + sponsor-scoped comms/content/KPI-visibility permissions + optional `/admin/coaching/audit` super-admin troubleshooting | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + accepted W5/W6 stack + boundary-clarity follow-up | Docs-only rescoping package prepared from owner direction: demotes `/admin/coaching/audit` to optional super-admin AI troubleshooting, keeps coaches as first-class runtime operators in host surfaces/channels, supports cohort-based channels for non-team individuals, preserves Team Leader challenge participation (`creator != non-participant`), removes generic solo challenge creation as a primary destination (solo create routes via Sponsored Challenges if supported), and treats Challenge Sponsor as a distinct persona with sponsor-scoped comms/content/member-KPI visibility but no KPI logging. |
-| `COACHING-W7-COACH-PORTAL-FOUNDATION-SURFACES-A` | `queued` | `W7 coaching portal track (coach web portal surface foundation)` | `Coach`, `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (limited governance) | `coach portal / content operations` (`IA + surface shells`) | coach web portal `content_upload`, `content_library`, `journeys`, `cohorts`, `channels` (companion to runtime host surfaces/channels, not replacement; sponsor persona gets scoped access) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package | Build coach web portal foundation surface shells/IA for coach-owned content and cohort/channel operations, including sponsor-scoped communications/content-library/challenge-member-KPI visibility access for `Challenge Sponsor`, while preserving no sponsor KPI logging and excluding `/admin/coaching/audit` from primary coach workflows. |
+| `COACHING-W7-COACH-PORTAL-FOUNDATION-SURFACES-A` | `review` | `W7 coaching portal track (coach web portal surface foundation)` | `Coach`, `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (limited governance) | `coach portal / content operations` (`IA + surface shells`) | coach web portal `content_upload`, `content_library`, `journeys`, `cohorts`, `channels` (companion to runtime host surfaces/channels, not replacement; sponsor persona gets scoped access) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package | Docs-first W7 foundation package prepared: coach portal surface set and IA/scope boundaries are now defined as runtime-companion surfaces with explicit coach runtime operator carry-through, sponsor persona scoped access, and no sponsor KPI logging routes/actions. |
 | `COACHING-W7-SUPERADMIN-AI-TROUBLESHOOTING-AUDIT-A` | `queued` | `W7 optional hardening (super-admin AI troubleshooting only)` | `Super Admin` (primary), `Admin operator` (limited) | `AI troubleshooting / audit` (`exception-only`) | optional trimmed `/admin/coaching/audit` super-admin troubleshooting views | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package + explicit owner approval gate | Optional exception-only follow-on to repurpose or trim `/admin/coaching/audit` into super-admin AI troubleshooting/audit; not a coach notification or coach primary workflow surface. |
 
 ## Blocked Assignments
@@ -2016,6 +2016,8 @@ Define an implementation-ready W6 notifications/coaching boundary package before
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred)
 - `Figma refs:` `manual-spec-driven` (W6 notifications boundary docs)
 - `Dependency note:` Follows accepted `COACHING-W6-NOTIFICATIONS-READINESS-BOUNDARY-A` and should consume existing W3/W4/W5 coaching/comms/AI runtime surfaces without widening scope
+- `Worker pickup note (2026-02-26, Mobile-1):` Controller/owner approved W6/W7 coach/sponsor/cohort rescope direction; treating assignment as unblocked. Implementing W6 in-app coaching notification surfaces on accepted app-surface + coach-runtime/cohort-channel model using existing coaching/comms/AI runtime surfaces only.
+- `Current blocker status (2026-02-26, Mobile-1, start):` `none` after owner rescope approval. Will document any remaining UI-only contract gaps as placeholder/fallback notification states rather than widening backend/API scope.
 
 #### Primary Objective
 Implement manual-spec-driven W6 coaching notification UI insertion points on approved member surfaces:
@@ -2417,3 +2419,87 @@ Prepare an implementation-guiding docs-only rescoping package for W6/W7 that ref
   - `design/figma/exports/screens/_team_dashboard_candidates/`
   - swap files / editor temp files
 - `references/...` is informational unless explicitly part of the assignment deliverable.
+
+### `COACHING-W7-COACH-PORTAL-FOUNDATION-SURFACES-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `W7 coaching portal track (coach web portal surface foundation; docs-first package)`
+- `Persona:` `Coach`, `Challenge Sponsor` (sponsor-scoped tools only), `Admin operator` (limited governance)
+- `Flow:` `coach portal / content operations` (`IA + surface shells`)
+- `Owner:` `Admin-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred)
+- `Figma refs:` `manual-spec-driven` (IA/foundation package; no parity export requirement in this pass)
+- `Dependency note:` Follows accepted W6/W7 rescope package and owner-direction refinements (coach runtime operator, cohort-channel support, Team Leader creator-participant rule, solo challenge sponsored-routed creation, Challenge Sponsor distinct persona + no sponsor KPI logging).
+- `Worker note (2026-02-26, Admin-1/Coach-1 docs execution start):` Board status updated first. Preparing docs-first W7 coach portal foundation surfaces package using accepted W6/W7 rescope direction, with explicit coach/sponsor surface permissions and runtime-companion boundaries.
+- `Current blocker status (2026-02-26, Admin-1/Coach-1):` `none` for docs packaging. This pass defines IA/surface boundaries and sequencing guidance only; no app/backend/schema/API implementation edits.
+- `Completion note (2026-02-26, Admin-1/Coach-1):` Completed/advanced the W7 coach portal foundation surfaces package in planning docs. Defined portal foundation surface set (`content_upload`, `content_library`, `journeys`, `cohorts`, `channels`) with per-surface purpose, coach/admin/sponsor access boundaries, runtime companion links, and explicit no-sponsor-KPI-logging rules. Clarified `/admin/coaching/audit` remains secondary super-admin troubleshooting/governance and not a primary coach portal workflow.
+- `Validation note (2026-02-26, Admin-1/Coach-1):` Board updated first. Cross-doc consistency check completed across coaching matrix, wiring addendum, screenmap, and intended wiring diagram for coach runtime-operator carry-through, sponsor persona access, cohort-channel support, and no sponsor KPI logging. No app/backend/schema/API files changed.
+- `Current blocker status (2026-02-26, Admin-1/Coach-1, completion):` `none` for docs package preparation. Implementation remains gated on host choice confirmation (`Admin Shell extension` vs hybrid portal split) and route/module boundary decisions during build.
+
+#### Primary Objective
+Prepare/advance an implementation-guiding W7 docs-first foundation package for coach portal surfaces that:
+- defines the coach web portal surface set (`content_upload`, `content_library`, `journeys`, `cohorts`, `channels`) as companion surfaces to runtime host surfaces/channels (not a replacement),
+- preserves accepted W6/W7 rescope rules (coach is a first-class runtime operator; cohort-based channels for non-team individuals are valid),
+- models `Challenge Sponsor` as a distinct persona with sponsor-scoped portal/channel access and challenge-member KPI visibility,
+- explicitly prohibits sponsor KPI logging routes/actions,
+- keeps `/admin/coaching/audit` as secondary/optional super-admin troubleshooting/governance rather than a primary coach workflow.
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+
+#### Constraints (Hard)
+- Docs/planning only in this pass (no implementation files)
+- Preserve accepted W6/W7 rescope owner direction (coach runtime operator + cohort channels + creator-participant + solo sponsored-routed create)
+- `Challenge Sponsor` is a distinct persona with sponsor-scoped access only (not generic member/admin parity)
+- Sponsor persona must not log KPIs or receive KPI logging/edit routes/actions
+- Portal surfaces complement runtime host surfaces/channels and do not replace runtime participation/comms paths
+- `/admin/coaching/audit` remains secondary/optional troubleshooting/governance in W7 foundation planning
+- Any route/module/API structural changes remain `decision needed` and require `DECISIONS_LOG.md` if implemented
+
+#### Deliverables (Required)
+1. W7 coach portal foundation surface set package:
+   - `content_upload`
+   - `content_library`
+   - `journeys`
+   - `cohorts`
+   - `channels`
+2. Per-surface purpose/ownership/access boundaries (Coach/Admin/Challenge Sponsor)
+3. Runtime-companion mapping for each surface (what runtime host/channel flows it supports; no replacement rule)
+4. Sponsor persona access + no-KPI-logging rules on relevant surfaces (`content_library`, `cohorts`, `channels`, KPI visibility)
+5. `/admin/coaching/audit` demotion reaffirmed (secondary governance/troubleshooting only)
+6. W7 sequencing guidance / follow-on implementation notes for portal foundation shells
+
+#### Validation (Required)
+- Board updated first with status + completion/blocker notes
+- W7 coach portal foundation surface set is explicitly documented (`content_upload`, `content_library`, `journeys`, `cohorts`, `channels`)
+- Coach runtime operator companion rule is explicit
+- Challenge Sponsor access is sponsor-scoped and explicit
+- No-sponsor-KPI-logging rule is explicit in updated docs
+- `/admin/coaching/audit` is not modeled as a primary coach portal workflow
+- Screenmap + intended wiring diagram remain in sync for persona/surface access changes
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `W7 coach portal foundation surface set`
+- `Coach runtime companion rule`
+- `Challenge Sponsor scoped access`
+- `Sponsor no-KPI-logging rule`
+- `Role of /admin/coaching/audit`
+- `W7 sequencing / follow-on guidance`
+- `Docs updated` (exact files)
+- `Validation`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-W7-COACH-PORTAL-FOUNDATION-SURFACES-A exactly as written. Use the accepted W6/W7 coach/sponsor/cohort rescope direction (coach runtime operator, sponsor persona, no sponsor KPI logging) and prepare/advance the W7 coach portal foundation surfaces package. Update the board status/blocker/completion notes first, then send a brief report back.`
