@@ -231,6 +231,13 @@ type ChallengeFlowItem = {
   raw?: ChallengeApiRow | null;
   leaderboardPreview: ChallengeFlowLeaderboardEntry[];
 };
+type TeamFlowScreen =
+  | 'dashboard'
+  | 'invite_member'
+  | 'pending_invitations'
+  | 'kpi_settings'
+  | 'pipeline'
+  | 'team_challenges';
 
 type PendingDirectLog = {
   kpiId: string;
@@ -1378,6 +1385,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [challengeLeaveSubmittingId, setChallengeLeaveSubmittingId] = useState<string | null>(null);
   const [challengeJoinError, setChallengeJoinError] = useState<string | null>(null);
   const [challengeLeaveError, setChallengeLeaveError] = useState<string | null>(null);
+  const [teamFlowScreen, setTeamFlowScreen] = useState<TeamFlowScreen>('dashboard');
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
@@ -5138,221 +5146,253 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           </View>
         ) : activeTab === 'team' ? (
           <View style={styles.challengeSurfaceWrap}>
-            <View style={styles.challengeHeaderCard}>
-              <View style={styles.challengeHeaderTopRow}>
-                <View style={[styles.challengeHeaderBadge, styles.teamHeaderBadge]}>
-                  <Text style={[styles.challengeHeaderBadgeText, styles.teamHeaderBadgeText]}>Team</Text>
-                </View>
-                <Text style={styles.challengeHeaderMeta}>Dashboard / participation</Text>
-              </View>
-              <Text style={styles.challengeHeaderTitle}>Team Dashboard</Text>
-              <Text style={styles.challengeHeaderSub}>
-                Team summary, member performance, and challenge participation previews live here. Team logging stays available lower on the page.
-              </Text>
-              <View style={styles.teamDashboardHeroCtaRow}>
-                <TouchableOpacity style={styles.teamDashboardHeroPrimaryCta}>
-                  <Text style={styles.teamDashboardHeroPrimaryCtaText}>Team Challenges</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.teamDashboardHeroSecondaryCta}>
-                  <Text style={styles.teamDashboardHeroSecondaryCtaText}>Manage Team</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.challengeHeaderHint}>
-                Placeholder shell aligned to Figma `388-8814`; aggregate stats, rank, and management routes will wire to team payload/contracts later.
-              </Text>
-            </View>
+            {(() => {
+              const teamRouteMeta: Record<Exclude<TeamFlowScreen, 'dashboard'>, { title: string; figmaNode: string }> = {
+                invite_member: { title: 'Invite Member', figmaNode: '173-4448' },
+                pending_invitations: { title: 'Pending Invitations', figmaNode: '173-4612' },
+                kpi_settings: { title: 'Team KPI Settings', figmaNode: '173-4531' },
+                pipeline: { title: 'Pipeline', figmaNode: '168-16300' },
+                team_challenges: { title: 'Single Person Challenges', figmaNode: '173-4905' },
+              };
 
-            <View style={styles.teamDashboardModuleCard}>
-              <View style={styles.teamDashboardModuleHeader}>
-                <Text style={styles.teamDashboardModuleTitle}>Team Summary</Text>
-                <Text style={styles.teamDashboardModuleMeta}>Placeholder</Text>
-              </View>
-              <View style={styles.teamDashboardMetricGrid}>
-                <View style={styles.teamDashboardMetricCard}>
-                  <Text style={styles.teamDashboardMetricLabel}>Team Actual GCI</Text>
-                  <Text style={styles.teamDashboardMetricValue}>$583K</Text>
-                  <Text style={styles.teamDashboardMetricFoot}>Aggregated team actuals (placeholder)</Text>
-                </View>
-                <View style={styles.teamDashboardMetricCard}>
-                  <Text style={styles.teamDashboardMetricLabel}>90d Projected GCI</Text>
-                  <Text style={styles.teamDashboardMetricValue}>$320K</Text>
-                  <Text style={styles.teamDashboardMetricFoot}>Aggregated projections (placeholder)</Text>
-                </View>
-                <View style={styles.teamDashboardMetricCard}>
-                  <Text style={styles.teamDashboardMetricLabel}>Team Members</Text>
-                  <Text style={styles.teamDashboardMetricValue}>3</Text>
-                  <Text style={styles.teamDashboardMetricFoot}>Roster preview count</Text>
-                </View>
-                <View style={styles.teamDashboardMetricCard}>
-                  <Text style={styles.teamDashboardMetricLabel}>Active Challenges</Text>
-                  <Text style={styles.teamDashboardMetricValue}>2</Text>
-                  <Text style={styles.teamDashboardMetricFoot}>Participation hub preview</Text>
-                </View>
-              </View>
-            </View>
+              const teamMembers = [
+                { name: 'Sarah Johnson', metric: '98%', sub: '8 KPIs logged' },
+                { name: 'Alex Rodriguez', metric: '92%', sub: '8 KPIs logged' },
+                { name: 'James Mateo', metric: '90%', sub: 'sarah@company.com' },
+              ] as const;
 
-            <View style={styles.teamDashboardModuleCard}>
-              <View style={styles.teamDashboardModuleHeader}>
-                <Text style={styles.teamDashboardModuleTitle}>Team Performance Trend</Text>
-                <Text style={styles.teamDashboardModuleMeta}>Chart placeholder</Text>
-              </View>
-              <View style={styles.teamDashboardChartCard}>
-                <View style={styles.teamDashboardChartPlaceholderLine} />
-                <View style={styles.teamDashboardChartAxesRow}>
-                  <Text style={styles.teamDashboardChartAxisLabel}>Mar</Text>
-                  <Text style={styles.teamDashboardChartAxisLabel}>Jun</Text>
-                  <Text style={styles.teamDashboardChartAxisLabel}>Sep</Text>
-                  <Text style={styles.teamDashboardChartAxisLabel}>Dec</Text>
-                </View>
-              </View>
-              <Text style={styles.teamDashboardModuleHint}>
-                Preserve dashboard chart footprint now; wire team aggregate series later without moving surrounding modules.
-              </Text>
-            </View>
+              const teamActivity = [
+                { icon: '🎧', title: 'Sarah logged 10 calls', time: '2 hours ago' },
+                { icon: '✓', title: "Mark completed today's goal", time: '2 hours ago' },
+              ] as const;
 
-            <View style={styles.teamDashboardSplitRow}>
-              <View style={[styles.teamDashboardModuleCard, styles.teamDashboardHalfCard]}>
-                <View style={styles.teamDashboardModuleHeader}>
-                  <Text style={styles.teamDashboardModuleTitle}>Performance Gauge</Text>
-                  <Text style={styles.teamDashboardModuleMeta}>Placeholder</Text>
-                </View>
-                <View style={styles.teamDashboardGaugePlaceholderWrap}>
-                  <View style={styles.teamDashboardGaugePlaceholderOuter}>
-                    <View style={styles.teamDashboardGaugePlaceholderInner}>
-                      <Text style={styles.teamDashboardGaugeValue}>80%</Text>
-                      <Text style={styles.teamDashboardGaugeCaption}>Performance on top</Text>
-                    </View>
+              const teamLoggingBlock = (
+                <View style={styles.challengeSectionsWrap}>
+                  <View style={styles.challengeLoggingHeaderCard}>
+                    <Text style={styles.challengeLoggingHeaderTitle}>Team Logging</Text>
+                    <Text style={styles.challengeLoggingHeaderSub}>
+                      Shared KPI logging mechanics stay unchanged. This module is intentionally lower so the Team screen reads dashboard-first.
+                    </Text>
                   </View>
-                </View>
-                <View style={styles.teamDashboardMiniMetricsRow}>
-                  <View style={styles.teamDashboardMiniMetricChip}>
-                    <Text style={styles.teamDashboardMiniMetricLabel}>Confidence</Text>
-                    <Text style={styles.teamDashboardMiniMetricValue}>78%</Text>
-                  </View>
-                  <View style={styles.teamDashboardMiniMetricChip}>
-                    <Text style={styles.teamDashboardMiniMetricLabel}>Rank</Text>
-                    <Text style={styles.teamDashboardMiniMetricValue}>#3</Text>
-                  </View>
-                </View>
-              </View>
 
-              <View style={[styles.teamDashboardModuleCard, styles.teamDashboardHalfCard]}>
-                <View style={styles.teamDashboardModuleHeader}>
-                  <Text style={styles.teamDashboardModuleTitle}>Team Challenges</Text>
-                  <TouchableOpacity style={styles.teamDashboardInlineLinkBtn}>
-                    <Text style={styles.teamDashboardInlineLinkBtnText}>View all</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.teamDashboardPreviewList}>
-                  {[
-                    { title: '30 Day Listing Challenge', status: 'Active', meta: 'Progress preview placeholder' },
-                    { title: 'No Buy Listing Challenge', status: 'Upcoming', meta: 'Schedule preview placeholder' },
-                  ].map((item) => (
-                    <View key={item.title} style={styles.teamDashboardPreviewRow}>
-                      <View style={styles.teamDashboardPreviewRowCopy}>
-                        <Text style={styles.teamDashboardPreviewRowTitle}>{item.title}</Text>
-                        <Text style={styles.teamDashboardPreviewRowMeta}>{item.meta}</Text>
+                  {teamTileCount === 0 ? (
+                    <View style={styles.challengeEmptyCard}>
+                      <View style={[styles.challengeEmptyBadge, styles.teamHeaderBadge]}>
+                        <Text style={[styles.challengeEmptyBadgeText, styles.teamHeaderBadgeText]}>Team</Text>
                       </View>
-                      <View style={styles.teamDashboardStatusPill}>
-                        <Text style={styles.teamDashboardStatusPillText}>{item.status}</Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.teamDashboardModuleCard}>
-              <View style={styles.teamDashboardModuleHeader}>
-                <Text style={styles.teamDashboardModuleTitle}>Team Members</Text>
-                <TouchableOpacity style={styles.teamDashboardInlineLinkBtn}>
-                  <Text style={styles.teamDashboardInlineLinkBtnText}>Leaderboard</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.teamDashboardPreviewList}>
-                {[
-                  { name: 'Sarah Johnson', value: '98%', sub: 'On track this week (placeholder)' },
-                  { name: 'Alex Rodriguez', value: '92%', sub: 'Momentum up (placeholder)' },
-                  { name: 'James Mateo', value: '90%', sub: 'Needs follow-up (placeholder)' },
-                ].map((member, idx) => (
-                  <TouchableOpacity key={member.name} style={styles.teamDashboardMemberRow}>
-                    <View style={styles.teamDashboardMemberRankBadge}>
-                      <Text style={styles.teamDashboardMemberRankBadgeText}>{idx + 1}</Text>
-                    </View>
-                    <View style={styles.teamDashboardMemberAvatar}>
-                      <Text style={styles.teamDashboardMemberAvatarText}>
-                        {member.name
-                          .split(' ')
-                          .map((part) => part[0])
-                          .join('')
-                          .slice(0, 2)
-                          .toUpperCase()}
+                      <Text style={styles.challengeEmptyTitle}>No team KPIs available yet</Text>
+                      <Text style={styles.challengeEmptyText}>
+                        Team-relevant KPIs will appear here once team context is available for your account. Dashboard modules above remain in place for parity scaffolding.
                       </Text>
+                      <TouchableOpacity
+                        style={styles.challengeEmptyCta}
+                        onPress={() => {
+                          setActiveTab('home');
+                          setViewMode('home');
+                        }}
+                      >
+                        <Text style={styles.challengeEmptyCtaText}>Back to Home</Text>
+                      </TouchableOpacity>
                     </View>
-                    <View style={styles.teamDashboardMemberCopy}>
-                      <Text style={styles.teamDashboardMemberName}>{member.name}</Text>
-                      <Text style={styles.teamDashboardMemberSub}>{member.sub}</Text>
-                    </View>
-                    <Text style={styles.teamDashboardMemberMetric}>{member.value}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.teamDashboardModuleCard}>
-              <View style={styles.teamDashboardModuleHeader}>
-                <Text style={styles.teamDashboardModuleTitle}>Team Actions</Text>
-                <Text style={styles.teamDashboardModuleMeta}>Leader tools (placeholder slots)</Text>
-              </View>
-              <View style={styles.teamDashboardActionGrid}>
-                {['Invite Member', 'Pending Invites', 'Team KPI Settings', 'View Pipeline'].map((label) => (
-                  <TouchableOpacity key={label} style={styles.teamDashboardActionTile}>
-                    <Text style={styles.teamDashboardActionTileTitle}>{label}</Text>
-                    <Text style={styles.teamDashboardActionTileSub}>Placeholder CTA slot</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.challengeSectionsWrap}>
-              <View style={styles.challengeLoggingHeaderCard}>
-                <Text style={styles.challengeLoggingHeaderTitle}>Team Logging</Text>
-                <Text style={styles.challengeLoggingHeaderSub}>
-                  Shared KPI logging mechanics stay unchanged. This module is intentionally lower so the Team screen reads dashboard-first.
-                </Text>
-              </View>
-
-              {teamTileCount === 0 ? (
-                <View style={styles.challengeEmptyCard}>
-                  <View style={[styles.challengeEmptyBadge, styles.teamHeaderBadge]}>
-                    <Text style={[styles.challengeEmptyBadgeText, styles.teamHeaderBadgeText]}>Team</Text>
-                  </View>
-                  <Text style={styles.challengeEmptyTitle}>No team KPIs available yet</Text>
-                  <Text style={styles.challengeEmptyText}>
-                    Team-relevant KPIs will appear here once team context is available for your account. Dashboard modules above remain in place for parity scaffolding.
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.challengeEmptyCta}
-                    onPress={() => {
-                      setActiveTab('home');
-                      setViewMode('home');
-                    }}
-                  >
-                    <Text style={styles.challengeEmptyCtaText}>Back to Home</Text>
-                  </TouchableOpacity>
+                  ) : (
+                    <>
+                      {renderParticipationFocusCard('team', teamSurfaceKpis, {
+                        title: 'Team focus actions',
+                        sub: 'Placeholder relevance ordering until team/team-challenge payload wiring is available.',
+                      })}
+                      {renderTeamKpiSection('PC', 'Projections (PC)', teamKpiGroups.PC)}
+                      {renderTeamKpiSection('GP', 'Growth (GP)', teamKpiGroups.GP)}
+                      {renderTeamKpiSection('VP', 'Vitality (VP)', teamKpiGroups.VP)}
+                    </>
+                  )}
                 </View>
-              ) : (
+              );
+
+              if (teamFlowScreen !== 'dashboard') {
+                const meta = teamRouteMeta[teamFlowScreen];
+                return (
+                  <View style={styles.teamRouteShellWrap}>
+                    <View style={styles.teamRouteShellCard}>
+                      <View style={styles.teamRouteShellNavRow}>
+                        <TouchableOpacity style={styles.teamRouteShellBackBtn} onPress={() => setTeamFlowScreen('dashboard')}>
+                          <Text style={styles.teamRouteShellBackBtnText}>‹</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.teamRouteShellTitle}>{meta.title}</Text>
+                        <View style={styles.teamRouteShellBackBtn} />
+                      </View>
+                      <Text style={styles.teamRouteShellSub}>
+                        Team management route shell for chunk A routing validation. Figma parity for this screen is scheduled in later chunks.
+                      </Text>
+                      <View style={styles.teamRouteShellInfoCard}>
+                        <Text style={styles.teamRouteShellInfoTitle}>{meta.title}</Text>
+                        <Text style={styles.teamRouteShellInfoMeta}>Figma node {meta.figmaNode}</Text>
+                        <Text style={styles.teamRouteShellInfoBody}>
+                          Destination route is intentionally navigable now so dashboard CTA wiring can be validated before individual screen parity passes.
+                        </Text>
+                      </View>
+                      <TouchableOpacity style={styles.teamRouteShellPrimaryBtn} onPress={() => setTeamFlowScreen('dashboard')}>
+                        <Text style={styles.teamRouteShellPrimaryBtnText}>Back to Team Dashboard</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              }
+
+              return (
                 <>
-                  {renderParticipationFocusCard('team', teamSurfaceKpis, {
-                    title: 'Team focus actions',
-                    sub: 'Placeholder relevance ordering until team/team-challenge payload wiring is available.',
-                  })}
-                  {renderTeamKpiSection('PC', 'Projections (PC)', teamKpiGroups.PC)}
-                  {renderTeamKpiSection('GP', 'Growth (GP)', teamKpiGroups.GP)}
-                  {renderTeamKpiSection('VP', 'Vitality (VP)', teamKpiGroups.VP)}
+                  <View style={styles.teamParityDashboardWrap}>
+                    <View style={styles.teamParityNavRow}>
+                      <TouchableOpacity style={styles.teamParityBackBtn}>
+                        <Text style={styles.teamParityBackBtnText}>‹</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.teamParityNavTitle}>Team Dashboard</Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.teamParityGroupCard}
+                      activeOpacity={0.92}
+                      onPress={() => setTeamFlowScreen('invite_member')}
+                    >
+                      <View style={styles.teamParityGroupIcon}>
+                        <Text style={styles.teamParityGroupIconText}>👥</Text>
+                      </View>
+                      <View style={styles.teamParityGroupCopy}>
+                        <Text style={styles.teamParityGroupName}>The Elite Group</Text>
+                        <Text style={styles.teamParityGroupSub}>Updated 2 hours ago</Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <Text style={styles.teamParitySectionLabel}>Performance Summary</Text>
+                    <View style={styles.teamParityPerfCard}>
+                      <View style={styles.teamParityGaugeWrap}>
+                        <View style={styles.teamParityGaugeArcBase} />
+                        <View style={[styles.teamParityGaugeArcSegment, styles.teamParityGaugeArcRed]} />
+                        <View style={[styles.teamParityGaugeArcSegment, styles.teamParityGaugeArcOrange]} />
+                        <View style={[styles.teamParityGaugeArcSegment, styles.teamParityGaugeArcGreen]} />
+                        <View style={styles.teamParityGaugeCenter}>
+                          <Text style={styles.teamParityGaugeValue}>80%</Text>
+                        </View>
+                      </View>
+                      <View style={styles.teamParityPerformancePill}>
+                        <Text style={styles.teamParityPerformancePillText}>Performance on Top</Text>
+                      </View>
+                      <Text style={styles.teamParityPerfRatio}>890 / 1200</Text>
+                      <Text style={styles.teamParityPerfCaption}>Team Sphere Calls Achieved</Text>
+
+                      <View style={styles.teamParityStatRow}>
+                        <TouchableOpacity
+                          style={[styles.teamParityStatCard, styles.teamParityStatCardGreen]}
+                          activeOpacity={0.92}
+                          onPress={() => setTeamFlowScreen('pipeline')}
+                        >
+                          <Text style={styles.teamParityStatTitle}>Team Performance</Text>
+                          <Text style={styles.teamParityStatValue}>85%</Text>
+                          <Text style={styles.teamParityStatFoot}>Goals achieved</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.teamParityStatCard, styles.teamParityStatCardPurple]}
+                          activeOpacity={0.92}
+                          onPress={() => setTeamFlowScreen('team_challenges')}
+                        >
+                          <Text style={styles.teamParityStatTitle}>Active Challenges</Text>
+                          <Text style={styles.teamParityStatValue}>02</Text>
+                          <Text style={styles.teamParityStatFoot}>Ongoing</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <TouchableOpacity
+                        style={styles.teamParityConfidenceRow}
+                        activeOpacity={0.92}
+                        onPress={() => setTeamFlowScreen('kpi_settings')}
+                      >
+                        <View style={styles.teamParityConfidenceIcon}>
+                          <Text style={styles.teamParityConfidenceIconText}>⚡</Text>
+                        </View>
+                        <View style={styles.teamParityConfidenceCopy}>
+                          <Text style={styles.teamParityConfidenceTitle}>Team Confidence</Text>
+                          <Text style={styles.teamParityConfidenceSub}>Overall Team Confidents</Text>
+                        </View>
+                        <Text style={styles.teamParityConfidenceValue}>78%</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.teamParitySectionRow}>
+                      <Text style={styles.teamParitySectionLabel}>Members Performance</Text>
+                      <TouchableOpacity onPress={() => setTeamFlowScreen('pending_invitations')}>
+                        <Text style={styles.teamParitySectionLink}>Pending</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.teamParityListCard}>
+                      {teamMembers.map((member, idx) => (
+                        <TouchableOpacity
+                          key={member.name}
+                          style={[styles.teamParityMemberRow, idx > 0 && styles.teamParityDividerTop]}
+                          activeOpacity={0.92}
+                          onPress={() => setTeamFlowScreen('team_challenges')}
+                        >
+                          <View style={styles.teamParityMemberAvatar}>
+                            <Text style={styles.teamParityMemberAvatarText}>
+                              {member.name
+                                .split(' ')
+                                .map((part) => part[0])
+                                .join('')
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={styles.teamParityMemberCopy}>
+                            <Text style={styles.teamParityMemberName}>{member.name}</Text>
+                            <Text style={styles.teamParityMemberSub}>{member.sub}</Text>
+                          </View>
+                          <Text style={styles.teamParityMemberMetric}>{member.metric}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    <View style={styles.teamParitySectionRow}>
+                      <Text style={styles.teamParitySectionLabel}>Team Activity</Text>
+                      <TouchableOpacity onPress={() => setTeamFlowScreen('invite_member')}>
+                        <Text style={styles.teamParitySectionLink}>Invite</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.teamParityListCard}>
+                      {teamActivity.map((activity, idx) => (
+                        <TouchableOpacity
+                          key={activity.title}
+                          style={[styles.teamParityActivityRow, idx > 0 && styles.teamParityDividerTop]}
+                          activeOpacity={0.92}
+                          onPress={() =>
+                            setTeamFlowScreen(idx === 0 ? 'pipeline' : 'pending_invitations')
+                          }
+                        >
+                          <View style={styles.teamParityActivityIcon}>
+                            <Text style={styles.teamParityActivityIconText}>{activity.icon}</Text>
+                          </View>
+                          <View style={styles.teamParityActivityCopy}>
+                            <Text style={styles.teamParityActivityTitle}>{activity.title}</Text>
+                            <Text style={styles.teamParityActivityTime}>{activity.time}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    <View style={styles.teamParityRouteChipsRow}>
+                      <TouchableOpacity style={styles.teamParityRouteChip} onPress={() => setTeamFlowScreen('invite_member')}>
+                        <Text style={styles.teamParityRouteChipText}>Invite Member</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.teamParityRouteChip} onPress={() => setTeamFlowScreen('pending_invitations')}>
+                        <Text style={styles.teamParityRouteChipText}>Pending Invitations</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.teamParityRouteChip} onPress={() => setTeamFlowScreen('kpi_settings')}>
+                        <Text style={styles.teamParityRouteChipText}>KPI Settings</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {teamLoggingBlock}
                 </>
-              )}
-            </View>
+              );
+            })()}
           </View>
         ) : viewMode === 'home' ? (
           <>
@@ -7400,6 +7440,435 @@ const styles = StyleSheet.create({
     color: '#8090a4',
     fontSize: 10,
     lineHeight: 12,
+  },
+  teamParityDashboardWrap: {
+    gap: 12,
+  },
+  teamParityNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  teamParityBackBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamParityBackBtnText: {
+    color: '#2f3442',
+    fontSize: 22,
+    lineHeight: 22,
+    fontWeight: '500',
+    marginTop: -2,
+  },
+  teamParityNavTitle: {
+    color: '#3a4250',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  teamParityGroupCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 12,
+    backgroundColor: '#eef0f4',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  teamParityGroupIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#a7df5f',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamParityGroupIconText: {
+    fontSize: 14,
+  },
+  teamParityGroupCopy: {
+    flex: 1,
+    gap: 1,
+  },
+  teamParityGroupName: {
+    color: '#3b434f',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  teamParityGroupSub: {
+    color: '#8d96a6',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  teamParitySectionLabel: {
+    color: '#6d7482',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginTop: 2,
+  },
+  teamParitySectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  teamParitySectionLink: {
+    color: '#4b6fe2',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  teamParityPerfCard: {
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    padding: 12,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#e8edf5',
+  },
+  teamParityGaugeWrap: {
+    alignSelf: 'center',
+    width: 220,
+    height: 110,
+    position: 'relative',
+    marginTop: 4,
+  },
+  teamParityGaugeArcBase: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 110,
+    borderTopLeftRadius: 110,
+    borderTopRightRadius: 110,
+    borderWidth: 8,
+    borderBottomWidth: 0,
+    borderColor: '#d9dde5',
+    borderStyle: 'dashed',
+  },
+  teamParityGaugeArcSegment: {
+    position: 'absolute',
+    top: 0,
+    height: 110,
+    borderWidth: 8,
+    borderBottomWidth: 0,
+    backgroundColor: 'transparent',
+  },
+  teamParityGaugeArcRed: {
+    left: 0,
+    width: 82,
+    borderTopLeftRadius: 110,
+    borderTopRightRadius: 40,
+    borderColor: '#f36b57',
+    borderRightWidth: 0,
+  },
+  teamParityGaugeArcOrange: {
+    left: 68,
+    width: 84,
+    borderTopLeftRadius: 60,
+    borderTopRightRadius: 60,
+    borderColor: '#f4a04c',
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
+  },
+  teamParityGaugeArcGreen: {
+    right: 0,
+    width: 90,
+    borderTopLeftRadius: 44,
+    borderTopRightRadius: 110,
+    borderColor: '#57b520',
+    borderLeftWidth: 0,
+  },
+  teamParityGaugeCenter: {
+    position: 'absolute',
+    left: 42,
+    right: 42,
+    top: 34,
+    alignItems: 'center',
+  },
+  teamParityGaugeValue: {
+    color: '#2f3442',
+    fontSize: 34,
+    fontWeight: '900',
+    lineHeight: 38,
+  },
+  teamParityPerformancePill: {
+    alignSelf: 'center',
+    borderRadius: 999,
+    backgroundColor: '#a7df5f',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: -2,
+  },
+  teamParityPerformancePillText: {
+    color: '#33401f',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  teamParityPerfRatio: {
+    color: '#303947',
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  teamParityPerfCaption: {
+    color: '#9aa4b1',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: -4,
+  },
+  teamParityStatRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  teamParityStatCard: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 5,
+  },
+  teamParityStatCardGreen: {
+    backgroundColor: '#dff0da',
+  },
+  teamParityStatCardPurple: {
+    backgroundColor: '#e2def6',
+  },
+  teamParityStatTitle: {
+    color: '#465063',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  teamParityStatValue: {
+    color: '#3a4250',
+    fontSize: 28,
+    fontWeight: '900',
+    lineHeight: 30,
+  },
+  teamParityStatFoot: {
+    color: '#6e7787',
+    fontSize: 11,
+  },
+  teamParityConfidenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 10,
+    backgroundColor: '#f7efd6',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  teamParityConfidenceIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff2c4',
+  },
+  teamParityConfidenceIconText: {
+    fontSize: 12,
+  },
+  teamParityConfidenceCopy: {
+    flex: 1,
+    gap: 1,
+  },
+  teamParityConfidenceTitle: {
+    color: '#3a4250',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  teamParityConfidenceSub: {
+    color: '#989ca5',
+    fontSize: 10,
+  },
+  teamParityConfidenceValue: {
+    color: '#394150',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  teamParityListCard: {
+    borderRadius: 12,
+    backgroundColor: '#f0f2f5',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+  },
+  teamParityDividerTop: {
+    borderTopWidth: 1,
+    borderTopColor: '#dde3ec',
+  },
+  teamParityMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  teamParityMemberAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#dce7f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamParityMemberAvatarText: {
+    color: '#355483',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  teamParityMemberCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  teamParityMemberName: {
+    color: '#404857',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  teamParityMemberSub: {
+    color: '#8d97a6',
+    fontSize: 11,
+  },
+  teamParityMemberMetric: {
+    color: '#3a4250',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  teamParityActivityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  teamParityActivityIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#dff0da',
+  },
+  teamParityActivityIconText: {
+    fontSize: 14,
+  },
+  teamParityActivityCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  teamParityActivityTitle: {
+    color: '#3e4653',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  teamParityActivityTime: {
+    color: '#919aa9',
+    fontSize: 11,
+  },
+  teamParityRouteChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  teamParityRouteChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#dde5f2',
+    backgroundColor: '#f7f9fd',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  teamParityRouteChipText: {
+    color: '#50607a',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  teamRouteShellWrap: {
+    gap: 12,
+  },
+  teamRouteShellCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dfe7f2',
+    padding: 12,
+    gap: 12,
+  },
+  teamRouteShellNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  teamRouteShellBackBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: '#dfe7f2',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamRouteShellBackBtnText: {
+    color: '#3b4658',
+    fontSize: 22,
+    lineHeight: 22,
+    fontWeight: '600',
+    marginTop: -2,
+  },
+  teamRouteShellTitle: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#2f3442',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  teamRouteShellSub: {
+    color: '#6f7d90',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  teamRouteShellInfoCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5ebf5',
+    backgroundColor: '#fbfdff',
+    padding: 10,
+    gap: 4,
+  },
+  teamRouteShellInfoTitle: {
+    color: '#2f3442',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  teamRouteShellInfoMeta: {
+    color: '#7b8799',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  teamRouteShellInfoBody: {
+    color: '#6f7d90',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  teamRouteShellPrimaryBtn: {
+    borderRadius: 10,
+    backgroundColor: '#1f5fe2',
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  teamRouteShellPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
   },
   participationFocusCard: {
     backgroundColor: '#fff',
