@@ -241,10 +241,16 @@
   - Additive response fields (package read-model shaping baseline):
     - `channels[].packaging_read_model`
     - includes baseline/partial packaging visibility + entitlement context (`read_model_status` indicates inferred/partial coverage)
+  - Additive response fields (W6 notification read-model shaping baseline):
+    - top-level `notification_items[]` (channel-derived list rows inferred from membership + unread counters)
+    - top-level `notification_summary_read_model` (badge/count summary inferred from channel unread counters)
 - `GET /api/channels/{id}/messages`
   - Additive response fields (package read-model shaping baseline):
     - top-level `channel` (thread context metadata for runtime header/context)
     - top-level `packaging_read_model` (thread/package visibility + entitlement context baseline)
+  - Additive response fields (W6 notification read-model shaping baseline):
+    - top-level `notification_items[]` (thread/message-derived rows; `read_state` may be `unknown` in this family)
+    - top-level `notification_summary_read_model` (thread-scoped message-derived summary)
 - `POST /api/channels/{id}/messages`
   - Enforces membership checks and updates unread counters for other members.
 - `POST /api/channels/{id}/broadcast`
@@ -252,15 +258,25 @@
   - Enforces baseline 24h throttle and writes `broadcast_log` audit records.
 - `POST /api/messages/mark-seen`
   - Resets unread count for caller in specified channel.
+- `GET /api/messages/unread-count`
+  - Additive response fields (W6 notification read-model shaping baseline):
+    - top-level `notification_summary_read_model` (channel-unread-derived badge/count summary only; scoped limitations documented in response notes)
 - `GET /api/coaching/journeys`
   - Returns active journeys enriched with milestone/lesson totals plus user completion percent.
   - Additive response fields (package read-model shaping baseline):
     - `journeys[].packaging_read_model`
+  - Additive response fields (W6 notification read-model shaping baseline):
+    - top-level `notification_items[]` (coaching assignment/progress next-action rows inferred from journey visibility + completion aggregates)
+    - top-level `notification_summary_read_model`
 - `GET /api/coaching/journeys/{id}`
   - Additive response fields (package read-model shaping baseline):
     - `journey.packaging_read_model`
 - `POST /api/coaching/lessons/{id}/progress`
   - Supports `status: not_started | in_progress | completed` with upsert semantics.
+- `GET /api/coaching/progress`
+  - Additive response fields (W6 notification read-model shaping baseline):
+    - top-level `notification_items[]` (aggregate coaching reminder/progress-nudge row when applicable)
+    - top-level `notification_summary_read_model`
 - `POST /api/coaching/broadcast`
   - Enforces scope permissions:
     - `team`: team leader or platform admin
@@ -332,6 +348,10 @@
 - `POST /api/notifications/enqueue`, `GET /api/notifications/queue`, `POST /api/notifications/{id}/dispatch`
   - Platform-admin-only operations for notification queue lifecycle.
   - Dispatch endpoint records attempt counts and sent/failed transitions.
+  - Additive response fields (W6 notification read-model shaping baseline):
+    - enqueue/dispatch responses: `notification.notification_queue_read_model`
+    - queue response: `notifications[].notification_queue_read_model`
+    - queue response: top-level `queue_summary`, `notification_items[]`, `notification_summary_read_model`
 - `GET /ops/summary/sprint1`, `GET /ops/summary/sprint2`, and `GET /ops/summary/sprint3`
   - Read-only diagnostics for no-UI verification; no writes, no mutations.
 

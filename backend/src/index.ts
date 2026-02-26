@@ -289,6 +289,457 @@ type AiSuggestionQueueReadModel = {
   notes: string[];
 };
 
+type NotificationReadModelClass =
+  | "coaching_assignment_published"
+  | "coaching_lesson_reminder"
+  | "coaching_progress_nudge"
+  | "coaching_channel_message"
+  | "coaching_broadcast_sent"
+  | "ai_review_queue_pending"
+  | "ai_review_outcome"
+  | "package_access_changed"
+  | "sponsored_coaching_campaign_update"
+  | "unknown";
+
+type NotificationItemReadModel = {
+  class: NotificationReadModelClass;
+  preview: {
+    title: string | null;
+    body: string | null;
+  };
+  read_state: "read" | "unread" | "unknown";
+  route_target: string | null;
+  route_params: Record<string, string | number | boolean | null>;
+  linked_context_refs: {
+    team_id: string | null;
+    challenge_id: string | null;
+    sponsored_challenge_id: string | null;
+    channel_id: string | null;
+    journey_id: string | null;
+    lesson_id: string | null;
+    ai_suggestion_id: string | null;
+    notification_queue_id: string | null;
+  };
+  display_requirements: {
+    sponsor_disclaimer_required: boolean;
+    sponsor_attribution_required: boolean;
+    paywall_cta_required: boolean;
+    ai_approval_boundary_notice_required: boolean;
+  };
+  delivery_channel_origin:
+    | "channels_messages"
+    | "coaching"
+    | "notifications_queue"
+    | "notifications_dispatch"
+    | "unknown";
+  created_at: string | null;
+  read_model_status: "inferred_baseline" | "partial_in_family";
+  notes?: string[];
+};
+
+type NotificationSummaryReadModel = {
+  badge_total: number;
+  counts_by_class: Record<NotificationReadModelClass, number>;
+  last_event_at: string | null;
+  source_scope:
+    | "channels_list"
+    | "channel_thread"
+    | "messages_unread_count"
+    | "coaching_journeys"
+    | "coaching_progress"
+    | "notifications_queue"
+    | "unknown";
+  read_model_status: "inferred_baseline" | "partial_in_family";
+  notes?: string[];
+};
+
+type NotificationQueueRow = {
+  id?: unknown;
+  user_id?: unknown;
+  category?: unknown;
+  title?: unknown;
+  body?: unknown;
+  payload?: unknown;
+  status?: unknown;
+  attempts?: unknown;
+  last_error?: unknown;
+  scheduled_for?: unknown;
+  sent_at?: unknown;
+  created_at?: unknown;
+  updated_at?: unknown;
+};
+
+type NotificationQueueReadModel = {
+  notification_class: NotificationReadModelClass;
+  status_bucket: "queued" | "sent" | "failed" | "unknown";
+  dispatch_outcome: "pending" | "success" | "failed" | "unknown";
+  retry_metadata: {
+    attempts: number;
+    retry_eligible: boolean;
+    last_error_present: boolean;
+  };
+  policy_flags: {
+    requires_visibility_entitlement_check: boolean;
+    preserves_ai_approval_first_boundary: boolean;
+    sponsor_disclaimer_required: boolean;
+  };
+  linked_context_refs: NotificationItemReadModel["linked_context_refs"];
+  delivery_channel_origin: "notifications_queue" | "notifications_dispatch";
+  read_model_status: "partial_in_family";
+  notes: string[];
+};
+
+function emptyNotificationClassCounts(): Record<NotificationReadModelClass, number> {
+  return {
+    coaching_assignment_published: 0,
+    coaching_lesson_reminder: 0,
+    coaching_progress_nudge: 0,
+    coaching_channel_message: 0,
+    coaching_broadcast_sent: 0,
+    ai_review_queue_pending: 0,
+    ai_review_outcome: 0,
+    package_access_changed: 0,
+    sponsored_coaching_campaign_update: 0,
+    unknown: 0,
+  };
+}
+
+function buildNotificationSummaryReadModel(params: {
+  items: NotificationItemReadModel[];
+  source_scope: NotificationSummaryReadModel["source_scope"];
+  badge_total?: number;
+  read_model_status?: NotificationSummaryReadModel["read_model_status"];
+  notes?: string[];
+}): NotificationSummaryReadModel {
+  const counts = emptyNotificationClassCounts();
+  let lastEventAt: string | null = null;
+  for (const item of params.items) {
+    counts[item.class] = (counts[item.class] ?? 0) + 1;
+    if (item.created_at && (!lastEventAt || item.created_at > lastEventAt)) {
+      lastEventAt = item.created_at;
+    }
+  }
+  return {
+    badge_total: params.badge_total ?? params.items.filter((i) => i.read_state === "unread").length,
+    counts_by_class: counts,
+    last_event_at: lastEventAt,
+    source_scope: params.source_scope,
+    read_model_status: params.read_model_status ?? "partial_in_family",
+    ...(params.notes ? { notes: params.notes } : {}),
+  };
+}
+
+function inferNotificationClassFromChannel(channel: { type?: unknown }): NotificationReadModelClass {
+  const type = String(channel.type ?? "");
+  if (type === "sponsor") return "sponsored_coaching_campaign_update";
+  return "coaching_channel_message";
+}
+
+function buildNotificationItemForChannel(params: {
+  channel: { id?: unknown; type?: unknown; name?: unknown; team_id?: unknown; context_id?: unknown; created_at?: unknown };
+  unread_count: number;
+  last_seen_at?: unknown;
+}): NotificationItemReadModel {
+  const channelType = String(params.channel.type ?? "");
+  const channelId = String(params.channel.id ?? "") || null;
+  const contextId = String(params.channel.context_id ?? "") || null;
+  const unreadCount = Math.max(0, params.unread_count);
+  return {
+    class: inferNotificationClassFromChannel(params.channel),
+    preview: {
+      title: String(params.channel.name ?? "") || "Coaching channel",
+      body: unreadCount > 0 ? `${unreadCount} unread message(s)` : "No unread messages",
+    },
+    read_state: unreadCount > 0 ? "unread" : "read",
+    route_target: "channel_thread",
+    route_params: { channelId: channelId ?? "", source: "notifications" },
+    linked_context_refs: {
+      team_id: String(params.channel.team_id ?? "") || null,
+      challenge_id: channelType === "challenge" ? contextId : null,
+      sponsored_challenge_id: channelType === "sponsor" ? contextId : null,
+      channel_id: channelId,
+      journey_id: null,
+      lesson_id: null,
+      ai_suggestion_id: null,
+      notification_queue_id: null,
+    },
+    display_requirements: {
+      sponsor_disclaimer_required: channelType === "sponsor",
+      sponsor_attribution_required: channelType === "sponsor",
+      paywall_cta_required: false,
+      ai_approval_boundary_notice_required: false,
+    },
+    delivery_channel_origin: "channels_messages",
+    created_at: String(params.channel.created_at ?? params.last_seen_at ?? "") || null,
+    read_model_status: "inferred_baseline",
+    ...(channelType === "challenge" || channelType === "cohort"
+      ? { notes: ["notification row is inferred from channel membership/unread baseline; explicit notification event records are not available in this family"] }
+      : {}),
+  };
+}
+
+function buildNotificationItemsForChannelThread(params: {
+  channel: { id?: unknown; type?: unknown; name?: unknown; team_id?: unknown; context_id?: unknown };
+  messages: Array<{ id?: unknown; channel_id?: unknown; body?: unknown; message_type?: unknown; created_at?: unknown }>;
+}): NotificationItemReadModel[] {
+  const channelType = String(params.channel.type ?? "");
+  const contextId = String(params.channel.context_id ?? "") || null;
+  return params.messages.slice(-20).map((message) => {
+    const messageType = String(message.message_type ?? "");
+    return {
+      class: messageType === "broadcast" ? "coaching_broadcast_sent" : inferNotificationClassFromChannel(params.channel),
+      preview: {
+        title: String(params.channel.name ?? "") || "Channel thread",
+        body: String(message.body ?? "").slice(0, 160) || null,
+      },
+      read_state: "unknown",
+      route_target: "channel_thread",
+      route_params: { channelId: String(params.channel.id ?? "") || "" },
+      linked_context_refs: {
+        team_id: String(params.channel.team_id ?? "") || null,
+        challenge_id: channelType === "challenge" ? contextId : null,
+        sponsored_challenge_id: channelType === "sponsor" ? contextId : null,
+        channel_id: String(message.channel_id ?? params.channel.id ?? "") || null,
+        journey_id: null,
+        lesson_id: null,
+        ai_suggestion_id: null,
+        notification_queue_id: null,
+      },
+      display_requirements: {
+        sponsor_disclaimer_required: channelType === "sponsor",
+        sponsor_attribution_required: channelType === "sponsor",
+        paywall_cta_required: false,
+        ai_approval_boundary_notice_required: false,
+      },
+      delivery_channel_origin: "channels_messages",
+      created_at: String(message.created_at ?? "") || null,
+      read_model_status: "partial_in_family",
+      notes: ["thread notifications are inferred from message rows; read state is not represented in this endpoint response"],
+    };
+  });
+}
+
+function buildNotificationItemsForCoachingJourneys(
+  journeys: Array<{
+    id?: unknown;
+    title?: unknown;
+    team_id?: unknown;
+    completion_percent?: unknown;
+    lessons_total?: unknown;
+    lessons_completed?: unknown;
+    created_at?: unknown;
+  }>
+): NotificationItemReadModel[] {
+  return journeys.map((journey) => {
+    const completionPercent = toNumberOrZero((journey as { completion_percent?: unknown }).completion_percent);
+    const lessonsTotal = toNumberOrZero((journey as { lessons_total?: unknown }).lessons_total);
+    const lessonsCompleted = toNumberOrZero((journey as { lessons_completed?: unknown }).lessons_completed);
+    const inferredClass: NotificationReadModelClass =
+      completionPercent <= 0 && lessonsTotal > 0 ? "coaching_assignment_published" : completionPercent < 100 ? "coaching_progress_nudge" : "coaching_lesson_reminder";
+    const body =
+      inferredClass === "coaching_assignment_published"
+        ? "Journey assigned and ready to start"
+        : inferredClass === "coaching_progress_nudge"
+          ? `Progress ${completionPercent.toFixed(0)}% (${lessonsCompleted}/${lessonsTotal} lessons)`
+          : "Journey complete; reminder/events may be represented in another endpoint family";
+    return {
+      class: inferredClass,
+      preview: {
+        title: String(journey.title ?? "") || "Coaching journey",
+        body,
+      },
+      read_state: completionPercent >= 100 ? "read" : "unread",
+      route_target: "coaching_journey_detail",
+      route_params: { journeyId: String(journey.id ?? "") || "" },
+      linked_context_refs: {
+        team_id: String((journey as { team_id?: unknown }).team_id ?? "") || null,
+        challenge_id: null,
+        sponsored_challenge_id: null,
+        channel_id: null,
+        journey_id: String(journey.id ?? "") || null,
+        lesson_id: null,
+        ai_suggestion_id: null,
+        notification_queue_id: null,
+      },
+      display_requirements: {
+        sponsor_disclaimer_required: false,
+        sponsor_attribution_required: false,
+        paywall_cta_required: false,
+        ai_approval_boundary_notice_required: false,
+      },
+      delivery_channel_origin: "coaching",
+      created_at: String(journey.created_at ?? "") || null,
+      read_model_status: "inferred_baseline",
+      notes: ["journey notification rows are inferred from coaching progress/assignment visibility; explicit notification events are not persisted in this endpoint family"],
+    };
+  });
+}
+
+function inferNotificationClassFromQueueRow(row: NotificationQueueRow): NotificationReadModelClass {
+  const category = String(row.category ?? "").toLowerCase();
+  const title = String(row.title ?? "").toLowerCase();
+  const payload = row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {};
+  const payloadClass = typeof payload.notification_class === "string" ? String(payload.notification_class) : "";
+  if (payloadClass) {
+    const allowed: NotificationReadModelClass[] = [
+      "coaching_assignment_published",
+      "coaching_lesson_reminder",
+      "coaching_progress_nudge",
+      "coaching_channel_message",
+      "coaching_broadcast_sent",
+      "ai_review_queue_pending",
+      "ai_review_outcome",
+      "package_access_changed",
+      "sponsored_coaching_campaign_update",
+      "unknown",
+    ];
+    if (allowed.includes(payloadClass as NotificationReadModelClass)) {
+      return payloadClass as NotificationReadModelClass;
+    }
+  }
+  if (title.includes("ai") && (title.includes("approve") || title.includes("review") || title.includes("queue"))) {
+    return "ai_review_queue_pending";
+  }
+  if (title.includes("ai") && (title.includes("approved") || title.includes("rejected") || title.includes("outcome"))) {
+    return "ai_review_outcome";
+  }
+  if (title.includes("broadcast")) return "coaching_broadcast_sent";
+  if (title.includes("lesson") && title.includes("reminder")) return "coaching_lesson_reminder";
+  if (title.includes("progress") || title.includes("inactive") || title.includes("nudge")) return "coaching_progress_nudge";
+  if (title.includes("assignment") || title.includes("journey")) return "coaching_assignment_published";
+  if (title.includes("sponsor")) return "sponsored_coaching_campaign_update";
+  if (title.includes("access") || title.includes("entitlement")) return "package_access_changed";
+  if (category === "coaching") return "coaching_assignment_published";
+  if (category === "communication") return "coaching_channel_message";
+  return "unknown";
+}
+
+function buildNotificationItemFromQueueRow(row: NotificationQueueRow): NotificationItemReadModel {
+  const inferredClass = inferNotificationClassFromQueueRow(row);
+  const payload = row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {};
+  const readState = String(row.status ?? "") === "sent" ? "read" : "unread";
+  return {
+    class: inferredClass,
+    preview: {
+      title: String(row.title ?? "") || null,
+      body: String(row.body ?? "") || null,
+    },
+    read_state: readState === "read" ? "read" : "unread",
+    route_target: inferredClass === "ai_review_queue_pending" || inferredClass === "ai_review_outcome" ? "coach_ops_audit" : "inbox",
+    route_params: { queueId: String(row.id ?? "") || "" },
+    linked_context_refs: {
+      team_id: typeof payload.team_id === "string" ? payload.team_id : null,
+      challenge_id: typeof payload.challenge_id === "string" ? payload.challenge_id : null,
+      sponsored_challenge_id: typeof payload.sponsored_challenge_id === "string" ? payload.sponsored_challenge_id : null,
+      channel_id: typeof payload.channel_id === "string" ? payload.channel_id : null,
+      journey_id: typeof payload.journey_id === "string" ? payload.journey_id : null,
+      lesson_id: typeof payload.lesson_id === "string" ? payload.lesson_id : null,
+      ai_suggestion_id: typeof payload.ai_suggestion_id === "string" ? payload.ai_suggestion_id : null,
+      notification_queue_id: String(row.id ?? "") || null,
+    },
+    display_requirements: {
+      sponsor_disclaimer_required: inferredClass === "sponsored_coaching_campaign_update",
+      sponsor_attribution_required: inferredClass === "sponsored_coaching_campaign_update",
+      paywall_cta_required: inferredClass === "package_access_changed",
+      ai_approval_boundary_notice_required:
+        inferredClass === "ai_review_queue_pending" || inferredClass === "ai_review_outcome",
+    },
+    delivery_channel_origin: "notifications_queue",
+    created_at: String(row.created_at ?? "") || null,
+    read_model_status: "partial_in_family",
+    notes: [
+      "notification item is inferred from notification_queue row + optional payload refs",
+      "delivery/read state semantics are queue-oriented and may not equal end-user inbox read state",
+    ],
+  };
+}
+
+function buildNotificationQueueReadModel(row: NotificationQueueRow): NotificationQueueReadModel {
+  const status = String(row.status ?? "");
+  const notificationClass = inferNotificationClassFromQueueRow(row);
+  const statusBucket: NotificationQueueReadModel["status_bucket"] =
+    status === "queued" ? "queued" : status === "sent" ? "sent" : status === "failed" ? "failed" : "unknown";
+  const dispatchOutcome: NotificationQueueReadModel["dispatch_outcome"] =
+    status === "queued" ? "pending" : status === "sent" ? "success" : status === "failed" ? "failed" : "unknown";
+  const payload = row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : {};
+  const attempts = toNumberOrZero(row.attempts);
+  return {
+    notification_class: notificationClass,
+    status_bucket: statusBucket,
+    dispatch_outcome: dispatchOutcome,
+    retry_metadata: {
+      attempts,
+      retry_eligible: statusBucket === "failed" && attempts < 5,
+      last_error_present: Boolean(String(row.last_error ?? "")),
+    },
+    policy_flags: {
+      requires_visibility_entitlement_check:
+        notificationClass === "coaching_assignment_published" ||
+        notificationClass === "package_access_changed" ||
+        notificationClass === "sponsored_coaching_campaign_update",
+      preserves_ai_approval_first_boundary:
+        notificationClass === "ai_review_queue_pending" || notificationClass === "ai_review_outcome",
+      sponsor_disclaimer_required: notificationClass === "sponsored_coaching_campaign_update",
+    },
+    linked_context_refs: {
+      team_id: typeof payload.team_id === "string" ? payload.team_id : null,
+      challenge_id: typeof payload.challenge_id === "string" ? payload.challenge_id : null,
+      sponsored_challenge_id: typeof payload.sponsored_challenge_id === "string" ? payload.sponsored_challenge_id : null,
+      channel_id: typeof payload.channel_id === "string" ? payload.channel_id : null,
+      journey_id: typeof payload.journey_id === "string" ? payload.journey_id : null,
+      lesson_id: typeof payload.lesson_id === "string" ? payload.lesson_id : null,
+      ai_suggestion_id: typeof payload.ai_suggestion_id === "string" ? payload.ai_suggestion_id : null,
+      notification_queue_id: String(row.id ?? "") || null,
+    },
+    delivery_channel_origin: statusBucket === "sent" ? "notifications_dispatch" : "notifications_queue",
+    read_model_status: "partial_in_family",
+    notes: [
+      "ops visibility metadata is derived from notification_queue row status/attempts and optional payload refs only",
+      "provider-specific dispatch receipts and policy engine outcomes are not persisted in current baseline",
+    ],
+  };
+}
+
+function attachNotificationQueueReadModel<T extends NotificationQueueRow>(row: T): T & { notification_queue_read_model: NotificationQueueReadModel } {
+  return {
+    ...row,
+    notification_queue_read_model: buildNotificationQueueReadModel(row),
+  };
+}
+
+function buildNotificationQueueSummary(rows: NotificationQueueRow[]) {
+  let queued = 0;
+  let sent = 0;
+  let failed = 0;
+  let retriesPending = 0;
+  const countsByClass = emptyNotificationClassCounts();
+  for (const row of rows) {
+    const status = String(row.status ?? "");
+    if (status === "queued") queued += 1;
+    else if (status === "sent") sent += 1;
+    else if (status === "failed") failed += 1;
+    const attempts = toNumberOrZero(row.attempts);
+    if (status === "failed" && attempts < 5) retriesPending += 1;
+    const inferredClass = inferNotificationClassFromQueueRow(row);
+    countsByClass[inferredClass] = (countsByClass[inferredClass] ?? 0) + 1;
+  }
+  return {
+    total: rows.length,
+    status_buckets: { queued, sent, failed },
+    retries_pending: retriesPending,
+    counts_by_class: countsByClass,
+    policy_flags: {
+      ai_approval_boundary_preserved: true,
+      queue_visibility_only_no_dispatch_authority_expansion: true,
+    },
+    read_model_status: "partial_in_family" as const,
+    notes: [
+      "queue summary is derived from notification_queue rows only",
+      "member-facing inbox/read-state aggregates require additional endpoint-family shaping or persistence beyond this ops queue baseline",
+    ],
+  };
+}
+
 function buildPackagingReadModel(
   partial: Partial<PackagingReadModel> & Pick<PackagingReadModel, "linked_context_refs">
 ): PackagingReadModel {
@@ -1318,7 +1769,16 @@ app.get("/api/channels", async (req, res) => {
     const safeMemberships = memberships ?? [];
     const channelIds = safeMemberships.map((m) => String(m.channel_id));
     if (channelIds.length === 0) {
-      return res.json({ channels: [] });
+      return res.json({
+        channels: [],
+        notification_items: [],
+        notification_summary_read_model: buildNotificationSummaryReadModel({
+          items: [],
+          source_scope: "channels_list",
+          read_model_status: "partial_in_family",
+          notes: ["No channel memberships found for caller; channel-derived notification summary is empty"],
+        }),
+      });
     }
 
     const { data: channels, error: channelsError } = await dataClient
@@ -1350,14 +1810,40 @@ app.get("/api/channels", async (req, res) => {
       ])
     );
 
-    return res.json({
-      channels: (channels ?? []).map((channel) => ({
+    const channelRows = (channels ?? []).map((channel) => ({
         ...channel,
         my_role: membershipByChannel.get(String(channel.id)) ?? "member",
         unread_count: unreadByChannel.get(String(channel.id))?.unread_count ?? 0,
         last_seen_at: unreadByChannel.get(String(channel.id))?.last_seen_at ?? null,
         packaging_read_model: packagingReadModelForChannel(channel),
-      })),
+      }));
+    const notificationItems = channelRows.map((channel) =>
+      buildNotificationItemForChannel({
+        channel,
+        unread_count: toNumberOrZero((channel as { unread_count?: unknown }).unread_count),
+        last_seen_at: (channel as { last_seen_at?: unknown }).last_seen_at,
+      })
+    );
+
+    return res.json({
+      channels: channelRows,
+      notification_items: notificationItems,
+      notification_summary_read_model: buildNotificationSummaryReadModel({
+        items: notificationItems,
+        source_scope: "channels_list",
+        badge_total: notificationItems.reduce(
+          (sum, item) =>
+            sum + (item.class === "coaching_channel_message" || item.class === "sponsored_coaching_campaign_update"
+              ? (item.read_state === "unread" ? 1 : 0)
+              : 0),
+          0
+        ),
+        read_model_status: "inferred_baseline",
+        notes: [
+          "Channel list summary is inferred from per-channel unread counters, not canonical notification events",
+          "Badge total counts unread channel-derived coaching/sponsor communication items only in this endpoint family",
+        ],
+      }),
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -1469,10 +1955,23 @@ app.get("/api/channels/:id/messages", async (req, res) => {
       return handleSupabaseError(res, "Failed to fetch channel messages", messagesError);
     }
 
+    const threadNotificationItems = buildNotificationItemsForChannelThread({
+      channel,
+      messages: (messages ?? []) as Array<{ id?: unknown; channel_id?: unknown; body?: unknown; message_type?: unknown; created_at?: unknown }>,
+    });
     return res.json({
       channel,
       packaging_read_model: packagingReadModelForChannel(channel),
       messages: messages ?? [],
+      notification_items: threadNotificationItems,
+      notification_summary_read_model: buildNotificationSummaryReadModel({
+        items: threadNotificationItems,
+        source_scope: "channel_thread",
+        read_model_status: "partial_in_family",
+        notes: [
+          "Thread summary is derived from visible message rows and does not include caller unread state in this endpoint response",
+        ],
+      }),
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -1537,7 +2036,22 @@ app.get("/api/messages/unread-count", async (req, res) => {
       (sum, row) => sum + toNumberOrZero((row as { unread_count?: unknown }).unread_count),
       0
     );
-    return res.json({ unread_count: unreadCount });
+    return res.json({
+      unread_count: unreadCount,
+      notification_summary_read_model: {
+        badge_total: unreadCount,
+        counts_by_class: {
+          ...emptyNotificationClassCounts(),
+          coaching_channel_message: unreadCount,
+        },
+        last_event_at: null,
+        source_scope: "messages_unread_count",
+        read_model_status: "inferred_baseline",
+        notes: [
+          "Unread count endpoint aggregates channel unread counters only and does not include coaching journey/package/admin queue notifications",
+        ],
+      },
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in GET /api/messages/unread-count", err);
@@ -1731,7 +2245,16 @@ app.get("/api/coaching/journeys", async (req, res) => {
 
     const journeyIds = visibleJourneys.map((j) => String(j.id));
     if (journeyIds.length === 0) {
-      return res.json({ journeys: [] });
+      return res.json({
+        journeys: [],
+        notification_items: [],
+        notification_summary_read_model: buildNotificationSummaryReadModel({
+          items: [],
+          source_scope: "coaching_journeys",
+          read_model_status: "partial_in_family",
+          notes: ["No visible journeys for caller; journey-derived coaching notifications are empty in this endpoint family"],
+        }),
+      });
     }
 
     const { data: milestones, error: milestonesError } = await dataClient
@@ -1798,8 +2321,7 @@ app.get("/api/coaching/journeys", async (req, res) => {
       }
     }
 
-    return res.json({
-      journeys: visibleJourneys.map((j) => {
+    const journeyRows = visibleJourneys.map((j) => {
         const journeyId = String(j.id);
         const lessonsTotal = lessonCountByJourney.get(journeyId) ?? 0;
         const lessonsCompleted = completedLessonsByJourney.get(journeyId) ?? 0;
@@ -1812,6 +2334,28 @@ app.get("/api/coaching/journeys", async (req, res) => {
             lessonsTotal > 0 ? Number(((lessonsCompleted / lessonsTotal) * 100).toFixed(2)) : 0,
           packaging_read_model: packagingReadModelForJourney(j),
         };
+      });
+    const journeyNotificationItems = buildNotificationItemsForCoachingJourneys(
+      journeyRows as Array<{
+        id?: unknown;
+        title?: unknown;
+        team_id?: unknown;
+        completion_percent?: unknown;
+        lessons_total?: unknown;
+        lessons_completed?: unknown;
+        created_at?: unknown;
+      }>
+    );
+    return res.json({
+      journeys: journeyRows,
+      notification_items: journeyNotificationItems,
+      notification_summary_read_model: buildNotificationSummaryReadModel({
+        items: journeyNotificationItems,
+        source_scope: "coaching_journeys",
+        read_model_status: "inferred_baseline",
+        notes: [
+          "Journey notification rows are inferred from visibility + progress aggregates and should be treated as coaching prompts/next-action hints, not canonical notification queue events",
+        ],
       }),
     });
   } catch (err) {
@@ -2024,11 +2568,57 @@ app.get("/api/coaching/progress", async (req, res) => {
       }
     }
 
+    const progressNotificationItems: NotificationItemReadModel[] = [];
+    if (byStatus.in_progress > 0 || byStatus.not_started > 0) {
+      progressNotificationItems.push({
+        class: byStatus.not_started > 0 ? "coaching_lesson_reminder" : "coaching_progress_nudge",
+        preview: {
+          title: "Coaching progress",
+          body:
+            byStatus.not_started > 0
+              ? `${byStatus.not_started} lesson(s) not started`
+              : `${byStatus.in_progress} lesson(s) in progress`,
+        },
+        read_state: "unread",
+        route_target: "coaching_journeys",
+        route_params: { source: "coaching_progress" },
+        linked_context_refs: {
+          team_id: null,
+          challenge_id: null,
+          sponsored_challenge_id: null,
+          channel_id: null,
+          journey_id: null,
+          lesson_id: null,
+          ai_suggestion_id: null,
+          notification_queue_id: null,
+        },
+        display_requirements: {
+          sponsor_disclaimer_required: false,
+          sponsor_attribution_required: false,
+          paywall_cta_required: false,
+          ai_approval_boundary_notice_required: false,
+        },
+        delivery_channel_origin: "coaching",
+        created_at: null,
+        read_model_status: "inferred_baseline",
+        notes: ["Progress summary endpoint exposes aggregate coaching progress only; row is synthesized for W6 coaching notification readiness"],
+      });
+    }
+
     return res.json({
       total_progress_rows: total,
       status_counts: byStatus,
       completion_percent:
         total > 0 ? Number(((byStatus.completed / total) * 100).toFixed(2)) : 0,
+      notification_items: progressNotificationItems,
+      notification_summary_read_model: buildNotificationSummaryReadModel({
+        items: progressNotificationItems,
+        source_scope: "coaching_progress",
+        read_model_status: "inferred_baseline",
+        notes: [
+          "Progress summary-derived notifications are aggregate prompts only; no per-lesson notification event rows exist in this endpoint family baseline",
+        ],
+      }),
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -3782,7 +4372,9 @@ app.post("/api/notifications/enqueue", async (req, res) => {
     if (error) return errorEnvelopeResponse(res, 500, "notification_enqueue_failed", "Failed to enqueue notification", req.headers["x-request-id"]);
 
     await logAdminActivity(auth.user.id, "notification_queue", String(data.id), "enqueue", payloadCheck.payload);
-    return res.status(201).json({ notification: data });
+    return res.status(201).json({
+      notification: attachNotificationQueueReadModel(data as NotificationQueueRow),
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/notifications/enqueue", err);
@@ -3806,7 +4398,22 @@ app.get("/api/notifications/queue", async (req, res) => {
       .limit(500);
     if (error) return errorEnvelopeResponse(res, 500, "notification_queue_fetch_failed", "Failed to fetch notification queue", req.headers["x-request-id"]);
 
-    return res.json({ notifications: data ?? [] });
+    const rows = (data ?? []) as NotificationQueueRow[];
+    const notificationsWithReadModel = rows.map((row) => attachNotificationQueueReadModel(row));
+    const queueNotificationItems = rows.map((row) => buildNotificationItemFromQueueRow(row));
+    return res.json({
+      notifications: notificationsWithReadModel,
+      queue_summary: buildNotificationQueueSummary(rows),
+      notification_items: queueNotificationItems,
+      notification_summary_read_model: buildNotificationSummaryReadModel({
+        items: queueNotificationItems,
+        source_scope: "notifications_queue",
+        read_model_status: "partial_in_family",
+        notes: [
+          "Admin queue notification items represent queue visibility rows, not member delivery confirmations",
+        ],
+      }),
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in GET /api/notifications/queue", err);
@@ -3861,7 +4468,9 @@ app.post("/api/notifications/:id/dispatch", async (req, res) => {
         attempts: nextAttempts,
         provider_message_id: body.provider_message_id ?? null,
       });
-      return res.json({ notification: updated });
+      return res.json({
+        notification: attachNotificationQueueReadModel(updated as NotificationQueueRow),
+      });
     }
 
     const lastError = typeof body.error === "string" && body.error.trim() ? body.error.trim() : "dispatch failed";
@@ -3883,7 +4492,9 @@ app.post("/api/notifications/:id/dispatch", async (req, res) => {
       attempts: nextAttempts,
       error: lastError,
     });
-    return res.json({ notification: updated });
+    return res.json({
+      notification: attachNotificationQueueReadModel(updated as NotificationQueueRow),
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/notifications/:id/dispatch", err);
