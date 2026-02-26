@@ -8,7 +8,7 @@ Figma file link: [Compass KPI (Copy)](https://www.figma.com/design/ebEWgwdjIZywv
 |---|---|---|---|---|
 | Onboarding + Auth | `Compass KPI (Copy)` onboarding/login/password reset frames | `exported_composite_png` | `partially_implemented` | Isolated single-screen targets: `auth_welcome_v1.png`, `auth_onboarding_projection_v1.png`, `auth_onboarding_measure_v1.png`, `auth_login_v1.png`, `auth_forgot_password_v1.png`. |
 | Agent KPI Core | `Compass KPI (Copy)` dashboard, KPI add/log, notifications, reminders | `exported_composite_png` | `partially_implemented` | Single-screen target: `agent_dashboard_my_qualifiers_v1.png`; `app/screens/KPIDashboardScreen.tsx` exists. |
-| Team + Leader | `Compass KPI (Copy)` team dashboard, invites, leaderboards, member profile | `exported_composite_png` | `not_started` | Files include `Manage Team.png`, `Manage/`. |
+| Team + Leader | `Compass KPI (Copy)` team dashboard, invites, leaderboards, member profile | `exported_isolated_png_v1 + exported_composite_png` | `in_build` | Canonical isolated exports added for Team dashboard + management screens (`team_*_v1.png`). |
 | Challenge Creation + Lifecycle | `Compass KPI (Copy)` create challenge wizard, join, progress, results | `exported_composite_png` | `not_started` | Create Challenge, Create Team Challenge, Manage Challenge & LeaderBoard. |
 | Community + Messaging | `Compass KPI (Copy)` messages, 1:1 chat, community feed | `exported_composite_png` | `not_started` | Isolated targets: `messages_inbox_v1.png`, `chat_thread_v1.png`, `community_feed_v1.png`. |
 | Coaching + Subscription + Legal/Support | `Compass KPI (Copy)` coaching tab, payment/upgrade, legal, support | `exported_composite_png` | `not_started` | Other Settings and Payment, Subscription. RevenueCat reference-only until billing decision. |
@@ -29,7 +29,12 @@ Isolated single-screen exports use `{domain}_{screen}_v{n}.png`. Node-id links: 
 | `chat_thread` | TODO | `screens/chat_thread_v1.png` | — | `pending` |
 | `community_feed` | TODO | `screens/community_feed_v1.png` | — | `pending` |
 | `challenge_create_wizard` | TODO | `screens/challenge_create_wizard_v1.png` | — | `mapped` |
-| `team_dashboard` | TODO | `screens/team_dashboard_v1.png` | — | `mapped` |
+| `team_dashboard` | [388-8814](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=388-8814) | `screens/team_dashboard_v1.png` | `402x952` | `exported_v1` |
+| `team_invite_member` | [173-4448](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4448) | `screens/team_invite_member_v1.png` | `402x952` | `exported_v1` |
+| `team_pending_invitations` | [173-4612](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4612) | `screens/team_pending_invitations_v1.png` | `402x952` | `exported_v1` |
+| `team_kpi_settings` | [173-4531](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4531) | `screens/team_kpi_settings_v1.png` | `402x952` | `exported_v1` |
+| `team_pipeline` | [168-16300](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=168-16300) | `screens/team_pipeline_v1.png` | `402x952` | `exported_v1` |
+| `team_single_person_challenges` | [173-4905](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4905) | `screens/team_single_person_challenges_v1.png` | `402x977` | `exported_v1` |
 | `coaching_overview` | TODO | `screens/coaching_overview_v1.png` | — | `mapped` |
 
 ## Component Sheets (Versioned exports)
@@ -66,6 +71,12 @@ Reusable primitives for auth + dashboard. Target: `components/{domain}_{componen
 | `auth_login` | [173-31074](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-31074) |
 | `auth_forgot_password` | [173-31119](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-31119) |
 | `agent_dashboard_my_qualifiers` | [173-19541](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-19541) |
+| `team_dashboard` | [388-8814](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=388-8814) |
+| `team_invite_member` | [173-4448](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4448) |
+| `team_pending_invitations` | [173-4612](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4612) |
+| `team_kpi_settings` | [173-4531](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4531) |
+| `team_pipeline` | [168-16300](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=168-16300) |
+| `team_single_person_challenges` | [173-4905](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4905) |
 
 All other screens/components: node-id TODO until frame is selected in Figma and link copied (or mapped via API inventory).
 
@@ -81,7 +92,7 @@ See `design/figma/scripts/README.md` for setup. Export of PNGs is still manual o
 
 ## Missing / blocked assets
 
-- **Programmatic export:** Figma MCP does not provide (1) file/structure listing of frame node-ids, (2) downloadable image URLs from `get_screenshot` or `get_design_context` in this environment. Asset batch must be performed manually (Figma Export → PNG) or via Figma REST API with file token.
+- **Programmatic export:** Figma MCP still does not provide file structure listing or downloadable image URLs in this environment, but Figma REST API export is working and was used for Team isolated screen exports (`team_*_v1.png`).
 - **Isolated frames:** `agent_dashboard_my_qualifiers_v1.png` is now mapped to frame node `173-19541` and exported.
 - **Runbook:** See `design/figma/exports/EXPORT_BATCH_V1.md` for step-by-step export and how to capture node-ids.
 - **Programmatic frame inventory:** `design/figma/FRAME_INVENTORY.md` and `design/figma/FRAME_INVENTORY.csv` are generated from Figma REST API to accelerate mapping.

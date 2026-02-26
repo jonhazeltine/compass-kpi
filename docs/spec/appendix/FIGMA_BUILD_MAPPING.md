@@ -29,8 +29,12 @@ Map canonical Figma flows/screens to concrete Expo implementation targets and ac
 | Agent Core | `agent_dashboard_my_qualifiers` | `design/figma/exports/screens/agent_dashboard_my_qualifiers_v1.png` | exported_v1 | `app/screens/KPIDashboardScreen.tsx` | `05_acceptance_tests.md` scenarios 2-7 | implemented_v1 | Node-id: `173-19541`. |
 | Agent Core | `agent_add_kpi` | `design/figma/exports/screens/agent_add_kpi_v1.png` (or flow) | pending | new add KPI flow screens | `05_acceptance_tests.md` scenarios 2-6 | mapped | |
 | Agent Core | `agent_notifications` | `design/figma/exports/screens/agent_notifications_v1.png` | pending | new notifications screen | future communication acceptance cases | mapped | |
-| Team | `team_dashboard` | `design/figma/exports/screens/team_dashboard_v1.png` | pending | new team dashboard screen | `05_acceptance_tests.md` scenarios 8-9 | mapped | |
-| Team | `team_membership_invites` | `design/figma/exports/screens/team_membership_invites_v1.png` | pending | new team member management screens | `05_acceptance_tests.md` scenario 8 | mapped | |
+| Team | `team_dashboard` | `design/figma/exports/screens/team_dashboard_v1.png` | exported_v1 | `app/screens/KPIDashboardScreen.tsx` Team tab / Team dashboard route | `05_acceptance_tests.md` scenarios 8-9 | in_build | Node-id: `388-8814`. Canonical Team dashboard parity root. |
+| Team | `team_invite_member` | `design/figma/exports/screens/team_invite_member_v1.png` | exported_v1 | Team management flow screen (mobile) | `05_acceptance_tests.md` scenario 8 | mapped | Node-id: `173-4448`. |
+| Team | `team_pending_invitations` | `design/figma/exports/screens/team_pending_invitations_v1.png` | exported_v1 | Team management flow screen (mobile) | `05_acceptance_tests.md` scenario 8 | mapped | Node-id: `173-4612`. |
+| Team | `team_kpi_settings` | `design/figma/exports/screens/team_kpi_settings_v1.png` | exported_v1 | Team management flow screen (mobile) | `05_acceptance_tests.md` scenario 8 | mapped | Node-id: `173-4531`. |
+| Team | `team_pipeline` | `design/figma/exports/screens/team_pipeline_v1.png` | exported_v1 | Team management flow screen (mobile) | `05_acceptance_tests.md` scenarios 8-9 | mapped | Node-id: `168-16300`. |
+| Team | `team_single_person_challenges` | `design/figma/exports/screens/team_single_person_challenges_v1.png` | exported_v1 | Team challenges screen (mobile) | `05_acceptance_tests.md` scenarios 8-9 | mapped | Node-id: `173-4905`. |
 | Challenge | `challenge_create_wizard` | `design/figma/exports/screens/challenge_create_wizard_v1.png` | pending | new challenge creation stack/screens | `05_acceptance_tests.md` scenarios 7-9, edge E6 | mapped | |
 | Challenge | `challenge_progress_results` | `design/figma/exports/screens/challenge_progress_results_v1.png` | pending | new challenge progress/results screens | `05_acceptance_tests.md` scenarios 7, 10 | mapped | |
 | Communication | `messages_inbox` | `design/figma/exports/screens/messages_inbox_v1.png` | pending | new messages tab screen | future communication acceptance cases | mapped | |
@@ -63,12 +67,18 @@ Map canonical Figma flows/screens to concrete Expo implementation targets and ac
 | `auth_login` | [173-31074](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-31074) |
 | `auth_forgot_password` | [173-31119](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-31119) |
 | `agent_dashboard_my_qualifiers` | [173-19541](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-19541) |
+| `team_dashboard` | [388-8814](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=388-8814) |
+| `team_invite_member` | [173-4448](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4448) |
+| `team_pending_invitations` | [173-4612](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4612) |
+| `team_kpi_settings` | [173-4531](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4531) |
+| `team_pipeline` | [168-16300](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=168-16300) |
+| `team_single_person_challenges` | [173-4905](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4905) |
 
 All other screens: add node-id after selecting frame in Figma and copying link to selection (or map from `design/figma/FRAME_INVENTORY.md`).
 
 ## Missing / blocked assets
 
-- **No programmatic export in this run:** Figma MCP does not expose file structure (frame list) or downloadable image URLs in the current environment. All target filenames and mapping are in place; assets must be exported manually from Figma or via Figma REST API.
+- **Programmatic export available:** Figma REST API export is working in this environment and was used to add Team isolated screen exports (`team_*_v1.png`). Figma MCP still does not expose file structure (frame list) or downloadable image URLs here.
 - **Isolated single-screen exports still required:** messages_inbox, chat_thread, community_feed, plus remaining mapped screens not yet exported. Runbook: `design/figma/exports/EXPORT_BATCH_V1.md`.
 
 ## Immediate Next Build Slice
