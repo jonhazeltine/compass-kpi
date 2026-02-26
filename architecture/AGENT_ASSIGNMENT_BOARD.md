@@ -54,6 +54,7 @@ Only use long custom prompts when the board is missing required details or a one
 | ID | Status | Program status | Persona | Flow | Screens in scope | Owner | Branch / Worktree | Figma refs | Deliverable |
 |---|---|---|---|---|---|---|---|---|---|
 | `COACHING-UI-W2-COMMS-ENTRYPOINTS` | `committed+pushed` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`W2 comms entry points`) | `Team Dashboard (leader/member)`, `Challenge Details/Results`, `User/Coaching shells` (`Inbox/Channels`, `Channel Thread`, `Broadcast Composer`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven (`COACHING_*` docs + intended wiring docs; W1 shells required) | Large-swatch W2 communication entry-point wiring pass accepted: context-aware channel/thread shell routing + leader broadcast composer entry context labels; API-backed messaging/send remains deferred |
+| `ADMIN-A3-USERS-OPS-POLISH-A` | `active` | `A3 (parallel with M5/M6)` | `Admin operator` | `admin users + reports ops workflow` | `/admin/users`, `/admin/reports` (operator lists/actions only) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web, no Figma parity requirement for this swath) | Large-swatch operator usability/hardening pass for user list/search/sort/paging and report list workflow affordances without backend/API changes |
 
 ## Blocked Assignments
 
@@ -202,7 +203,7 @@ If screen availability/wiring/status changes, update BOTH in the same change set
 ### `COACHING-INTEGRATION-A`
 
 #### Snapshot
-- `Status:` `committed`
+- `Status:` `active` (`post-W2 planning continuation`)
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (docs-only)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (manual-spec-driven integration planning)
@@ -214,6 +215,8 @@ If screen availability/wiring/status changes, update BOTH in the same change set
 - `Completion note (2026-02-26, Coach-1):` Docs-only planning package completed. Added `W1`/`W2` route naming lock + entry points, coaching insert-point status table in intended wiring, persona-specific coaching screenmap rows (`manual-spec-driven`), tightened capability matrix with `build now / later` markers, and two next-wave implementation assignment specs.
 - `Validation note (2026-02-26, Coach-1):` Persona labels, destination names, and status legend checked for consistency across matrix/addendum/wiring/screenmap. No app/backend code files changed. Route naming changes remain planning-only; `DECISIONS_LOG.md` deferred until runtime implementation changes boundaries.
 - `Controller review note (2026-02-26):` Docs package accepted. Next coding wave proceeds via `COACHING-UI-W1-ALLOCATION-SHELLS`, with `COACHING-UI-W2-COMMS-ENTRYPOINTS` remaining queued behind W1 shell landing.
+- `Worker note (2026-02-26, Coach-1 post-W2 continuation start):` Reopened docs-only coaching planning from latest accepted `COACHING-UI-W2-COMMS-ENTRYPOINTS` state to define next coding-wave specs (`W3+`) and explicit contract-boundary notes for UI/backend separation.
+- `Current blocker status (2026-02-26, Coach-1, post-W2 planning continuation):` `none` at start. Using accepted W2 shell/context routing state and existing `/docs/spec/04_api_contracts.md` coaching/channel endpoints as baseline; will document gaps/boundaries instead of proposing schema/API changes.
 
 #### Surfaces In Scope (Large Swath)
 1. `Home / Priority` (coaching nudge allocation only; no UI implementation)
@@ -445,6 +448,75 @@ Implement the first functional communication entry points on existing Compass su
 
 #### Worker Launch (Short Form)
 `Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-UI-W2-COMMS-ENTRYPOINTS exactly as written. Follow the assignment block, validation requirements, and report-back format.`
+
+### `ADMIN-A3-USERS-OPS-POLISH-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `A3 (parallel with M5/M6)`
+- `Persona:` `Admin operator`
+- `Flow:` `admin users + reports ops workflow`
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred)
+- `Figma refs:` `N/A` (admin usability/polish swath; follow existing admin UI patterns)
+- `Controller seed note (2026-02-26):` Run in parallel with coaching docs work. Admin-only scope to avoid collision with mobile/coaching router surfaces.
+
+#### Screens In Scope (Large Swath)
+1. `/admin/users`
+2. `/admin/reports`
+
+#### Primary Objective
+Deliver a substantial A3 operator usability pass focused on admin users/reports list workflows:
+- user list/search/filter/sort/paging readability and recovery UX
+- action discoverability for common user operations
+- reports list/table usability and operator workflow clarity
+- loading/empty/no-results/error state clarity where weak or inconsistent
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+
+#### Constraints (Hard)
+- Admin web only (`app/screens/AdminShellScreen.tsx` and directly related admin helpers only)
+- No mobile app screen edits
+- No backend/API/schema changes
+- No authz boundary changes
+- Follow existing admin shell visual patterns (no redesign pass)
+- If a fix requires API changes or structural route changes, stop and report blocker
+
+#### Implementation Pattern (Large Swath)
+- Start with a mismatch/issues list for `/admin/users` and `/admin/reports`
+- Prioritize operator workflow friction:
+  - list resets / no-results recovery
+  - sort/search predictability
+  - row/action discoverability
+  - “show more” / visible-count clarity / paging behavior
+- Keep commits scoped to this swath (`1` commit preferred, `2` max if split by screen is cleaner)
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Manual browser spot-check of `/admin/users` and `/admin/reports` (if available)
+- Confirm no mobile files changed
+- Confirm no backend/API/schema files changed
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona affected`
+- `Screens changed`
+- `Top operator issues before changes`
+- `What improved`
+- `Still rough / deferred`
+- `Files touched` (with line refs)
+- `Validation performed` (`tsc`, manual browser checks)
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment ADMIN-A3-USERS-OPS-POLISH-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
 
 ## Controller Review Checklist (Reference)
 - Sprint scope alignment (`CURRENT_SPRINT.md`) and explicit exception approval if applicable
