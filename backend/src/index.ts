@@ -3656,6 +3656,56 @@ app.post("/challenge-participants", async (req, res) => {
   }
 });
 
+app.delete("/challenge-participants/:challengeId", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+    if (!dataClient) {
+      return res.status(500).json({ error: "Supabase data client not configured" });
+    }
+
+    const challengeId = String(req.params.challengeId ?? "").trim();
+    if (!challengeId) {
+      return res.status(422).json({ error: "challenge id is required" });
+    }
+
+    const { data: existingRows, error: existingError } = await dataClient
+      .from("challenge_participants")
+      .select("id,challenge_id,user_id")
+      .eq("challenge_id", challengeId)
+      .eq("user_id", auth.user.id)
+      .order("joined_at", { ascending: false });
+    if (existingError) {
+      return handleSupabaseError(res, "Failed to load challenge participation", existingError);
+    }
+    if (!existingRows || existingRows.length === 0) {
+      return res.status(404).json({ error: "Challenge participation not found" });
+    }
+
+    const { error: deleteError } = await dataClient
+      .from("challenge_participants")
+      .delete()
+      .eq("challenge_id", challengeId)
+      .eq("user_id", auth.user.id);
+    if (deleteError) {
+      return handleSupabaseError(res, "Failed to leave challenge", deleteError);
+    }
+
+    return res.json({
+      left: true,
+      challenge_id: challengeId,
+      user_id: auth.user.id,
+      deleted_count: existingRows.length,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in DELETE /challenge-participants/:challengeId", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 async function authenticateRequest(authorizationHeader?: string): Promise<
   | { ok: true; user: AuthUser }
   | { ok: false; status: number; error: string }

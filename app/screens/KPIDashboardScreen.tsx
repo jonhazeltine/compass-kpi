@@ -158,6 +158,76 @@ type TeamKpiGroups = {
   GP: DashboardPayload['loggable_kpis'];
   VP: DashboardPayload['loggable_kpis'];
 };
+type ChallengeApiLeaderboardRow = {
+  user_id: string;
+  activity_count: number;
+  progress_percent: number;
+};
+type ChallengeApiRow = {
+  id: string;
+  name: string;
+  description?: string | null;
+  mode?: string | null;
+  team_id?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  late_join_includes_history?: boolean | null;
+  is_active?: boolean | null;
+  created_at?: string | null;
+  my_participation?: {
+    challenge_id?: string | null;
+    user_id?: string | null;
+    joined_at?: string | null;
+    effective_start_at?: string | null;
+    progress_percent?: number | null;
+  } | null;
+  leaderboard_top?: ChallengeApiLeaderboardRow[] | null;
+};
+type ChallengeListApiResponse = {
+  challenges?: ChallengeApiRow[];
+};
+type ChallengeJoinApiResponse = {
+  participant?: {
+    id?: string;
+    challenge_id?: string;
+    user_id?: string;
+    progress_percent?: number | null;
+  };
+  leaderboard_top?: ChallengeApiLeaderboardRow[];
+  error?: string;
+};
+type ChallengeLeaveApiResponse = {
+  left?: boolean;
+  challenge_id?: string;
+  user_id?: string;
+  error?: string;
+};
+type ChallengeFlowLeaderboardEntry = {
+  rank: number;
+  name: string;
+  pct: number;
+  value: number;
+  userId?: string;
+};
+type ChallengeFlowItem = {
+  id: string;
+  title: string;
+  subtitle: string;
+  status: string;
+  progressPct: number;
+  timeframe: string;
+  daysLabel: string;
+  participants: number;
+  sponsor: boolean;
+  bucket: 'active' | 'upcoming' | 'completed';
+  joined: boolean;
+  challengeModeLabel: string;
+  targetValueLabel: string;
+  startAtIso?: string | null;
+  endAtIso?: string | null;
+  raw?: ChallengeApiRow | null;
+  leaderboardPreview: ChallengeFlowLeaderboardEntry[];
+};
 
 type PendingDirectLog = {
   kpiId: string;
@@ -257,6 +327,190 @@ function fmtUsd(v: number) {
 function fmtNum(v: number) {
   const safe = Number.isFinite(v) ? v : 0;
   return safe.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+function fmtShortMonthDayYear(iso?: string | null) {
+  if (!iso) return '';
+  const d = new Date(String(iso));
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function fmtShortMonthDay(iso?: string | null) {
+  if (!iso) return '';
+  const d = new Date(String(iso));
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function challengeBucketFromDates(input: { startAt?: string | null; endAt?: string | null; nowMs?: number }) {
+  const nowMs = input.nowMs ?? Date.now();
+  const startMs = input.startAt ? new Date(String(input.startAt)).getTime() : NaN;
+  const endMs = input.endAt ? new Date(String(input.endAt)).getTime() : NaN;
+  if (Number.isFinite(endMs) && endMs < nowMs) return 'completed' as const;
+  if (Number.isFinite(startMs) && startMs > nowMs) return 'upcoming' as const;
+  return 'active' as const;
+}
+
+function challengeStatusLabelFromBucket(bucket: 'active' | 'upcoming' | 'completed', joined: boolean) {
+  if (bucket === 'completed') return 'Completed';
+  if (bucket === 'upcoming') return joined ? 'Joined' : 'Upcoming';
+  return joined ? 'Joined' : 'Active';
+}
+
+function challengeDaysLabelFromDates(bucket: 'active' | 'upcoming' | 'completed', startAt?: string | null, endAt?: string | null) {
+  const now = Date.now();
+  const startMs = startAt ? new Date(String(startAt)).getTime() : NaN;
+  const endMs = endAt ? new Date(String(endAt)).getTime() : NaN;
+  if (bucket === 'completed') return 'Completed';
+  if (bucket === 'upcoming' && Number.isFinite(startMs)) {
+    const days = Math.max(0, Math.ceil((startMs - now) / (24 * 60 * 60 * 1000)));
+    return days <= 0 ? 'Starts today' : `Starts in ${days} day${days === 1 ? '' : 's'}`;
+  }
+  if (bucket === 'active' && Number.isFinite(endMs)) {
+    const days = Math.max(0, Math.ceil((endMs - now) / (24 * 60 * 60 * 1000)));
+    return `${days} day${days === 1 ? '' : 's'} left`;
+  }
+  return '';
+}
+
+function challengeTimeframeLabel(startAt?: string | null, endAt?: string | null) {
+  const start = fmtShortMonthDay(startAt);
+  const end = fmtShortMonthDayYear(endAt);
+  if (start && end) return `${start} - ${end}`;
+  return start || end || 'Dates TBD';
+}
+
+function challengeModeLabelFromApi(row: ChallengeApiRow) {
+  const mode = String(row.mode ?? '').toLowerCase();
+  if (mode === 'team') return 'Team';
+  if (mode === 'solo') return 'Single Agent';
+  if (row.team_id) return 'Team';
+  return 'Single Agent';
+}
+
+function leaderboardFallbackName(userId?: string, rank?: number) {
+  if (userId && userId.length >= 6) return `Member ${String(userId).slice(0, 4)}`;
+  return `Member ${rank ?? ''}`.trim();
+}
+
+function mapChallengeLeaderboardPreview(
+  leaderboardTop: ChallengeApiRow['leaderboard_top'] | undefined | null
+): ChallengeFlowLeaderboardEntry[] {
+  const rows = Array.isArray(leaderboardTop) ? leaderboardTop : [];
+  return rows.slice(0, 5).map((row, index) => ({
+    rank: index + 1,
+    userId: String(row.user_id ?? ''),
+    // TODO(M4 challenge payload): use display names from challenge list/detail payload once backend includes profile summary.
+    name: leaderboardFallbackName(String(row.user_id ?? ''), index + 1),
+    pct: Math.max(0, Math.round(Number(row.progress_percent ?? 0))),
+    value: Math.max(0, Math.round(Number(row.activity_count ?? 0))),
+  }));
+}
+
+function defaultChallengeFlowItems(): ChallengeFlowItem[] {
+  return [
+    {
+      id: 'challenge-30-day-listing',
+      title: '30 Day Listing Challenge',
+      subtitle: 'Track listing-focused production actions this month',
+      status: 'Active',
+      progressPct: 60,
+      timeframe: 'Nov 1 - Nov 30, 2025',
+      daysLabel: '24 days left',
+      participants: 12,
+      sponsor: false,
+      bucket: 'active',
+      joined: true,
+      challengeModeLabel: 'Single Agent',
+      targetValueLabel: '5 per month',
+      raw: null,
+      leaderboardPreview: [
+        { rank: 1, name: 'Amy Jackson', pct: 33, value: 24 },
+        { rank: 2, name: 'Sarah Johnson', pct: 18, value: 13 },
+        { rank: 3, name: 'Scott Johnson', pct: 7, value: 5 },
+      ],
+    },
+    {
+      id: 'challenge-conversation-sprint',
+      title: 'Conversation Sprint',
+      subtitle: 'Momentum challenge for outreach and follow-up consistency',
+      status: 'Upcoming',
+      progressPct: 0,
+      timeframe: 'Dec 1 - Dec 14, 2025',
+      daysLabel: 'Starts in 4 days',
+      participants: 8,
+      sponsor: false,
+      bucket: 'upcoming',
+      joined: false,
+      challengeModeLabel: 'Single Agent',
+      targetValueLabel: 'TBD',
+      raw: null,
+      leaderboardPreview: [],
+    },
+    {
+      id: 'challenge-open-house-run',
+      title: 'Open House Run',
+      subtitle: 'Weekend event execution challenge with team leaderboard',
+      status: 'Completed',
+      progressPct: 100,
+      timeframe: 'Oct 1 - Oct 31, 2025',
+      daysLabel: 'Completed',
+      participants: 15,
+      sponsor: true,
+      bucket: 'completed',
+      joined: true,
+      challengeModeLabel: 'Team',
+      targetValueLabel: 'TBD',
+      raw: null,
+      leaderboardPreview: [],
+    },
+  ];
+}
+
+function mapChallengesToFlowItems(rows: ChallengeApiRow[] | null | undefined): ChallengeFlowItem[] {
+  if (!Array.isArray(rows) || rows.length === 0) return defaultChallengeFlowItems();
+  return rows.map((row) => {
+    const joined = !!row.my_participation;
+    const bucket = challengeBucketFromDates({ startAt: row.start_at, endAt: row.end_at });
+    const leaderboardPreview = mapChallengeLeaderboardPreview(row.leaderboard_top);
+    const participants = Array.isArray(row.leaderboard_top) && row.leaderboard_top.length > 0
+      ? row.leaderboard_top.length
+      : joined
+        ? 1
+        : 0;
+    // TODO(M4 challenge payload gap): API list payload does not expose target value metadata for details rows; keep placeholder label.
+    const targetValueLabel = 'TBD';
+    const subtitle =
+      String(row.description ?? '').trim() ||
+      'Challenge details and progress summary.';
+    return {
+      id: String(row.id),
+      title: String(row.name ?? 'Challenge'),
+      subtitle,
+      status: challengeStatusLabelFromBucket(bucket, joined),
+      progressPct: Math.max(0, Math.round(Number(row.my_participation?.progress_percent ?? 0))),
+      timeframe: challengeTimeframeLabel(row.start_at, row.end_at),
+      daysLabel: challengeDaysLabelFromDates(bucket, row.start_at, row.end_at),
+      participants,
+      sponsor: false,
+      bucket,
+      joined,
+      challengeModeLabel: challengeModeLabelFromApi(row),
+      targetValueLabel,
+      startAtIso: row.start_at ?? null,
+      endAtIso: row.end_at ?? null,
+      raw: row,
+      leaderboardPreview,
+    };
+  });
 }
 
 function confidenceColor(band: 'green' | 'yellow' | 'red') {
@@ -1102,6 +1356,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [homePanel, setHomePanel] = useState<HomePanel>('Quick');
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   const [activeTab, setActiveTab] = useState<BottomTab>('home');
+  const [challengeFlowScreen, setChallengeFlowScreen] = useState<'list' | 'details' | 'leaderboard'>('list');
+  const [challengeSelectedId, setChallengeSelectedId] = useState<string>('challenge-30-day-listing');
+  const [challengeApiRows, setChallengeApiRows] = useState<ChallengeApiRow[] | null>(null);
+  const [challengeApiFetchError, setChallengeApiFetchError] = useState<string | null>(null);
+  const [challengeJoinSubmittingId, setChallengeJoinSubmittingId] = useState<string | null>(null);
+  const [challengeLeaveSubmittingId, setChallengeLeaveSubmittingId] = useState<string | null>(null);
+  const [challengeJoinError, setChallengeJoinError] = useState<string | null>(null);
+  const [challengeLeaveError, setChallengeLeaveError] = useState<string | null>(null);
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
@@ -1252,13 +1514,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
 
     try {
-      const [dashRes, meRes] = await Promise.all([
+      const [dashRes, meRes, challengesRes] = await Promise.all([
         fetch(`${API_URL}/dashboard`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
         fetch(`${API_URL}/me`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
+        fetch(`${API_URL}/challenges`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => null),
       ]);
 
       const dashBody = await dashRes.json();
@@ -1268,6 +1533,25 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
       const dashPayload = dashBody as DashboardPayload;
       setPayload(dashPayload);
+      if (challengesRes) {
+        try {
+          const challengesBody = (await challengesRes.json()) as ChallengeListApiResponse & { error?: string };
+          if (challengesRes.ok) {
+            const rows = Array.isArray(challengesBody?.challenges) ? challengesBody.challenges : [];
+            setChallengeApiRows(rows);
+            setChallengeApiFetchError(null);
+          } else {
+            setChallengeApiRows(null);
+            setChallengeApiFetchError(challengesBody?.error ?? 'Failed to load challenges');
+          }
+        } catch {
+          setChallengeApiRows(null);
+          setChallengeApiFetchError('Failed to parse challenges response');
+        }
+      } else {
+        setChallengeApiRows(null);
+        setChallengeApiFetchError('Challenge list request failed');
+      }
 
       if (managedKpiIds.length === 0) {
         const fromProfile = Array.isArray(meBody?.user_metadata?.selected_kpis)
@@ -1302,6 +1586,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setError(null);
     } catch (e: unknown) {
       setPayload(null);
+      setChallengeApiRows(null);
       setState('error');
       setError(e instanceof Error ? e.message : 'Failed to load dashboard');
     }
@@ -1310,6 +1595,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   React.useEffect(() => {
     if (state === 'loading') void fetchDashboard();
   }, [fetchDashboard, state]);
+
+  React.useEffect(() => {
+    setChallengeJoinError(null);
+  }, [challengeFlowScreen, challengeSelectedId]);
 
   React.useEffect(() => {
     registerFeedbackCueSource('swipe', feedbackAudioAssets.swipe);
@@ -1461,11 +1750,85 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     chartPinnedScrollXRef.current = null;
   }, [homePanel]);
 
+  React.useEffect(() => {
+    const chartVisibleOnPanel = homePanel === 'Quick' || homePanel === 'PC';
+    if (chartVisibleOnPanel) return;
+    // GP/VP visual panels do not mount the live chart target refs; clear flight caches so
+    // optimistic PC projectile FX cannot reuse stale chart boxes/scroll offsets from a prior panel.
+    flightChartViewportBoxCacheRef.current = null;
+    flightChartContentBoxCacheRef.current = null;
+    flightMeasureCachePanelRef.current = null;
+  }, [homePanel]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchDashboard();
     setRefreshing(false);
   };
+
+  const joinChallenge = useCallback(
+    async (challengeId: string) => {
+      const token = session?.access_token;
+      if (!token) {
+        setChallengeJoinError('Missing session token.');
+        return;
+      }
+      setChallengeJoinSubmittingId(challengeId);
+      setChallengeJoinError(null);
+      setChallengeLeaveError(null);
+      try {
+        const response = await fetch(`${API_URL}/challenge-participants`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ challenge_id: challengeId }),
+        });
+        const body = (await response.json()) as ChallengeJoinApiResponse;
+        if (!response.ok) {
+          throw new Error(body?.error ?? 'Failed to join challenge');
+        }
+        await fetchDashboard();
+      } catch (e: unknown) {
+        setChallengeJoinError(e instanceof Error ? e.message : 'Failed to join challenge');
+      } finally {
+        setChallengeJoinSubmittingId((prev) => (prev === challengeId ? null : prev));
+      }
+    },
+    [fetchDashboard, session?.access_token]
+  );
+
+  const leaveChallenge = useCallback(
+    async (challengeId: string) => {
+      const token = session?.access_token;
+      if (!token) {
+        setChallengeLeaveError('Missing session token.');
+        return;
+      }
+      setChallengeLeaveSubmittingId(challengeId);
+      setChallengeLeaveError(null);
+      setChallengeJoinError(null);
+      try {
+        const response = await fetch(`${API_URL}/challenge-participants/${encodeURIComponent(challengeId)}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const body = (await response.json()) as ChallengeLeaveApiResponse;
+        if (!response.ok) {
+          throw new Error(body?.error ?? 'Failed to leave challenge');
+        }
+        await fetchDashboard();
+      } catch (e: unknown) {
+        setChallengeLeaveError(e instanceof Error ? e.message : 'Failed to leave challenge');
+      } finally {
+        setChallengeLeaveSubmittingId((prev) => (prev === challengeId ? null : prev));
+      }
+    },
+    [fetchDashboard, session?.access_token]
+  );
 
   const getKpiTileScale = useCallback((kpiId: string) => {
     if (!kpiTileScaleByIdRef.current[kpiId]) {
@@ -1696,10 +2059,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     options?: { centerOnImpact?: boolean; sourcePagePoint?: { x: number; y: number } | null }
   ) => {
     if (viewMode !== 'home') return;
+    const chartVisibleOnPanel = homePanel === 'Quick' || homePanel === 'PC';
+    if (!chartVisibleOnPanel) return;
     const rawImpact = getProjectionImpactPointForDate(payoffStartIso);
     if (!rawImpact) return;
     let impact = rawImpact;
     const shouldCenterOnImpact = options?.centerOnImpact !== false;
+    let didRecenterChart = false;
     if (!shouldCenterOnImpact && chartViewportWidth > 0) {
       const visibleMinX = chartScrollXRef.current + 6;
       const visibleMaxX = chartScrollXRef.current + Math.max(12, chartViewportWidth - 10);
@@ -1715,13 +2081,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       preservePinnedChartScrollRef.current = true;
       chartScrollRef.current.scrollTo({ x: targetScrollX, animated: false });
       chartScrollXRef.current = targetScrollX;
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      didRecenterChart = true;
     }
     const sourceNode = options?.sourcePagePoint ? null : kpiTileCircleRefById.current[kpiId];
     const chartViewportNode = chartScrollRef.current;
     const chartContentNode = chartScrollableRef.current;
     const rootNode = screenRootRef.current;
     const canUseCachedBoxes =
+      !didRecenterChart &&
       options?.sourcePagePoint != null &&
       flightMeasureCachePanelRef.current === homePanel &&
       flightRootBoxCacheRef.current != null &&
@@ -1825,7 +2192,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     if (impactPromise) {
       await impactPromise;
     }
-  }, [animateChartImpactLine, animateChartImpactMonthPulse, chartViewportWidth, getProjectionImpactPointForDate, measureInWindowAsync, payload, viewMode]);
+  }, [animateChartImpactLine, animateChartImpactMonthPulse, chartViewportWidth, getProjectionImpactPointForDate, homePanel, measureInWindowAsync, payload, viewMode]);
 
   const toggleFeedbackMuted = useCallback(() => {
     setFeedbackMuted((prev) => {
@@ -2514,8 +2881,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         Date.now() + optimisticPayoffDays * 24 * 60 * 60 * 1000
       ).toISOString();
       launchedOptimisticProjection = true;
+      const shouldKeepCurrentChartViewport = homePanel !== 'PC';
       void launchProjectionFlightFx(kpi.id, optimisticPayoffStartIso, {
-        centerOnImpact: options?.sourcePagePoint ? false : undefined,
+        centerOnImpact:
+          options?.sourcePagePoint && shouldKeepCurrentChartViewport ? false : undefined,
         sourcePagePoint: options?.sourcePagePoint ?? null,
       });
     }
@@ -4098,6 +4467,18 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     );
   };
 
+  const isHomeGameplaySurface = activeTab === 'home' && viewMode === 'home';
+  const challengeListItems = useMemo(() => mapChallengesToFlowItems(challengeApiRows), [challengeApiRows]);
+  const challengeSelected =
+    challengeListItems.find((item) => item.id === challengeSelectedId) ?? challengeListItems[0];
+  const challengeDaysLeft =
+    challengeSelected?.bucket === 'active' && challengeSelected?.endAtIso
+      ? Math.max(0, Math.ceil((new Date(challengeSelected.endAtIso).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+      : 0;
+  const challengeLeaderboardPreview = (challengeSelected?.leaderboardPreview?.length
+    ? challengeSelected.leaderboardPreview
+    : defaultChallengeFlowItems()[0].leaderboardPreview) as ChallengeFlowLeaderboardEntry[];
+
   if (state === 'loading') {
     return (
       <View style={styles.centered}>
@@ -4118,8 +4499,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     );
   }
 
-  const isHomeGameplaySurface = activeTab === 'home' && viewMode === 'home';
-
   return (
     <View
       ref={(node) => {
@@ -4137,84 +4516,387 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       >
         {activeTab === 'challenge' ? (
           <View style={styles.challengeSurfaceWrap}>
-            <View style={styles.challengeHeaderCard}>
-              <View style={styles.challengeHeaderTopRow}>
-                <View style={styles.challengeHeaderBadge}>
-                  <Text style={styles.challengeHeaderBadgeText}>Challenge</Text>
-                </View>
-                <Text style={styles.challengeHeaderMeta}>Participation hub</Text>
-              </View>
-              <Text style={styles.challengeHeaderTitle}>Challenge</Text>
-              <Text style={styles.challengeHeaderSub}>
-                Track challenge pace, see what to log next, and record progress-driving actions from one place.
-              </Text>
-              <View style={styles.challengeHeaderStatsRow}>
-                <View style={styles.challengeHeaderStatChip}>
-                  <Text style={styles.challengeHeaderStatLabel}>KPIs</Text>
-                  <Text style={styles.challengeHeaderStatValue}>{fmtNum(challengeTileCount)}</Text>
-                  <Text style={styles.challengeHeaderStatFoot}>Eligible on this surface</Text>
-                </View>
-                <View style={styles.challengeHeaderStatChip}>
-                  <Text style={styles.challengeHeaderStatLabel}>Types</Text>
-                  <Text style={styles.challengeHeaderStatValue}>
-                    {fmtNum(
-                      (challengeKpiGroups.PC.length > 0 ? 1 : 0) +
-                        (challengeKpiGroups.GP.length > 0 ? 1 : 0) +
-                        (challengeKpiGroups.VP.length > 0 ? 1 : 0)
-                    )}
-                  </Text>
-                  <Text style={styles.challengeHeaderStatFoot}>PC / GP / VP grouping</Text>
-                </View>
-              </View>
-              <View style={styles.challengeProgressCard}>
-                <View style={styles.challengeProgressHeader}>
-                  <Text style={styles.challengeProgressTitle}>Challenge pace</Text>
-                  <Text style={styles.challengeProgressMeta}>Placeholder</Text>
-                </View>
-                <View style={styles.challengeProgressTrack}>
-                  <View style={styles.challengeProgressFill} />
-                </View>
-                <View style={styles.challengeProgressLegendRow}>
-                  <View style={styles.challengePaceChip}>
-                    <Text style={styles.challengePaceChipText}>On track (placeholder)</Text>
+            {challengeFlowScreen === 'list' ? (
+              <>
+                <View style={styles.challengeListShell}>
+                  <View style={styles.challengeListHeaderRow}>
+                    <Text style={styles.challengeListTitle}>Challenges</Text>
+                    <TouchableOpacity style={styles.challengeListCreateBtn}>
+                      <Text style={styles.challengeListCreateBtnText}>Create</Text>
+                    </TouchableOpacity>
                   </View>
-                  <Text style={styles.challengeProgressLegendText}>Real challenge pace wiring lands with challenge payload.</Text>
-                </View>
-              </View>
-              <Text style={styles.challengeHeaderHint}>
-                TODO: wire real challenge progress + membership filtering when challenge payload is available.
-              </Text>
-            </View>
+                  <Text style={styles.challengeListSub}>See active challenges and jump into challenge progress details.</Text>
+                  {challengeApiFetchError ? (
+                    <Text style={styles.challengeListFallbackHint}>
+                      Using placeholder challenge cards because `GET /challenges` did not return usable data.
+                    </Text>
+                  ) : null}
 
-            {challengeTileCount === 0 ? (
-              <View style={styles.challengeEmptyCard}>
-                <View style={styles.challengeEmptyBadge}>
-                  <Text style={styles.challengeEmptyBadgeText}>Challenge</Text>
+                  <View style={styles.challengeListFilterRow}>
+                    <View style={[styles.challengeListFilterChip, styles.challengeListFilterChipActive]}>
+                      <Text style={[styles.challengeListFilterChipText, styles.challengeListFilterChipTextActive]}>All</Text>
+                    </View>
+                    <View style={styles.challengeListFilterChip}>
+                      <Text style={styles.challengeListFilterChipText}>Sponsored</Text>
+                    </View>
+                    <View style={styles.challengeListFilterChip}>
+                      <Text style={styles.challengeListFilterChipText}>Team</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.challengeListCardStack}>
+                    {(['active', 'upcoming', 'completed'] as const).map((bucket) => {
+                      const rows = challengeListItems.filter((item) => item.bucket === bucket);
+                      if (rows.length === 0) return null;
+                      return (
+                        <View key={`challenge-bucket-${bucket}`} style={styles.challengeListBucket}>
+                          <Text style={styles.challengeListBucketTitle}>
+                            {bucket === 'active' ? 'Active' : bucket === 'upcoming' ? 'Upcoming' : 'Completed'}
+                          </Text>
+                          {rows.map((item) => (
+                            <TouchableOpacity
+                              key={item.id}
+                              style={styles.challengeListItemCard}
+                              onPress={() => {
+                                setChallengeSelectedId(item.id);
+                                setChallengeFlowScreen('details');
+                              }}
+                            >
+                              <View style={styles.challengeListItemTopRow}>
+                                <Text numberOfLines={1} style={styles.challengeListItemTitle}>{item.title}</Text>
+                                <View
+                                  style={[
+                                    styles.challengeListStatusPill,
+                                    item.bucket === 'active'
+                                      ? styles.challengeListStatusActive
+                                      : item.bucket === 'upcoming'
+                                        ? styles.challengeListStatusUpcoming
+                                        : styles.challengeListStatusCompleted,
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.challengeListStatusPillText,
+                                      item.bucket === 'active'
+                                        ? styles.challengeListStatusActiveText
+                                        : item.bucket === 'upcoming'
+                                          ? styles.challengeListStatusUpcomingText
+                                          : styles.challengeListStatusCompletedText,
+                                    ]}
+                                  >
+                                    {item.status}
+                                  </Text>
+                                </View>
+                              </View>
+                              <Text numberOfLines={2} style={styles.challengeListItemSub}>{item.subtitle}</Text>
+                              <View style={styles.challengeListItemMetaRow}>
+                                <Text style={styles.challengeListItemMetaText}>{item.timeframe}</Text>
+                                <Text style={styles.challengeListItemMetaText}>{item.daysLabel}</Text>
+                              </View>
+                              <View style={styles.challengeListItemProgressTrack}>
+                                <View style={[styles.challengeListItemProgressFill, { width: `${item.progressPct}%` }]} />
+                              </View>
+                              <View style={styles.challengeListItemBottomRow}>
+                                <Text style={styles.challengeListItemBottomText}>
+                                  {item.joined ? 'Joined' : 'Not joined'} · {item.participants} participant{item.participants === 1 ? '' : 's'}
+                                </Text>
+                                <Text style={styles.challengeListItemBottomLink}>View details ›</Text>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      );
+                    })}
+                  </View>
                 </View>
-                <Text style={styles.challengeEmptyTitle}>No challenge KPIs available yet</Text>
-                <Text style={styles.challengeEmptyText}>
-                  Challenge-relevant KPIs will appear here once challenge context is available for your account.
-                </Text>
-                <TouchableOpacity
-                  style={styles.challengeEmptyCta}
-                  onPress={() => {
-                    setActiveTab('home');
-                    setViewMode('home');
-                  }}
-                >
-                  <Text style={styles.challengeEmptyCtaText}>Back to Home</Text>
-                </TouchableOpacity>
+              </>
+            ) : challengeFlowScreen === 'leaderboard' ? (
+              <View style={styles.challengeDetailsShell}>
+                <View style={styles.challengeDetailsNavRow}>
+                  <TouchableOpacity
+                    style={styles.challengeDetailsIconBtn}
+                    onPress={() => setChallengeFlowScreen('details')}
+                  >
+                    <Text style={styles.challengeDetailsIconBtnText}>‹</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.challengeDetailsNavTitle}>Leaderboard</Text>
+                  <View style={styles.challengeDetailsNavSpacer} />
+                </View>
+
+                <View style={styles.challengeLeaderboardScreenCard}>
+                  <Text style={styles.challengeLeaderboardScreenTitle}>{challengeSelected.title}</Text>
+                  <Text style={styles.challengeLeaderboardScreenSub}>
+                    Full leaderboard screen is staged in this pass. Preview rows are placeholder-backed until challenge detail payload wiring.
+                  </Text>
+                  <View style={styles.challengeLeaderboardScreenTop3}>
+                    {challengeLeaderboardPreview.map((entry) => (
+                      <View key={`challenge-lb-full-${entry.rank}`} style={styles.challengeLeaderboardScreenTopCard}>
+                        <Text style={styles.challengeDetailsLeaderboardRank}>#{entry.rank}</Text>
+                        <View style={styles.challengeDetailsLeaderboardAvatar}>
+                          <Text style={styles.challengeDetailsLeaderboardAvatarText}>
+                            {entry.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}
+                          </Text>
+                        </View>
+                        <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardName}>{entry.name}</Text>
+                        <Text style={styles.challengeLeaderboardScreenTopValue}>{entry.value}</Text>
+                        <Text style={styles.challengeDetailsLeaderboardVal}>logs</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={styles.challengeLeaderboardScreenRows}>
+                    {challengeLeaderboardPreview.concat(
+                      [
+                        { name: 'Jordan Smith', pct: 5, value: 4, rank: 4 },
+                        { name: 'Casey Brown', pct: 3, value: 2, rank: 5 },
+                      ] as const
+                    ).map((entry) => (
+                      <View key={`challenge-lb-screen-row-${entry.rank}`} style={styles.challengeLeaderboardScreenRow}>
+                        <Text style={styles.challengeDetailsLeaderboardRowRank}>{String(entry.rank).padStart(2, '0')}</Text>
+                        <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardRowName}>{entry.name}</Text>
+                        <Text style={styles.challengeLeaderboardScreenRowMetric}>{entry.value} logs</Text>
+                        <Text style={styles.challengeDetailsLeaderboardRowPct}>{entry.pct}%</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
               </View>
             ) : (
-              <View style={styles.challengeSectionsWrap}>
-                {renderParticipationFocusCard('challenge', challengeSurfaceKpis, {
-                  title: 'What to log next',
-                  sub: 'Suggested challenge actions using current placeholder relevance ordering.',
-                })}
-                {renderChallengeKpiSection('PC', 'Projections (PC)', challengeKpiGroups.PC)}
-                {renderChallengeKpiSection('GP', 'Growth (GP)', challengeKpiGroups.GP)}
-                {renderChallengeKpiSection('VP', 'Vitality (VP)', challengeKpiGroups.VP)}
-              </View>
+              <>
+                <View style={styles.challengeDetailsShell}>
+                  <View style={styles.challengeDetailsNavRow}>
+                    <TouchableOpacity
+                      style={styles.challengeDetailsIconBtn}
+                      onPress={() => setChallengeFlowScreen('list')}
+                    >
+                      <Text style={styles.challengeDetailsIconBtnText}>‹</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.challengeDetailsNavTitle}>Challenge Details</Text>
+                    <TouchableOpacity style={styles.challengeDetailsActionBtn}>
+                      <Text style={styles.challengeDetailsActionBtnText}>Add KPI</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.challengeDetailsTitleBlock}>
+                    <Text style={styles.challengeDetailsTitle}>{challengeSelected.title}</Text>
+                    <Text style={styles.challengeDetailsSubtitle}>
+                      {challengeSelected.subtitle}
+                    </Text>
+                  </View>
+
+                  <View style={styles.challengeDetailsHeroCard}>
+                    <View style={styles.challengeDetailsHeroTop}>
+                      <Text style={styles.challengeDetailsHeroLabel}>Challenge Progress</Text>
+                      <View style={styles.challengeDetailsStatusPill}>
+                        <Text style={styles.challengeDetailsStatusPillText}>{challengeSelected.status}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.challengeDetailsGaugeWrap}>
+                      <View style={styles.challengeDetailsGaugeOuter}>
+                        <View style={styles.challengeDetailsGaugeArcBase} />
+                        <View style={styles.challengeDetailsGaugeArcFill} />
+                        <View style={styles.challengeDetailsGaugeInner}>
+                          <Text style={styles.challengeDetailsGaugeValue}>{challengeSelected.progressPct}%</Text>
+                          <Text style={styles.challengeDetailsGaugeCaption}>
+                            {challengeSelected.bucket === 'completed' ? 'Completed' : 'Complete'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <Text style={styles.challengeDetailsHeroHint}>Pace + leaderboard wiring remains placeholder until challenge payload lands.</Text>
+                  </View>
+
+                  <View style={styles.challengeDetailsOwnerCard}>
+                    <View style={styles.challengeDetailsOwnerLeft}>
+                      <View style={styles.challengeDetailsOwnerAvatar}>
+                        <Text style={styles.challengeDetailsOwnerAvatarText}>AJ</Text>
+                      </View>
+                      <View style={styles.challengeDetailsOwnerCopy}>
+                        <Text style={styles.challengeDetailsOwnerName}>Amy Jackson</Text>
+                        <Text style={styles.challengeDetailsOwnerStatus}>
+                          {challengeSelected.joined ? 'Joined challenge (rank placeholder)' : 'Not joined yet'}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.challengeDetailsOwnerMetric}>
+                      <Text style={styles.challengeDetailsOwnerMetricValue}>24</Text>
+                      <Text style={styles.challengeDetailsOwnerMetricLabel}>logs</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.challengeDetailsMetaCard}>
+                    <View style={styles.challengeDetailsDateRangeRow}>
+                      <Text style={styles.challengeDetailsDateRangeTitle}>{challengeSelected.timeframe}</Text>
+                      <View style={styles.challengeDetailsDaysPill}>
+                        <Text style={styles.challengeDetailsDaysPillText}>
+                          {challengeSelected.bucket === 'active' ? `${challengeDaysLeft} days left` : challengeSelected.daysLabel}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.challengeDetailsMetaRows}>
+                      <View style={styles.challengeDetailsMetaRow}>
+                        <Text style={styles.challengeDetailsMetaKey}>Start Date</Text>
+                        <Text style={styles.challengeDetailsMetaVal}>
+                          {fmtShortMonthDayYear(challengeSelected.startAtIso) || 'TBD'}
+                        </Text>
+                      </View>
+                      <View style={styles.challengeDetailsMetaRow}>
+                        <Text style={styles.challengeDetailsMetaKey}>End Date</Text>
+                        <Text style={styles.challengeDetailsMetaVal}>
+                          {fmtShortMonthDayYear(challengeSelected.endAtIso) || 'TBD'}
+                        </Text>
+                      </View>
+                      <View style={styles.challengeDetailsMetaRow}>
+                        <Text style={styles.challengeDetailsMetaKey}>Challenge Type</Text>
+                        <Text style={styles.challengeDetailsMetaVal}>{challengeSelected.challengeModeLabel}</Text>
+                      </View>
+                      <View style={styles.challengeDetailsMetaRow}>
+                        <Text style={styles.challengeDetailsMetaKey}>Target Value</Text>
+                        <Text style={styles.challengeDetailsMetaVal}>{challengeSelected.targetValueLabel}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.challengeDetailsLeaderboardCard}
+                    activeOpacity={0.9}
+                    onPress={() => setChallengeFlowScreen('leaderboard')}
+                  >
+                    <View style={styles.challengeDetailsLeaderboardHeader}>
+                      <Text style={styles.challengeDetailsLeaderboardTitle}>Leaderboard & Progress</Text>
+                      <Text style={styles.challengeDetailsLeaderboardMeta}>Tap to open</Text>
+                    </View>
+                    <View style={styles.challengeDetailsLeaderboardTop3}>
+                      {challengeLeaderboardPreview.map((entry) => (
+                        <View key={`challenge-lb-${entry.rank}`} style={styles.challengeDetailsLeaderboardTopCard}>
+                          <Text style={styles.challengeDetailsLeaderboardRank}>#{entry.rank}</Text>
+                          <View style={styles.challengeDetailsLeaderboardAvatar}>
+                            <Text style={styles.challengeDetailsLeaderboardAvatarText}>{entry.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}</Text>
+                          </View>
+                          <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardName}>{entry.name}</Text>
+                          <Text style={styles.challengeDetailsLeaderboardPct}>{entry.pct}%</Text>
+                          <Text style={styles.challengeDetailsLeaderboardVal}>{entry.value} logs</Text>
+                        </View>
+                      ))}
+                    </View>
+                    <View style={styles.challengeDetailsLeaderboardList}>
+                      {challengeLeaderboardPreview.map((entry) => (
+                        <View key={`challenge-lb-row-${entry.rank}`} style={styles.challengeDetailsLeaderboardRow}>
+                          <Text style={styles.challengeDetailsLeaderboardRowRank}>{String(entry.rank).padStart(2, '0')}</Text>
+                          <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardRowName}>{entry.name}</Text>
+                          <Text style={styles.challengeDetailsLeaderboardRowPct}>{entry.pct}%</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </TouchableOpacity>
+
+                  <View style={styles.challengeDetailsCtaBlock}>
+                    {(() => {
+                      const isJoinSubmitting = challengeJoinSubmittingId === challengeSelected.id;
+                      const isLeaveSubmitting = challengeLeaveSubmittingId === challengeSelected.id;
+                      const challengeMutationError = challengeJoinError ?? challengeLeaveError;
+                      return (
+                        <>
+                    {!challengeSelected.joined && challengeSelected.bucket !== 'completed' ? (
+                      <TouchableOpacity
+                        style={[styles.challengeDetailsPrimaryCta, isJoinSubmitting && styles.disabled]}
+                        onPress={() => void joinChallenge(challengeSelected.id)}
+                        disabled={isJoinSubmitting || isLeaveSubmitting}
+                      >
+                        <Text style={styles.challengeDetailsPrimaryCtaText}>
+                          {isJoinSubmitting ? 'Joining…' : 'Join Challenge'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={[styles.challengeDetailsPrimaryCta, isLeaveSubmitting && styles.disabled]}
+                        onPress={() => setChallengeFlowScreen('leaderboard')}
+                        disabled={isLeaveSubmitting}
+                      >
+                        <Text style={styles.challengeDetailsPrimaryCtaText}>View Full Leaderboard</Text>
+                      </TouchableOpacity>
+                    )}
+                    {challengeMutationError ? (
+                      <Text style={styles.challengeJoinErrorText}>{challengeMutationError}</Text>
+                    ) : null}
+                    <TouchableOpacity
+                      style={[
+                        styles.challengeDetailsSecondaryCta,
+                        challengeSelected.joined && isLeaveSubmitting && styles.disabled,
+                      ]}
+                      onPress={() => {
+                        if (challengeSelected.joined) {
+                          if (isJoinSubmitting || isLeaveSubmitting) return;
+                          Alert.alert(
+                            'Leave Challenge',
+                            'Are you sure you want to leave this challenge? Your participation progress will no longer be tracked.',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Leave',
+                                style: 'destructive',
+                                onPress: () => {
+                                  void leaveChallenge(challengeSelected.id);
+                                },
+                              },
+                            ]
+                          );
+                          return;
+                        }
+                        setChallengeFlowScreen('list');
+                      }}
+                      disabled={isJoinSubmitting || isLeaveSubmitting}
+                    >
+                      <Text style={styles.challengeDetailsSecondaryCtaText}>
+                        {challengeSelected.joined
+                          ? isLeaveSubmitting
+                            ? 'Leaving…'
+                            : 'Leave Challenge'
+                          : 'Back to Challenges'}
+                      </Text>
+                    </TouchableOpacity>
+                        </>
+                      );
+                    })()}
+                  </View>
+
+                  <Text style={styles.challengeHeaderHint}>
+                    TODO: `GET /challenges` list payload still lacks target-value and member display-name fields for full details/leaderboard parity.
+                  </Text>
+                </View>
+
+                {challengeTileCount === 0 ? (
+                  <View style={styles.challengeEmptyCard}>
+                    <View style={styles.challengeEmptyBadge}>
+                      <Text style={styles.challengeEmptyBadgeText}>Challenge</Text>
+                    </View>
+                    <Text style={styles.challengeEmptyTitle}>No challenge KPIs available yet</Text>
+                    <Text style={styles.challengeEmptyText}>
+                      Challenge-relevant KPIs will appear here once challenge context is available for your account.
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.challengeEmptyCta}
+                      onPress={() => {
+                        setActiveTab('home');
+                        setViewMode('home');
+                      }}
+                    >
+                      <Text style={styles.challengeEmptyCtaText}>Back to Home</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.challengeSectionsWrap}>
+                    <View style={styles.challengeLoggingHeaderCard}>
+                      <Text style={styles.challengeLoggingHeaderTitle}>Challenge Logging</Text>
+                      <Text style={styles.challengeLoggingHeaderSub}>
+                        Log challenge-related KPIs below while keeping this screen focused on challenge details and progress.
+                      </Text>
+                    </View>
+                    {renderChallengeKpiSection('PC', 'Projections (PC)', challengeKpiGroups.PC)}
+                    {renderChallengeKpiSection('GP', 'Growth (GP)', challengeKpiGroups.GP)}
+                    {renderChallengeKpiSection('VP', 'Vitality (VP)', challengeKpiGroups.VP)}
+                  </View>
+                )}
+              </>
             )}
           </View>
         ) : activeTab === 'team' ? (
@@ -4305,10 +4987,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
             <View style={styles.homeCockpitStage}>
               <View style={styles.homeCockpitVisualShell}>
-                <View style={styles.homeCockpitSectionHeader}>
-                  <Text style={styles.homeCockpitSectionEyebrow}>Forecast View</Text>
-                  <Text style={styles.homeCockpitSectionMeta}>Primary daily cockpit</Text>
-                </View>
                 <View style={styles.chartCard}>
                   <View
                     style={styles.homePanelViewport}
@@ -4339,10 +5017,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               </View>
 
               <View style={styles.homeCockpitActionShell}>
-                <View style={styles.homeCockpitSectionHeader}>
-                  <Text style={styles.homeCockpitSectionEyebrow}>Priority Actions</Text>
-                  <Text style={styles.homeCockpitSectionMeta}>Tap to log</Text>
-                </View>
                 <View
                   style={styles.homePanelViewport}
                   onLayout={(e) => setHomeGridViewportWidth(e.nativeEvent.layout.width)}
@@ -5109,6 +5783,670 @@ const styles = StyleSheet.create({
   challengeSurfaceWrap: {
     gap: 12,
   },
+  challengeListShell: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dfe7f2',
+    padding: 12,
+    gap: 10,
+    shadowColor: '#223453',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  challengeListHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  challengeListTitle: {
+    color: '#2f3442',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  challengeListCreateBtn: {
+    borderRadius: 999,
+    backgroundColor: '#0f172a',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  challengeListCreateBtnText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  challengeListSub: {
+    color: '#728094',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  challengeListFallbackHint: {
+    color: '#8b5f14',
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  challengeListFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  challengeListFilterChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#dde5f1',
+    backgroundColor: '#f7f9fc',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  challengeListFilterChipActive: {
+    backgroundColor: '#1f5fe2',
+    borderColor: '#1f5fe2',
+  },
+  challengeListFilterChipText: {
+    color: '#66758b',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  challengeListFilterChipTextActive: {
+    color: '#fff',
+  },
+  challengeListCardStack: {
+    gap: 10,
+  },
+  challengeListBucket: {
+    gap: 8,
+  },
+  challengeListBucketTitle: {
+    color: '#556277',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.25,
+    paddingHorizontal: 2,
+  },
+  challengeListItemCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e3eaf5',
+    backgroundColor: '#fbfdff',
+    padding: 10,
+    gap: 8,
+  },
+  challengeListItemTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  challengeListItemTitle: {
+    flex: 1,
+    color: '#2f3442',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  challengeListStatusPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  challengeListStatusPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  challengeListStatusActive: {
+    backgroundColor: '#eef8ef',
+    borderColor: '#d2e9d3',
+  },
+  challengeListStatusActiveText: {
+    color: '#2e8a49',
+  },
+  challengeListStatusUpcoming: {
+    backgroundColor: '#eef4ff',
+    borderColor: '#d8e5ff',
+  },
+  challengeListStatusUpcomingText: {
+    color: '#2d63e1',
+  },
+  challengeListStatusCompleted: {
+    backgroundColor: '#f3f4f6',
+    borderColor: '#e0e4ea',
+  },
+  challengeListStatusCompletedText: {
+    color: '#596579',
+  },
+  challengeListItemSub: {
+    color: '#728094',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  challengeListItemMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  challengeListItemMetaText: {
+    color: '#7c8798',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  challengeListItemProgressTrack: {
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: '#e8edf5',
+    overflow: 'hidden',
+  },
+  challengeListItemProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#57d36a',
+  },
+  challengeListItemBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  challengeListItemBottomText: {
+    color: '#6f7d90',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  challengeListItemBottomLink: {
+    color: '#1f5fe2',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  challengeDetailsShell: {
+    gap: 12,
+  },
+  challengeDetailsNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  challengeDetailsIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: '#dfe7f2',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  challengeDetailsIconBtnText: {
+    color: '#3b4658',
+    fontSize: 22,
+    lineHeight: 22,
+    fontWeight: '600',
+    marginTop: -2,
+  },
+  challengeDetailsNavTitle: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#2f3442',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  challengeDetailsNavSpacer: {
+    minWidth: 64,
+  },
+  challengeDetailsActionBtn: {
+    borderRadius: 999,
+    backgroundColor: '#131722',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minWidth: 64,
+    alignItems: 'center',
+  },
+  challengeDetailsActionBtnText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  challengeDetailsTitleBlock: {
+    gap: 4,
+  },
+  challengeDetailsTitle: {
+    color: '#2f3442',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  challengeDetailsSubtitle: {
+    color: '#707c8f',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  challengeDetailsHeroCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dfe7f2',
+    padding: 14,
+    gap: 10,
+    shadowColor: '#1f355f',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  challengeDetailsHeroTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  challengeDetailsHeroLabel: {
+    color: '#465267',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.25,
+  },
+  challengeDetailsStatusPill: {
+    borderRadius: 999,
+    backgroundColor: '#eef8ef',
+    borderWidth: 1,
+    borderColor: '#d2e9d3',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  challengeDetailsStatusPillText: {
+    color: '#2e8a49',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  challengeDetailsGaugeWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 2,
+  },
+  challengeDetailsGaugeOuter: {
+    width: 136,
+    height: 136,
+    borderRadius: 68,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  challengeDetailsGaugeArcBase: {
+    position: 'absolute',
+    width: 136,
+    height: 136,
+    borderRadius: 68,
+    borderWidth: 6,
+    borderColor: '#e6ebf4',
+  },
+  challengeDetailsGaugeArcFill: {
+    position: 'absolute',
+    width: 136,
+    height: 136,
+    borderRadius: 68,
+    borderWidth: 6,
+    borderColor: '#59d86d',
+    borderRightColor: '#59d86d',
+    borderTopColor: '#59d86d',
+    borderLeftColor: '#59d86d',
+    borderBottomColor: '#e6ebf4',
+    transform: [{ rotate: '-30deg' }],
+  },
+  challengeDetailsGaugeInner: {
+    width: 106,
+    height: 106,
+    borderRadius: 53,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#eef2f8',
+  },
+  challengeDetailsGaugeValue: {
+    color: '#2f3442',
+    fontSize: 30,
+    fontWeight: '800',
+    lineHeight: 32,
+  },
+  challengeDetailsGaugeCaption: {
+    marginTop: 2,
+    color: '#7a8698',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  challengeDetailsHeroHint: {
+    color: '#7b879a',
+    fontSize: 11,
+    lineHeight: 14,
+    textAlign: 'center',
+  },
+  challengeDetailsOwnerCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e1e8f2',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  challengeDetailsOwnerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  challengeDetailsOwnerAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#eef2ff',
+    borderWidth: 1,
+    borderColor: '#dfe6fb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  challengeDetailsOwnerAvatarText: {
+    color: '#365fcf',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  challengeDetailsOwnerCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  challengeDetailsOwnerName: {
+    color: '#2f3442',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  challengeDetailsOwnerStatus: {
+    color: '#7a8798',
+    fontSize: 11,
+    lineHeight: 13,
+  },
+  challengeDetailsOwnerMetric: {
+    alignItems: 'flex-end',
+  },
+  challengeDetailsOwnerMetricValue: {
+    color: '#2f3442',
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 20,
+  },
+  challengeDetailsOwnerMetricLabel: {
+    color: '#7b8799',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  challengeDetailsMetaCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e1e8f2',
+    padding: 12,
+    gap: 10,
+  },
+  challengeDetailsDateRangeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  challengeDetailsDateRangeTitle: {
+    color: '#2f3442',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  challengeDetailsDaysPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#f0dca8',
+    backgroundColor: '#fff4d8',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  challengeDetailsDaysPillText: {
+    color: '#8a6207',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  challengeDetailsMetaRows: {
+    borderTopWidth: 1,
+    borderTopColor: '#eef2f7',
+    paddingTop: 8,
+    gap: 6,
+  },
+  challengeDetailsMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  challengeDetailsMetaKey: {
+    color: '#778395',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  challengeDetailsMetaVal: {
+    color: '#2f3442',
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'right',
+    flexShrink: 1,
+  },
+  challengeDetailsLeaderboardCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e1e8f2',
+    padding: 12,
+    gap: 10,
+    shadowColor: '#223453',
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  challengeDetailsLeaderboardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  challengeDetailsLeaderboardTitle: {
+    color: '#2f3442',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  challengeDetailsLeaderboardMeta: {
+    color: '#7b8799',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  challengeDetailsLeaderboardTop3: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  challengeDetailsLeaderboardTopCard: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    backgroundColor: '#fbfcff',
+    paddingHorizontal: 8,
+    paddingVertical: 9,
+    alignItems: 'center',
+    gap: 3,
+  },
+  challengeDetailsLeaderboardRank: {
+    color: '#8a6207',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  challengeDetailsLeaderboardAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#f1f5ff',
+    borderWidth: 1,
+    borderColor: '#dfe7fb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  challengeDetailsLeaderboardAvatarText: {
+    color: '#3e63cf',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  challengeDetailsLeaderboardName: {
+    color: '#3b4557',
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
+    width: '100%',
+  },
+  challengeDetailsLeaderboardPct: {
+    color: '#2f3442',
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 17,
+  },
+  challengeDetailsLeaderboardVal: {
+    color: '#7a8799',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  challengeDetailsLeaderboardList: {
+    borderTopWidth: 1,
+    borderTopColor: '#eef2f7',
+    paddingTop: 6,
+    gap: 4,
+  },
+  challengeDetailsLeaderboardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 3,
+  },
+  challengeDetailsLeaderboardRowRank: {
+    width: 18,
+    color: '#7a8799',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  challengeDetailsLeaderboardRowName: {
+    flex: 1,
+    color: '#49566a',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  challengeDetailsLeaderboardRowPct: {
+    color: '#2f3442',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  challengeLeaderboardScreenCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dfe7f2',
+    padding: 12,
+    gap: 10,
+  },
+  challengeLeaderboardScreenTitle: {
+    color: '#2f3442',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  challengeLeaderboardScreenSub: {
+    color: '#748296',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  challengeLeaderboardScreenTop3: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  challengeLeaderboardScreenTopCard: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    backgroundColor: '#fbfcff',
+    paddingHorizontal: 8,
+    paddingVertical: 9,
+    alignItems: 'center',
+    gap: 3,
+  },
+  challengeLeaderboardScreenTopValue: {
+    color: '#2f3442',
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 18,
+  },
+  challengeLeaderboardScreenRows: {
+    borderTopWidth: 1,
+    borderTopColor: '#eef2f7',
+    paddingTop: 6,
+    gap: 4,
+  },
+  challengeLeaderboardScreenRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  challengeLeaderboardScreenRowMetric: {
+    color: '#536077',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  challengeDetailsCtaBlock: {
+    gap: 8,
+  },
+  challengeDetailsPrimaryCta: {
+    borderRadius: 10,
+    backgroundColor: '#1f5fe2',
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  challengeDetailsPrimaryCtaText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  challengeJoinErrorText: {
+    color: '#b91c1c',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  challengeDetailsSecondaryCta: {
+    borderRadius: 10,
+    backgroundColor: '#2f3442',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  challengeDetailsSecondaryCtaText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   challengeHeaderCard: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
@@ -5379,6 +6717,25 @@ const styles = StyleSheet.create({
   },
   challengeSectionsWrap: {
     gap: 10,
+  },
+  challengeLoggingHeaderCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e1e8f2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  challengeLoggingHeaderTitle: {
+    color: '#2f3442',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  challengeLoggingHeaderSub: {
+    color: '#778395',
+    fontSize: 11,
+    lineHeight: 14,
   },
   challengeSectionCard: {
     backgroundColor: '#fff',
@@ -5757,44 +7114,25 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   homeCockpitStage: {
-    gap: 8,
+    gap: 6,
   },
   homeCockpitVisualShell: {
     backgroundColor: '#f2f5fa',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#e3e9f3',
-    padding: 8,
-    gap: 6,
+    padding: 6,
+    gap: 4,
   },
   homeCockpitActionShell: {
     backgroundColor: '#f2f5fa',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#e3e9f3',
-    paddingHorizontal: 8,
-    paddingTop: 8,
+    paddingHorizontal: 6,
+    paddingTop: 6,
     paddingBottom: 4,
-    gap: 6,
-  },
-  homeCockpitSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
-    gap: 8,
-  },
-  homeCockpitSectionEyebrow: {
-    color: '#5d6a80',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.25,
-    textTransform: 'uppercase',
-  },
-  homeCockpitSectionMeta: {
-    color: '#8893a5',
-    fontSize: 10,
-    fontWeight: '700',
+    gap: 4,
   },
   anchorNagCard: {
     borderRadius: 12,

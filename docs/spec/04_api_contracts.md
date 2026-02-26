@@ -36,6 +36,8 @@
 - `POST /challenge-participants` (implemented baseline)
   - Purpose: join challenge.
   - Modification: support optional `sponsored_challenge_id`.
+- `DELETE /challenge-participants/{challengeId}` (implemented baseline)
+  - Purpose: leave/unjoin a challenge for the current user.
 - `POST /teams` (implemented baseline)
   - Purpose: create team and seed leader membership.
 - `GET /teams/{id}` (implemented baseline)
@@ -229,6 +231,9 @@
 - `POST /challenge-participants`
   - Supports self-join and leader-enrollment of other users for team challenges.
   - Applies explicit late-join policy via `include_prior_logs` override or challenge default.
+- `DELETE /challenge-participants/{challengeId}`
+  - Supports self-leave for the caller's participation record.
+  - Returns `404` when the caller is not currently a participant in the specified challenge.
 - `GET /challenges`
   - Returns challenge list with caller participation summary and leaderboard baseline payload.
 - `GET /api/channels`
