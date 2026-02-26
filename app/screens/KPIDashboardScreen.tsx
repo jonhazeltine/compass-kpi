@@ -174,6 +174,8 @@ type ChallengeApiRow = {
   late_join_includes_history?: boolean | null;
   is_active?: boolean | null;
   created_at?: string | null;
+  sponsored_challenge_id?: string | null;
+  sponsor_id?: string | null;
   my_participation?: {
     challenge_id?: string | null;
     user_id?: string | null;
@@ -183,6 +185,7 @@ type ChallengeApiRow = {
   } | null;
   leaderboard_top?: ChallengeApiLeaderboardRow[] | null;
 };
+type ChallengeListFilter = 'all' | 'sponsored' | 'team';
 type ChallengeListApiResponse = {
   challenges?: ChallengeApiRow[];
 };
@@ -500,7 +503,7 @@ function mapChallengesToFlowItems(rows: ChallengeApiRow[] | null | undefined): C
       timeframe: challengeTimeframeLabel(row.start_at, row.end_at),
       daysLabel: challengeDaysLabelFromDates(bucket, row.start_at, row.end_at),
       participants,
-      sponsor: false,
+      sponsor: Boolean(row.sponsored_challenge_id ?? row.sponsor_id),
       bucket,
       joined,
       challengeModeLabel: challengeModeLabelFromApi(row),
@@ -511,6 +514,12 @@ function mapChallengesToFlowItems(rows: ChallengeApiRow[] | null | undefined): C
       leaderboardPreview,
     };
   });
+}
+
+function challengeListFilterMatches(item: ChallengeFlowItem, filter: ChallengeListFilter) {
+  if (filter === 'all') return true;
+  if (filter === 'sponsored') return item.sponsor;
+  return item.challengeModeLabel === 'Team' || Boolean(item.raw?.team_id);
 }
 
 function confidenceColor(band: 'green' | 'yellow' | 'red') {
@@ -1357,6 +1366,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   const [activeTab, setActiveTab] = useState<BottomTab>('home');
   const [challengeFlowScreen, setChallengeFlowScreen] = useState<'list' | 'details' | 'leaderboard'>('list');
+  const [challengeListFilter, setChallengeListFilter] = useState<ChallengeListFilter>('all');
   const [challengeSelectedId, setChallengeSelectedId] = useState<string>('challenge-30-day-listing');
   const [challengeApiRows, setChallengeApiRows] = useState<ChallengeApiRow[] | null>(null);
   const [challengeApiFetchError, setChallengeApiFetchError] = useState<string | null>(null);
@@ -4469,8 +4479,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
   const isHomeGameplaySurface = activeTab === 'home' && viewMode === 'home';
   const challengeListItems = useMemo(() => mapChallengesToFlowItems(challengeApiRows), [challengeApiRows]);
+  const challengeHasSponsorSignal =
+    Array.isArray(challengeApiRows) &&
+    challengeApiRows.some(
+      (row) =>
+        Object.prototype.hasOwnProperty.call(row, 'sponsored_challenge_id') ||
+        Object.prototype.hasOwnProperty.call(row, 'sponsor_id')
+    );
+  const challengeFilteredListItems = useMemo(
+    () => challengeListItems.filter((item) => challengeListFilterMatches(item, challengeListFilter)),
+    [challengeListItems, challengeListFilter]
+  );
   const challengeSelected =
     challengeListItems.find((item) => item.id === challengeSelectedId) ?? challengeListItems[0];
+  const challengeIsCompleted = challengeSelected?.bucket === 'completed';
+  const challengeHasApiBackedDetail = Boolean(challengeSelected?.raw?.id);
+  const challengeLeaderboardHasRealRows = (challengeSelected?.leaderboardPreview?.length ?? 0) > 0;
   const challengeDaysLeft =
     challengeSelected?.bucket === 'active' && challengeSelected?.endAtIso
       ? Math.max(0, Math.ceil((new Date(challengeSelected.endAtIso).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
@@ -4478,6 +4502,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const challengeLeaderboardPreview = (challengeSelected?.leaderboardPreview?.length
     ? challengeSelected.leaderboardPreview
     : defaultChallengeFlowItems()[0].leaderboardPreview) as ChallengeFlowLeaderboardEntry[];
+  const challengeLeaderboardRowsForScreen = useMemo(() => {
+    if ((challengeSelected?.leaderboardPreview?.length ?? 0) > 0) return challengeSelected.leaderboardPreview;
+    if (challengeIsCompleted) {
+      return [
+        { rank: 1, name: 'Results pending', pct: Math.max(0, challengeSelected?.progressPct ?? 0), value: 0 },
+      ] satisfies ChallengeFlowLeaderboardEntry[];
+    }
+    return [] as ChallengeFlowLeaderboardEntry[];
+  }, [challengeIsCompleted, challengeSelected]);
 
   if (state === 'loading') {
     return (
@@ -4533,20 +4566,34 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   ) : null}
 
                   <View style={styles.challengeListFilterRow}>
-                    <View style={[styles.challengeListFilterChip, styles.challengeListFilterChipActive]}>
-                      <Text style={[styles.challengeListFilterChipText, styles.challengeListFilterChipTextActive]}>All</Text>
-                    </View>
-                    <View style={styles.challengeListFilterChip}>
-                      <Text style={styles.challengeListFilterChipText}>Sponsored</Text>
-                    </View>
-                    <View style={styles.challengeListFilterChip}>
-                      <Text style={styles.challengeListFilterChipText}>Team</Text>
-                    </View>
+                    {([
+                      { key: 'all', label: 'All' },
+                      { key: 'sponsored', label: 'Sponsored' },
+                      { key: 'team', label: 'Team' },
+                    ] as const).map((chip) => {
+                      const active = challengeListFilter === chip.key;
+                      return (
+                        <TouchableOpacity
+                          key={`challenge-filter-${chip.key}`}
+                          style={[styles.challengeListFilterChip, active && styles.challengeListFilterChipActive]}
+                          onPress={() => setChallengeListFilter(chip.key)}
+                        >
+                          <Text style={[styles.challengeListFilterChipText, active && styles.challengeListFilterChipTextActive]}>
+                            {chip.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
+                  {challengeListFilter === 'sponsored' && !challengeHasSponsorSignal ? (
+                    <Text style={styles.challengeListFallbackHint}>
+                      Sponsored filter is active. This payload does not yet expose sponsor flags, so only locally tagged sponsored rows can appear.
+                    </Text>
+                  ) : null}
 
                   <View style={styles.challengeListCardStack}>
                     {(['active', 'upcoming', 'completed'] as const).map((bucket) => {
-                      const rows = challengeListItems.filter((item) => item.bucket === bucket);
+                      const rows = challengeFilteredListItems.filter((item) => item.bucket === bucket);
                       if (rows.length === 0) return null;
                       return (
                         <View key={`challenge-bucket-${bucket}`} style={styles.challengeListBucket}>
@@ -4600,13 +4647,35 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 <Text style={styles.challengeListItemBottomText}>
                                   {item.joined ? 'Joined' : 'Not joined'} · {item.participants} participant{item.participants === 1 ? '' : 's'}
                                 </Text>
-                                <Text style={styles.challengeListItemBottomLink}>View details ›</Text>
+                                <Text style={styles.challengeListItemBottomLink}>
+                                  {item.bucket === 'completed' ? 'View results ›' : 'View details ›'}
+                                </Text>
                               </View>
                             </TouchableOpacity>
                           ))}
                         </View>
                       );
                     })}
+                    {challengeFilteredListItems.length === 0 ? (
+                      <View style={styles.challengeListEmptyFilterCard}>
+                        <Text style={styles.challengeListEmptyFilterTitle}>No challenges match this filter</Text>
+                        <Text style={styles.challengeListEmptyFilterSub}>
+                          {challengeListFilter === 'sponsored'
+                            ? 'Try All or Team while sponsor flags are still limited in the current challenge payload.'
+                            : challengeListFilter === 'team'
+                              ? 'No team challenges are available in this account right now.'
+                              : 'No challenges are available yet.'}
+                        </Text>
+                        {challengeListFilter !== 'all' ? (
+                          <TouchableOpacity
+                            style={styles.challengeListEmptyFilterBtn}
+                            onPress={() => setChallengeListFilter('all')}
+                          >
+                            <Text style={styles.challengeListEmptyFilterBtnText}>Show all challenges</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               </>
@@ -4626,10 +4695,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 <View style={styles.challengeLeaderboardScreenCard}>
                   <Text style={styles.challengeLeaderboardScreenTitle}>{challengeSelected.title}</Text>
                   <Text style={styles.challengeLeaderboardScreenSub}>
-                    Full leaderboard screen is staged in this pass. Preview rows are placeholder-backed until challenge detail payload wiring.
+                    {challengeIsCompleted
+                      ? 'Challenge results and leaderboard standings.'
+                      : 'Leaderboard standings for this challenge.'}
                   </Text>
                   <View style={styles.challengeLeaderboardScreenTop3}>
-                    {challengeLeaderboardPreview.map((entry) => (
+                    {challengeLeaderboardRowsForScreen.slice(0, 3).map((entry) => (
                       <View key={`challenge-lb-full-${entry.rank}`} style={styles.challengeLeaderboardScreenTopCard}>
                         <Text style={styles.challengeDetailsLeaderboardRank}>#{entry.rank}</Text>
                         <View style={styles.challengeDetailsLeaderboardAvatar}>
@@ -4643,21 +4714,29 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </View>
                     ))}
                   </View>
-                  <View style={styles.challengeLeaderboardScreenRows}>
-                    {challengeLeaderboardPreview.concat(
-                      [
-                        { name: 'Jordan Smith', pct: 5, value: 4, rank: 4 },
-                        { name: 'Casey Brown', pct: 3, value: 2, rank: 5 },
-                      ] as const
-                    ).map((entry) => (
-                      <View key={`challenge-lb-screen-row-${entry.rank}`} style={styles.challengeLeaderboardScreenRow}>
-                        <Text style={styles.challengeDetailsLeaderboardRowRank}>{String(entry.rank).padStart(2, '0')}</Text>
-                        <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardRowName}>{entry.name}</Text>
-                        <Text style={styles.challengeLeaderboardScreenRowMetric}>{entry.value} logs</Text>
-                        <Text style={styles.challengeDetailsLeaderboardRowPct}>{entry.pct}%</Text>
-                      </View>
-                    ))}
-                  </View>
+                  {challengeLeaderboardRowsForScreen.length > 0 ? (
+                    <View style={styles.challengeLeaderboardScreenRows}>
+                      {challengeLeaderboardRowsForScreen.map((entry) => (
+                        <View key={`challenge-lb-screen-row-${entry.rank}`} style={styles.challengeLeaderboardScreenRow}>
+                          <Text style={styles.challengeDetailsLeaderboardRowRank}>{String(entry.rank).padStart(2, '0')}</Text>
+                          <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardRowName}>{entry.name}</Text>
+                          <Text style={styles.challengeLeaderboardScreenRowMetric}>{entry.value} logs</Text>
+                          <Text style={styles.challengeDetailsLeaderboardRowPct}>{entry.pct}%</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <View style={styles.challengeLeaderboardEmptyCard}>
+                      <Text style={styles.challengeLeaderboardEmptyTitle}>
+                        {challengeIsCompleted ? 'Results are not available yet' : 'Leaderboard will populate after challenge activity starts'}
+                      </Text>
+                      <Text style={styles.challengeLeaderboardEmptySub}>
+                        {challengeIsCompleted
+                          ? 'This challenge has ended, but the current payload does not include final member standings yet.'
+                          : 'Once participants join and log challenge activity, standings will appear here.'}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
             ) : (
@@ -4670,7 +4749,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     >
                       <Text style={styles.challengeDetailsIconBtnText}>‹</Text>
                     </TouchableOpacity>
-                    <Text style={styles.challengeDetailsNavTitle}>Challenge Details</Text>
+                    <Text style={styles.challengeDetailsNavTitle}>
+                      {challengeIsCompleted ? 'Challenge Results' : 'Challenge Details'}
+                    </Text>
                     <TouchableOpacity style={styles.challengeDetailsActionBtn}>
                       <Text style={styles.challengeDetailsActionBtnText}>Add KPI</Text>
                     </TouchableOpacity>
@@ -4685,9 +4766,25 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
                   <View style={styles.challengeDetailsHeroCard}>
                     <View style={styles.challengeDetailsHeroTop}>
-                      <Text style={styles.challengeDetailsHeroLabel}>Challenge Progress</Text>
-                      <View style={styles.challengeDetailsStatusPill}>
-                        <Text style={styles.challengeDetailsStatusPillText}>{challengeSelected.status}</Text>
+                      <Text style={styles.challengeDetailsHeroLabel}>
+                        {challengeIsCompleted ? 'Challenge Results' : 'Challenge Progress'}
+                      </Text>
+                      <View
+                        style={[
+                          styles.challengeDetailsStatusPill,
+                          challengeSelected.bucket === 'completed' && styles.challengeDetailsStatusPillCompleted,
+                          challengeSelected.bucket === 'upcoming' && styles.challengeDetailsStatusPillUpcoming,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.challengeDetailsStatusPillText,
+                            challengeSelected.bucket === 'completed' && styles.challengeDetailsStatusPillTextCompleted,
+                            challengeSelected.bucket === 'upcoming' && styles.challengeDetailsStatusPillTextUpcoming,
+                          ]}
+                        >
+                          {challengeSelected.status}
+                        </Text>
                       </View>
                     </View>
                     <View style={styles.challengeDetailsGaugeWrap}>
@@ -4702,7 +4799,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </View>
                       </View>
                     </View>
-                    <Text style={styles.challengeDetailsHeroHint}>Pace + leaderboard wiring remains placeholder until challenge payload lands.</Text>
+                    <Text style={styles.challengeDetailsHeroHint}>
+                      {challengeIsCompleted
+                        ? 'Results summary is shown here. Some completion metrics still use fallback values where payload fields are missing.'
+                        : 'Progress and leaderboard update from challenge participation data. Some detail fields still use fallback values.'}
+                    </Text>
                   </View>
 
                   <View style={styles.challengeDetailsOwnerCard}>
@@ -4713,7 +4814,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <View style={styles.challengeDetailsOwnerCopy}>
                         <Text style={styles.challengeDetailsOwnerName}>Amy Jackson</Text>
                         <Text style={styles.challengeDetailsOwnerStatus}>
-                          {challengeSelected.joined ? 'Joined challenge (rank placeholder)' : 'Not joined yet'}
+                          {challengeIsCompleted
+                            ? challengeSelected.joined
+                              ? 'Completed challenge participation'
+                              : 'Challenge completed'
+                            : challengeSelected.joined
+                              ? 'Joined challenge'
+                              : 'Not joined yet'}
                         </Text>
                       </View>
                     </View>
@@ -4762,48 +4869,84 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     onPress={() => setChallengeFlowScreen('leaderboard')}
                   >
                     <View style={styles.challengeDetailsLeaderboardHeader}>
-                      <Text style={styles.challengeDetailsLeaderboardTitle}>Leaderboard & Progress</Text>
-                      <Text style={styles.challengeDetailsLeaderboardMeta}>Tap to open</Text>
+                      <Text style={styles.challengeDetailsLeaderboardTitle}>
+                        {challengeIsCompleted ? 'Results & Leaderboard' : 'Leaderboard & Progress'}
+                      </Text>
+                      <Text style={styles.challengeDetailsLeaderboardMeta}>
+                        {challengeIsCompleted ? 'Open results' : 'Open leaderboard'}
+                      </Text>
                     </View>
-                    <View style={styles.challengeDetailsLeaderboardTop3}>
-                      {challengeLeaderboardPreview.map((entry) => (
-                        <View key={`challenge-lb-${entry.rank}`} style={styles.challengeDetailsLeaderboardTopCard}>
-                          <Text style={styles.challengeDetailsLeaderboardRank}>#{entry.rank}</Text>
-                          <View style={styles.challengeDetailsLeaderboardAvatar}>
-                            <Text style={styles.challengeDetailsLeaderboardAvatarText}>{entry.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}</Text>
-                          </View>
-                          <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardName}>{entry.name}</Text>
-                          <Text style={styles.challengeDetailsLeaderboardPct}>{entry.pct}%</Text>
-                          <Text style={styles.challengeDetailsLeaderboardVal}>{entry.value} logs</Text>
+                    {challengeLeaderboardHasRealRows ? (
+                      <>
+                        <View style={styles.challengeDetailsLeaderboardTop3}>
+                          {challengeLeaderboardPreview.slice(0, 3).map((entry) => (
+                            <View key={`challenge-lb-${entry.rank}`} style={styles.challengeDetailsLeaderboardTopCard}>
+                              <Text style={styles.challengeDetailsLeaderboardRank}>#{entry.rank}</Text>
+                              <View style={styles.challengeDetailsLeaderboardAvatar}>
+                                <Text style={styles.challengeDetailsLeaderboardAvatarText}>
+                                  {entry.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}
+                                </Text>
+                              </View>
+                              <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardName}>{entry.name}</Text>
+                              <Text style={styles.challengeDetailsLeaderboardPct}>{entry.pct}%</Text>
+                              <Text style={styles.challengeDetailsLeaderboardVal}>{entry.value} logs</Text>
+                            </View>
+                          ))}
                         </View>
-                      ))}
-                    </View>
-                    <View style={styles.challengeDetailsLeaderboardList}>
-                      {challengeLeaderboardPreview.map((entry) => (
-                        <View key={`challenge-lb-row-${entry.rank}`} style={styles.challengeDetailsLeaderboardRow}>
-                          <Text style={styles.challengeDetailsLeaderboardRowRank}>{String(entry.rank).padStart(2, '0')}</Text>
-                          <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardRowName}>{entry.name}</Text>
-                          <Text style={styles.challengeDetailsLeaderboardRowPct}>{entry.pct}%</Text>
+                        <View style={styles.challengeDetailsLeaderboardList}>
+                          {challengeLeaderboardPreview.map((entry) => (
+                            <View key={`challenge-lb-row-${entry.rank}`} style={styles.challengeDetailsLeaderboardRow}>
+                              <Text style={styles.challengeDetailsLeaderboardRowRank}>{String(entry.rank).padStart(2, '0')}</Text>
+                              <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardRowName}>{entry.name}</Text>
+                              <Text style={styles.challengeDetailsLeaderboardRowPct}>{entry.pct}%</Text>
+                            </View>
+                          ))}
                         </View>
-                      ))}
-                    </View>
+                      </>
+                    ) : (
+                      <View style={styles.challengeLeaderboardPreviewEmpty}>
+                        <Text style={styles.challengeLeaderboardPreviewEmptyTitle}>
+                          {challengeIsCompleted ? 'Results details are not available yet' : 'Leaderboard will appear after challenge activity starts'}
+                        </Text>
+                        <Text style={styles.challengeLeaderboardPreviewEmptySub}>
+                          {challengeIsCompleted
+                            ? 'This challenge is complete, but final standings are not included in the current list payload yet.'
+                            : 'Join and log challenge activity to populate leaderboard standings.'}
+                        </Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
 
                   <View style={styles.challengeDetailsCtaBlock}>
                     {(() => {
                       const isJoinSubmitting = challengeJoinSubmittingId === challengeSelected.id;
                       const isLeaveSubmitting = challengeLeaveSubmittingId === challengeSelected.id;
-                      const challengeMutationError = challengeJoinError ?? challengeLeaveError;
+                      const challengeMutationError =
+                        challengeJoinError ??
+                        challengeLeaveError ??
+                        (!challengeHasApiBackedDetail && !challengeSelected.joined && !challengeIsCompleted
+                          ? 'This challenge is placeholder-only right now. Pull to refresh and choose a live challenge to join.'
+                          : null);
                       return (
                         <>
                     {!challengeSelected.joined && challengeSelected.bucket !== 'completed' ? (
                       <TouchableOpacity
-                        style={[styles.challengeDetailsPrimaryCta, isJoinSubmitting && styles.disabled]}
-                        onPress={() => void joinChallenge(challengeSelected.id)}
-                        disabled={isJoinSubmitting || isLeaveSubmitting}
+                        style={[
+                          styles.challengeDetailsPrimaryCta,
+                          (isJoinSubmitting || !challengeHasApiBackedDetail) && styles.disabled,
+                        ]}
+                        onPress={() => {
+                          if (!challengeHasApiBackedDetail) return;
+                          void joinChallenge(challengeSelected.id);
+                        }}
+                        disabled={isJoinSubmitting || isLeaveSubmitting || !challengeHasApiBackedDetail}
                       >
                         <Text style={styles.challengeDetailsPrimaryCtaText}>
-                          {isJoinSubmitting ? 'Joining…' : 'Join Challenge'}
+                          {isJoinSubmitting
+                            ? 'Joining…'
+                            : challengeHasApiBackedDetail
+                              ? 'Join Challenge'
+                              : 'Challenge Unavailable'}
                         </Text>
                       </TouchableOpacity>
                     ) : (
@@ -4812,7 +4955,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         onPress={() => setChallengeFlowScreen('leaderboard')}
                         disabled={isLeaveSubmitting}
                       >
-                        <Text style={styles.challengeDetailsPrimaryCtaText}>View Full Leaderboard</Text>
+                        <Text style={styles.challengeDetailsPrimaryCtaText}>
+                          {challengeIsCompleted ? 'View Results' : 'View Full Leaderboard'}
+                        </Text>
                       </TouchableOpacity>
                     )}
                     {challengeMutationError ? (
@@ -4824,6 +4969,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         challengeSelected.joined && isLeaveSubmitting && styles.disabled,
                       ]}
                       onPress={() => {
+                        if (challengeIsCompleted) {
+                          setChallengeFlowScreen('list');
+                          return;
+                        }
                         if (challengeSelected.joined) {
                           if (isJoinSubmitting || isLeaveSubmitting) return;
                           Alert.alert(
@@ -4848,9 +4997,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     >
                       <Text style={styles.challengeDetailsSecondaryCtaText}>
                         {challengeSelected.joined
-                          ? isLeaveSubmitting
-                            ? 'Leaving…'
-                            : 'Leave Challenge'
+                          ? challengeIsCompleted
+                            ? 'Back to Challenges'
+                            : isLeaveSubmitting
+                              ? 'Leaving…'
+                              : 'Leave Challenge'
                           : 'Back to Challenges'}
                       </Text>
                     </TouchableOpacity>
@@ -4859,9 +5010,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     })()}
                   </View>
 
-                  <Text style={styles.challengeHeaderHint}>
-                    TODO: `GET /challenges` list payload still lacks target-value and member display-name fields for full details/leaderboard parity.
-                  </Text>
                 </View>
 
                 {challengeTileCount === 0 ? (
@@ -5962,6 +6110,38 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
   },
+  challengeListEmptyFilterCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e3eaf5',
+    backgroundColor: '#fbfdff',
+    padding: 12,
+    gap: 8,
+    alignItems: 'flex-start',
+  },
+  challengeListEmptyFilterTitle: {
+    color: '#2f3442',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  challengeListEmptyFilterSub: {
+    color: '#728094',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  challengeListEmptyFilterBtn: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d7e3fb',
+    backgroundColor: '#eef4ff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  challengeListEmptyFilterBtnText: {
+    color: '#1f5fe2',
+    fontSize: 11,
+    fontWeight: '800',
+  },
   challengeDetailsShell: {
     gap: 12,
   },
@@ -6064,6 +6244,20 @@ const styles = StyleSheet.create({
     color: '#2e8a49',
     fontSize: 10,
     fontWeight: '800',
+  },
+  challengeDetailsStatusPillCompleted: {
+    backgroundColor: '#f3f4f6',
+    borderColor: '#e0e4ea',
+  },
+  challengeDetailsStatusPillTextCompleted: {
+    color: '#596579',
+  },
+  challengeDetailsStatusPillUpcoming: {
+    backgroundColor: '#eef4ff',
+    borderColor: '#d8e5ff',
+  },
+  challengeDetailsStatusPillTextUpcoming: {
+    color: '#2d63e1',
   },
   challengeDetailsGaugeWrap: {
     alignItems: 'center',
@@ -6406,6 +6600,24 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     gap: 4,
   },
+  challengeLeaderboardEmptyCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e8edf5',
+    backgroundColor: '#fbfcff',
+    padding: 10,
+    gap: 5,
+  },
+  challengeLeaderboardEmptyTitle: {
+    color: '#415063',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  challengeLeaderboardEmptySub: {
+    color: '#748296',
+    fontSize: 11,
+    lineHeight: 15,
+  },
   challengeLeaderboardScreenRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -6419,6 +6631,24 @@ const styles = StyleSheet.create({
   },
   challengeDetailsCtaBlock: {
     gap: 8,
+  },
+  challengeLeaderboardPreviewEmpty: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e7edf5',
+    backgroundColor: '#fbfcff',
+    padding: 10,
+    gap: 5,
+  },
+  challengeLeaderboardPreviewEmptyTitle: {
+    color: '#415063',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  challengeLeaderboardPreviewEmptySub: {
+    color: '#748296',
+    fontSize: 11,
+    lineHeight: 15,
   },
   challengeDetailsPrimaryCta: {
     borderRadius: 10,
