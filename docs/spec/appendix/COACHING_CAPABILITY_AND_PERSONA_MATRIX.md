@@ -25,6 +25,7 @@ Use with:
 - Coaching reads KPI/forecast outputs; it does not redefine KPI engine behavior.
 - Forecast confidence is display/context for coaching, not mutable base forecast state.
 - Coaching/sponsor/challenge overlap must preserve KPI logging as the single source of activity truth.
+- `Challenge Sponsor` is a distinct persona (not just a challenge type label) and may receive sponsor-scoped KPI visibility outputs for challenge members without gaining KPI logging rights.
 - Role/tier access must be enforced server-side.
 
 ## Capability Groups (Canonical)
@@ -69,13 +70,13 @@ Legend:
 - `limited`: subset only
 - `none`: no direct access
 
-| Capability group | Team Leader | Team Member | Solo User | Notes |
-|---|---|---|---|---|
-| `communication` | `full` | `participant` | `participant/limited` | Solo access may be community/challenge scoped, no team admin comms. |
-| `coaching_content` | `full` (assign/broadcast + view progress) | `participant` | `participant` | Team leader may also be coach depending on DEP-003. |
-| `goal_setting_momentum` | `full` (team view + own) | `participant` (own + team visibility) | `participant` (own) | Must not mutate KPI source-of-truth. |
-| `sponsor_challenge_coaching` | `full/limited` (campaign delivery) | `participant` | `participant` | Overlaps sponsored challenges and challenge participation flows. |
-| `ai_coach_assist` | `full` (approval + send) | `none/limited` | `none/limited` | Phase-later; approval-first required. |
+| Capability group | Team Leader | Team Member | Solo User | Challenge Sponsor | Notes |
+|---|---|---|---|---|---|
+| `communication` | `full` | `participant` | `participant/limited` | `limited` (sponsor-scoped channels/broadcast tools only) | Solo access may be community/challenge scoped, no team admin comms. Sponsor scope must remain challenge/sponsor constrained. |
+| `coaching_content` | `full` (assign/broadcast + view progress) | `participant` | `participant` | `limited` (sponsor-scoped content library access/linking; no canonical lesson authoring by default) | Team leader may also be coach depending on DEP-003. |
+| `goal_setting_momentum` | `full` (team view + own) | `participant` (own + team visibility) | `participant` (own) | `none` (challenge member KPI visibility only; no KPI logging) | Must not mutate KPI source-of-truth. |
+| `sponsor_challenge_coaching` | `full/limited` (campaign delivery) | `participant` | `participant` | `full/limited` (sponsor campaign comms/content + member KPI visibility within sponsor scope) | Overlaps sponsored challenges and challenge participation flows. |
+| `ai_coach_assist` | `full` (approval + send) | `none/limited` | `none/limited` | `none/limited` (policy-limited sponsor review inputs later) | Phase-later; approval-first required. |
 
 ## Coach / Ops Access Model (Authoring + Publishing)
 
@@ -87,13 +88,25 @@ Legend:
 - `delivery_only`: can target/link published content but not author canonical assets
 - `none`: no direct authoring/ops access
 
-| Capability group | Coach | Admin operator | Sponsor ops | Notes |
+| Capability group | Coach | Admin operator | Challenge Sponsor | Notes |
 |---|---|---|---|---|
-| `communication` | `author` (coach broadcasts/templates/channels within scope) | `ops` (policy, moderation, audit, support) | `delivery_only/limited` (sponsor campaign comms in approved scopes) | Runtime send permissions remain server-enforced by org/team/sponsor scope. |
-| `coaching_content` | `author` (journeys, lessons, curation, publishing drafts) | `ops` (review, lifecycle governance, rollback, QA) | `none/limited` (may request packaging, not canonical lesson authoring by default) | Coach persona is the primary content authoring owner. |
-| `goal_setting_momentum` | `limited` (templates/guidance content, not KPI source data) | `ops` (configuration/policy support) | `none` | Goals/coaching guidance cannot mutate KPI source-of-truth. |
-| `sponsor_challenge_coaching` | `author` (campaign-linked coaching modules/content) | `ops` (sponsor approvals, entitlement/publishing governance) | `author/ops` (sponsor campaign assets + audience approvals within sponsor scope) | Explicit boundary: challenge participation state stays challenge-owned. |
+| `communication` | `author` (coach broadcasts/templates/channels within scope) | `ops` (policy, moderation, audit, support) | `delivery_only/limited` (sponsor-scoped comms tools in approved sponsor/challenge scopes) | Runtime send permissions remain server-enforced by org/team/sponsor scope. |
+| `coaching_content` | `author` (journeys, lessons, curation, publishing drafts) | `ops` (review, lifecycle governance, rollback, QA) | `limited` (sponsor-scoped content library access/package inputs; not canonical lesson authoring by default) | Coach persona is the primary content authoring owner. |
+| `goal_setting_momentum` | `limited` (templates/guidance content, not KPI source data) | `ops` (configuration/policy support) | `none` (challenge member KPI visibility only; no KPI logging) | Goals/coaching guidance cannot mutate KPI source-of-truth. |
+| `sponsor_challenge_coaching` | `author` (campaign-linked coaching modules/content) | `ops` (sponsor approvals, entitlement/publishing governance) | `author/ops` (sponsor campaign assets + audience approvals + sponsor-scoped member KPI visibility) | Explicit boundary: challenge participation state stays challenge-owned. |
 | `ai_coach_assist` | `author/approver` (approval queue participant) | `ops` (audit/compliance oversight) | `none/limited` | Phase-later, approval-first. |
+
+## Challenge Sponsor Persona Boundary (Required, Planning)
+
+- `Challenge Sponsor` is a distinct persona/role model and should not be represented only as a sponsored challenge type flag.
+- Sponsor persona scope is sponsor/challenge constrained and includes:
+  - sponsor-scoped communication tools (channels/broadcast inputs where approved)
+  - sponsor-scoped content library access and campaign content inputs
+  - visibility into challenge member KPI outputs/read models as permitted by server policy
+- Sponsor persona must not:
+  - log KPIs
+  - mutate KPI source-of-truth records
+  - assume challenge participation/results ownership
 
 ## Authoring vs Delivery Ownership Model (Canonical Planning Boundary)
 
@@ -102,7 +115,7 @@ Legend:
 | `communication` | Coach + Admin operator (templates, moderation policy, broadcast governance) | Coaching/comms runtime surfaces (`inbox*`, `channel_thread`, `coach_broadcast_compose`) | Admin operator (org policy) + role rules server-side | Runtime UI sends/reads; portal surfaces define templates/governance, not KPI data. |
 | `coaching_content` | Coach (primary) + Admin operator (approval/governance) | `coaching_journeys*` + embedded coaching modules | Coach defines publishable content units; Admin governs lifecycle | Runtime surfaces consume published content snapshots/versions, not authoring state. |
 | `goal_setting_momentum` | Coach (guidance content/templates), Admin operator (policy) | Home/Profile/Team embedded coaching modules | Org policy + role/tier rules | Coaching guidance overlays may reference KPI outputs but never rewrite KPI logs/base values. |
-| `sponsor_challenge_coaching` | Coach + Sponsor ops (campaign content) + Admin operator (approval) | Challenge overlays + `inbox*`/`coaching_journeys*` linked experiences | Sponsor/admin entitlements and package assignment | Challenge system owns participation/results; coaching owns linked content/comms experience. |
+| `sponsor_challenge_coaching` | Coach + Challenge Sponsor (campaign content/sponsor scope inputs) + Admin operator (approval) | Challenge overlays + `inbox*`/`coaching_journeys*` linked experiences | Sponsor/admin entitlements and package assignment | Challenge system owns participation/results; coaching owns linked content/comms experience. Sponsor KPI visibility is read-only and policy-scoped. |
 | `ai_coach_assist` | Coach + Admin operator (approval/audit) | Future coaching suggestion review surfaces | Admin/compliance policy | Deferred; no auto-send. |
 
 ## Packaging Model (Team vs Sponsored vs Paid Coaching)

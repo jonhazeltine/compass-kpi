@@ -44,6 +44,7 @@ Use the same status scheme as `/Users/jon/compass-kpi/docs/spec/appendix/INTENDE
 - `Team Member`
 - `Team Leader`
 - `Coach` (authoring/ops persona; admin-web extension or hybrid portal, manual-spec-driven)
+- `Challenge Sponsor` (distinct sponsor persona; sponsor-scoped comms/content/KPI visibility, no KPI logging)
 
 ## Canonical Shared Flows
 - `onboarding`
@@ -52,6 +53,7 @@ Use the same status scheme as `/Users/jon/compass-kpi/docs/spec/appendix/INTENDE
 - `team`
 - `coaching_communication`
 - `coach_ops_authoring` (manual-spec-driven portal/admin extension planning)
+- `sponsor_ops_portal` (manual-spec-driven sponsor-scoped portal companion planning)
 - `profile`
 - `settings_payment`
 
@@ -188,7 +190,7 @@ Exports in repo:
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
 |---|---|---|---|---|
 | Manage/Run Challenge | Solo challenge participation/results | `Solo User / Manage/Run Challenge` | `🟡 partial` | Runtime Challenge flow list/details/leaderboard exists; parity tightening ongoing. |
-| Create Challenge | Solo challenge creation | `Solo User / Create Challenge` | `⚪ missing` | Not wired in runtime mobile flow (CTA currently placeholder-labeled). |
+| Create Challenge (sponsored-routed only, if enabled) | Solo challenge creation entry must route via sponsored challenge flow; no generic standalone solo create destination | `Solo User / Create Challenge` | `⚪ missing` | Generic solo challenge creation should not be modeled as a primary runtime destination. If supported later, route via `Sponsored Challenges` flow with sponsor/policy gating. |
 | Subscription challenge variants | gated challenge experiences | `Solo User / Sub...` | `⚪ missing` | Not implemented. |
 
 #### `coaching_communication`
@@ -231,8 +233,8 @@ Coach portal host recommendation (planning, manual-spec-driven):
 |---|---|---|---|---|
 | `admin/coaching/library` | `Admin Shell extension` (recommended) | Coach, Admin operator | `⚪ missing` | Maps to `coach_content_library`. |
 | `admin/coaching/authoring` | `Admin Shell extension` (recommended) | Coach | `⚪ missing` | Maps to `coach_journey_authoring`. |
-| `admin/coaching/publishing` | `Admin Shell extension` (recommended) | Coach, Admin operator, Sponsor ops (limited) | `⚪ missing` | Maps to `coach_publish_targeting`; publish/target/schedule/link handoff. |
-| `admin/coaching/packages` | `Admin Shell extension` (recommended) | Admin operator, Coach (limited), Sponsor ops (limited) | `⚪ missing` | Maps to `coach_packages_entitlements`; packaging/entitlement policy ops. |
+| `admin/coaching/publishing` | `Admin Shell extension` (recommended) | Coach, Admin operator, Challenge Sponsor (limited sponsor scopes) | `⚪ missing` | Maps to `coach_publish_targeting`; publish/target/schedule/link handoff. |
+| `admin/coaching/packages` | `Admin Shell extension` (recommended) | Admin operator, Coach (limited), Challenge Sponsor (limited sponsor scopes) | `⚪ missing` | Maps to `coach_packages_entitlements`; packaging/entitlement policy ops. |
 | `admin/coaching/audit` | `Admin Shell extension` (recommended) | Admin operator | `🟡 partial` | Maps to `coach_ops_audit`; approval-first AI moderation queue + audit detail companion UI implemented in admin shell (`AdminShellScreen.tsx`). |
 
 #### `coaching_communication`
@@ -256,6 +258,23 @@ Coach portal host recommendation (planning, manual-spec-driven):
 | Coaching Notification Preferences (profile/settings) | Per-class/per-channel coaching notification toggles and mute windows (UI shell first) | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Persistence host family is `decision needed` (`/me` additive fields vs notifications family). |
 | Ops Notification Queue Visibility (coach/admin portal companion) | View notification queue summaries/dispatch outcomes/policy alerts relevant to coaching + AI moderation ops | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Prefer `coach_ops_audit`/admin extension visibility companion first; no dispatch authority widening. |
 
+### Challenge Sponsor
+
+Challenge Sponsor is a distinct persona for sponsored challenge funding/campaign operations and sponsor-scoped coaching communications. Sponsors are not KPI loggers. They may receive sponsor-scoped content/channel tools and read-only visibility into challenge member KPIs as policy allows.
+
+#### `sponsor_ops_portal`
+| Destination | Intended purpose | Figma source group | Runtime status | Notes |
+|---|---|---|---|---|
+| Sponsor Content Library (scoped) | Access sponsor-scoped content assets/library entries for sponsored challenge campaigns | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Companion to coach portal `content_library`; sponsor-scoped access only, no canonical lesson authoring by default. |
+| Sponsor Cohorts / Audience Visibility | View sponsor-linked challenge cohorts/segments and eligibility views | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Sponsor-scoped cohort visibility only; no challenge participation state ownership transfer. |
+| Sponsor Channels (scoped) | Sponsor-scoped comms/channel tools for approved challenge/cohort communications | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Uses sponsor/challenge/cohort channel contexts only; no team-admin channel controls. |
+| Challenge Member KPI Visibility (read-only) | View sponsor-approved challenge member KPI read models/rollups linked to sponsored challenges | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Read-only visibility surface; no KPI logging/edit routes/actions. |
+
+#### `coaching_communication` (sponsor-scoped subset)
+| Destination | Intended purpose | Figma source group | Runtime status | Notes |
+|---|---|---|---|---|
+| Sponsor-scoped `channel_thread` participation | Participate in approved sponsor/challenge/cohort channels | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Sponsor persona may use sponsor-scoped communication tools in host surfaces/channels where enabled; no KPI logging controls. |
+
 ## Shared Runtime Router Map (Current Implementation Anchor)
 Use this to map intended screens to current code constraints.
 
@@ -266,6 +285,11 @@ Use this to map intended screens to current code constraints.
   - hybrid portal routes sharing auth but separate from member `KPIDashboardScreen` state router.
 - Member runtime coaching destinations (`inbox*`, `coaching_journeys*`, `coach_broadcast_compose`) are delivery surfaces and must not absorb authoring/package-definition concerns.
 - If implementation adopts a hybrid portal route split, mark `decision needed` and log the structural boundary change in `/Users/jon/compass-kpi/architecture/DECISIONS_LOG.md` in that implementation change set.
+
+### Challenge Sponsor persona routing note (planning boundary)
+- `Challenge Sponsor` is a distinct persona and should be modeled as sponsor-scoped access into coach-portal companion surfaces and approved sponsor/challenge/cohort channel contexts.
+- Sponsor persona surfaces may expose challenge member KPI visibility read models, but must not expose KPI logging/edit routes or actions.
+- Do not model Sponsor persona as a generic member runtime KPI logger.
 
 ### App shell
 - `/Users/jon/compass-kpi/app/App.tsx`

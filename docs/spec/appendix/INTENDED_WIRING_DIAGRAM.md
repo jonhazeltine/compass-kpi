@@ -19,7 +19,7 @@ This doc and `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SC
 - persona access or flow ownership changes
 
 ## Key Principles
-- Organize by **persona perspective** (`Solo User`, `Team Member`, `Team Leader`)
+- Organize by **persona perspective** (`Solo User`, `Team Member`, `Team Leader`) plus role-gated ops companions (`Coach`, `Challenge Sponsor`) where needed
 - Reuse **shared flows/screens** where possible
 - Track persona-specific deltas at the screen/CTA level, not by forking the app architecture
 - Model coaching as a cross-cutting capability layer (embedded modules + dedicated flows)
@@ -117,6 +117,8 @@ flowchart LR
   U3 --> S7
 
   U4["Coach (authoring/ops)"] -.-> S8
+  U5["Challenge Sponsor (distinct sponsor persona)"] -.-> S8
+  U5 -.-> S7
 ```
 
 ## Coaching / Communication Overlay (Intended)
@@ -185,8 +187,8 @@ flowchart LR
 |---|---|---|---|---|---|
 | Coach Content Library (`coach_content_library`) | Coach, Admin operator | `coaching_content`, `communication` templates | `coaching_journeys*`, `inbox*` template usage | `⚪ planned` | Authoring/curation only; runtime delivery never edits canonical content here. |
 | Journey Authoring Studio (`coach_journey_authoring`) | Coach | `coaching_content` | `coaching_journeys*` published journey versions | `⚪ planned` | Draft/review/publish lifecycle is ops concern, not member runtime concern. |
-| Publishing & Targeting (`coach_publish_targeting`) | Coach, Admin operator, Sponsor ops (limited) | `communication`, `sponsor_challenge_coaching` | Team/Challenge/Profile overlays + `inbox*` + `coaching_journeys*` | `⚪ planned` | Produces targeting/assignment metadata; must not rewrite challenge participation state. |
-| Coaching Packages / Entitlements (`coach_packages_entitlements`) | Admin operator, Coach (limited), Sponsor ops (limited sponsor scopes) | `sponsor_challenge_coaching`, paid packaging | Runtime visibility/entitlement gating | `⚪ planned` | Packaging/access logic separated from journey authoring and runtime rendering. |
+| Publishing & Targeting (`coach_publish_targeting`) | Coach, Admin operator, Challenge Sponsor (limited sponsor scopes) | `communication`, `sponsor_challenge_coaching` | Team/Challenge/Profile overlays + `inbox*` + `coaching_journeys*` | `⚪ planned` | Produces targeting/assignment metadata; must not rewrite challenge participation state or grant sponsor KPI logging. |
+| Coaching Packages / Entitlements (`coach_packages_entitlements`) | Admin operator, Coach (limited), Challenge Sponsor (limited sponsor scopes) | `sponsor_challenge_coaching`, paid packaging | Runtime visibility/entitlement gating | `⚪ planned` | Packaging/access logic separated from journey authoring and runtime rendering; sponsor access is sponsor-scoped only. |
 | Coach Ops Audit / Approvals (`coach_ops_audit`) | Admin operator | `communication`, `coaching_content` (+ `ai_coach_assist` later) | Policy constraints on runtime allowed actions | `🟡 partial` | Admin shell extension now provides approval-first AI suggestion moderation queue + audit detail companion UI; no direct KPI data mutation or execution actions. |
 
 ## Coach Ops Portal Host Recommendation and Route Grouping (Planning)
@@ -197,8 +199,8 @@ Near-term recommendation: use `Admin Shell` as the host (role-gated extension ro
 |---|---|---|---|---|---|
 | `admin/coaching/library` | `Admin Shell extension` | `coach_content_library` | Coach, Admin operator | `⚪ planned` | No structural split required. |
 | `admin/coaching/authoring` | `Admin Shell extension` | `coach_journey_authoring` | Coach | `⚪ planned` | No structural split required. |
-| `admin/coaching/publishing` | `Admin Shell extension` | `coach_publish_targeting` | Coach, Admin operator, Sponsor ops (limited) | `⚪ planned` | Keep sponsor inputs constrained to campaign packaging/targeting. |
-| `admin/coaching/packages` | `Admin Shell extension` | `coach_packages_entitlements` | Admin operator, Coach (limited), Sponsor ops (limited) | `⚪ planned` | Packaging/entitlement policy layer; not runtime delivery authoring. |
+| `admin/coaching/publishing` | `Admin Shell extension` | `coach_publish_targeting` | Coach, Admin operator, Challenge Sponsor (limited sponsor scopes) | `⚪ planned` | Keep sponsor inputs constrained to campaign packaging/targeting; no sponsor KPI logging actions. |
+| `admin/coaching/packages` | `Admin Shell extension` | `coach_packages_entitlements` | Admin operator, Coach (limited), Challenge Sponsor (limited sponsor scopes) | `⚪ planned` | Packaging/entitlement policy layer; not runtime delivery authoring. |
 | `admin/coaching/audit` | `Admin Shell extension` | `coach_ops_audit` | Admin operator | `🟡 partial` | Governance/audit touchpoint implemented in admin shell as W5 AI queue/detail companion surface (stub-safe UI pending backend queue shaping). |
 
 Hybrid/dedicated coach portal remains a deferred option and is `decision needed` in implementation if adopted (requires `DECISIONS_LOG.md` update for route/module boundary change).
@@ -214,6 +216,7 @@ Hybrid/dedicated coach portal remains a deferred option and is `decision needed`
 - Sponsored challenge boundary remains unchanged:
   - challenge system owns participation/eligibility/results
   - coaching owns linked content/comms experiences
+- `Challenge Sponsor` is a distinct persona for sponsor-scoped comms/content/member-KPI visibility and must not be modeled as a KPI-logging persona.
 - Paid coaching entitlement decisions are package/access inputs to runtime delivery, not runtime journey authoring behavior.
 
 ## W5 AI Coach Assist Approval-First Overlay (Planning Boundary)
@@ -395,13 +398,13 @@ flowchart TD
 
 ## Solo User Perspective (Intended)
 
-Team management routes are excluded; challenge flow remains central.
+Team management routes are excluded; challenge participation flow remains central. Generic solo challenge creation is not modeled as a primary destination; if later supported, solo challenge creation routes through Sponsored Challenges policy-gated entry points.
 
 ```mermaid
 flowchart TD
   S["Solo User"] --> SD["Dashboard & KPI"]
   S --> SC["Manage/Run Challenge"]
-  S -.-> SCP["Create Challenge"]
+  S -.-> SCP["Sponsored Challenges (solo create route if enabled)"]
   S --> SP["Profile"]
   S --> SS["Other Settings & Payment"]
 
