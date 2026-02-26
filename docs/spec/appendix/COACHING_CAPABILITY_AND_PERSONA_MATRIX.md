@@ -128,6 +128,14 @@ Team Leader boundary note (W7 portal foundation):
 - Team Leader does not gain org-wide authoring ownership.
 - Team Leader does not gain sponsor-scoped package authority.
 
+No-sponsor-KPI-logging enforcement note (W7/W8):
+- Challenge Sponsor access remains visibility/comms/content-link scoped.
+- Sponsor persona must not receive KPI logging/edit affordances in portal or runtime surfaces.
+- Any sponsor-facing KPI views are read-only and server-scoped to sponsored challenge/member contexts.
+
+Implementation checklist anchor:
+- Admin and Mobile lane implementation-ready checklists are defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` under `W7/W8 implementation-ready checklists`.
+
 ## Authoring vs Delivery Ownership Model (Canonical Planning Boundary)
 
 | Capability group | Authoring / ops owner (portal surfaces) | Runtime delivery owner (member app surfaces) | Packaging / entitlement owner | Boundary note |

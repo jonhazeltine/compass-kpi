@@ -347,6 +347,41 @@ This section advances the W7 portal foundation package using accepted W6/W7 resc
 4. If host choice shifts from `Admin Shell extension` to hybrid portal, preserve touchpoint IDs/surface names and log structural boundary changes in implementation phase.
 5. Keep Team Leader upload rights constrained to team-scoped `content_upload`; do not broaden to org-wide authoring ownership or sponsor-scoped package authority.
 
+### W7/W8 surface contracts and role gates (finalized docs pack)
+
+| Surface | Contract intent | Allowed roles/actions | Explicitly blocked actions | Enforcement notes |
+|---|---|---|---|---|
+| `content_upload` | Intake surface for coach/sponsor/team-scoped content assets before curation/publishing | Coach: full upload/manage; Admin operator: review/governance; Team Leader: upload in own-team scope only; Challenge Sponsor: sponsor-campaign uploads in sponsor scope only | Team Leader org-wide uploads; Team Leader sponsor package publishing; Sponsor KPI logging/edit actions | Enforce scope on upload context metadata (team vs sponsor). Reject cross-scope writes at server authz boundary. |
+| `content_library` | Curated asset catalog for coach-led authoring and sponsor-scoped linking | Coach/Admin full curation; Challenge Sponsor limited sponsor-scope visibility/linking; Team Leader optional own-team uploaded asset visibility only | Team Leader org-wide catalog ownership; Sponsor canonical lesson authoring by default; KPI data edits | Library visibility/read-model must carry scope labels and role-gated action availability. |
+| `journeys` | Coach-owned journey/lesson authoring lifecycle | Coach primary authoring; Admin governance/review; Sponsor view/link only where policy allows | Team Leader journey authoring ownership; Sponsor draft authoring ownership; KPI mutation actions | Runtime consumes published outputs only; drafts remain portal-owned. |
+| `cohorts` | Audience/cohort targeting planning for coach + sponsor contexts | Coach/Admin manage; Challenge Sponsor limited sponsor cohort visibility/constraints | Team Leader cohort governance beyond own-team participation contexts; Sponsor challenge participation ownership | Keep cohort targeting separate from challenge participation state ownership. |
+| `channels` | Portal-side channel context/template ops that complement runtime channel participation | Coach/Admin manage portal channel templates/context ops; Challenge Sponsor sponsor/challenge/cohort channel scope only; Team Leader optional team context only by policy | Sponsor/team KPI logging/edit actions; Team Leader sponsor channel governance | Channel surfaces remain comms-only; no KPI logging or package governance writes. |
+| `/admin/coaching/audit` | Secondary governance/troubleshooting only | Admin operator / super-admin oversight workflows | Primary coach content/comms workflow ownership | Keep separate from primary portal flow and implementation checklists for authoring/delivery lanes. |
+
+### W7/W8 implementation-ready checklists
+
+#### Admin Web lane checklist (implementation-ready)
+
+1. Confirm route shells and role gates for `admin/coaching/uploads`, `admin/coaching/library`, `admin/coaching/authoring`, `admin/coaching/cohorts`, `admin/coaching/channels`, `admin/coaching/publishing`, `admin/coaching/packages`.
+2. Enforce Team Leader restriction: `content_upload` only in own-team scope; deny org-wide authoring controls and sponsor package authority.
+3. Enforce Challenge Sponsor restriction: sponsor-scoped uploads/library/channel/cohort visibility only; no KPI logging/edit actions.
+4. Verify Coach/Admin ownership controls on journeys, publishing, and package governance remain primary.
+5. Ensure `/admin/coaching/audit` is exposed as secondary governance/troubleshooting surface, not primary workflow navigation.
+6. Validate boundary copy on all surfaces: no KPI logging mutation actions in portal surfaces.
+7. Validate fallback/denied states for out-of-scope role actions (disabled CTAs + explicit reason copy).
+8. Confirm docs-contract alignment for each surface before implementation sign-off.
+
+#### Mobile Runtime lane checklist (implementation-ready)
+
+1. Keep coach runtime operator participation paths intact in `inbox_channels`/`channel_thread` while portal surfaces come online.
+2. Preserve cohort-based channel support for non-team individuals in runtime channel contexts.
+3. Do not expose portal authoring/package governance actions in runtime surfaces.
+4. Preserve Team Leader creator-participant challenge semantics in runtime notifications/channel routing.
+5. Preserve sponsor persona runtime constraints: sponsor-scoped comms/KPI visibility only, no KPI logging actions.
+6. Consume server-provided visibility/entitlement/read-model outputs; do not infer sponsor or package authority client-side.
+7. Keep `/admin/coaching/audit` out of primary runtime flows (secondary admin governance only).
+8. Validate runtime copy/states for blocked/out-of-scope actions match role-gate contracts.
+
 ## Coach Ops Touchpoint Workflow Sequences (Authoring -> Publishing -> Runtime)
 
 ### `coach_content_library`
