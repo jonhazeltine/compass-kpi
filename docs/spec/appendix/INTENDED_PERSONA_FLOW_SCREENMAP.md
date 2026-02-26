@@ -43,6 +43,7 @@ Use the same status scheme as `/Users/jon/compass-kpi/docs/spec/appendix/INTENDE
 - `Solo User`
 - `Team Member`
 - `Team Leader`
+- `Coach` (authoring/ops persona; admin-web extension or hybrid portal, manual-spec-driven)
 
 ## Canonical Shared Flows
 - `onboarding`
@@ -50,6 +51,7 @@ Use the same status scheme as `/Users/jon/compass-kpi/docs/spec/appendix/INTENDE
 - `challenge`
 - `team`
 - `coaching_communication`
+- `coach_ops_authoring` (manual-spec-driven portal/admin extension planning)
 - `profile`
 - `settings_payment`
 
@@ -116,8 +118,8 @@ Exports in repo:
 |---|---|---|---|---|
 | Home / Priority coaching nudge (embedded) | Lightweight coaching reminder / journey CTA allocation | `manual-spec-driven (COACHING_* docs)` | `🟡 stub` | W1 placeholder CTA shell added in KPI Dashboard Home; no coaching payload/content wiring. |
 | Team Dashboard coaching summary + broadcast preview (embedded) | Leader coaching summary + role-gated broadcast entry point | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 wires leader Team Dashboard updates CTA to team-scoped `inbox_channels` and role-gated broadcast composer entry context. |
-| Inbox / Channels | Leader comms hub (team/challenge/sponsor channels) | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 adds context-aware channel list/thread shell routing from Team/Challenge surfaces; API-backed messages still deferred. |
-| Broadcast Composer (role-gated) | Compose/send team or scoped coaching broadcast | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 leader-only entry routing + audience context labels added; send/write remains placeholder pending API integration. |
+| Inbox / Channels | Leader comms hub (team/challenge/sponsor channels) | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W4 adds API-backed `GET /api/channels`, thread reads/sends (`GET/POST /api/channels/{id}/messages`), and mark-seen (`POST /api/messages/mark-seen`) with scoped filtering/fallbacks. |
+| Broadcast Composer (role-gated) | Compose/send team or scoped coaching broadcast | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W4 leader-only send path wired via `/api/channels/{id}/broadcast` with UI role gating + API error handling; server enforces permissions/throttles. |
 | Coaching Journeys | Journey list/detail/lesson progress destination | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W3 adds API-backed journey list/detail rendering and explicit lesson progress actions on `coaching_journeys*`; no KPI log writes and no auto-complete on view. |
 | Sponsored challenge coaching overlays (embedded) | Sponsor CTA + coaching link modules on challenge detail | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 routes challenge/sponsor updates CTA into scoped `channel_thread` shell context; challenge ownership remains separate from coaching content/messaging. |
 
@@ -156,7 +158,7 @@ Exports in repo:
 | Home / Priority coaching nudge (embedded) | Lightweight coaching reminder / lesson/journey prompt allocation | `manual-spec-driven (COACHING_* docs)` | `🟡 stub` | W1 placeholder Home CTA shell added; no coaching content payload wiring. |
 | Team Dashboard member coaching progress (embedded) | Coaching progress snapshot + updates entry | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 wires Team Member updates CTA to team-scoped `inbox_channels`; coaching journeys remain shell-depth only. |
 | Challenge Details coaching + updates (embedded) | Challenge channel/update CTA + coaching content prompt | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 routes challenge updates CTA directly to scoped `channel_thread` shell context (`challenge`/`sponsor`). |
-| Inbox / Channels | Member communication inbox and channels | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 adds context-aware channel list/thread shell routing from Team and Challenge entry points; participant messaging behavior still deferred. |
+| Inbox / Channels | Member communication inbox and channels | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W4 adds API-backed channel list/thread read/send + mark-seen behavior on documented channel endpoints; participant permissions remain server-enforced. |
 | Coaching Journeys | Journey and lesson progress destination | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W3 adds API-backed journey list/detail rendering and explicit lesson progress actions on `coaching_journeys*`; participant visibility remains server-enforced. |
 
 #### `profile`
@@ -194,7 +196,7 @@ Exports in repo:
 |---|---|---|---|---|
 | Home / Priority coaching nudge (embedded) | Lightweight solo coaching reminder / journey CTA allocation | `manual-spec-driven (COACHING_* docs)` | `🟡 stub` | W1 placeholder Home CTA shell added; no coaching content payload wiring. |
 | Challenge Details coaching / sponsor content block (embedded) | Sponsor/challenge coaching CTA or content link module | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 routes challenge updates CTA into scoped `channel_thread` shell context (challenge/sponsor) while keeping challenge payload ownership separate. |
-| Inbox / Channels (scoped) | Solo comms inbox/channel entry (challenge/sponsor/community scoped) | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W2 challenge CTA can land in scoped `channel_thread`; no team-admin/broadcast controls exposed for solo flows. |
+| Inbox / Channels (scoped) | Solo comms inbox/channel entry (challenge/sponsor/community scoped) | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W4 adds API-backed channel list/thread read/send + mark-seen behavior where membership exists; no team-admin/broadcast controls exposed for solo flows. |
 | Coaching Journeys | Solo journey/lesson progress destination | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W3 adds API-backed journey list/detail rendering and explicit lesson progress actions on `coaching_journeys*`; solo scope visibility remains server-enforced. |
 
 #### `profile`
@@ -207,8 +209,34 @@ Exports in repo:
 |---|---|---|---|---|
 | Other Settings and Payment | Settings/payment/legal/support | `Solo User / Other Settings and Payment` | `🟡 partial` | Shared settings coverage incomplete. |
 
+### Coach
+
+Coach is an authoring/ops persona for coaching content and publishing. In current planning, Coach is modeled as a role-gated admin-web extension (or hybrid portal) rather than a member runtime persona.
+
+#### `coach_ops_authoring`
+| Destination | Intended purpose | Figma source group | Runtime status | Notes |
+|---|---|---|---|---|
+| Coach Content Library | Manage/categorize coaching content assets, journeys, lessons, and templates | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_content_library`); authoring/curation only, not member runtime delivery UI. |
+| Journey Authoring Studio | Compose/edit journey structure, lesson order, and draft lifecycle | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_journey_authoring`); no runtime journey rendering ownership. |
+| Publishing & Targeting | Publish bundles, define audiences, link channels/challenges, schedule activation | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_publish_targeting`); handoff produces delivery assignments for runtime surfaces. |
+| Coaching Packages / Entitlements | Configure team/sponsored/paid coaching package visibility and access policy | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_packages_entitlements`); packaging/access layer, not content authoring. |
+| Coach Ops Audit / Approvals | Approvals, rollback, moderation, audit trail review for coaching publishing actions | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_ops_audit`); admin operator-heavy governance surface. |
+
+#### `coaching_communication`
+| Destination | Intended purpose | Figma source group | Runtime status | Notes |
+|---|---|---|---|---|
+| Broadcast Composer (coach scope, role-gated) | Compose/send scoped coaching broadcasts within approved channel/package context | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Coach runtime send path is `decision needed` pending `DEP-003` ownership model + portal/runtime routing split; do not assume member-app availability. |
+| Coach inbox/channels oversight (optional later) | Monitor/respond in assigned coaching channels (not member chat parity) | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Prefer portal/admin extension surface first; runtime member shell remains leader/member/solo focused. |
+
 ## Shared Runtime Router Map (Current Implementation Anchor)
 Use this to map intended screens to current code constraints.
+
+### Coach persona routing note (planning boundary)
+- No dedicated Coach runtime/mobile router is implemented or planned in current member shell.
+- Coach authoring/ops surfaces are currently modeled as:
+  - admin web extension routes (preferred near-term), or
+  - hybrid portal routes sharing auth but separate from member `KPIDashboardScreen` state router.
+- Member runtime coaching destinations (`inbox*`, `coaching_journeys*`, `coach_broadcast_compose`) are delivery surfaces and must not absorb authoring/package-definition concerns.
 
 ### App shell
 - `/Users/jon/compass-kpi/app/App.tsx`
@@ -246,6 +274,11 @@ Every implementation prompt must identify:
 - Canonical Figma node IDs + export filenames
 - Expected wiring transitions
 - Out-of-scope personas/flows
+
+For `Coach` persona assignments (manual-spec-driven), also specify:
+- portal host (`Admin Shell extension` vs `hybrid coach portal`)
+- authoring vs delivery boundary
+- packaging type in scope (`team`, `sponsored`, `paid`)
 
 Do not assign work as generic “polish Team” or “fix challenge screen.”
 

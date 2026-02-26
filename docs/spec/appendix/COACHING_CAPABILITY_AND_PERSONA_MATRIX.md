@@ -77,6 +77,57 @@ Legend:
 | `sponsor_challenge_coaching` | `full/limited` (campaign delivery) | `participant` | `participant` | Overlaps sponsored challenges and challenge participation flows. |
 | `ai_coach_assist` | `full` (approval + send) | `none/limited` | `none/limited` | Phase-later; approval-first required. |
 
+## Coach / Ops Access Model (Authoring + Publishing)
+
+This extends the runtime persona matrix with content-operations personas that primarily live in admin/portal surfaces, not member runtime delivery screens.
+
+Legend:
+- `author`: create/edit/publish content or campaigns
+- `ops`: approve/package/assign/govern
+- `delivery_only`: can target/link published content but not author canonical assets
+- `none`: no direct authoring/ops access
+
+| Capability group | Coach | Admin operator | Sponsor ops | Notes |
+|---|---|---|---|---|
+| `communication` | `author` (coach broadcasts/templates/channels within scope) | `ops` (policy, moderation, audit, support) | `delivery_only/limited` (sponsor campaign comms in approved scopes) | Runtime send permissions remain server-enforced by org/team/sponsor scope. |
+| `coaching_content` | `author` (journeys, lessons, curation, publishing drafts) | `ops` (review, lifecycle governance, rollback, QA) | `none/limited` (may request packaging, not canonical lesson authoring by default) | Coach persona is the primary content authoring owner. |
+| `goal_setting_momentum` | `limited` (templates/guidance content, not KPI source data) | `ops` (configuration/policy support) | `none` | Goals/coaching guidance cannot mutate KPI source-of-truth. |
+| `sponsor_challenge_coaching` | `author` (campaign-linked coaching modules/content) | `ops` (sponsor approvals, entitlement/publishing governance) | `author/ops` (sponsor campaign assets + audience approvals within sponsor scope) | Explicit boundary: challenge participation state stays challenge-owned. |
+| `ai_coach_assist` | `author/approver` (approval queue participant) | `ops` (audit/compliance oversight) | `none/limited` | Phase-later, approval-first. |
+
+## Authoring vs Delivery Ownership Model (Canonical Planning Boundary)
+
+| Capability group | Authoring / ops owner (portal surfaces) | Runtime delivery owner (member app surfaces) | Packaging / entitlement owner | Boundary note |
+|---|---|---|---|---|
+| `communication` | Coach + Admin operator (templates, moderation policy, broadcast governance) | Coaching/comms runtime surfaces (`inbox*`, `channel_thread`, `coach_broadcast_compose`) | Admin operator (org policy) + role rules server-side | Runtime UI sends/reads; portal surfaces define templates/governance, not KPI data. |
+| `coaching_content` | Coach (primary) + Admin operator (approval/governance) | `coaching_journeys*` + embedded coaching modules | Coach defines publishable content units; Admin governs lifecycle | Runtime surfaces consume published content snapshots/versions, not authoring state. |
+| `goal_setting_momentum` | Coach (guidance content/templates), Admin operator (policy) | Home/Profile/Team embedded coaching modules | Org policy + role/tier rules | Coaching guidance overlays may reference KPI outputs but never rewrite KPI logs/base values. |
+| `sponsor_challenge_coaching` | Coach + Sponsor ops (campaign content) + Admin operator (approval) | Challenge overlays + `inbox*`/`coaching_journeys*` linked experiences | Sponsor/admin entitlements and package assignment | Challenge system owns participation/results; coaching owns linked content/comms experience. |
+| `ai_coach_assist` | Coach + Admin operator (approval/audit) | Future coaching suggestion review surfaces | Admin/compliance policy | Deferred; no auto-send. |
+
+## Packaging Model (Team vs Sponsored vs Paid Coaching)
+
+Planning model only; no schema/API changes implied by this section.
+
+### Packaging units (conceptual)
+- `Content Asset`: lesson, milestone, journey, message template (coach-authored canonical content)
+- `Publishable Bundle`: curated set of content assets plus metadata/version for a target use case
+- `Delivery Package`: published bundle + targeting rules + entitlements + optional challenge/sponsor links
+
+### Package types (intended)
+| Package type | Primary owner | Typical targets | May link to sponsor challenge? | Paid entitlement support | Runtime delivery surfaces |
+|---|---|---|---|---|---|
+| `team_coaching_program` | Coach (author) + Admin operator (ops approval) | org/team/team segments | optional | optional (org subscription-tier gated) | Team modules + `coaching_journeys*` + team comms |
+| `sponsored_challenge_coaching_campaign` | Coach + Sponsor ops (co-authoring inputs) + Admin operator (approval) | sponsor-eligible participants / challenge cohorts | required/primary | optional (sponsor-funded entitlement, no user paywall assumption by default) | Challenge overlays + `channel_thread` + `coaching_journeys*` |
+| `paid_coaching_product` | Coach (content owner) + Admin operator (catalog/ops) | entitled users/teams | optional | required/primary | `coaching_journeys*`, `inbox*`, profile/account surfaces |
+
+### Packaging boundary rules (required)
+- `Coach` authors/cures content and composes bundles; runtime mobile surfaces do not own authoring.
+- `Admin operator` owns policy/governance, approval gates, catalog visibility, and operational rollback.
+- `Sponsor ops` contributes campaign assets/audience constraints for sponsor packages, but challenge participation and leaderboard logic remain challenge-owned.
+- `Paid coaching` entitlement gating is an access/packaging concern, not a journey-authoring concern.
+- Runtime delivery surfaces consume published package assignments and content metadata; they do not mutate package definitions.
+
 ## Intended Surface Hosting Matrix (Where Capabilities Live)
 
 This defines where coaching appears in the app. Coaching is often a module/overlay inside an existing screen, not always a dedicated new screen.

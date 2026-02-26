@@ -324,6 +324,42 @@ type CoachingLessonProgressWriteResponse = {
   };
   error?: string;
 };
+type ChannelApiRow = {
+  id: string;
+  type: 'team' | 'challenge' | 'sponsor' | 'cohort' | 'direct' | string;
+  name: string;
+  team_id?: string | null;
+  context_id?: string | null;
+  is_active?: boolean | null;
+  created_at?: string | null;
+  my_role?: string | null;
+  unread_count?: number;
+  last_seen_at?: string | null;
+};
+type ChannelsListResponse = {
+  channels?: ChannelApiRow[];
+  error?: string;
+};
+type ChannelMessageRow = {
+  id: string;
+  channel_id: string;
+  sender_user_id?: string | null;
+  body: string;
+  message_type?: 'message' | 'broadcast' | string;
+  created_at?: string | null;
+};
+type ChannelMessagesResponse = {
+  messages?: ChannelMessageRow[];
+  error?: string;
+};
+type ChannelMessageWriteResponse = {
+  message?: ChannelMessageRow;
+  error?: string;
+};
+type ChannelBroadcastWriteResponse = {
+  broadcast?: ChannelMessageRow;
+  error?: string;
+};
 
 type PendingDirectLog = {
   kpiId: string;
@@ -456,6 +492,15 @@ function fmtMonthDayTime(iso?: string | null) {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+function normalizeChannelTypeToScope(type?: string | null): CoachingChannelScope | null {
+  const t = String(type ?? '').toLowerCase();
+  if (t === 'team') return 'team';
+  if (t === 'challenge') return 'challenge';
+  if (t === 'sponsor') return 'sponsor';
+  if (t === 'cohort' || t === 'direct') return 'community';
+  return null;
 }
 
 function challengeBucketFromDates(input: { startAt?: string | null; endAt?: string | null; nowMs?: number }) {
@@ -1512,6 +1557,21 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [coachingJourneyDetailError, setCoachingJourneyDetailError] = useState<string | null>(null);
   const [coachingLessonProgressSubmittingId, setCoachingLessonProgressSubmittingId] = useState<string | null>(null);
   const [coachingLessonProgressError, setCoachingLessonProgressError] = useState<string | null>(null);
+  const [channelsApiRows, setChannelsApiRows] = useState<ChannelApiRow[] | null>(null);
+  const [channelsLoading, setChannelsLoading] = useState(false);
+  const [channelsError, setChannelsError] = useState<string | null>(null);
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+  const [selectedChannelName, setSelectedChannelName] = useState<string | null>(null);
+  const [channelMessages, setChannelMessages] = useState<ChannelMessageRow[] | null>(null);
+  const [channelMessagesLoading, setChannelMessagesLoading] = useState(false);
+  const [channelMessagesError, setChannelMessagesError] = useState<string | null>(null);
+  const [channelMessageDraft, setChannelMessageDraft] = useState('');
+  const [channelMessageSubmitting, setChannelMessageSubmitting] = useState(false);
+  const [channelMessageSubmitError, setChannelMessageSubmitError] = useState<string | null>(null);
+  const [broadcastDraft, setBroadcastDraft] = useState('');
+  const [broadcastSubmitting, setBroadcastSubmitting] = useState(false);
+  const [broadcastError, setBroadcastError] = useState<string | null>(null);
+  const [broadcastSuccessNote, setBroadcastSuccessNote] = useState<string | null>(null);
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
@@ -4870,6 +4930,172 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     ]
   );
 
+  const fetchChannels = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) {
+      setChannelsError('Sign in is required to view channels.');
+      setChannelsApiRows([]);
+      return;
+    }
+    setChannelsLoading(true);
+    setChannelsError(null);
+    try {
+      const response = await fetch(`${API_URL}/api/channels`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as ChannelsListResponse;
+      if (!response.ok) {
+        setChannelsError(String(body.error ?? `Channels request failed (${response.status})`));
+        setChannelsApiRows([]);
+        return;
+      }
+      const rows = Array.isArray(body.channels) ? body.channels : [];
+      setChannelsApiRows(rows);
+      setSelectedChannelId((prev) => (prev && rows.some((r) => String(r.id) === prev) ? prev : prev));
+    } catch (err) {
+      setChannelsError(err instanceof Error ? err.message : 'Failed to load channels');
+      setChannelsApiRows([]);
+    } finally {
+      setChannelsLoading(false);
+    }
+  }, [session?.access_token]);
+
+  const fetchChannelMessages = useCallback(
+    async (channelId: string, { markSeen = true }: { markSeen?: boolean } = {}) => {
+      const token = session?.access_token;
+      if (!token) {
+        setChannelMessagesError('Sign in is required to view channel messages.');
+        setChannelMessages([]);
+        return;
+      }
+      if (!channelId) {
+        setChannelMessagesError('Channel id is required.');
+        setChannelMessages([]);
+        return;
+      }
+      setChannelMessagesLoading(true);
+      setChannelMessagesError(null);
+      try {
+        const response = await fetch(`${API_URL}/api/channels/${encodeURIComponent(channelId)}/messages`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = (await response.json().catch(() => ({}))) as ChannelMessagesResponse;
+        if (!response.ok) {
+          setChannelMessagesError(String(body.error ?? `Channel messages request failed (${response.status})`));
+          setChannelMessages([]);
+          return;
+        }
+        setChannelMessages(Array.isArray(body.messages) ? body.messages : []);
+        if (markSeen) {
+          await fetch(`${API_URL}/api/messages/mark-seen`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ channel_id: channelId }),
+          }).catch(() => undefined);
+          // Refresh channel list unread counters opportunistically.
+          void fetchChannels();
+        }
+      } catch (err) {
+        setChannelMessagesError(err instanceof Error ? err.message : 'Failed to load channel messages');
+        setChannelMessages([]);
+      } finally {
+        setChannelMessagesLoading(false);
+      }
+    },
+    [fetchChannels, session?.access_token]
+  );
+
+  const sendChannelMessage = useCallback(
+    async (channelId: string) => {
+      const token = session?.access_token;
+      const bodyText = channelMessageDraft.trim();
+      if (!token) {
+        setChannelMessageSubmitError('Sign in is required to send messages.');
+        return;
+      }
+      if (!channelId) {
+        setChannelMessageSubmitError('Select a channel before sending.');
+        return;
+      }
+      if (!bodyText) {
+        setChannelMessageSubmitError('Message body is required.');
+        return;
+      }
+      setChannelMessageSubmitting(true);
+      setChannelMessageSubmitError(null);
+      try {
+        const response = await fetch(`${API_URL}/api/channels/${encodeURIComponent(channelId)}/messages`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ body: bodyText }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as ChannelMessageWriteResponse;
+        if (!response.ok) {
+          setChannelMessageSubmitError(String(payload.error ?? `Send failed (${response.status})`));
+          return;
+        }
+        setChannelMessageDraft('');
+        await fetchChannelMessages(channelId, { markSeen: false });
+      } catch (err) {
+        setChannelMessageSubmitError(err instanceof Error ? err.message : 'Failed to send message');
+      } finally {
+        setChannelMessageSubmitting(false);
+      }
+    },
+    [channelMessageDraft, fetchChannelMessages, session?.access_token]
+  );
+
+  const sendChannelBroadcast = useCallback(
+    async (channelId: string) => {
+      const token = session?.access_token;
+      const bodyText = broadcastDraft.trim();
+      if (!token) {
+        setBroadcastError('Sign in is required to send broadcasts.');
+        return;
+      }
+      if (!channelId) {
+        setBroadcastError('A team channel is required for this broadcast path.');
+        return;
+      }
+      if (!bodyText) {
+        setBroadcastError('Broadcast body is required.');
+        return;
+      }
+      setBroadcastSubmitting(true);
+      setBroadcastError(null);
+      setBroadcastSuccessNote(null);
+      try {
+        const response = await fetch(`${API_URL}/api/channels/${encodeURIComponent(channelId)}/broadcast`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ body: bodyText }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as ChannelBroadcastWriteResponse;
+        if (!response.ok) {
+          setBroadcastError(String(payload.error ?? `Broadcast failed (${response.status})`));
+          return;
+        }
+        setBroadcastDraft('');
+        setBroadcastSuccessNote('Broadcast sent.');
+        await Promise.all([fetchChannelMessages(channelId, { markSeen: false }), fetchChannels()]);
+      } catch (err) {
+        setBroadcastError(err instanceof Error ? err.message : 'Failed to send broadcast');
+      } finally {
+        setBroadcastSubmitting(false);
+      }
+    },
+    [broadcastDraft, fetchChannelMessages, fetchChannels, session?.access_token]
+  );
+
   useEffect(() => {
     if (activeTab !== 'user') return;
     if (
@@ -4912,6 +5138,45 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     coachingShellScreen,
     fetchCoachingJourneyDetail,
   ]);
+
+  useEffect(() => {
+    if (activeTab !== 'user') return;
+    if (
+      coachingShellScreen === 'inbox_channels' ||
+      coachingShellScreen === 'channel_thread' ||
+      coachingShellScreen === 'coach_broadcast_compose'
+    ) {
+      if (!channelsApiRows && !channelsLoading) {
+        void fetchChannels();
+      }
+    }
+  }, [activeTab, channelsApiRows, channelsLoading, coachingShellScreen, fetchChannels]);
+
+  useEffect(() => {
+    if (activeTab !== 'user') return;
+    if (!Array.isArray(channelsApiRows) || channelsApiRows.length === 0) return;
+    const rows = channelsApiRows;
+    const preferredScope = coachingShellContext.preferredChannelScope;
+    const visibleRows = preferredScope
+      ? rows.filter((row) => {
+          const scope = normalizeChannelTypeToScope(row.type);
+          return scope === preferredScope || scope === 'community';
+        })
+      : rows;
+    const defaultRow = visibleRows[0] ?? rows[0];
+    if (!defaultRow) return;
+    if (!selectedChannelId || !rows.some((row) => String(row.id) === String(selectedChannelId))) {
+      setSelectedChannelId(String(defaultRow.id));
+      setSelectedChannelName(defaultRow.name);
+    }
+  }, [activeTab, channelsApiRows, coachingShellContext.preferredChannelScope, selectedChannelId]);
+
+  useEffect(() => {
+    if (activeTab !== 'user') return;
+    if (coachingShellScreen !== 'channel_thread') return;
+    if (!selectedChannelId) return;
+    void fetchChannelMessages(selectedChannelId);
+  }, [activeTab, coachingShellScreen, fetchChannelMessages, selectedChannelId]);
 
   if (state === 'loading') {
     return (
@@ -6528,6 +6793,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const preferredChannelScope = coachingShellContext.preferredChannelScope;
               const sourceLabel = sourceLabelByKey[coachingShellContext.source];
               const roleCanOpenBroadcast = teamPersonaVariant === 'leader' || coachingShellContext.broadcastRoleAllowed;
+              const allChannelApiRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
+              const filteredChannelApiRows = (coachingShellContext.preferredChannelScope
+                ? allChannelApiRows.filter((row) => {
+                    const scope = normalizeChannelTypeToScope(row.type);
+                    return scope === coachingShellContext.preferredChannelScope || scope === 'community';
+                  })
+                : allChannelApiRows) as ChannelApiRow[];
+              const selectedChannelRow =
+                filteredChannelApiRows.find((row) => String(row.id) === String(selectedChannelId ?? '')) ??
+                allChannelApiRows.find((row) => String(row.id) === String(selectedChannelId ?? '')) ??
+                null;
+              const selectedChannelResolvedId = selectedChannelRow ? String(selectedChannelRow.id) : null;
+              const selectedChannelResolvedName = selectedChannelRow?.name ?? selectedChannelName ?? null;
               const journeyListRows = Array.isArray(coachingJourneys) ? coachingJourneys : [];
               const selectedJourneyId =
                 coachingShellContext.selectedJourneyId ?? (journeyListRows[0]?.id ? String(journeyListRows[0].id) : null);
@@ -6632,6 +6910,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       ? `${row.context} • linked from ${sourceLabel}`
                       : `${row.context} • optional`,
                 }));
+              const fallbackChannelRowsVisible = !Array.isArray(channelsApiRows) || (channelsApiRows?.length ?? 0) === 0;
               return (
                 <>
                   <View style={styles.coachingShellCard}>
@@ -6683,57 +6962,252 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ))}
                     {coachingShellScreen === 'inbox_channels' ? (
                       <View style={styles.coachingShellList}>
-                        {channelRows.map((row) => (
-                          <TouchableOpacity
-                            key={row.label}
-                            style={styles.coachingShellListRow}
-                            onPress={() =>
-                              openCoachingShell('channel_thread', {
-                                preferredChannelScope: row.scope,
-                                preferredChannelLabel: row.label,
-                                threadTitle: row.label,
-                                threadSub: `${row.context}. Placeholder thread surface only; send/read integration deferred.`,
-                                broadcastAudienceLabel:
-                                  row.scope === 'team' && roleCanOpenBroadcast ? coachingShellContext.broadcastAudienceLabel ?? 'The Elite Group' : null,
-                                broadcastRoleAllowed: row.scope === 'team' ? roleCanOpenBroadcast : false,
-                              })
-                            }
-                          >
-                            <View style={styles.coachingShellListIcon}>
-                              <Text style={styles.coachingShellListIconText}>#</Text>
-                            </View>
-                            <View style={styles.coachingShellListCopy}>
-                              <Text style={styles.coachingShellListTitle}>{row.label}</Text>
-                              <Text style={styles.coachingShellListSubText}>{row.context}</Text>
-                            </View>
-                            <Text style={styles.coachingShellListChevron}>›</Text>
-                          </TouchableOpacity>
-                        ))}
+                        {channelsLoading ? (
+                          <View style={styles.coachingJourneyEmptyCard}>
+                            <ActivityIndicator size="small" />
+                            <Text style={styles.coachingJourneyEmptyTitle}>Loading channels…</Text>
+                          </View>
+                        ) : channelsError ? (
+                          <View style={styles.coachingJourneyEmptyCard}>
+                            <Text style={styles.coachingJourneyEmptyTitle}>Channels failed to load</Text>
+                            <Text style={styles.coachingJourneyEmptySub}>{channelsError}</Text>
+                            <TouchableOpacity style={styles.coachingJourneyRetryBtn} onPress={() => void fetchChannels()}>
+                              <Text style={styles.coachingJourneyRetryBtnText}>Retry Channels</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : filteredChannelApiRows.length > 0 ? (
+                          filteredChannelApiRows.map((row) => {
+                            const rowScope = normalizeChannelTypeToScope(row.type) ?? 'community';
+                            const isSelected = String(row.id) === String(selectedChannelResolvedId ?? '');
+                            const subBits = [
+                              `${String(row.type ?? 'channel')}`,
+                              row.my_role ? `role: ${row.my_role}` : null,
+                              `unread: ${Math.max(0, Number(row.unread_count ?? 0))}`,
+                            ].filter(Boolean);
+                            return (
+                              <TouchableOpacity
+                                key={`api-channel-${row.id}`}
+                                style={[
+                                  styles.coachingShellListRow,
+                                  isSelected ? styles.coachingShellListRowSelected : null,
+                                ]}
+                                onPress={() => {
+                                  setSelectedChannelId(String(row.id));
+                                  setSelectedChannelName(row.name);
+                                  setChannelMessageSubmitError(null);
+                                  setBroadcastError(null);
+                                  setBroadcastSuccessNote(null);
+                                  openCoachingShell('channel_thread', {
+                                    preferredChannelScope: rowScope,
+                                    preferredChannelLabel: row.name,
+                                    threadTitle: row.name,
+                                    threadSub: `API-backed thread via /api/channels/${row.id}/messages from ${sourceLabel}.`,
+                                    broadcastAudienceLabel:
+                                      rowScope === 'team' && roleCanOpenBroadcast
+                                        ? row.name
+                                        : coachingShellContext.broadcastAudienceLabel,
+                                    broadcastRoleAllowed: rowScope === 'team' ? roleCanOpenBroadcast : false,
+                                  });
+                                }}
+                              >
+                                <View style={styles.coachingShellListIcon}>
+                                  <Text style={styles.coachingShellListIconText}>#</Text>
+                                </View>
+                                <View style={styles.coachingShellListCopy}>
+                                  <Text style={styles.coachingShellListTitle}>{row.name}</Text>
+                                  <Text style={styles.coachingShellListSubText}>{subBits.join(' • ')}</Text>
+                                </View>
+                                <Text style={styles.coachingShellListChevron}>›</Text>
+                              </TouchableOpacity>
+                            );
+                          })
+                        ) : fallbackChannelRowsVisible ? (
+                          channelRows.map((row) => (
+                            <TouchableOpacity
+                              key={row.label}
+                              style={styles.coachingShellListRow}
+                              onPress={() =>
+                                openCoachingShell('channel_thread', {
+                                  preferredChannelScope: row.scope,
+                                  preferredChannelLabel: row.label,
+                                  threadTitle: row.label,
+                                  threadSub: `${row.context}. API returned no channels for the current user; showing shell fallback.`,
+                                  broadcastAudienceLabel:
+                                    row.scope === 'team' && roleCanOpenBroadcast ? coachingShellContext.broadcastAudienceLabel ?? 'The Elite Group' : null,
+                                  broadcastRoleAllowed: row.scope === 'team' ? roleCanOpenBroadcast : false,
+                                })
+                              }
+                            >
+                              <View style={styles.coachingShellListIcon}>
+                                <Text style={styles.coachingShellListIconText}>#</Text>
+                              </View>
+                              <View style={styles.coachingShellListCopy}>
+                                <Text style={styles.coachingShellListTitle}>{row.label}</Text>
+                                <Text style={styles.coachingShellListSubText}>{row.context}</Text>
+                              </View>
+                              <Text style={styles.coachingShellListChevron}>›</Text>
+                            </TouchableOpacity>
+                          ))
+                        ) : (
+                          <View style={styles.coachingJourneyEmptyCard}>
+                            <Text style={styles.coachingJourneyEmptyTitle}>No channels for this scope</Text>
+                            <Text style={styles.coachingJourneyEmptySub}>
+                              The API returned channels, but none match the current preferred context filter.
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    ) : null}
+                    {coachingShellScreen === 'channel_thread' ? (
+                      <View style={styles.coachingShellComposeCard}>
+                        <Text style={styles.coachingShellComposeTitle}>
+                          {selectedChannelResolvedName ?? contextualThreadTitle}
+                        </Text>
+                        <Text style={styles.coachingShellComposeSub}>
+                          {selectedChannelResolvedId
+                            ? `API-backed thread using /api/channels/${selectedChannelResolvedId}/messages`
+                            : 'No API channel selected for this thread context. Showing shell fallback only.'}
+                        </Text>
+                        {channelMessagesError ? (
+                          <Text style={styles.coachingJourneyInlineError}>{channelMessagesError}</Text>
+                        ) : null}
+                        {channelMessagesLoading ? (
+                          <View style={styles.coachingJourneyEmptyCard}>
+                            <ActivityIndicator size="small" />
+                            <Text style={styles.coachingJourneyEmptyTitle}>Loading messages…</Text>
+                          </View>
+                        ) : Array.isArray(channelMessages) && channelMessages.length > 0 ? (
+                          <View style={styles.coachingThreadMessagesList}>
+                            {channelMessages.map((message) => {
+                              const isMine = String(message.sender_user_id ?? '') === String(session?.user?.id ?? '');
+                              const isBroadcast = String(message.message_type ?? '') === 'broadcast';
+                              return (
+                                <View
+                                  key={`channel-message-${message.id}`}
+                                  style={[
+                                    styles.coachingThreadMessageBubble,
+                                    isMine ? styles.coachingThreadMessageBubbleMine : null,
+                                  ]}
+                                >
+                                  <Text style={styles.coachingThreadMessageMeta}>
+                                    {isBroadcast ? 'Broadcast' : 'Message'} • {fmtMonthDayTime(message.created_at ?? null)}
+                                  </Text>
+                                  <Text style={styles.coachingThreadMessageBody}>{message.body}</Text>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        ) : (
+                          <View style={styles.coachingJourneyEmptyCard}>
+                            <Text style={styles.coachingJourneyEmptyTitle}>
+                              {selectedChannelResolvedId ? 'No messages yet' : 'Thread shell only'}
+                            </Text>
+                            <Text style={styles.coachingJourneyEmptySub}>
+                              {selectedChannelResolvedId
+                                ? 'This channel has no visible messages yet.'
+                                : 'Select an API channel from Inbox / Channels to enable read/send behavior.'}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={styles.coachingThreadComposerWrap}>
+                          <TextInput
+                            value={channelMessageDraft}
+                            onChangeText={(text) => {
+                              setChannelMessageDraft(text);
+                              if (channelMessageSubmitError) setChannelMessageSubmitError(null);
+                            }}
+                            placeholder="Write a message…"
+                            placeholderTextColor="#9aa3b0"
+                            multiline
+                            style={styles.coachingThreadComposerInput}
+                          />
+                          {channelMessageSubmitError ? (
+                            <Text style={styles.coachingJourneyInlineError}>{channelMessageSubmitError}</Text>
+                          ) : null}
+                          <View style={styles.coachingLessonActionRow}>
+                            <TouchableOpacity
+                              style={[styles.coachingLessonActionBtn, channelMessageSubmitting ? styles.disabled : null]}
+                              disabled={channelMessageSubmitting}
+                              onPress={() => {
+                                if (selectedChannelResolvedId) {
+                                  void fetchChannelMessages(selectedChannelResolvedId);
+                                }
+                              }}
+                            >
+                              <Text style={styles.coachingLessonActionBtnText}>Refresh</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[
+                                styles.coachingLessonActionBtn,
+                                styles.coachingLessonActionBtnActive,
+                                (!selectedChannelResolvedId || channelMessageSubmitting) ? styles.disabled : null,
+                              ]}
+                              disabled={!selectedChannelResolvedId || channelMessageSubmitting}
+                              onPress={() => {
+                                if (selectedChannelResolvedId) void sendChannelMessage(selectedChannelResolvedId);
+                              }}
+                            >
+                              <Text style={[styles.coachingLessonActionBtnText, styles.coachingLessonActionBtnTextActive]}>
+                                {channelMessageSubmitting ? 'Sending…' : 'Send'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
                       </View>
                     ) : null}
                     {coachingShellScreen === 'coach_broadcast_compose' ? (
                       <View style={styles.coachingShellComposeCard}>
-                        <Text style={styles.coachingShellComposeTitle}>Broadcast Compose (Shell)</Text>
+                        <Text style={styles.coachingShellComposeTitle}>Broadcast Composer</Text>
                         <Text style={styles.coachingShellComposeSub}>
                           {roleCanOpenBroadcast
-                            ? `Leader-gated entry is wired. Audience context: ${coachingShellContext.broadcastAudienceLabel ?? 'team/channel scope TBD'}. Message send remains placeholder until API integration wiring.`
+                            ? `Leader-gated entry is wired. Audience context: ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'team/channel scope TBD'}.`
                             : 'Broadcast is hidden for non-leader flows; this shell is shown only as a blocked fallback if opened directly.'}
                         </Text>
                         <View style={styles.coachingShellInputGhost}>
                           <Text style={styles.coachingShellInputGhostText}>
                             {roleCanOpenBroadcast
-                              ? `Audience selector: ${coachingShellContext.broadcastAudienceLabel ?? 'Scoped team/channel'} (placeholder)`
+                              ? `Broadcast path: /api/channels/{id}/broadcast (${selectedChannelResolvedId ? `selected ${selectedChannelResolvedName ?? 'channel'}` : 'select a team channel first'})`
                               : 'Audience selector unavailable for this persona'}
                           </Text>
                         </View>
-                        <View style={[styles.coachingShellInputGhost, styles.coachingShellInputGhostTall]}>
-                          <Text style={styles.coachingShellInputGhostText}>Message body (placeholder)</Text>
+                        <TextInput
+                          value={broadcastDraft}
+                          onChangeText={(text) => {
+                            setBroadcastDraft(text);
+                            if (broadcastError) setBroadcastError(null);
+                            if (broadcastSuccessNote) setBroadcastSuccessNote(null);
+                          }}
+                          placeholder="Broadcast message body…"
+                          placeholderTextColor="#9aa3b0"
+                          multiline
+                          style={[styles.coachingThreadComposerInput, styles.coachingThreadComposerInputTall]}
+                        />
+                        {broadcastError ? <Text style={styles.coachingJourneyInlineError}>{broadcastError}</Text> : null}
+                        {broadcastSuccessNote ? <Text style={styles.coachingThreadSuccessText}>{broadcastSuccessNote}</Text> : null}
+                        <View style={styles.coachingLessonActionRow}>
+                          <TouchableOpacity
+                            style={[styles.coachingLessonActionBtn, channelsLoading ? styles.disabled : null]}
+                            disabled={channelsLoading}
+                            onPress={() => void fetchChannels()}
+                          >
+                            <Text style={styles.coachingLessonActionBtnText}>Refresh Channels</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[
+                              styles.coachingLessonActionBtn,
+                              styles.coachingLessonActionBtnActive,
+                              (!roleCanOpenBroadcast || !selectedChannelResolvedId || broadcastSubmitting) ? styles.disabled : null,
+                            ]}
+                            disabled={!roleCanOpenBroadcast || !selectedChannelResolvedId || broadcastSubmitting}
+                            onPress={() => {
+                              if (selectedChannelResolvedId) void sendChannelBroadcast(selectedChannelResolvedId);
+                            }}
+                          >
+                            <Text style={[styles.coachingLessonActionBtnText, styles.coachingLessonActionBtnTextActive]}>
+                              {broadcastSubmitting ? 'Sending…' : roleCanOpenBroadcast ? 'Send Broadcast' : 'Leader Only'}
+                            </Text>
+                          </TouchableOpacity>
                         </View>
-                        <TouchableOpacity style={[styles.coachingShellPrimaryBtn, styles.disabled]} disabled>
-                          <Text style={styles.coachingShellPrimaryBtnText}>
-                            {roleCanOpenBroadcast ? 'Send (API wiring deferred)' : 'Leader Only'}
-                          </Text>
-                        </TouchableOpacity>
                       </View>
                     ) : null}
                     {coachingShellScreen === 'coaching_journeys' ? (
@@ -10611,6 +11085,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  coachingShellListRowSelected: {
+    borderWidth: 1,
+    borderColor: '#cfe0ff',
+    backgroundColor: '#f1f6ff',
+  },
   coachingShellListIcon: {
     width: 28,
     height: 28,
@@ -10678,6 +11157,58 @@ const styles = StyleSheet.create({
   coachingShellInputGhostText: {
     color: '#9aa3b0',
     fontSize: 11,
+  },
+  coachingThreadMessagesList: {
+    gap: 8,
+    maxHeight: 240,
+  },
+  coachingThreadMessageBubble: {
+    borderRadius: 10,
+    backgroundColor: '#f4f6fa',
+    borderWidth: 1,
+    borderColor: '#e1e7f0',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 3,
+    alignSelf: 'stretch',
+  },
+  coachingThreadMessageBubbleMine: {
+    backgroundColor: '#edf4ff',
+    borderColor: '#cfe0ff',
+  },
+  coachingThreadMessageMeta: {
+    color: '#6d7b91',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  coachingThreadMessageBody: {
+    color: '#384456',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  coachingThreadComposerWrap: {
+    gap: 8,
+  },
+  coachingThreadComposerInput: {
+    minHeight: 62,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dfe5ef',
+    backgroundColor: '#fff',
+    color: '#2f3442',
+    fontSize: 12,
+    lineHeight: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    textAlignVertical: 'top',
+  },
+  coachingThreadComposerInputTall: {
+    minHeight: 84,
+  },
+  coachingThreadSuccessText: {
+    color: '#2f7d42',
+    fontSize: 11,
+    fontWeight: '700',
   },
   coachingJourneyModule: {
     gap: 10,

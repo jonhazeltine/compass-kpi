@@ -17,10 +17,23 @@ Use with:
 Coaching is implemented as a mix of:
 1. **embedded modules** inside existing screens (Team Dashboard, Challenge Details, Home)
 2. **dedicated flows** for communication and journeys (Inbox/Channels, Coaching Journeys)
+3. **authoring/ops portal surfaces** for coach/admin/sponsor packaging and publishing (admin-web extension or dedicated coach portal)
 
 This keeps the app coherent and avoids fragmenting the user experience.
 
 ## New/Expanded Destinations (Intended)
+
+### Authoring / ops surfaces (admin-web extension or hybrid portal; manual-spec-driven)
+- `Coach Content Library` (`coach_content_library`)
+  - assets/templates/journeys/lessons catalog and curation
+- `Journey Authoring Studio` (`coach_journey_authoring`)
+  - journey composition, lesson sequencing, draft/review workflow
+- `Publishing & Targeting` (`coach_publish_targeting`)
+  - audience targeting, channel/journey linkage, effective windows, package assignment
+- `Coaching Packages / Entitlements` (`coach_packages_entitlements`)
+  - team/sponsored/paid coaching packaging, visibility, and operational status
+- `Coach Ops Audit / Approvals` (`coach_ops_audit`)
+  - publish approvals, rollback, moderation/audit review (admin/ops heavy)
 
 ### Dedicated flows (net-new or expanded)
 - `Inbox / Channels` (`inbox`, `inbox_channels`)
@@ -47,6 +60,13 @@ This keeps the app coherent and avoids fragmenting the user experience.
   - goals/coaching preferences/notification prefs
 
 ## Intended Wiring Insert Points
+
+### Admin / Coach authoring-ops surfaces (new companion layer)
+- `Admin Shell` remains the current web host baseline.
+- `Coach` persona may be modeled as:
+  - admin-web extension (shared shell, role-gated coach sections), or
+  - hybrid portal experience (shared auth + dedicated coach routes)
+- Authoring/ops destinations hand off published outputs to runtime delivery surfaces, not direct member runtime state mutation.
 
 ### Member app shell
 - Existing shell remains:
@@ -80,6 +100,45 @@ This keeps the app coherent and avoids fragmenting the user experience.
 - Ownership boundary remains:
   - challenge system owns participation/progress
   - coaching system owns content/messaging
+
+## Publishing / Targeting Integration Seam (Authoring -> Runtime Delivery)
+
+### Authoring/ops side owns
+- canonical content assets (journeys, lessons, templates)
+- draft/review/publish lifecycle state
+- package composition (`team`, `sponsored`, `paid`)
+- audience targeting rules and activation windows
+- sponsor/admin approvals and operational rollback
+
+### Runtime delivery side owns
+- rendering published journeys/lessons/messages in member-facing surfaces
+- routing/context (team/challenge/sponsor/user scope)
+- local loading/error state and CTA presentation
+- explicit user progress actions (lesson completion, acknowledgements) within allowed contracts
+
+### Handoff contract (planning boundary)
+Runtime surfaces should consume a published assignment/read model that references:
+- published content/version identifiers
+- package type (`team_coaching_program`, `sponsored_challenge_coaching_campaign`, `paid_coaching_product`)
+- target scope metadata (team/challenge/sponsor/user segment)
+- entitlement/visibility flags
+- optional linked channel and challenge identifiers
+
+This addendum does not approve new endpoint families or schemas; it defines the ownership seam to avoid authoring logic leaking into member runtime UI.
+
+## Sponsored vs Paid Coaching Packaging Boundary (Portal + Runtime)
+
+### Sponsored coaching packages
+- Co-authored inputs may come from `Coach` + `Sponsor ops`, with `Admin operator` approval/governance.
+- Must preserve sponsored challenge boundary:
+  - challenge system owns participation/results/eligibility mechanics
+  - coaching package owns content/comms experience linked to that challenge
+- Runtime may render sponsor CTA/disclaimer/content links, but package definition/approval stays in portal/ops surfaces.
+
+### Paid coaching products
+- `Coach` authors content; `Admin operator` governs catalog visibility/ops lifecycle.
+- Entitlement gating is packaging/access logic, not journey authoring logic.
+- Runtime delivery surfaces consume entitlement result + published package assignment; they do not author or repackage content.
 
 ## Wiring Phases (Recommended)
 
@@ -190,6 +249,18 @@ This keeps the app coherent and avoids fragmenting the user experience.
 5. Re-state sponsored challenge boundary (challenge participation state stays challenge-owned).
 6. Re-state KPI non-negotiables (no KPI engine/confidence/base-value mutation by coaching UI).
 
+## Coach / Admin Portal Touchpoints (Post-W4 Planning Targets)
+
+These are planning targets only and intentionally separate from current member-app coaching waves.
+
+| Portal touchpoint | Primary persona(s) | Capability group(s) | Handoff to runtime delivery | Status | Notes |
+|---|---|---|---|---|---|
+| `coach_content_library` | Coach, Admin operator | `coaching_content`, `communication` templates | Published assets/bundles -> `coaching_journeys*`, `inbox*` | `⚪ planned` | Manual-spec-driven; no Figma parity yet. |
+| `coach_journey_authoring` | Coach | `coaching_content` | Published journeys/lessons -> `coaching_journeys*` | `⚪ planned` | Authoring concern only; no member runtime ownership. |
+| `coach_publish_targeting` | Coach, Admin operator, Sponsor ops (limited) | `communication`, `sponsor_challenge_coaching` | Assignment/targeting metadata -> Team/Challenge/Profile overlays + `inbox*` | `⚪ planned` | Explicitly separate from challenge participation logic. |
+| `coach_packages_entitlements` | Admin operator, Coach (limited authoring view), Sponsor ops (limited sponsor packages) | `sponsor_challenge_coaching`, paid packaging | Entitlement/package assignment -> runtime visibility | `⚪ planned` | Packaging/access policy layer; no content editing required. |
+| `coach_ops_audit` | Admin operator | `communication`, `coaching_content`, `ai_coach_assist` (later) | Audit/approval constraints -> runtime allowed actions | `⚪ planned` | Ops/governance layer; UI implementation deferred. |
+
 ### Phase W5 — AI coaching assist (approval-first)
 - Route from coaching surfaces to AI suggestion review/approval queues (leader/admin/coach)
 - No direct AI auto-send path
@@ -215,7 +286,7 @@ Use stable destination names by capability and context, for example:
 - `coaching_lesson_detail`
 - `coach_broadcast_compose`
 
-## Assignment Hand-off Naming Lock (W1+)
+## Assignment Hand-off Naming Lock (W1+ runtime and coach-ops planning)
 Use these exact destination IDs in next-wave UI assignment specs unless a controller-approved rename is logged:
 - `inbox`
 - `inbox_channels`
@@ -224,6 +295,13 @@ Use these exact destination IDs in next-wave UI assignment specs unless a contro
 - `coaching_journeys`
 - `coaching_journey_detail`
 - `coaching_lesson_detail`
+
+For coach/admin authoring-ops planning, use these provisional manual-spec-driven IDs until Figma-backed names or controller-approved renames exist:
+- `coach_content_library`
+- `coach_journey_authoring`
+- `coach_publish_targeting`
+- `coach_packages_entitlements`
+- `coach_ops_audit`
 
 Avoid vague names like:
 - `coach_screen`

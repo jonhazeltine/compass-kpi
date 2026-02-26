@@ -66,6 +66,7 @@ flowchart TD
   B -- "No" --> C["Auth Flow"]
   B -- "Yes + web admin surface" --> D["Admin Shell"]
   B -- "Yes + member surface" --> E["Member Home Shell"]
+  B -.-> F["Coach Ops Portal / Admin Extension (future, role-gated)"]
 
   C --> C1["Welcome"]
   C1 --> C2["Projection Intro"]
@@ -76,6 +77,7 @@ flowchart TD
 
   E --> E1["KPI Dashboard (member app shell)"]
   E --> E2["Profile / Goals"]
+  D -.-> F
 ```
 
 ## Persona Model (Intended)
@@ -89,6 +91,7 @@ flowchart LR
   P --> S5["Profile"]
   P --> S6["Settings & Payment"]
   P --> S7["Coaching / Communication (cross-cutting)"]
+  P -.-> S8["Coach Ops Authoring / Publishing (portal/admin extension)"]
 
   U1["Solo User"] --> S1
   U1 --> S2
@@ -112,6 +115,8 @@ flowchart LR
   U3 --> S5
   U3 --> S6
   U3 --> S7
+
+  U4["Coach (authoring/ops)"] -.-> S8
 ```
 
 ## Coaching / Communication Overlay (Intended)
@@ -150,9 +155,52 @@ Manual-spec-driven planning only (no Figma-backed coaching screens identified in
 | Team Dashboard member coaching progress / updates | Team Member | `communication`, `coaching_content` | `coaching_journeys`, `inbox_channels` | `🟡 stub` | `🟡 partial` | embedded module CTAs | W2 routes Team Member updates CTA into team-scoped `inbox_channels`; journeys remain shell-depth only. |
 | Challenge Details / Results coaching block | Team Leader, Team Member, Solo User | `sponsor_challenge_coaching`, `communication` | `inbox_channels`, `channel_thread`, `coaching_journey_detail` | `🟡 stub` | `🟡 partial` | challenge detail CTA/link block | W2 routes Challenge Updates CTA into context-scoped `channel_thread` (challenge/sponsor shell context). Challenge payload ownership remains separate. |
 | Profile / Settings coaching prefs / notifications | Team Leader, Team Member, Solo User | `goal_setting_momentum`, `communication` | `inbox`, profile prefs subsection (manual-spec-driven) | `🟡 stub` | `🟡 recommended` | settings CTA / subsection | W1 placeholder prefs/notifications allocation implemented inside `user` coaching shell surface. |
-| Inbox / Channels dedicated flow | Team Leader, Team Member, Solo User | `communication` | `inbox`, `inbox_channels`, `channel_thread` | `🟡 stub` | `🟡 partial` | dedicated flow shell | W2 adds context-aware channel list/thread entry routing (team/challenge/sponsor/community shell contexts) in state-driven `KPIDashboardScreen`; message read/send integration deferred. |
-| Broadcast composer (leader/admin role-gated) | Team Leader (Admin/Coach later per DEP-003) | `communication` | `coach_broadcast_compose` | `🟡 stub` | `🟡 partial` | Team Dashboard + Inbox role-gated CTA | W2 adds leader-only entry routing with audience context labels; send API wiring remains deferred. |
+| Inbox / Channels dedicated flow | Team Leader, Team Member, Solo User | `communication` | `inbox`, `inbox_channels`, `channel_thread` | `🟡 stub` | `🟡 partial` | dedicated flow shell | W4 adds API-backed channel list fetch (`GET /api/channels`), thread reads (`GET /api/channels/{id}/messages`), message send (`POST /api/channels/{id}/messages`), and mark-seen (`POST /api/messages/mark-seen`) with context-aware filtering/fallbacks. |
+| Broadcast composer (leader/admin role-gated) | Team Leader (Admin/Coach later per DEP-003) | `communication` | `coach_broadcast_compose` | `🟡 stub` | `🟡 partial` | Team Dashboard + Inbox role-gated CTA | W4 wires leader broadcast send via `/api/channels/{id}/broadcast` (channel-based path) with UI role gating + API error handling; server remains source of permission/throttle enforcement. |
 | Coaching Journeys dedicated flow | Team Leader, Team Member, Solo User | `coaching_content` | `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail` | `🟡 stub` | `🟡 partial` | Home/Team/Challenge embedded CTA | W3 wires API-backed journeys list/detail and explicit lesson progress actions (`GET /api/coaching/journeys*`, `GET /api/coaching/progress`, `POST /api/coaching/lessons/{id}/progress`); no KPI logging writes and no auto-complete on view. |
+
+## Coach / Admin Authoring-Delivery Companion Overlay (Intended, Manual-Spec-Driven)
+
+Coach persona planning is modeled as an authoring/ops companion layer (admin-web extension or hybrid portal), not a member runtime fork.
+
+```mermaid
+flowchart LR
+  CA["🟡 Coach/Admin Authoring Layer (planning active)"] --> CL["⚪ Coach Content Library"]
+  CA --> JA["⚪ Journey Authoring Studio"]
+  CA --> PT["⚪ Publishing & Targeting"]
+  CA --> PE["⚪ Packages / Entitlements"]
+  CA --> OA["⚪ Ops Audit / Approvals"]
+
+  PT -.-> RD["🟡 Runtime Delivery Assignments (published metadata)"]
+  PE -.-> RD
+  RD --> RJ["🟡 Coaching Journeys (member runtime)"]
+  RD --> RC["🟡 Challenge Coaching Overlays"]
+  RD --> RT["🟡 Team Coaching Modules"]
+  RD --> RI["🟡 Inbox / Channels context routing"]
+```
+
+## Coach Authoring / Packaging Touchpoints and Handoff Status
+
+| Authoring/ops surface | Persona(s) | Capability group(s) | Handoff target (runtime) | Status | Boundary note |
+|---|---|---|---|---|---|
+| Coach Content Library (`coach_content_library`) | Coach, Admin operator | `coaching_content`, `communication` templates | `coaching_journeys*`, `inbox*` template usage | `⚪ planned` | Authoring/curation only; runtime delivery never edits canonical content here. |
+| Journey Authoring Studio (`coach_journey_authoring`) | Coach | `coaching_content` | `coaching_journeys*` published journey versions | `⚪ planned` | Draft/review/publish lifecycle is ops concern, not member runtime concern. |
+| Publishing & Targeting (`coach_publish_targeting`) | Coach, Admin operator, Sponsor ops (limited) | `communication`, `sponsor_challenge_coaching` | Team/Challenge/Profile overlays + `inbox*` + `coaching_journeys*` | `⚪ planned` | Produces targeting/assignment metadata; must not rewrite challenge participation state. |
+| Coaching Packages / Entitlements (`coach_packages_entitlements`) | Admin operator, Coach (limited), Sponsor ops (limited sponsor scopes) | `sponsor_challenge_coaching`, paid packaging | Runtime visibility/entitlement gating | `⚪ planned` | Packaging/access logic separated from journey authoring and runtime rendering. |
+| Coach Ops Audit / Approvals (`coach_ops_audit`) | Admin operator | `communication`, `coaching_content` (+ `ai_coach_assist` later) | Policy constraints on runtime allowed actions | `⚪ planned` | Governance/audit layer; no direct KPI data mutation. |
+
+## Authoring -> Runtime Publishing Handoff Rules (Planning Boundary)
+
+- Runtime coaching surfaces (`coaching_journeys*`, challenge overlays, team modules, `inbox*`) consume published assignments and content metadata only.
+- Authoring/ops surfaces own:
+  - draft/review/publish lifecycle
+  - package composition (`team`, `sponsored`, `paid`)
+  - targeting and activation windows
+  - sponsor/admin approvals and rollback
+- Sponsored challenge boundary remains unchanged:
+  - challenge system owns participation/eligibility/results
+  - coaching owns linked content/comms experiences
+- Paid coaching entitlement decisions are package/access inputs to runtime delivery, not runtime journey authoring behavior.
 
 ## Member App Shell (Intended)
 
