@@ -64,19 +64,22 @@ These are the coaching capability groups Compass should use for planning and imp
 
 ## Persona Access Matrix (Intended)
 
+This table covers runtime/delivery persona access (including coach runtime operator behavior).
+Coach also appears in the separate authoring/ops matrix below because coach spans both runtime surfaces and portal/ops surfaces.
+
 Legend:
 - `full`: can create/manage/send
 - `participant`: can view/respond/consume/complete
 - `limited`: subset only
 - `none`: no direct access
 
-| Capability group | Team Leader | Team Member | Solo User | Challenge Sponsor | Notes |
-|---|---|---|---|---|---|
-| `communication` | `full` | `participant` | `participant/limited` | `limited` (sponsor-scoped channels/broadcast tools only) | Solo access may be community/challenge scoped, no team admin comms. Sponsor scope must remain challenge/sponsor constrained. |
-| `coaching_content` | `full` (assign/broadcast + view progress) | `participant` | `participant` | `limited` (sponsor-scoped content library access/linking; no canonical lesson authoring by default) | Team leader may also be coach depending on DEP-003. |
-| `goal_setting_momentum` | `full` (team view + own) | `participant` (own + team visibility) | `participant` (own) | `none` (challenge member KPI visibility only; no KPI logging) | Must not mutate KPI source-of-truth. |
-| `sponsor_challenge_coaching` | `full/limited` (campaign delivery) | `participant` | `participant` | `full/limited` (sponsor campaign comms/content + member KPI visibility within sponsor scope) | Overlaps sponsored challenges and challenge participation flows. |
-| `ai_coach_assist` | `full` (approval + send) | `none/limited` | `none/limited` | `none/limited` (policy-limited sponsor review inputs later) | Phase-later; approval-first required. |
+| Capability group | Team Leader | Team Member | Solo User | Coach (runtime operator) | Challenge Sponsor | Notes |
+|---|---|---|---|---|---|---|
+| `communication` | `full` | `participant` | `participant/limited` | `full` (coach-scoped channels/cohorts/broadcasts within server-enforced scope) | `limited` (sponsor-scoped channels/broadcast tools only) | Solo access may be community/challenge scoped, no team admin comms. Coach runtime channels may include cohort-based channels for non-team individuals. Sponsor scope must remain challenge/sponsor constrained. |
+| `coaching_content` | `full` (assign/broadcast + view progress) | `participant` | `participant` | `full/participant` (deliver coaching guidance, assign/present approved content, view progress in scope) | `limited` (sponsor-scoped content library access/linking; no canonical lesson authoring by default) | Team leader may also be coach depending on DEP-003. Coach authoring ownership is modeled in the authoring/ops matrix below. |
+| `goal_setting_momentum` | `full` (team view + own) | `participant` (own + team visibility) | `participant` (own) | `limited` (guidance context + member/cohort visibility in scope, no KPI logging) | `none` (challenge member KPI visibility only; no KPI logging) | Must not mutate KPI source-of-truth. |
+| `sponsor_challenge_coaching` | `full/limited` (campaign delivery) | `participant` | `participant` | `full/limited` (coach participation in sponsor-linked coaching delivery within scope) | `full/limited` (sponsor campaign comms/content + member KPI visibility within sponsor scope) | Overlaps sponsored challenges and challenge participation flows. |
+| `ai_coach_assist` | `full` (approval + send) | `none/limited` | `none/limited` | `full` (coach-facing recommendations / next-best-actions, approval-first) | `none/limited` (policy-limited sponsor review inputs later) | Phase-later; approval-first required. Admin audit remains secondary oversight, not primary coach workflow. |
 
 ## Coach / Ops Access Model (Authoring + Publishing)
 
