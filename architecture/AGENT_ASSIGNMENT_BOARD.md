@@ -62,6 +62,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `ADMIN-A2-TABLE-OPS-FIXPACK-B` | `committed+pushed` | `A2 (parallel with M6 coaching planning)` | `Admin operator` | `admin KPI catalog + challenge templates table ops` | `/admin/kpis`, `/admin/challenge-templates` (web admin tables/forms only) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web, no Figma parity requirement for this swath) | Accepted and pushed: baseline A2 fixpack + sorting follow-up landed (`91de8d2`, `6854cd1`). Owner cleared baseline manual validation blocker and deferred pagination; sortable KPI/template headers (asc/desc) added. |
 | `COACHING-UI-PACKAGE-VISIBILITY-GATING-A` | `committed+pushed` | `M6 coaching slice (runtime UI gating + fallback behavior)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`package visibility + entitlement UI gating`) | `Challenge Details/Results`, `coaching_journeys*`, `inbox*`, Team coaching modules (existing W3/W4 surfaces) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven + accepted packaging docs (`COACHING-PACKAGING-SPONSORED-PAID-A`) | Accepted and pushed: runtime package visibility/entitlement banners + safe fallback/gated/blocked states across W3/W4 coaching surfaces, with UI-only contract-gap triage and no backend/schema changes. |
 | `COACHING-BACKEND-PREP-PACKAGE-READMODEL-A` | `committed+pushed` | `M6 coaching slice (backend-prep planning/spec)` | `Admin operator`, `Coach`, downstream `Leader/Member/Solo` | `coaching content operations / publishing` (`package read-model + entitlement outputs`) | backend contract/read-model planning only (no runtime UI code) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs/backend-prep planning only; separate worktree preferred) | manual-spec-driven + accepted packaging/docs stack | Accepted and pushed: endpoint-family coverage map, read-model output requirement matrix, gap classification, `decision needed` list, and follow-on backend/UI implementation specs for packaging/entitlement runtime outputs |
+| `COACHING-W5-AI-READINESS-BOUNDARY-A` | `queued` | `M6 coaching slice (W5 AI coach assist readiness; planning-only)` | `Coach`, `Admin operator`, downstream `Leader/Member/Solo` | `coaching / AI assist` (`W5 boundary + implementation-readiness gating`) | AI coach assist planning docs + intended wiring overlays (no app/backend code) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + accepted coaching/packaging/read-model docs stack | Define W5 AI coach assist boundary, approvals, runtime insertion points, and implementation-ready gates before any AI UI/backend coding. |
 | `ADMIN-A3_5-USERS-LIST-PAGING-SORT-A` | `committed+pushed` | `A3.5 (parallel with M6 backend-prep implementation)` | `Admin operator` | `admin users list/search/sort/paging polish` | `/admin/users` (primary), `/admin/reports` regression check only | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web; preserve existing patterns) | Accepted and pushed (`5e59ad1`): `/admin/users` sorting/paging workflow polish (header asc/desc toggles, row-window clarity, reset-sort, show-more count labels, row-window reset on filter/sort changes). Manual browser spot-check remains recommended follow-up. |
 
 ## Blocked Assignments
@@ -1389,6 +1390,64 @@ Deliver a substantial A3.5 admin users list workflow polish pass:
 
 #### Worker Launch (Short Form)
 `Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment ADMIN-A3_5-USERS-LIST-PAGING-SORT-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
+
+### `COACHING-W5-AI-READINESS-BOUNDARY-A`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M6 coaching slice (W5 AI coach assist readiness; planning-only)`
+- `Persona:` `Coach`, `Admin operator`, downstream `Leader/Member/Solo`
+- `Flow:` `coaching / AI assist` (`W5 boundary + implementation-readiness gating`)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred)
+- `Figma refs:` `manual-spec-driven` (no canonical AI coach Figma set locked yet)
+- `Dependency note:` Follows accepted coaching persona, packaging, backend-prep, backend in-family read-model implementation, and UI read-model consumption passes (`COACHING-ARCH-*`, `COACHING-PACKAGING-*`, `COACHING-BACKEND-*`, `COACHING-UI-PACKAGE-*`)
+
+#### Primary Objective
+Define an implementation-ready W5 AI coach assist boundary package before any AI UI/backend coding:
+- specify approved AI assist use-cases vs disallowed actions (especially KPI writes/forecast mutation boundaries)
+- map runtime insertion points across existing coaching surfaces (`journeys`, `lessons`, `channel_thread`, `broadcast composer`, challenge/team coaching modules)
+- define human-approval/owner-approval checkpoints and escalation path for AI-generated content/actions
+- define minimum API/data contracts and audit requirements for a first safe AI assist slice (planning only; no schema/API implementation)
+- produce next-wave assignment specs (UI shell/proto, backend approval queue integration, moderation/audit pass)
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+
+#### Constraints (Hard)
+- Planning/docs only (no app code, no backend code, no schema changes)
+- Preserve non-negotiables (especially no AI mutation of KPI source-of-truth or forecast base values)
+- Do not assume billing/entitlement authority decisions beyond accepted `decision needed` notes
+- Any proposed structural boundary change must be marked `decision needed` and reference `DECISIONS_LOG.md` requirement for future implementation
+
+#### Validation (Required)
+- Board updated first with status + completion/blocker notes
+- Docs consistency check across coaching matrix/addendum + intended screenmap/wiring references
+- Produce explicit `build now` vs `defer` split for W5 AI work
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `AI assist surfaces mapped`
+- `Allowed vs disallowed AI actions`
+- `Approval and audit gates`
+- `Required contract/data outputs (planning)`
+- `Decision needed items`
+- `Files touched`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-W5-AI-READINESS-BOUNDARY-A exactly as written. Follow the assignment block, validation requirements, and report-back format.`
 
 
 ## Controller Review Checklist (Reference)
