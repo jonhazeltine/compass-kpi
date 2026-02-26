@@ -68,6 +68,9 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W5-OPS-AI-MODERATION-AUDIT-PASS-A` | `committed+pushed` | `M6 coaching slice (W5 AI moderation/audit ops surfaces; approval-first)` | `Coach`, `Admin operator`, `Sponsor ops` (limited review only) | `coaching / AI assist` (`approval queue`, `audit`, `policy visibility`) | `coach_ops_audit` admin extension touchpoints (`admin/coaching/audit` + AI queue/detail companion views) | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W5 AI boundary docs | Accepted and pushed (`1a0342f`): Admin Shell `/admin/coaching/audit` AI moderation/audit companion UI (queue/detail/history + approval-first workflows) with docs sync; manual browser spot-check still recommended. |
 | `COACHING-SAMPLE-CONTENT-SEED-A` | `committed+pushed` | `M6 coaching slice (runtime realism / validation data)` | `Coach`, `Team Leader`, `Team Member`, `Solo User` | `coaching content delivery` (`journeys`, `lessons`, `assignments`, sample progress/messages`) | coaching journeys/lessons runtime surfaces + comms shells (`coaching_journeys*`, `inbox*`, Team/Challenge coaching modules) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree strongly preferred) | N/A (data/backend seed swath; no Figma requirement) | Accepted and pushed (`695cab6`): repeatable backend seed+verify script (`backend/scripts/coaching_sample_content_seed.js`) creates labeled coaching journeys/progress + team/sponsor channels/messages and smoke-verifies `/api/coaching/*` + `/api/channels*` endpoints with seeded auth users. |
 | `ADMIN-A3_5-USERS-LIST-PAGING-SORT-A` | `committed+pushed` | `A3.5 (parallel with M6 backend-prep implementation)` | `Admin operator` | `admin users list/search/sort/paging polish` | `/admin/users` (primary), `/admin/reports` regression check only | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web; preserve existing patterns) | Accepted and pushed (`5e59ad1`): `/admin/users` sorting/paging workflow polish (header asc/desc toggles, row-window clarity, reset-sort, show-more count labels, row-window reset on filter/sort changes). Manual browser spot-check remains recommended follow-up. |
+| `COACHING-W5-E2E-RUNTIME-VALIDATION-REFINEMENT-A` | `queued` | `M6 coaching slice (W5 AI assist end-to-end runtime validation/refinement)` | `Team Leader`, `Coach`, downstream `Member/Solo` spot-check | `coaching / AI assist` (`mobile seeded-data runtime validation + approval-first UX refinement`) | `inbox_channels`, `channel_thread`, `coach_broadcast_compose`, `coaching_journeys*`, `coaching_lesson_detail`, Team/Challenge coaching modules (approved AI insert points only) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred) | manual-spec-driven + accepted W5 boundary/docs + seeded data | Run a high-value W5 end-to-end runtime pass using seeded coaching data + live `/api/ai/suggestions*` queue flow, capture evidence, and tighten approval-first UX clarity (copy/feedback only unless a clear bug fix is needed). |
+| `COACHING-W5-OPS-AI-AUDIT-RUNTIME-VALIDATION-REFINEMENT-A` | `queued` | `M6 coaching slice (W5 AI moderation/audit runtime validation/refinement)` | `Admin operator`, `Coach` (reviewer), `Sponsor ops` limited | `coaching / AI assist` (`admin moderation/audit runtime validation + refinement`) | `/admin/coaching/audit` queue/detail/history views | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree preferred) | manual-spec-driven + accepted W5 boundary/docs | Run real browser validation against seeded/queued AI suggestions and tighten moderation/audit clarity in the admin ops UI without backend/schema/API changes. |
+| `COACHING-W6-NOTIFICATIONS-READINESS-BOUNDARY-A` | `queued` | `M6 broader scope (notifications + coaching integration readiness; planning-only)` | `Coach`, `Admin operator`, `Team Leader`, `Team Member`, `Solo User` | `notifications / coaching` (`readiness boundary + insertion map + assignment specs`) | notification entry points across `Home`, `Team`, `Challenge`, `coaching_journeys*`, `inbox*`, admin/ops policy surfaces (planning only) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + accepted M6 coaching stack | Define W6 notifications/coaching boundary, allowed notification classes, delivery/approval gates, and next implementation-ready assignment swaths without coding. |
 
 ## Blocked Assignments
 
@@ -1716,6 +1719,180 @@ Seed realistic coaching content and assignment/progress data (using existing sch
 
 #### Worker Launch (Short Form)
 `Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-SAMPLE-CONTENT-SEED-A exactly as written. Follow the assignment block, validation requirements, and report-back format.`
+
+### `COACHING-W5-E2E-RUNTIME-VALIDATION-REFINEMENT-A`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M6 coaching slice (W5 AI assist end-to-end runtime validation/refinement)`
+- `Persona:` `Team Leader`, `Coach`, downstream `Member/Solo` spot-check
+- `Flow:` `coaching / AI assist` (`mobile seeded-data runtime validation + approval-first UX refinement`)
+- `Owner:` `Mobile-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred)
+- `Figma refs:` `manual-spec-driven` (W5 boundary docs + existing coaching shells/content; no canonical AI Figma set)
+- `Dependency note:` Requires accepted W5 UI/backend/admin passes and seeded coaching content/messages (`695cab6`, `6916f88`, `eb128e8`, `17478bb`, `1a0342f`)
+
+#### Primary Objective
+Run a high-value end-to-end runtime validation/refinement pass for W5 AI assist using seeded coaching data and live `/api/ai/suggestions*` queue flows:
+- validate key approval-first states across mobile coaching surfaces (draft review, queue submit, queue status feedback, recent queue items)
+- capture screenshot evidence of seeded journeys/channels + AI review states
+- tighten UX copy/feedback only where it improves approval-first clarity and reduces ambiguity
+- preserve all disallowed actions (no autonomous send/publish, no KPI/forecast/challenge mutations)
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
+
+#### Constraints (Hard)
+- Mobile coaching surfaces only
+- No backend/API/schema changes
+- Approval-first only; no autonomous send/publish behavior
+- No KPI/forecast/challenge-state mutation paths
+- If docs status/wiring changes, sync `INTENDED_PERSONA_FLOW_SCREENMAP.md` + `INTENDED_WIRING_DIAGRAM.md`
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime walkthrough with seeded data + `/api/ai/suggestions*` queue create/list checks
+- Screenshot evidence for key W5 states on mobile
+- Confirm disallowed actions remain impossible
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Sprint/wave` (`M6 coaching slice / W5`)
+- `Persona(s) affected`
+- `Screens validated/refined`
+- `Approval-first states validated`
+- `UX refinements made`
+- `Disallowed actions preserved`
+- `Files touched` (with line refs)
+- `Validation performed` (including screenshots/API checks)
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-W5-E2E-RUNTIME-VALIDATION-REFINEMENT-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
+
+### `COACHING-W5-OPS-AI-AUDIT-RUNTIME-VALIDATION-REFINEMENT-A`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M6 coaching slice (W5 AI moderation/audit runtime validation/refinement)`
+- `Persona:` `Admin operator`, `Coach` (reviewer), `Sponsor ops` limited
+- `Flow:` `coaching / AI assist` (`admin moderation/audit runtime validation + refinement`)
+- `Owner:` `Admin-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated admin worktree preferred)
+- `Figma refs:` `manual-spec-driven`
+- `Dependency note:` Follows accepted `/admin/coaching/audit` ops surfaces (`1a0342f`) and W5 mobile/backend queue integration; seeded content + queue actions should now produce more realistic review states
+
+#### Primary Objective
+Validate and refine the W5 admin AI moderation/audit experience using real queue items where possible:
+- run manual browser spot-check on `/admin/coaching/audit` queue/detail/history views
+- verify approval-first review actions/labels/disclaimers are clear
+- tighten UI copy/sorting/filter/defaults only where it improves moderation/audit usability
+- preserve authz boundaries and no backend/schema/API changes
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+- `/Users/jon/compass-kpi/app/screens/AdminShellScreen.tsx`
+
+#### Constraints (Hard)
+- Admin web only (`/admin/coaching/audit`)
+- No backend/API/schema changes
+- No authz boundary widening
+- Approval-first / no-autonomous-send rules remain explicit
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Manual browser spot-check of `/admin/coaching/audit`
+- If queue data is sparse, document exact observed states and gaps
+- Sync docs only if runtime status/wiring meaningfully changes
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Sprint/wave` (`M6 coaching slice / W5`)
+- `Persona(s) affected`
+- `Admin AI audit states validated`
+- `Refinements made`
+- `Disallowed actions preserved`
+- `Files touched` (with line refs)
+- `Validation performed` (manual browser + tsc)
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-W5-OPS-AI-AUDIT-RUNTIME-VALIDATION-REFINEMENT-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
+
+### `COACHING-W6-NOTIFICATIONS-READINESS-BOUNDARY-A`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M6 broader scope (notifications + coaching integration readiness; planning-only)`
+- `Persona:` `Coach`, `Admin operator`, `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `notifications / coaching` (`readiness boundary + insertion map + assignment specs`)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred)
+- `Figma refs:` `manual-spec-driven` (notifications/coaching planning)
+- `Dependency note:` Follows accepted coaching persona, packaging, W5 AI boundary, and W5 AI/mobile/backend/admin baseline so notifications can be mapped to real surfaces and approval/audit gates
+
+#### Primary Objective
+Define an implementation-ready W6 notifications/coaching boundary package before coding notification delivery:
+- map notification classes (assignment, progress, message, AI review queue, approval outcomes, sponsor/package access, reminders)
+- define allowed channels (in-app inbox/banner/badge/push/email placeholders) and approval/audit gates where applicable
+- map insertion points across existing coaching/mobile/admin surfaces
+- define minimum contract/read-model outputs and next assignment swaths (`build now` vs `defer`)
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+
+#### Constraints (Hard)
+- Planning/docs only (no app/backend/schema/API code changes)
+- Preserve W5 approval-first AI boundaries
+- Any structural route/API boundary expansion must be marked `decision needed` and note `DECISIONS_LOG.md` requirement for future change sets
+
+#### Validation (Required)
+- Board updated first with status + completion/blocker notes
+- Cross-doc consistency check (screenmap/wiring/coaching docs)
+- Explicit `build now` vs `defer` split for W6 notifications work
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Sprint/wave` (`M6 broader scope / post-W5`)
+- `Persona(s) affected`
+- `Notification classes mapped`
+- `Delivery channels + gates`
+- `Insertion points`
+- `Required contract/read-model outputs (planning)`
+- `Decision needed items`
+- `Files touched`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-W6-NOTIFICATIONS-READINESS-BOUNDARY-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
 
 
 ## Controller Review Checklist (Reference)
