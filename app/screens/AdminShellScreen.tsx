@@ -487,6 +487,7 @@ function AdminKpiCatalogPanel({
   const [visibleRowCount, setVisibleRowCount] = useState(24);
   const editing = Boolean(draft.id);
   const selectedRowId = draft.id ?? null;
+  const hasActiveFilters = Boolean(searchQuery.trim() || statusFilter !== 'all' || typeFilter !== 'all');
   const filteredRows = rows.filter((row) => {
     const q = searchQuery.trim().toLowerCase();
     const matchesSearch =
@@ -510,6 +511,10 @@ function AdminKpiCatalogPanel({
       setVisibleRowCount(selectedRowInFilteredIndex + 1);
     }
   }, [selectedRowInFilteredIndex, visibleRowCount]);
+
+  useEffect(() => {
+    setVisibleRowCount(24);
+  }, [searchQuery, statusFilter, typeFilter]);
 
   return (
     <View style={styles.panel}>
@@ -798,13 +803,17 @@ function AdminKpiCatalogPanel({
           <View style={styles.formHeaderRow}>
             <Text style={styles.metaRow}>
               {filteredRows.length === 0
-                ? `No KPI rows match current search/filter (${rows.length} total loaded)`
+                ? rows.length === 0
+                  ? 'No KPI rows loaded yet.'
+                  : `No KPI rows match current search/filter (${rows.length} total loaded)`
                 : `Showing ${visibleRows.length} of ${filteredRows.length} filtered rows (${rows.length} total loaded)`}
             </Text>
             <View style={styles.formActionsRow}>
               {filteredRows.length > visibleRowCount ? (
                 <TouchableOpacity style={styles.smallGhostButton} onPress={() => setVisibleRowCount((prev) => prev + 24)}>
-                  <Text style={styles.smallGhostButtonText}>Show more</Text>
+                  <Text style={styles.smallGhostButtonText}>
+                    Show more ({Math.max(0, filteredRows.length - visibleRowCount)} left)
+                  </Text>
                 </TouchableOpacity>
               ) : null}
               {visibleRowCount > 24 ? (
@@ -815,6 +824,7 @@ function AdminKpiCatalogPanel({
             </View>
           </View>
           <View style={styles.tableWrap}>
+            <Text style={styles.tableFootnote}>Select a row to load it into the form above.</Text>
             <View style={styles.tableHeaderRow}>
               <Text style={[styles.tableHeaderCell, styles.colWide]}>KPI</Text>
               <Text style={[styles.tableHeaderCell, styles.colMd]}>Type</Text>
@@ -851,7 +861,33 @@ function AdminKpiCatalogPanel({
               </Pressable>
             ))}
             {filteredRows.length === 0 ? (
-              <Text style={styles.tableFootnote}>No KPI rows match the current search/filter. Adjust filters or clear search to continue browsing.</Text>
+              <>
+                <Text style={styles.tableFootnote}>
+                  {rows.length === 0
+                    ? 'No KPI definitions are loaded yet. Use the create form above to add the first KPI.'
+                    : 'No KPI rows match the current search/filter. Adjust filters or clear search to continue browsing.'}
+                </Text>
+                {hasActiveFilters ? (
+                  <View style={[styles.formActionsRow, { paddingHorizontal: 10, paddingBottom: 10, backgroundColor: '#FBFCFF' }]}>
+                    {searchQuery.trim() ? (
+                      <TouchableOpacity style={styles.smallGhostButton} onPress={() => onSearchQueryChange('')}>
+                        <Text style={styles.smallGhostButtonText}>Clear search</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {(statusFilter !== 'all' || typeFilter !== 'all') ? (
+                      <TouchableOpacity
+                        style={styles.smallGhostButton}
+                        onPress={() => {
+                          onStatusFilterChange('all');
+                          onTypeFilterChange('all');
+                        }}
+                      >
+                        <Text style={styles.smallGhostButtonText}>Reset filters</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                ) : null}
+              </>
             ) : filteredRows.length > visibleRowCount ? (
               <Text style={styles.tableFootnote}>
                 More KPI rows are available. Use “Show more” to continue browsing without leaving the current edit form.
@@ -906,6 +942,7 @@ function AdminChallengeTemplatesPanel({
   const [visibleRowCount, setVisibleRowCount] = useState(24);
   const editing = Boolean(draft.id);
   const selectedRowId = draft.id ?? null;
+  const hasActiveFilters = Boolean(searchQuery.trim() || statusFilter !== 'all');
   const filteredRows = rows.filter((row) => {
     const q = searchQuery.trim().toLowerCase();
     const matchesSearch =
@@ -927,6 +964,10 @@ function AdminChallengeTemplatesPanel({
       setVisibleRowCount(selectedRowInFilteredIndex + 1);
     }
   }, [selectedRowInFilteredIndex, visibleRowCount]);
+
+  useEffect(() => {
+    setVisibleRowCount(24);
+  }, [searchQuery, statusFilter]);
 
   return (
     <View style={styles.panel}>
@@ -1007,6 +1048,7 @@ function AdminChallengeTemplatesPanel({
             <Text style={styles.metaRow} numberOfLines={2}>
               {selectedRow.description?.trim() || '(no description)'}
             </Text>
+            <Text style={styles.metaRow}>Template ID: {selectedRow.id}</Text>
             {selectedRowHiddenByFilters ? (
               <Text style={styles.fieldHelpText}>Selected template is hidden by current search/filter settings, but remains loaded in the edit form.</Text>
             ) : null}
@@ -1062,13 +1104,17 @@ function AdminChallengeTemplatesPanel({
           <View style={styles.formHeaderRow}>
             <Text style={styles.metaRow}>
               {filteredRows.length === 0
-                ? `No template rows match current search/filter (${rows.length} total loaded)`
+                ? rows.length === 0
+                  ? 'No challenge template rows loaded yet.'
+                  : `No template rows match current search/filter (${rows.length} total loaded)`
                 : `Showing ${visibleRows.length} of ${filteredRows.length} filtered rows (${rows.length} total loaded)`}
             </Text>
             <View style={styles.formActionsRow}>
               {filteredRows.length > visibleRowCount ? (
                 <TouchableOpacity style={styles.smallGhostButton} onPress={() => setVisibleRowCount((prev) => prev + 24)}>
-                  <Text style={styles.smallGhostButtonText}>Show more</Text>
+                  <Text style={styles.smallGhostButtonText}>
+                    Show more ({Math.max(0, filteredRows.length - visibleRowCount)} left)
+                  </Text>
                 </TouchableOpacity>
               ) : null}
               {visibleRowCount > 24 ? (
@@ -1079,6 +1125,7 @@ function AdminChallengeTemplatesPanel({
             </View>
           </View>
           <View style={styles.tableWrap}>
+            <Text style={styles.tableFootnote}>Select a row to load it into the form above.</Text>
             <View style={styles.tableHeaderRow}>
               <Text style={[styles.tableHeaderCell, styles.colWide]}>Template</Text>
               <Text style={[styles.tableHeaderCell, styles.colSm]}>Status</Text>
@@ -1095,13 +1142,36 @@ function AdminChallengeTemplatesPanel({
                   <Text numberOfLines={1} style={styles.tableSecondary}>
                     {row.description?.trim() || '(no description)'}
                   </Text>
+                  <Text numberOfLines={1} style={styles.tableSecondary}>
+                    ID: {row.id}
+                  </Text>
                 </View>
                 <Text style={[styles.tableCellText, styles.colSm]}>{row.is_active ? 'active' : 'inactive'}</Text>
                 <Text style={[styles.tableCellText, styles.colSm]}>{formatDateShort(row.updated_at)}</Text>
               </Pressable>
             ))}
             {filteredRows.length === 0 ? (
-              <Text style={styles.tableFootnote}>No templates match the current search/filter. Adjust filters or clear search to continue browsing.</Text>
+              <>
+                <Text style={styles.tableFootnote}>
+                  {rows.length === 0
+                    ? 'No challenge templates are loaded yet. Use the create form above to add the first template.'
+                    : 'No templates match the current search/filter. Adjust filters or clear search to continue browsing.'}
+                </Text>
+                {hasActiveFilters ? (
+                  <View style={[styles.formActionsRow, { paddingHorizontal: 10, paddingBottom: 10, backgroundColor: '#FBFCFF' }]}>
+                    {searchQuery.trim() ? (
+                      <TouchableOpacity style={styles.smallGhostButton} onPress={() => onSearchQueryChange('')}>
+                        <Text style={styles.smallGhostButtonText}>Clear search</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {statusFilter !== 'all' ? (
+                      <TouchableOpacity style={styles.smallGhostButton} onPress={() => onStatusFilterChange('all')}>
+                        <Text style={styles.smallGhostButtonText}>Reset filters</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                ) : null}
+              </>
             ) : filteredRows.length > visibleRowCount ? (
               <Text style={styles.tableFootnote}>
                 More templates are available. Use “Show more” to continue browsing without leaving the current edit form.
