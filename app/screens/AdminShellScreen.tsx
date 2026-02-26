@@ -177,6 +177,33 @@ function sortRowsByUpdatedDesc<T extends { updated_at?: string | null; created_a
   });
 }
 
+type SortDirection = 'asc' | 'desc';
+
+function compareStrings(a: string, b: string) {
+  return a.localeCompare(b, undefined, { sensitivity: 'base' });
+}
+
+function compareNumbers(a: number, b: number) {
+  return a - b;
+}
+
+function compareBooleans(a: boolean, b: boolean) {
+  if (a === b) return 0;
+  return a ? 1 : -1;
+}
+
+function compareDates(a?: string | null, b?: string | null) {
+  const aTime = new Date(a ?? 0).getTime();
+  const bTime = new Date(b ?? 0).getTime();
+  const safeA = Number.isFinite(aTime) ? aTime : 0;
+  const safeB = Number.isFinite(bTime) ? bTime : 0;
+  return safeA - safeB;
+}
+
+function applySortDirection(value: number, direction: SortDirection) {
+  return direction === 'asc' ? value : -value;
+}
+
 function formatKpiRange(row: Pick<AdminKpiRow, 'delay_days' | 'hold_days' | 'ttc_definition' | 'ttc_days'>): string {
   if (row.delay_days != null && row.hold_days != null) {
     const start = row.delay_days;
@@ -484,7 +511,10 @@ function AdminKpiCatalogPanel({
   saveError: string | null;
   successMessage: string | null;
 }) {
+  type KpiSortKey = 'kpi' | 'type' | 'pc_weight' | 'range' | 'ttc' | 'decay' | 'status' | 'updated';
   const [visibleRowCount, setVisibleRowCount] = useState(24);
+  const [sortKey, setSortKey] = useState<KpiSortKey>('updated');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const editing = Boolean(draft.id);
   const selectedRowId = draft.id ?? null;
   const hasActiveFilters = Boolean(searchQuery.trim() || statusFilter !== 'all' || typeFilter !== 'all');
@@ -503,10 +533,56 @@ function AdminKpiCatalogPanel({
     const matchesType = typeFilter === 'all' || row.type === typeFilter;
     return matchesSearch && matchesStatus && matchesType;
   });
+  const sortedFilteredRows = useMemo(() => {
+    return [...filteredRows].sort((a, b) => {
+      let result = 0;
+      switch (sortKey) {
+        case 'kpi':
+          result =
+            compareStrings(a.name, b.name) ||
+            compareStrings(a.slug ?? a.id, b.slug ?? b.id);
+          break;
+        case 'type':
+          result = compareStrings(a.type, b.type) || compareStrings(a.name, b.name);
+          break;
+        case 'pc_weight':
+          result = compareNumbers(a.pc_weight ?? Number.NEGATIVE_INFINITY, b.pc_weight ?? Number.NEGATIVE_INFINITY);
+          break;
+        case 'range':
+          result = compareStrings(formatKpiRange(a), formatKpiRange(b)) || compareStrings(a.name, b.name);
+          break;
+        case 'ttc':
+          result = compareNumbers(a.ttc_days ?? Number.NEGATIVE_INFINITY, b.ttc_days ?? Number.NEGATIVE_INFINITY);
+          break;
+        case 'decay':
+          result = compareNumbers(a.decay_days ?? Number.NEGATIVE_INFINITY, b.decay_days ?? Number.NEGATIVE_INFINITY);
+          break;
+        case 'status':
+          result = compareBooleans(a.is_active, b.is_active) || compareStrings(a.name, b.name);
+          break;
+        case 'updated':
+          result = compareDates(a.updated_at, b.updated_at) || compareStrings(a.name, b.name);
+          break;
+      }
+      return applySortDirection(result, sortDirection);
+    });
+  }, [filteredRows, sortDirection, sortKey]);
   const selectedRow = selectedRowId ? rows.find((row) => row.id === selectedRowId) ?? null : null;
-  const selectedRowInFilteredIndex = selectedRowId ? filteredRows.findIndex((row) => row.id === selectedRowId) : -1;
+  const selectedRowInFilteredIndex = selectedRowId ? sortedFilteredRows.findIndex((row) => row.id === selectedRowId) : -1;
   const selectedRowHiddenByFilters = Boolean(selectedRowId && selectedRowInFilteredIndex === -1);
-  const visibleRows = filteredRows.slice(0, visibleRowCount);
+  const visibleRows = sortedFilteredRows.slice(0, visibleRowCount);
+
+  const onSortHeaderPress = (nextKey: KpiSortKey) => {
+    if (nextKey === sortKey) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection(nextKey === 'updated' ? 'desc' : 'asc');
+  };
+
+  const kpiSortLabel = (key: KpiSortKey, label: string) =>
+    `${label}${sortKey === key ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''}`;
 
   useEffect(() => {
     if (selectedRowInFilteredIndex >= 0 && selectedRowInFilteredIndex >= visibleRowCount) {
@@ -882,14 +958,46 @@ function AdminKpiCatalogPanel({
               Click a row to load it into the form above for editing. The selected row stays highlighted.
             </Text>
             <View style={styles.tableHeaderRow}>
-              <Text style={[styles.tableHeaderCell, styles.colWide]}>KPI</Text>
-              <Text style={[styles.tableHeaderCell, styles.colMd]}>Type</Text>
-              <Text style={[styles.tableHeaderCell, styles.colSm]}>PC Wt</Text>
-              <Text style={[styles.tableHeaderCell, styles.colMd]}>Range</Text>
-              <Text style={[styles.tableHeaderCell, styles.colSm]}>TTC</Text>
-              <Text style={[styles.tableHeaderCell, styles.colSm]}>Decay</Text>
-              <Text style={[styles.tableHeaderCell, styles.colSm]}>Status</Text>
-              <Text style={[styles.tableHeaderCell, styles.colSm]}>Updated</Text>
+              <Pressable style={styles.colWide} onPress={() => onSortHeaderPress('kpi')} accessibilityRole="button">
+                <Text style={[styles.tableHeaderCell, sortKey === 'kpi' && styles.tableHeaderCellActive]}>
+                  {kpiSortLabel('kpi', 'KPI')}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('type')} accessibilityRole="button">
+                <Text style={[styles.tableHeaderCell, sortKey === 'type' && styles.tableHeaderCellActive]}>
+                  {kpiSortLabel('type', 'Type')}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('pc_weight')} accessibilityRole="button">
+                <Text style={[styles.tableHeaderCell, sortKey === 'pc_weight' && styles.tableHeaderCellActive]}>
+                  {kpiSortLabel('pc_weight', 'PC Wt')}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('range')} accessibilityRole="button">
+                <Text style={[styles.tableHeaderCell, sortKey === 'range' && styles.tableHeaderCellActive]}>
+                  {kpiSortLabel('range', 'Range')}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('ttc')} accessibilityRole="button">
+                <Text style={[styles.tableHeaderCell, sortKey === 'ttc' && styles.tableHeaderCellActive]}>
+                  {kpiSortLabel('ttc', 'TTC')}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('decay')} accessibilityRole="button">
+                <Text style={[styles.tableHeaderCell, sortKey === 'decay' && styles.tableHeaderCellActive]}>
+                  {kpiSortLabel('decay', 'Decay')}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('status')} accessibilityRole="button">
+                <Text style={[styles.tableHeaderCell, sortKey === 'status' && styles.tableHeaderCellActive]}>
+                  {kpiSortLabel('status', 'Status')}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('updated')} accessibilityRole="button">
+                <Text style={[styles.tableHeaderCell, sortKey === 'updated' && styles.tableHeaderCellActive]}>
+                  {kpiSortLabel('updated', 'Updated')}
+                </Text>
+              </Pressable>
             </View>
             {visibleRows.map((row) => (
               <Pressable
@@ -997,7 +1105,10 @@ function AdminChallengeTemplatesPanel({
   saveError: string | null;
   successMessage: string | null;
 }) {
+  type TemplateSortKey = 'template' | 'status' | 'updated';
   const [visibleRowCount, setVisibleRowCount] = useState(24);
+  const [sortKey, setSortKey] = useState<TemplateSortKey>('updated');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const editing = Boolean(draft.id);
   const selectedRowId = draft.id ?? null;
   const hasActiveFilters = Boolean(searchQuery.trim() || statusFilter !== 'all');
@@ -1013,10 +1124,42 @@ function AdminChallengeTemplatesPanel({
       (statusFilter === 'active' ? row.is_active : !row.is_active);
     return matchesSearch && matchesStatus;
   });
+  const sortedFilteredRows = useMemo(() => {
+    return [...filteredRows].sort((a, b) => {
+      let result = 0;
+      switch (sortKey) {
+        case 'template':
+          result =
+            compareStrings(a.name, b.name) ||
+            compareStrings(a.description ?? '', b.description ?? '') ||
+            compareStrings(a.id, b.id);
+          break;
+        case 'status':
+          result = compareBooleans(a.is_active, b.is_active) || compareStrings(a.name, b.name);
+          break;
+        case 'updated':
+          result = compareDates(a.updated_at, b.updated_at) || compareStrings(a.name, b.name);
+          break;
+      }
+      return applySortDirection(result, sortDirection);
+    });
+  }, [filteredRows, sortDirection, sortKey]);
   const selectedRow = selectedRowId ? rows.find((row) => row.id === selectedRowId) ?? null : null;
-  const selectedRowInFilteredIndex = selectedRowId ? filteredRows.findIndex((row) => row.id === selectedRowId) : -1;
+  const selectedRowInFilteredIndex = selectedRowId ? sortedFilteredRows.findIndex((row) => row.id === selectedRowId) : -1;
   const selectedRowHiddenByFilters = Boolean(selectedRowId && selectedRowInFilteredIndex === -1);
-  const visibleRows = filteredRows.slice(0, visibleRowCount);
+  const visibleRows = sortedFilteredRows.slice(0, visibleRowCount);
+
+  const onSortHeaderPress = (nextKey: TemplateSortKey) => {
+    if (nextKey === sortKey) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection(nextKey === 'updated' ? 'desc' : 'asc');
+  };
+
+  const templateSortLabel = (key: TemplateSortKey, label: string) =>
+    `${label}${sortKey === key ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''}`;
 
   useEffect(() => {
     if (selectedRowInFilteredIndex >= 0 && selectedRowInFilteredIndex >= visibleRowCount) {
@@ -1233,9 +1376,21 @@ function AdminChallengeTemplatesPanel({
               Click a row to load it into the form above for editing. The selected row stays highlighted.
             </Text>
             <View style={styles.tableHeaderRow}>
-              <Text style={[styles.tableHeaderCell, styles.colWide]}>Template</Text>
-              <Text style={[styles.tableHeaderCell, styles.colSm]}>Status</Text>
-              <Text style={[styles.tableHeaderCell, styles.colSm]}>Updated</Text>
+              <Pressable style={styles.colWide} onPress={() => onSortHeaderPress('template')} accessibilityRole="button">
+                <Text style={[styles.tableHeaderCell, sortKey === 'template' && styles.tableHeaderCellActive]}>
+                  {templateSortLabel('template', 'Template')}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('status')} accessibilityRole="button">
+                <Text style={[styles.tableHeaderCell, sortKey === 'status' && styles.tableHeaderCellActive]}>
+                  {templateSortLabel('status', 'Status')}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('updated')} accessibilityRole="button">
+                <Text style={[styles.tableHeaderCell, sortKey === 'updated' && styles.tableHeaderCellActive]}>
+                  {templateSortLabel('updated', 'Updated')}
+                </Text>
+              </Pressable>
             </View>
             {visibleRows.map((row) => (
               <Pressable
@@ -4457,6 +4612,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  tableHeaderCellActive: {
+    color: '#204ECF',
   },
   tableDataRow: {
     flexDirection: 'row',
