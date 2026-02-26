@@ -204,6 +204,184 @@ function applySortDirection(value: number, direction: SortDirection) {
   return direction === 'asc' ? value : -value;
 }
 
+type AiSuggestionStatus = 'draft_pending_review' | 'pending_approval' | 'approved' | 'rejected';
+type AiApprovalTier = 'self_review' | 'coach' | 'admin' | 'sponsor_admin';
+
+type AdminAiAuditHistoryEntry = {
+  id: string;
+  at: string;
+  actorLabel: string;
+  action: 'requested' | 'edited' | 'submitted' | 'approved' | 'rejected';
+  note?: string | null;
+};
+
+type AdminAiSuggestionQueueItem = {
+  id: string;
+  requesterLabel: string;
+  requesterRole: string;
+  targetScopeSummary: string;
+  sourceSurface: string;
+  requestIntent: string;
+  status: AiSuggestionStatus;
+  requiredApprovalTier: AiApprovalTier;
+  disclaimerRequirements: string[];
+  safetyFlags: string[];
+  draftContent: string;
+  editedContentIndicator: boolean;
+  modelMeta: string;
+  createdAt: string;
+  updatedAt: string;
+  executionLinkageRef: string | null;
+  auditHistory: AdminAiAuditHistoryEntry[];
+};
+
+function getAiSuggestionStatusTone(status: AiSuggestionStatus) {
+  switch (status) {
+    case 'approved':
+      return { bg: '#EFFCF4', border: '#BFE6CC', text: '#1D7A4D', label: 'Approved' };
+    case 'rejected':
+      return { bg: '#FFF4F2', border: '#F2C0B9', text: '#B2483A', label: 'Rejected' };
+    case 'pending_approval':
+      return { bg: '#FFF8E9', border: '#F2D89A', text: '#946300', label: 'Pending approval' };
+    default:
+      return { bg: '#EEF3FF', border: '#CEDBFF', text: '#204ECF', label: 'Draft pending review' };
+  }
+}
+
+function formatAiStatusLabel(status: AiSuggestionStatus) {
+  switch (status) {
+    case 'draft_pending_review':
+      return 'draft pending review';
+    case 'pending_approval':
+      return 'pending approval';
+    case 'approved':
+      return 'approved';
+    case 'rejected':
+      return 'rejected';
+    default:
+      return status;
+  }
+}
+
+function promptForAuditNote(actionLabel: string): string | null {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const input = window.prompt(`${actionLabel} note (optional; stored in local UI audit history for this session):`, '');
+    if (input == null) return null;
+    return input.trim();
+  }
+  return '';
+}
+
+function buildStubAiSuggestionQueue(): AdminAiSuggestionQueueItem[] {
+  return [
+    {
+      id: 'aisug_w5_001',
+      requesterLabel: 'Taylor Coach',
+      requesterRole: 'coach',
+      targetScopeSummary: 'Team Alpha leaders (broadcast draft)',
+      sourceSurface: 'coach_broadcast_compose',
+      requestIntent: 'draft_broadcast',
+      status: 'pending_approval',
+      requiredApprovalTier: 'admin',
+      disclaimerRequirements: ['Human approval required before send', 'Audience scope must be reviewed'],
+      safetyFlags: ['broad_audience_scope', 'sponsor_language_review'],
+      draftContent:
+        'Draft reminder for Team Alpha leaders to complete this week’s coaching check-in and submit one blocker for review in the channel thread.',
+      editedContentIndicator: true,
+      modelMeta: 'gpt-5-family (label only)',
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
+      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+      executionLinkageRef: null,
+      auditHistory: [
+        {
+          id: 'h1',
+          at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
+          actorLabel: 'Taylor Coach',
+          action: 'requested',
+          note: 'Broadcast draft requested from approved coach surface.',
+        },
+        {
+          id: 'h2',
+          at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+          actorLabel: 'Taylor Coach',
+          action: 'edited',
+          note: 'Shortened intro and clarified call to action.',
+        },
+      ],
+    },
+    {
+      id: 'aisug_w5_002',
+      requesterLabel: 'Jordan Leader',
+      requesterRole: 'team_leader',
+      targetScopeSummary: 'Channel #team-alpha-coaching reply',
+      sourceSurface: 'channel_thread',
+      requestIntent: 'draft_reply',
+      status: 'approved',
+      requiredApprovalTier: 'coach',
+      disclaimerRequirements: ['Human send still required'],
+      safetyFlags: ['none'],
+      draftContent:
+        'Suggested reply acknowledging the blocker, summarizing next steps, and inviting a follow-up check-in tomorrow.',
+      editedContentIndicator: false,
+      modelMeta: 'gpt-5-family (label only)',
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 26).toISOString(),
+      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+      executionLinkageRef: 'channel_message:msg_3821',
+      auditHistory: [
+        {
+          id: 'h3',
+          at: new Date(Date.now() - 1000 * 60 * 60 * 26).toISOString(),
+          actorLabel: 'Jordan Leader',
+          action: 'requested',
+          note: 'Requested tone-softening rewrite for coaching reply.',
+        },
+        {
+          id: 'h4',
+          at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+          actorLabel: 'Sam Coach Reviewer',
+          action: 'approved',
+          note: 'Approved with no edits; human send required.',
+        },
+      ],
+    },
+    {
+      id: 'aisug_w5_003',
+      requesterLabel: 'Riley Coach',
+      requesterRole: 'coach',
+      targetScopeSummary: 'Journey lesson reflection prompt',
+      sourceSurface: 'coaching_lesson_detail',
+      requestIntent: 'reflection_prompt',
+      status: 'rejected',
+      requiredApprovalTier: 'coach',
+      disclaimerRequirements: ['Advisory-only content', 'No progress mutation'],
+      safetyFlags: ['kpi_action_language'],
+      draftContent:
+        'Prompt draft contained action wording that could be interpreted as KPI logging instruction instead of reflection guidance.',
+      editedContentIndicator: false,
+      modelMeta: 'gpt-5-family (label only)',
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 14).toISOString(),
+      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 13).toISOString(),
+      executionLinkageRef: null,
+      auditHistory: [
+        {
+          id: 'h5',
+          at: new Date(Date.now() - 1000 * 60 * 60 * 14).toISOString(),
+          actorLabel: 'Riley Coach',
+          action: 'requested',
+          note: 'Lesson-context reflection prompt draft request.',
+        },
+        {
+          id: 'h6',
+          at: new Date(Date.now() - 1000 * 60 * 60 * 13).toISOString(),
+          actorLabel: 'Admin Ops Reviewer',
+          action: 'rejected',
+          note: 'Rejected due to disallowed KPI mutation/action framing.',
+        },
+      ],
+    },
+  ];
+}
+
 function formatKpiRange(row: Pick<AdminKpiRow, 'delay_days' | 'hold_days' | 'ttc_definition' | 'ttc_days'>): string {
   if (row.delay_days != null && row.hold_days != null) {
     const start = row.delay_days;
@@ -2447,6 +2625,447 @@ function AdminUsersPanel({
   );
 }
 
+function AdminCoachingAuditPanel() {
+  type AuditSortKey = 'status' | 'requester' | 'scope' | 'surface' | 'updated';
+  const [rows, setRows] = useState<AdminAiSuggestionQueueItem[]>(() => buildStubAiSuggestionQueue());
+  const [statusFilter, setStatusFilter] = useState<'all' | AiSuggestionStatus>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortKey, setSortKey] = useState<AuditSortKey>('updated');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [visibleRowCount, setVisibleRowCount] = useState(12);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return rows.filter((row) => {
+      const matchesStatus = statusFilter === 'all' || row.status === statusFilter;
+      const matchesSearch =
+        !q ||
+        row.id.toLowerCase().includes(q) ||
+        row.requesterLabel.toLowerCase().includes(q) ||
+        row.targetScopeSummary.toLowerCase().includes(q) ||
+        row.sourceSurface.toLowerCase().includes(q) ||
+        row.requestIntent.toLowerCase().includes(q) ||
+        row.safetyFlags.join(' ').toLowerCase().includes(q);
+      return matchesStatus && matchesSearch;
+    });
+  }, [rows, searchQuery, statusFilter]);
+
+  const sortedRows = useMemo(() => {
+    return [...filteredRows].sort((a, b) => {
+      let result = 0;
+      switch (sortKey) {
+        case 'status':
+          result = compareStrings(formatAiStatusLabel(a.status), formatAiStatusLabel(b.status));
+          break;
+        case 'requester':
+          result = compareStrings(a.requesterLabel, b.requesterLabel) || compareStrings(a.requesterRole, b.requesterRole);
+          break;
+        case 'scope':
+          result = compareStrings(a.targetScopeSummary, b.targetScopeSummary);
+          break;
+        case 'surface':
+          result = compareStrings(a.sourceSurface, b.sourceSurface) || compareStrings(a.requestIntent, b.requestIntent);
+          break;
+        case 'updated':
+          result = compareDates(a.updatedAt, b.updatedAt);
+          break;
+      }
+      return applySortDirection(result || compareStrings(a.id, b.id), sortDirection);
+    });
+  }, [filteredRows, sortDirection, sortKey]);
+
+  const visibleRows = sortedRows.slice(0, visibleRowCount);
+  const selectedRow = selectedId ? rows.find((row) => row.id === selectedId) ?? null : null;
+  const selectedRowInFilteredIndex = selectedId ? sortedRows.findIndex((row) => row.id === selectedId) : -1;
+  const selectedRowHiddenByFilters = Boolean(selectedId && selectedRowInFilteredIndex === -1);
+
+  useEffect(() => {
+    setVisibleRowCount(12);
+  }, [searchQuery, statusFilter, sortKey, sortDirection]);
+
+  useEffect(() => {
+    if (!selectedId && rows.length) setSelectedId(rows[0]?.id ?? null);
+  }, [rows, selectedId]);
+
+  useEffect(() => {
+    if (selectedRowInFilteredIndex >= 0 && selectedRowInFilteredIndex >= visibleRowCount) {
+      setVisibleRowCount(selectedRowInFilteredIndex + 1);
+    }
+  }, [selectedRowInFilteredIndex, visibleRowCount]);
+
+  const onSortHeaderPress = (nextKey: AuditSortKey) => {
+    if (nextKey === sortKey) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection(nextKey === 'updated' ? 'desc' : 'asc');
+  };
+  const sortLabel = (key: AuditSortKey, label: string) =>
+    `${label}${sortKey === key ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''}`;
+
+  const appendAuditEvent = (
+    rowId: string,
+    entry: Omit<AdminAiAuditHistoryEntry, 'id' | 'at'>,
+    nextStatus?: AiSuggestionStatus
+  ) => {
+    setRows((prev) =>
+      prev.map((row) => {
+        if (row.id !== rowId) return row;
+        const now = new Date().toISOString();
+        return {
+          ...row,
+          status: nextStatus ?? row.status,
+          updatedAt: now,
+          auditHistory: [{ id: `${rowId}:${Date.now()}`, at: now, ...entry }, ...row.auditHistory],
+        };
+      })
+    );
+  };
+
+  const handleApprove = async () => {
+    if (!selectedRow) return;
+    const confirmed = await confirmDangerAction(`Approve AI suggestion ${selectedRow.id}? Human send/publish remains required.`);
+    if (!confirmed) return;
+    const note = promptForAuditNote('Approve');
+    if (note === null) return;
+    appendAuditEvent(selectedRow.id, {
+      actorLabel: 'Admin operator (local UI)',
+      action: 'approved',
+      note: note || 'Approved in UI queue. Execution remains human-triggered via existing runtime paths.',
+    }, 'approved');
+    setNotice(`Approved ${selectedRow.id} (queue-only action; no send/publish performed).`);
+  };
+
+  const handleReject = async () => {
+    if (!selectedRow) return;
+    const confirmed = await confirmDangerAction(`Reject AI suggestion ${selectedRow.id}?`);
+    if (!confirmed) return;
+    const note = promptForAuditNote('Reject');
+    if (note === null) return;
+    appendAuditEvent(selectedRow.id, {
+      actorLabel: 'Admin operator (local UI)',
+      action: 'rejected',
+      note: note || 'Rejected during policy/safety review in admin audit queue.',
+    }, 'rejected');
+    setNotice(`Rejected ${selectedRow.id}; audit history updated.`);
+  };
+
+  const handleReturnToPending = () => {
+    if (!selectedRow) return;
+    appendAuditEvent(selectedRow.id, {
+      actorLabel: 'Admin operator (local UI)',
+      action: 'submitted',
+      note: 'Returned to pending approval after follow-up review.',
+    }, 'pending_approval');
+    setNotice(`Returned ${selectedRow.id} to pending approval.`);
+  };
+
+  const copySelectedAuditSummary = async () => {
+    if (!selectedRow) return;
+    const text = [
+      `Suggestion ID: ${selectedRow.id}`,
+      `Status: ${formatAiStatusLabel(selectedRow.status)}`,
+      `Requester: ${selectedRow.requesterLabel} (${selectedRow.requesterRole})`,
+      `Scope: ${selectedRow.targetScopeSummary}`,
+      `Source: ${selectedRow.sourceSurface}`,
+      `Intent: ${selectedRow.requestIntent}`,
+      `Required approval tier: ${selectedRow.requiredApprovalTier}`,
+      `Safety flags: ${selectedRow.safetyFlags.join(', ')}`,
+      `Disclaimers: ${selectedRow.disclaimerRequirements.join(' | ')}`,
+    ].join('\n');
+    const ok = await copyTextToClipboard(text);
+    setNotice(ok ? `Copied audit summary for ${selectedRow.id}` : 'Could not copy audit summary (clipboard unavailable)');
+  };
+
+  const aiPolicyGuardrails = [
+    'No KPI log / forecast / challenge mutation actions are exposed in this surface.',
+    'Approve/Reject updates queue state + audit history only (approval-first UI workflow).',
+    'No autonomous send/publish paths; execution remains human-triggered elsewhere.',
+  ];
+
+  return (
+    <View style={styles.panel}>
+      <View style={styles.panelTopRow}>
+        <View style={styles.panelTitleBlock}>
+          <Text style={styles.eyebrow}>/admin/coaching/audit</Text>
+          <Text style={styles.panelTitle}>Coach Ops Audit + AI Approvals</Text>
+        </View>
+        <View style={[styles.stagePill, { backgroundColor: '#FFF5E6', borderColor: '#F5D9AA' }]}>
+          <Text style={[styles.stagePillText, { color: '#9A5A00' }]}>W5 Approval-First</Text>
+        </View>
+      </View>
+      <Text style={styles.panelBody}>
+        Admin/coach governance companion surface for AI suggestion approval queue review, rejection, and audit history inspection.
+      </Text>
+      <View style={styles.alertErrorBox}>
+        <Text style={styles.alertErrorTitle}>Disallowed actions preserved</Text>
+        {aiPolicyGuardrails.map((line) => (
+          <Text key={line} style={styles.alertErrorText}>{line}</Text>
+        ))}
+      </View>
+      <View style={styles.filterBar}>
+        <View style={styles.formHeaderRow}>
+          <Text style={styles.formTitle}>Queue Filters</Text>
+          <Text style={styles.metaRow}>
+            {filteredRows.length} filtered / {rows.length} total • sort {sortKey} ({sortDirection})
+          </Text>
+        </View>
+        {notice ? <Text style={[styles.metaRow, styles.successText]}>{notice}</Text> : null}
+        <Text style={styles.fieldHelpText}>
+          Backend queue/read-model fields may be stubbed during W5 sequencing. This panel uses local sample data when backend shaping is unavailable.
+        </Text>
+        <View style={[styles.formField, styles.formFieldWide]}>
+          <Text style={styles.formLabel}>Search</Text>
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={styles.input}
+            placeholder="Search suggestion id / requester / scope / surface / flags"
+          />
+        </View>
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Status</Text>
+          <View style={styles.inlineToggleRow}>
+            {(['all', 'draft_pending_review', 'pending_approval', 'approved', 'rejected'] as const).map((value) => {
+              const selected = statusFilter === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => setStatusFilter(value)}
+                  style={[styles.toggleChip, selected && styles.toggleChipOn]}
+                >
+                  <Text style={[styles.toggleChipText, selected && styles.toggleChipTextOn]}>
+                    {value === 'all' ? 'all' : formatAiStatusLabel(value)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+      <View style={styles.usersTopSplit}>
+        <View style={[styles.tableWrap, { flex: 1, minWidth: 360 }]}>
+          <View style={[styles.formHeaderRow, { paddingHorizontal: 12, paddingTop: 10 }]}>
+            <Text style={styles.formTitle}>Approval Queue</Text>
+            <View style={styles.formActionsRow}>
+              {(searchQuery.trim() || statusFilter !== 'all') ? (
+                <TouchableOpacity style={styles.smallGhostButton} onPress={() => { setSearchQuery(''); setStatusFilter('all'); }}>
+                  <Text style={styles.smallGhostButtonText}>Reset filters</Text>
+                </TouchableOpacity>
+              ) : null}
+              {(sortKey !== 'updated' || sortDirection !== 'desc') ? (
+                <TouchableOpacity style={styles.smallGhostButton} onPress={() => { setSortKey('updated'); setSortDirection('desc'); }}>
+                  <Text style={styles.smallGhostButtonText}>Reset sort</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+          <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Click a suggestion row to open approval details, flags, and audit history.</Text>
+          {selectedRowHiddenByFilters ? (
+            <View style={[styles.noticeBox, { marginHorizontal: 12, marginTop: 8 }]}>
+              <Text style={styles.noticeTitle}>Selected suggestion is hidden by current filters</Text>
+              <Text style={styles.noticeText}>{selectedRow?.id} remains open in detail view but is filtered out of the queue list.</Text>
+              <View style={styles.formActionsRow}>
+                <TouchableOpacity style={styles.noticeButton} onPress={() => { setSearchQuery(''); setStatusFilter('all'); }}>
+                  <Text style={styles.noticeButtonText}>Show selected row</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+          <View style={[styles.formHeaderRow, { paddingHorizontal: 12, paddingTop: 8 }]}>
+            <Text style={styles.metaRow}>
+              {filteredRows.length === 0
+                ? `No AI queue rows match current filters (${rows.length} total)`
+                : `Showing ${visibleRows.length} of ${filteredRows.length} filtered rows (${rows.length} total)`}
+            </Text>
+            <View style={styles.formActionsRow}>
+              {filteredRows.length > visibleRowCount ? (
+                <TouchableOpacity style={styles.smallGhostButton} onPress={() => setVisibleRowCount((prev) => prev + 12)}>
+                  <Text style={styles.smallGhostButtonText}>Show more ({Math.max(0, filteredRows.length - visibleRowCount)} left)</Text>
+                </TouchableOpacity>
+              ) : null}
+              {visibleRowCount > 12 ? (
+                <TouchableOpacity style={styles.smallGhostButton} onPress={() => setVisibleRowCount(12)}>
+                  <Text style={styles.smallGhostButtonText}>Reset rows</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+          <View style={styles.tableHeaderRow}>
+            <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('status')} accessibilityRole="button">
+              <Text style={[styles.tableHeaderCell, sortKey === 'status' && styles.tableHeaderCellActive]}>{sortLabel('status', 'Status')}</Text>
+            </Pressable>
+            <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('requester')} accessibilityRole="button">
+              <Text style={[styles.tableHeaderCell, sortKey === 'requester' && styles.tableHeaderCellActive]}>{sortLabel('requester', 'Requester')}</Text>
+            </Pressable>
+            <Pressable style={styles.colWide} onPress={() => onSortHeaderPress('scope')} accessibilityRole="button">
+              <Text style={[styles.tableHeaderCell, sortKey === 'scope' && styles.tableHeaderCellActive]}>{sortLabel('scope', 'Scope')}</Text>
+            </Pressable>
+            <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('surface')} accessibilityRole="button">
+              <Text style={[styles.tableHeaderCell, sortKey === 'surface' && styles.tableHeaderCellActive]}>{sortLabel('surface', 'Source')}</Text>
+            </Pressable>
+            <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('updated')} accessibilityRole="button">
+              <Text style={[styles.tableHeaderCell, sortKey === 'updated' && styles.tableHeaderCellActive]}>{sortLabel('updated', 'Updated')}</Text>
+            </Pressable>
+          </View>
+          {visibleRows.map((row) => {
+            const selected = row.id === selectedId;
+            const tone = getAiSuggestionStatusTone(row.status);
+            return (
+              <Pressable key={row.id} style={[styles.tableDataRow, selected && styles.tableDataRowSelectedStrong]} onPress={() => setSelectedId(row.id)}>
+                <View style={[styles.tableCell, styles.colSm]}>
+                  <View style={[styles.statusChip, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+                    <Text style={[styles.statusChipText, { color: tone.text }]}>{tone.label}</Text>
+                  </View>
+                </View>
+                <View style={[styles.tableCell, styles.colMd]}>
+                  <Text numberOfLines={1} style={styles.tablePrimary}>{row.requesterLabel}</Text>
+                  <Text numberOfLines={1} style={styles.tableSecondary}>{row.requesterRole}</Text>
+                </View>
+                <View style={[styles.tableCell, styles.colWide]}>
+                  <Text numberOfLines={2} style={styles.tablePrimary}>{row.targetScopeSummary}</Text>
+                  <Text numberOfLines={1} style={styles.tableSecondary}>{row.requestIntent}</Text>
+                </View>
+                <View style={[styles.tableCell, styles.colMd]}>
+                  <Text numberOfLines={1} style={styles.tableCellText}>{row.sourceSurface}</Text>
+                  <Text numberOfLines={1} style={styles.tableSecondary}>{row.requiredApprovalTier}</Text>
+                </View>
+                <View style={[styles.tableCell, styles.colSm]}>
+                  <Text style={styles.tableCellText}>{formatDateShort(row.updatedAt)}</Text>
+                  <Text numberOfLines={1} style={styles.tableSecondary}>{row.id}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+          {filteredRows.length === 0 ? (
+            <Text style={styles.tableFootnote}>No queue rows match the current filters. Clear filters to continue moderation review.</Text>
+          ) : filteredRows.length > visibleRowCount ? (
+            <Text style={styles.tableFootnote}>More AI queue rows are available. Use “Show more” to continue browsing the approval queue.</Text>
+          ) : (
+            <Text style={styles.tableFootnote}>End of filtered AI queue results.</Text>
+          )}
+        </View>
+        <View style={[styles.formCard, styles.usersOpsCard]}>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.formTitle}>Audit Detail + Review</Text>
+            <Text style={styles.metaRow}>{selectedRow ? formatDateTimeShort(selectedRow.updatedAt) : 'Select a suggestion'}</Text>
+          </View>
+          {selectedRow ? (
+            <>
+              <View style={styles.selectedUserSummaryCard}>
+                <View style={styles.formHeaderRow}>
+                  <View>
+                    <Text style={styles.formTitle}>Selected AI Suggestion</Text>
+                    <Text style={styles.metaRow}>{selectedRow.id}</Text>
+                  </View>
+                  <View style={styles.inlineToggleRow}>
+                    {(() => {
+                      const tone = getAiSuggestionStatusTone(selectedRow.status);
+                      return (
+                        <View style={[styles.statusChip, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+                          <Text style={[styles.statusChipText, { color: tone.text }]}>{tone.label}</Text>
+                        </View>
+                      );
+                    })()}
+                    <View style={[styles.statusChip, { backgroundColor: '#F4F8FF', borderColor: '#D8E4FA' }]}>
+                      <Text style={[styles.statusChipText, { color: '#345892' }]}>approval: {selectedRow.requiredApprovalTier}</Text>
+                    </View>
+                  </View>
+                </View>
+                <Text style={styles.metaRow}>Requester: {selectedRow.requesterLabel} ({selectedRow.requesterRole})</Text>
+                <Text style={styles.metaRow}>Source: {selectedRow.sourceSurface} • Intent: {selectedRow.requestIntent}</Text>
+                <Text style={styles.metaRow}>Scope: {selectedRow.targetScopeSummary}</Text>
+                <Text style={styles.metaRow}>Execution linkage: {selectedRow.executionLinkageRef ?? 'none (not executed / not linked)'}</Text>
+              </View>
+              <View style={styles.userOpsSection}>
+                <View style={styles.formHeaderRow}>
+                  <Text style={styles.formTitle}>Draft Content (Advisory Only)</Text>
+                  <Text style={styles.metaRow}>{selectedRow.editedContentIndicator ? 'edited before review' : 'original draft'}</Text>
+                </View>
+                <View style={styles.codePreviewBox}>
+                  <Text style={styles.codePreviewText} selectable>{selectedRow.draftContent}</Text>
+                </View>
+                <Text style={styles.fieldHelpText}>
+                  Review actions here do not send messages, publish coaching content, or mutate KPI/forecast/challenge state.
+                </Text>
+              </View>
+              <View style={styles.usersDiagnosticsGrid}>
+                <View style={[styles.summaryCard, { flex: 1 }]}>
+                  <View style={styles.formHeaderRow}>
+                    <Text style={styles.summaryLabel}>Disclaimers + Safety Flags</Text>
+                    <Text style={styles.metaRow}>{selectedRow.safetyFlags.length} flags</Text>
+                  </View>
+                  <Text style={styles.summaryNote}>Model meta: {selectedRow.modelMeta}</Text>
+                  <View style={styles.chipRow}>
+                    {selectedRow.disclaimerRequirements.map((item) => (
+                      <View key={item} style={[styles.formChip, { backgroundColor: '#FFF8E9', borderColor: '#F0D59A' }]}>
+                        <Text style={[styles.formChipText, { color: '#8E6400' }]}>{item}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={styles.chipRow}>
+                    {selectedRow.safetyFlags.map((flag) => (
+                      <View key={flag} style={[styles.formChip, { backgroundColor: '#FFF4F2', borderColor: '#F2C0B9' }]}>
+                        <Text style={[styles.formChipText, { color: '#B2483A' }]}>{flag}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+                <View style={[styles.summaryCard, { flex: 1.2 }]}>
+                  <View style={styles.formHeaderRow}>
+                    <Text style={styles.summaryLabel}>Audit History</Text>
+                    <Text style={styles.metaRow}>{selectedRow.auditHistory.length} events</Text>
+                  </View>
+                  {selectedRow.auditHistory.map((event) => (
+                    <View key={event.id} style={styles.activityFeedRow}>
+                      <View
+                        style={[
+                          styles.activityFeedDot,
+                          event.action === 'approved'
+                            ? styles.activityFeedDotSuccess
+                            : event.action === 'rejected'
+                              ? styles.activityFeedDotError
+                              : styles.activityFeedDotInfo,
+                        ]}
+                      />
+                      <View style={styles.activityFeedCopy}>
+                        <Text style={styles.activityFeedText}>{event.actorLabel} • {event.action}</Text>
+                        {event.note ? <Text style={styles.activityFeedMeta}>{event.note}</Text> : null}
+                        <Text style={styles.activityFeedMeta}>{formatDateTimeShort(event.at)}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.formActionsRow}>
+                <TouchableOpacity style={styles.primaryButton} onPress={handleApprove}>
+                  <Text style={styles.primaryButtonText}>Approve (Queue Only)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.warnButton} onPress={handleReject}>
+                  <Text style={styles.warnButtonText}>Reject (Queue Only)</Text>
+                </TouchableOpacity>
+                {(selectedRow.status === 'approved' || selectedRow.status === 'rejected') ? (
+                  <TouchableOpacity style={styles.smallGhostButton} onPress={handleReturnToPending}>
+                    <Text style={styles.smallGhostButtonText}>Return to Pending</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity style={styles.smallGhostButton} onPress={() => void copySelectedAuditSummary()}>
+                  <Text style={styles.smallGhostButtonText}>Copy Audit Summary</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <Text style={styles.panelBody}>Select an AI queue row to inspect approval requirements, safety flags, and audit history.</Text>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function AdminReportsPanel({
   overviewStatus,
   detailedStatus,
@@ -3736,6 +4355,8 @@ export default function AdminShellScreen() {
                     }}
                     loading={reportsProbeLoading}
                   />
+                ) : activeRoute.key === 'coachingAudit' ? (
+                  <AdminCoachingAuditPanel />
                 ) : (
                   <PlaceholderScreen route={activeRoute} rolesLabel={rolesLabel} />
                 )}

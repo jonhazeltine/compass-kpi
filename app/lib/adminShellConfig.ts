@@ -21,6 +21,7 @@ export function getAdminRouteStage(routeKey: AdminRouteKey): AdminRouteStage {
       return 'A2 now';
     case 'users':
     case 'reports':
+    case 'coachingAudit':
       return 'A3 now';
     default:
       return 'A1 now';

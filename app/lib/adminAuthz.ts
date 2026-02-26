@@ -14,7 +14,8 @@ export type AdminRouteKey =
   | 'authz'
   | 'kpis'
   | 'challengeTemplates'
-  | 'reports';
+  | 'reports'
+  | 'coachingAudit';
 
 export type AdminRouteDefinition = {
   key: AdminRouteKey;
@@ -125,6 +126,13 @@ export const ADMIN_ROUTES: AdminRouteDefinition[] = [
     path: '/admin/reports',
     requiredRoles: ['platform_admin', 'super_admin'],
     description: 'A1 placeholder only. Analytics/report work is in A3.',
+  },
+  {
+    key: 'coachingAudit',
+    label: 'Coaching Audit',
+    path: '/admin/coaching/audit',
+    requiredRoles: ['platform_admin', 'super_admin'],
+    description: 'W5 approval-first AI moderation and audit queue for coach/admin ops.',
   },
 ];
 

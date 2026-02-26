@@ -187,7 +187,7 @@ flowchart LR
 | Journey Authoring Studio (`coach_journey_authoring`) | Coach | `coaching_content` | `coaching_journeys*` published journey versions | `⚪ planned` | Draft/review/publish lifecycle is ops concern, not member runtime concern. |
 | Publishing & Targeting (`coach_publish_targeting`) | Coach, Admin operator, Sponsor ops (limited) | `communication`, `sponsor_challenge_coaching` | Team/Challenge/Profile overlays + `inbox*` + `coaching_journeys*` | `⚪ planned` | Produces targeting/assignment metadata; must not rewrite challenge participation state. |
 | Coaching Packages / Entitlements (`coach_packages_entitlements`) | Admin operator, Coach (limited), Sponsor ops (limited sponsor scopes) | `sponsor_challenge_coaching`, paid packaging | Runtime visibility/entitlement gating | `⚪ planned` | Packaging/access logic separated from journey authoring and runtime rendering. |
-| Coach Ops Audit / Approvals (`coach_ops_audit`) | Admin operator | `communication`, `coaching_content` (+ `ai_coach_assist` later) | Policy constraints on runtime allowed actions | `⚪ planned` | Governance/audit layer; no direct KPI data mutation. |
+| Coach Ops Audit / Approvals (`coach_ops_audit`) | Admin operator | `communication`, `coaching_content` (+ `ai_coach_assist` later) | Policy constraints on runtime allowed actions | `🟡 partial` | Admin shell extension now provides approval-first AI suggestion moderation queue + audit detail companion UI; no direct KPI data mutation or execution actions. |
 
 ## Coach Ops Portal Host Recommendation and Route Grouping (Planning)
 
@@ -199,7 +199,7 @@ Near-term recommendation: use `Admin Shell` as the host (role-gated extension ro
 | `admin/coaching/authoring` | `Admin Shell extension` | `coach_journey_authoring` | Coach | `⚪ planned` | No structural split required. |
 | `admin/coaching/publishing` | `Admin Shell extension` | `coach_publish_targeting` | Coach, Admin operator, Sponsor ops (limited) | `⚪ planned` | Keep sponsor inputs constrained to campaign packaging/targeting. |
 | `admin/coaching/packages` | `Admin Shell extension` | `coach_packages_entitlements` | Admin operator, Coach (limited), Sponsor ops (limited) | `⚪ planned` | Packaging/entitlement policy layer; not runtime delivery authoring. |
-| `admin/coaching/audit` | `Admin Shell extension` | `coach_ops_audit` | Admin operator | `⚪ planned` | Governance/audit touchpoint remains admin-heavy. |
+| `admin/coaching/audit` | `Admin Shell extension` | `coach_ops_audit` | Admin operator | `🟡 partial` | Governance/audit touchpoint implemented in admin shell as W5 AI queue/detail companion surface (stub-safe UI pending backend queue shaping). |
 
 Hybrid/dedicated coach portal remains a deferred option and is `decision needed` in implementation if adopted (requires `DECISIONS_LOG.md` update for route/module boundary change).
 
@@ -237,12 +237,12 @@ flowchart LR
 ### W5 AI insert-point map (planning)
 | Host surface | Persona(s) | AI entry mode | W5 status | Boundary note |
 |---|---|---|---|---|
-| `channel_thread` | Team Leader (member later optional) | CTA to AI draft/rewrite review shell | `⚪ planned` | No direct AI send; human send uses existing channel message/broadcast path after approval. |
-| `coach_broadcast_compose` | Team Leader (Coach/Admin later per `DEP-003`) | draft broadcast copy + review | `⚪ planned` | Audience/scope authority remains server-validated; AI cannot expand scope. |
-| `coaching_lesson_detail` | Team Leader, Team Member, Solo User | lesson-context reflection prompt draft | `⚪ planned` | Advisory only; no lesson progress or KPI writes. |
-| `coaching_journeys*` | Team Leader, Team Member, Solo User | journey-context coaching suggestion CTA | `⚪ planned` | Route-to-review shell preferred for first slice. |
-| Team/Challenge coaching embedded modules | Team Leader (+ policy-limited challenge contexts) | embedded CTA -> AI review shell | `⚪ planned` | Preserve sponsored/challenge ownership boundaries and approval requirements. |
-| `coach_ops_audit` (admin extension) | Coach, Admin operator | approval queue + audit detail | `⚪ planned` | Governance/audit surface; may expand with moderation views in later W5 follow-on. |
+| `channel_thread` | Team Leader (member later optional) | CTA to AI draft/rewrite review shell | `🟡 partial` | W5 UI shell proto adds approval-first AI draft/rewrite CTA + review modal; no direct AI send, human send uses existing channel message path after review. |
+| `coach_broadcast_compose` | Team Leader (Coach/Admin later per `DEP-003`) | draft broadcast copy + review | `🟡 partial` | W5 UI shell proto adds approval-first AI draft CTA + human insert-to-composer path; audience/scope authority remains server-validated and AI cannot expand scope. |
+| `coaching_lesson_detail` | Team Leader, Team Member, Solo User | lesson-context reflection prompt draft | `🟡 partial` | W5 UI shell proto adds advisory lesson-context AI draft CTA + review modal; no lesson progress or KPI writes. |
+| `coaching_journeys*` | Team Leader, Team Member, Solo User | journey-context coaching suggestion CTA | `🟡 partial` | W5 UI shell proto adds journey/journey-detail AI suggestion draft CTAs into approval-first review modal; no send/publish path. |
+| Team/Challenge coaching embedded modules | Team Leader (+ policy-limited challenge contexts) | embedded CTA -> AI review shell | `🟡 partial` | W5 UI shell proto adds AI draft review CTAs on approved Team/Challenge coaching modules only; preserves sponsored/challenge ownership boundaries and approval-first requirements. |
+| `coach_ops_audit` (admin extension) | Coach, Admin operator | approval queue + audit detail | `🟡 partial` | Admin shell extension route `/admin/coaching/audit` now renders approval queue + audit detail/review UI (approve/reject/history workflows, approval-first/no autonomous send). |
 
 ## Member App Shell (Intended)
 

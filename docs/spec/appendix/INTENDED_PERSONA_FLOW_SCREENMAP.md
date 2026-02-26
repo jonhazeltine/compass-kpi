@@ -224,7 +224,7 @@ Coach portal host recommendation (planning, manual-spec-driven):
 | Journey Authoring Studio | Compose/edit journey structure, lesson order, and draft lifecycle | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_journey_authoring`); no runtime journey rendering ownership. |
 | Publishing & Targeting | Publish bundles, define audiences, link channels/challenges, schedule activation | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_publish_targeting`); handoff produces delivery assignments for runtime surfaces. |
 | Coaching Packages / Entitlements | Configure team/sponsored/paid coaching package visibility and access policy | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_packages_entitlements`); packaging/access layer, not content authoring. |
-| Coach Ops Audit / Approvals | Approvals, rollback, moderation, audit trail review for coaching publishing actions | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_ops_audit`); admin operator-heavy governance surface. |
+| Coach Ops Audit / Approvals | Approvals, rollback, moderation, audit trail review for coaching publishing actions | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | Admin shell extension route `/admin/coaching/audit` now provides approval-first AI suggestion moderation queue + audit detail companion surface (UI-first/stub-safe, no send/publish execution actions). |
 
 #### `coach_ops_authoring` route grouping (portal planning)
 | Route group (provisional) | Host surface | Persona access | Runtime status | Notes |
@@ -233,7 +233,7 @@ Coach portal host recommendation (planning, manual-spec-driven):
 | `admin/coaching/authoring` | `Admin Shell extension` (recommended) | Coach | `⚪ missing` | Maps to `coach_journey_authoring`. |
 | `admin/coaching/publishing` | `Admin Shell extension` (recommended) | Coach, Admin operator, Sponsor ops (limited) | `⚪ missing` | Maps to `coach_publish_targeting`; publish/target/schedule/link handoff. |
 | `admin/coaching/packages` | `Admin Shell extension` (recommended) | Admin operator, Coach (limited), Sponsor ops (limited) | `⚪ missing` | Maps to `coach_packages_entitlements`; packaging/entitlement policy ops. |
-| `admin/coaching/audit` | `Admin Shell extension` (recommended) | Admin operator | `⚪ missing` | Maps to `coach_ops_audit`; governance and rollback review. |
+| `admin/coaching/audit` | `Admin Shell extension` (recommended) | Admin operator | `🟡 partial` | Maps to `coach_ops_audit`; approval-first AI moderation queue + audit detail companion UI implemented in admin shell (`AdminShellScreen.tsx`). |
 
 #### `coaching_communication`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
@@ -244,9 +244,9 @@ Coach portal host recommendation (planning, manual-spec-driven):
 #### `coaching_ai_assist` (approval-first, manual-spec-driven)
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
 |---|---|---|---|---|
-| AI Assist Draft Request / Review (runtime companion shell) | Generate/edit AI suggestion drafts from approved coaching surfaces before any send/publish action | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | W5 planning boundary only; advisory text drafts, no KPI writes, no auto-send. Expected insert points include `channel_thread`, `coach_broadcast_compose`, and `coaching_lesson_detail`/`coaching_journeys*` helpers. |
-| AI Suggestion Approval Queue (coach/admin portal) | Review/approve/reject pending AI suggestions by scope/policy | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Prefer `Admin Shell extension` / `coach_ops_audit` companion touchpoint. Human approval gates required. |
-| AI Suggestion Audit Detail (coach/admin portal) | Inspect suggestion history, approvals/rejections, and execution linkage refs | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Audit-only/read-only ops surface; if implementation requires new module boundary, mark `decision needed` + `DECISIONS_LOG.md`. |
+| AI Assist Draft Request / Review (runtime companion shell) | Generate/edit AI suggestion drafts from approved coaching surfaces before any send/publish action | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | W5 UI shell proto adds approval-first AI draft request/review modal + approved insert-point CTAs (`channel_thread`, `coach_broadcast_compose`, `coaching_lesson_detail`, `coaching_journeys*`, Team/Challenge coaching modules). Advisory only: no KPI writes, no auto-send/publish. |
+| AI Suggestion Approval Queue (coach/admin portal) | Review/approve/reject pending AI suggestions by scope/policy | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | Admin shell extension `coach_ops_audit` now includes sortable queue list + approve/reject UI workflow (approval-first, queue-only actions, no autonomous send/publish). |
+| AI Suggestion Audit Detail (coach/admin portal) | Inspect suggestion history, approvals/rejections, and execution linkage refs | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | Admin shell extension `coach_ops_audit` now includes audit detail/history rendering with disclaimers/safety flags and linkage refs (stub-safe local data until backend queue shaping lands). |
 
 ## Shared Runtime Router Map (Current Implementation Anchor)
 Use this to map intended screens to current code constraints.
