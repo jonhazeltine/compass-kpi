@@ -488,6 +488,8 @@ function AdminKpiCatalogPanel({
   const editing = Boolean(draft.id);
   const selectedRowId = draft.id ?? null;
   const hasActiveFilters = Boolean(searchQuery.trim() || statusFilter !== 'all' || typeFilter !== 'all');
+  const activeFilterCount =
+    (searchQuery.trim() ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0) + (typeFilter !== 'all' ? 1 : 0);
   const filteredRows = rows.filter((row) => {
     const q = searchQuery.trim().toLowerCase();
     const matchesSearch =
@@ -516,6 +518,10 @@ function AdminKpiCatalogPanel({
     setVisibleRowCount(24);
   }, [searchQuery, statusFilter, typeFilter]);
 
+  useEffect(() => {
+    setVisibleRowCount(24);
+  }, [rows]);
+
   return (
     <View style={styles.panel}>
       <View style={styles.panelTopRow}>
@@ -531,6 +537,34 @@ function AdminKpiCatalogPanel({
         Manage KPI definitions for admin operations with search, filtering, and create/edit/deactivate controls.
       </Text>
       <View style={styles.filterBar}>
+        <View style={[styles.formField, styles.formFieldWide]}>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.metaRow}>
+              {filteredRows.length} filtered / {rows.length} total
+              {activeFilterCount
+                ? ` • ${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} active`
+                : ' • no filters'}
+            </Text>
+            <View style={styles.formActionsRow}>
+              {statusFilter !== 'all' || typeFilter !== 'all' ? (
+                <TouchableOpacity
+                  style={styles.smallGhostButton}
+                  onPress={() => {
+                    onStatusFilterChange('all');
+                    onTypeFilterChange('all');
+                  }}
+                >
+                  <Text style={styles.smallGhostButtonText}>Reset filters</Text>
+                </TouchableOpacity>
+              ) : null}
+              {searchQuery.trim() ? (
+                <TouchableOpacity style={styles.smallGhostButton} onPress={() => onSearchQueryChange('')}>
+                  <Text style={styles.smallGhostButtonText}>Clear search</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        </View>
         <View style={[styles.formField, styles.formFieldWide]}>
           <Text style={styles.formLabel}>Search</Text>
           <TextInput
@@ -618,7 +652,27 @@ function AdminKpiCatalogPanel({
             </View>
             <Text style={styles.metaRow}>Slug: {selectedRow.slug ?? selectedRow.id}</Text>
             {selectedRowHiddenByFilters ? (
-              <Text style={styles.fieldHelpText}>Selected KPI is hidden by current search/filter settings, but remains loaded in the edit form.</Text>
+              <View style={styles.noticeBox}>
+                <Text style={styles.noticeTitle}>Selected KPI is hidden by current filters</Text>
+                <Text style={styles.noticeText}>
+                  The edit form is still loaded for {selectedRow.name}, but the row is not visible in the table below.
+                </Text>
+                <View style={styles.formActionsRow}>
+                  <TouchableOpacity
+                    style={styles.noticeButton}
+                    onPress={() => {
+                      onSearchQueryChange('');
+                      onStatusFilterChange('all');
+                      onTypeFilterChange('all');
+                    }}
+                  >
+                    <Text style={styles.noticeButtonText}>Reveal row</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.smallGhostButton} onPress={onResetDraft}>
+                    <Text style={styles.smallGhostButtonText}>Start new KPI</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             ) : null}
           </View>
         ) : null}
@@ -824,7 +878,9 @@ function AdminKpiCatalogPanel({
             </View>
           </View>
           <View style={styles.tableWrap}>
-            <Text style={styles.tableFootnote}>Select a row to load it into the form above.</Text>
+            <Text style={styles.tableFootnote}>
+              Click a row to load it into the form above for editing. The selected row stays highlighted.
+            </Text>
             <View style={styles.tableHeaderRow}>
               <Text style={[styles.tableHeaderCell, styles.colWide]}>KPI</Text>
               <Text style={[styles.tableHeaderCell, styles.colMd]}>Type</Text>
@@ -840,6 +896,8 @@ function AdminKpiCatalogPanel({
                 key={row.id}
                 style={[styles.tableDataRow, selectedRowId === row.id && styles.tableDataRowSelectedStrong]}
                 onPress={() => onSelectRow(row)}
+                accessibilityRole="button"
+                accessibilityHint={`Load ${row.name} into the KPI form for editing`}
               >
                 <View style={[styles.tableCell, styles.colWide]}>
                   <Text style={styles.tablePrimary}>{row.name}</Text>
@@ -943,6 +1001,7 @@ function AdminChallengeTemplatesPanel({
   const editing = Boolean(draft.id);
   const selectedRowId = draft.id ?? null;
   const hasActiveFilters = Boolean(searchQuery.trim() || statusFilter !== 'all');
+  const activeFilterCount = (searchQuery.trim() ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0);
   const filteredRows = rows.filter((row) => {
     const q = searchQuery.trim().toLowerCase();
     const matchesSearch =
@@ -969,6 +1028,10 @@ function AdminChallengeTemplatesPanel({
     setVisibleRowCount(24);
   }, [searchQuery, statusFilter]);
 
+  useEffect(() => {
+    setVisibleRowCount(24);
+  }, [rows]);
+
   return (
     <View style={styles.panel}>
       <View style={styles.panelTopRow}>
@@ -984,6 +1047,28 @@ function AdminChallengeTemplatesPanel({
         Manage challenge templates with search, filtering, and create/edit/deactivate controls for admin operations.
       </Text>
       <View style={styles.filterBar}>
+        <View style={[styles.formField, styles.formFieldWide]}>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.metaRow}>
+              {filteredRows.length} filtered / {rows.length} total
+              {activeFilterCount
+                ? ` • ${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} active`
+                : ' • no filters'}
+            </Text>
+            <View style={styles.formActionsRow}>
+              {statusFilter !== 'all' ? (
+                <TouchableOpacity style={styles.smallGhostButton} onPress={() => onStatusFilterChange('all')}>
+                  <Text style={styles.smallGhostButtonText}>Reset filters</Text>
+                </TouchableOpacity>
+              ) : null}
+              {searchQuery.trim() ? (
+                <TouchableOpacity style={styles.smallGhostButton} onPress={() => onSearchQueryChange('')}>
+                  <Text style={styles.smallGhostButtonText}>Clear search</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        </View>
         <View style={[styles.formField, styles.formFieldWide]}>
           <Text style={styles.formLabel}>Search</Text>
           <TextInput
@@ -1050,7 +1135,26 @@ function AdminChallengeTemplatesPanel({
             </Text>
             <Text style={styles.metaRow}>Template ID: {selectedRow.id}</Text>
             {selectedRowHiddenByFilters ? (
-              <Text style={styles.fieldHelpText}>Selected template is hidden by current search/filter settings, but remains loaded in the edit form.</Text>
+              <View style={styles.noticeBox}>
+                <Text style={styles.noticeTitle}>Selected template is hidden by current filters</Text>
+                <Text style={styles.noticeText}>
+                  The edit form is still loaded for {selectedRow.name}, but the row is not visible in the table below.
+                </Text>
+                <View style={styles.formActionsRow}>
+                  <TouchableOpacity
+                    style={styles.noticeButton}
+                    onPress={() => {
+                      onSearchQueryChange('');
+                      onStatusFilterChange('all');
+                    }}
+                  >
+                    <Text style={styles.noticeButtonText}>Reveal row</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.smallGhostButton} onPress={onResetDraft}>
+                    <Text style={styles.smallGhostButtonText}>Start new template</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             ) : null}
           </View>
         ) : null}
@@ -1125,7 +1229,9 @@ function AdminChallengeTemplatesPanel({
             </View>
           </View>
           <View style={styles.tableWrap}>
-            <Text style={styles.tableFootnote}>Select a row to load it into the form above.</Text>
+            <Text style={styles.tableFootnote}>
+              Click a row to load it into the form above for editing. The selected row stays highlighted.
+            </Text>
             <View style={styles.tableHeaderRow}>
               <Text style={[styles.tableHeaderCell, styles.colWide]}>Template</Text>
               <Text style={[styles.tableHeaderCell, styles.colSm]}>Status</Text>
@@ -1136,6 +1242,8 @@ function AdminChallengeTemplatesPanel({
                 key={row.id}
                 style={[styles.tableDataRow, selectedRowId === row.id && styles.tableDataRowSelectedStrong]}
                 onPress={() => onSelectRow(row)}
+                accessibilityRole="button"
+                accessibilityHint={`Load ${row.name} into the challenge template form for editing`}
               >
                 <View style={[styles.tableCell, styles.colWide]}>
                   <Text style={styles.tablePrimary}>{row.name}</Text>
