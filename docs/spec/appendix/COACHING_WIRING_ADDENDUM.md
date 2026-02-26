@@ -23,14 +23,14 @@ This keeps the app coherent and avoids fragmenting the user experience.
 ## New/Expanded Destinations (Intended)
 
 ### Dedicated flows (net-new or expanded)
-- `Inbox / Channels`
+- `Inbox / Channels` (`inbox`, `inbox_channels`)
   - channel list / inbox
-  - thread view
-  - broadcast composer (role-gated)
-- `Coaching Journeys`
+  - thread view (`channel_thread`)
+  - broadcast composer (role-gated, `coach_broadcast_compose`)
+- `Coaching Journeys` (`coaching_journeys`)
   - journey list
-  - journey detail
-  - lesson detail/progress
+  - journey detail (`coaching_journey_detail`)
+  - lesson detail/progress (`coaching_lesson_detail`)
 - `Community` (optional later, if enabled from Fourth Reason patterns)
 
 ### Embedded coaching modules (within existing flows)
@@ -85,15 +85,60 @@ This keeps the app coherent and avoids fragmenting the user experience.
 
 ### Phase W1 — Allocation + shells (docs + route stubs)
 - Reserve destinations and route names for:
-  - inbox/channels
-  - coaching journeys
+  - `inbox`
+  - `inbox_channels`
+  - `channel_thread`
+  - `coach_broadcast_compose` (role-gated shell)
+  - `coaching_journeys`
+  - `coaching_journey_detail`
+  - `coaching_lesson_detail`
 - Add embedded module placeholders in intended screens (docs + implementation placeholders)
 - No deep backend dependency required
+
+### W1 explicit entry points (allocation + shell intent)
+- `Home / Priority`
+  - all personas: coaching nudge card CTA -> `coaching_journeys` (primary), optional secondary CTA -> `inbox`
+- `Team Dashboard (leader)`
+  - `Broadcast preview` CTA -> `coach_broadcast_compose`
+  - `Team coaching summary` CTA -> `coaching_journeys`
+  - `Team updates` CTA -> `inbox_channels` (team-context filtered in later implementation)
+- `Team Dashboard (member)`
+  - `My coaching progress / lesson prompt` CTA -> `coaching_journeys`
+  - `Team updates` CTA -> `inbox_channels`
+- `Challenge Details / Results`
+  - `Challenge updates` CTA -> `inbox_channels` (challenge-context filtered)
+  - `Coaching prompt / sponsor coaching CTA` -> `coaching_journey_detail` or `coaching_journeys` (context-dependent, shell in W1)
+- `Profile / Settings`
+  - `Coaching preferences / notifications` CTA -> `inbox` (notification prefs) and/or profile settings subsection (manual-spec-driven allocation)
+
+### W1 scope boundary (required)
+- W1 creates route intent and shell placeholders only.
+- W1 does not introduce channel membership management, message send/read behavior, or lesson progress writes.
+- W1 does not merge sponsor challenge payload ownership into coaching payloads.
 
 ### Phase W2 — Communication integration
 - Channel/inbox/thread wiring
 - Team/challenge/sponsor channel context linkage
 - Broadcast entry points for leader/admin roles
+
+### W2 recommended first functional entry points
+- `Team Leader`
+  - Team Dashboard -> `inbox_channels` (team channel list or direct team channel landing)
+  - Team Dashboard -> `coach_broadcast_compose` (role-gated functional send flow using documented broadcast endpoints)
+- `Team Member`
+  - Team Dashboard member module -> `inbox_channels`
+  - Challenge Details -> `channel_thread` (challenge channel context)
+- `Solo User`
+  - Challenge Details -> `inbox_channels` or `channel_thread` (sponsor/challenge/community-scoped only)
+  - Home / Priority coaching nudge -> `coaching_journeys` shell (functional content may remain deferred)
+
+### W2 sponsored overlap boundaries (must remain explicit)
+- `Sponsored challenge detail` may host links to:
+  - `inbox_channels` / `channel_thread` for sponsor/challenge channel context
+  - `coaching_journeys` / `coaching_journey_detail` for sponsor-linked coaching content
+- `Sponsored challenge` continues to own challenge eligibility, participation states, and leaderboard/results behavior.
+- `Coaching` continues to own message/content delivery surfaces and progression UI.
+- KPI logging remains the activity source of truth for challenge/coaching attribution.
 
 ### Phase W3 — Coaching content integration
 - Journey list/detail/lesson progress wiring
@@ -118,13 +163,25 @@ This keeps the app coherent and avoids fragmenting the user experience.
 ## Naming Guidance (for future implementation)
 Use stable destination names by capability and context, for example:
 - `inbox`
+- `inbox_channels`
 - `channel_team`
 - `channel_challenge`
 - `channel_sponsor`
+- `channel_thread`
 - `coaching_journeys`
 - `coaching_journey_detail`
 - `coaching_lesson_detail`
 - `coach_broadcast_compose`
+
+## Assignment Hand-off Naming Lock (W1/W2)
+Use these exact destination IDs in next-wave UI assignment specs unless a controller-approved rename is logged:
+- `inbox`
+- `inbox_channels`
+- `channel_thread`
+- `coach_broadcast_compose`
+- `coaching_journeys`
+- `coaching_journey_detail`
+- `coaching_lesson_detail`
 
 Avoid vague names like:
 - `coach_screen`
@@ -139,4 +196,3 @@ Before approving coaching-related UI work, confirm:
 4. KPI/forecast non-negotiables are not violated
 5. Role/tier gating assumptions are stated
 6. Figma-backed vs manual-spec-driven status is stated
-

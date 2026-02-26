@@ -81,17 +81,54 @@ Legend:
 
 This defines where coaching appears in the app. Coaching is often a module/overlay inside an existing screen, not always a dedicated new screen.
 
-| Surface / Flow | Coaching capability hosted | Persona(s) | Type | Status |
-|---|---|---|---|---|
-| Team Dashboard (leader) | broadcast preview, team coaching summary, member coaching progress snapshot | Team Leader | embedded modules | planned |
-| Team Dashboard (member) | coaching progress summary, team updates, lesson prompt | Team Member | embedded modules | planned |
-| Team Challenges / Single Person Challenges | challenge-linked coaching prompts/content | Team Leader, Team Member | embedded + linked | planned |
-| Challenge Details / Results | sponsor/challenge CTA + coaching nudge modules | Solo, Team Member, Team Leader | embedded | partial/planned |
-| Home / Priority | coaching nudges (lightweight), reminders | all | embedded lightweight | planned |
-| Profile / Settings | personal goals/coaching preferences/notification prefs | all | dedicated + embedded | partial/planned |
-| Inbox / Channels (new) | comms, unread, threads/channels | all (role-gated actions) | dedicated flow | missing |
-| Coaching Journeys (new) | journeys/milestones/lessons/progress | all (role-gated management) | dedicated flow | missing |
-| Sponsored Challenge detail surfaces | sponsor content + coaching campaign messaging | eligible tiers | embedded + linked | planned |
+Build wave markers:
+- `W1 build-now` = allocation + shells/placeholders/docs alignment only
+- `W2 recommended` = first functional communication entry points
+- `Later` = after communication baseline / explicit approval
+
+| Surface / Flow | Coaching capability hosted | Persona(s) | Type | Current status | Build marker | Notes |
+|---|---|---|---|---|---|---|
+| Team Dashboard (leader) | broadcast preview, team coaching summary, member coaching progress snapshot | Team Leader | embedded modules | `⚪ planned` | `W1 build-now` | W1 = placeholder slots + CTA shells only; no leader broadcast send UX yet. |
+| Team Dashboard (member) | coaching progress summary, team updates, lesson prompt | Team Member | embedded modules | `⚪ planned` | `W1 build-now` | W1 = module allocation only; route shells target `coaching_journeys` / `inbox`. |
+| Team Challenges / Single Person Challenges | challenge-linked coaching prompts/content | Team Leader, Team Member | embedded + linked | `⚪ planned` | `W2 recommended` | First functional challenge comms/content prompts should follow W1 destination naming. |
+| Challenge Details / Results | sponsor/challenge CTA + coaching nudge modules | Solo, Team Member, Team Leader | embedded | `🟡 partial/planned` | `W1 build-now` | W1 = sponsor/coaching CTA slot allocation + planned links; no content payload merge. |
+| Home / Priority | coaching nudges (lightweight), reminders | all | embedded lightweight | `⚪ planned` | `W1 build-now` | Allocation only in current sprint-adjacent planning; no UI implementation in this assignment. |
+| Profile / Settings | personal goals/coaching preferences/notification prefs | all | dedicated + embedded | `🟡 partial/planned` | `W1 build-now` | W1 = route/destination naming + status rows; W2 = functional prefs entry points. |
+| Inbox / Channels (new) | comms, unread, threads/channels | all (role-gated actions) | dedicated flow | `⚪ missing` | `W1 build-now` | W1 shell routes + stubs; W2 adds channel list/thread flows. |
+| Coaching Journeys (new) | journeys/milestones/lessons/progress | all (role-gated management) | dedicated flow | `⚪ missing` | `W1 build-now` | W1 shell routes + entry points; W2 can stay shell while comms is implemented first. |
+| Sponsored Challenge detail surfaces | sponsor content + coaching campaign messaging | eligible tiers | embedded + linked | `⚪ planned` | `W2 recommended` | Preserve sponsor/challenge/coaching boundary; module links only, challenge state remains challenge-owned. |
+
+## First Slice Scope Lock (Implementation Planning: W1 then W2)
+
+### `W1` (build now: allocation + shells)
+- Reserve dedicated destination names and route intent for:
+  - `inbox`
+  - `inbox_channels`
+  - `channel_thread`
+  - `coaching_journeys`
+  - `coaching_journey_detail`
+  - `coaching_lesson_detail`
+  - `coach_broadcast_compose` (role-gated shell only)
+- Define embedded insert points (docs-only) on:
+  - `Home / Priority`
+  - `Challenge Details / Results`
+  - `Team Dashboard` (leader + member variants)
+  - `Profile / Settings`
+- Add intended status rows in screenmap + wiring docs using standard legend.
+- No app code, backend code, schema, or API contract changes.
+
+### `W2` (recommended next: communication entry points)
+- Implement `Inbox / Channels` shell-to-list and `channel_thread` navigation.
+- Add first role-gated broadcast entry points:
+  - Team Leader from Team Dashboard
+  - optional admin/coach role entry from Inbox if role model permits
+- Add challenge/team/sponsor channel entry CTAs on existing surfaces as scoped stubs or first wired routes.
+- Keep coaching journeys functional depth limited if comms scope consumes wave capacity.
+
+### `Later` (after W1/W2 baseline)
+- Rich journey/lesson progress UI parity
+- Sponsor campaign coaching content modules beyond CTA/link placement
+- AI coach assist (`approval-first`)
 
 ## Overlap with Sponsored Challenge Creation (Important)
 This is the overlap you called out and should be treated as explicit design/implementation territory.
@@ -172,4 +209,3 @@ Every coaching-related implementation prompt must specify:
 - whether Figma-backed or manual-spec-driven
 - overlap boundaries with sponsored challenges
 - API/contract assumptions and what is deferred
-

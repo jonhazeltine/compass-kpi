@@ -49,6 +49,7 @@ Use the same status scheme as `/Users/jon/compass-kpi/docs/spec/appendix/INTENDE
 - `dashboard_kpi`
 - `challenge`
 - `team`
+- `coaching_communication`
 - `profile`
 - `settings_payment`
 
@@ -110,6 +111,16 @@ Exports in repo:
 | Manage Challenge & Leaderboard | Leader challenge management/results/leaderboard | `Team Leader / Manage Challenge & Lead...` | `🟡 partial` | Challenge list/details/leaderboard exists but not fully leader-specific parity. |
 | Sponsored Challenges | Sponsored challenge variants | `Team Leader / Sponsored Challenges` | `⚪ missing` | Not implemented as dedicated runtime flow. |
 
+#### `coaching_communication`
+| Destination | Intended purpose | Figma source group | Runtime status | Notes |
+|---|---|---|---|---|
+| Home / Priority coaching nudge (embedded) | Lightweight coaching reminder / journey CTA allocation | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | `W1` allocation + shell-target planning only; no UI implementation in this docs pass. |
+| Team Dashboard coaching summary + broadcast preview (embedded) | Leader coaching summary + role-gated broadcast entry point | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | `W1` allocation only; `W2` recommended for `coach_broadcast_compose` + `inbox_channels` entry. |
+| Inbox / Channels | Leader comms hub (team/challenge/sponsor channels) | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Intended routes: `inbox`, `inbox_channels`, `channel_thread`. |
+| Broadcast Composer (role-gated) | Compose/send team or scoped coaching broadcast | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Intended route: `coach_broadcast_compose`; functional send deferred to communication wave. |
+| Coaching Journeys | Journey list/detail/lesson progress destination | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Intended routes: `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail`. |
+| Sponsored challenge coaching overlays (embedded) | Sponsor CTA + coaching link modules on challenge detail | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Challenge ownership remains separate from coaching content/messaging. |
+
 #### `profile`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
 |---|---|---|---|---|
@@ -138,6 +149,15 @@ Exports in repo:
 |---|---|---|---|---|
 | Team dashboard (member perspective) | View team performance + member role-appropriate actions | `Team Member / See Team Challen...` | `🟡 partial` | Runtime Team tab exists; leader/member distinctions not fully modeled yet. |
 | Team challenge list/detail | Participate in team challenges | `Team Member / Challenge & ...` | `🟡 partial` | Transitional routing exists via Team/Challenge surfaces. |
+
+#### `coaching_communication`
+| Destination | Intended purpose | Figma source group | Runtime status | Notes |
+|---|---|---|---|---|
+| Home / Priority coaching nudge (embedded) | Lightweight coaching reminder / lesson/journey prompt allocation | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | `W1` allocation + route-intent only. |
+| Team Dashboard member coaching progress (embedded) | Coaching progress snapshot + updates entry | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | `W1` allocation; `W2` recommended `coaching_journeys` + `inbox_channels` entry points. |
+| Challenge Details coaching + updates (embedded) | Challenge channel/update CTA + coaching content prompt | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Intended routes: `inbox_channels`, `channel_thread`, `coaching_journey_detail` (context-driven). |
+| Inbox / Channels | Member communication inbox and channels | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Participant actions only; role-gated management/broadcast not exposed. |
+| Coaching Journeys | Journey and lesson progress destination | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Route IDs locked in coaching wiring addendum for W1/W2 assignments. |
 
 #### `profile`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
@@ -168,6 +188,14 @@ Exports in repo:
 | Manage/Run Challenge | Solo challenge participation/results | `Solo User / Manage/Run Challenge` | `🟡 partial` | Runtime Challenge flow list/details/leaderboard exists; parity tightening ongoing. |
 | Create Challenge | Solo challenge creation | `Solo User / Create Challenge` | `⚪ missing` | Not wired in runtime mobile flow (CTA currently placeholder-labeled). |
 | Subscription challenge variants | gated challenge experiences | `Solo User / Sub...` | `⚪ missing` | Not implemented. |
+
+#### `coaching_communication`
+| Destination | Intended purpose | Figma source group | Runtime status | Notes |
+|---|---|---|---|---|
+| Home / Priority coaching nudge (embedded) | Lightweight solo coaching reminder / journey CTA allocation | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | `W1` allocation + route-intent only. |
+| Challenge Details coaching / sponsor content block (embedded) | Sponsor/challenge coaching CTA or content link module | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Sponsor/challenge ownership remains separate; coaching supplies content/messaging surface. |
+| Inbox / Channels (scoped) | Solo comms inbox/channel entry (challenge/sponsor/community scoped) | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | No team-admin comms controls. |
+| Coaching Journeys | Solo journey/lesson progress destination | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | May remain shell while communication W2 is prioritized. |
 
 #### `profile`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
@@ -213,6 +241,7 @@ Every implementation prompt must identify:
 - Persona
 - Flow
 - Screen(s)
+- Capability group (for coaching/comms work)
 - Canonical Figma node IDs + export filenames
 - Expected wiring transitions
 - Out-of-scope personas/flows

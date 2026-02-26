@@ -120,24 +120,39 @@ Coaching is a capability layer across Team, Challenge, Home, and Profile, plus n
 
 ```mermaid
 flowchart TD
-  CC["Coaching / Communication Layer"] --> CC1["Inbox / Channels (dedicated)"]
-  CC --> CC2["Coaching Journeys (dedicated)"]
-  CC --> CC3["Embedded Coaching Modules"]
+  CC["🟡 Coaching / Communication Layer (planning active)"] --> CC1["⚪ Inbox / Channels (dedicated)"]
+  CC --> CC2["⚪ Coaching Journeys (dedicated)"]
+  CC --> CC3["⚪ Embedded Coaching Modules"]
 
-  CC3 --> CC3A["Home / Priority nudges"]
-  CC3 --> CC3B["Team Dashboard coaching summary / broadcast preview"]
-  CC3 --> CC3C["Challenge Details coaching + sponsor campaign blocks"]
-  CC3 --> CC3D["Profile / goals / coaching prefs"]
+  CC3 --> CC3A["⚪ Home / Priority nudges"]
+  CC3 --> CC3B["⚪ Team Dashboard coaching summary / broadcast preview"]
+  CC3 --> CC3C["⚪ Challenge Details coaching + sponsor campaign blocks"]
+  CC3 --> CC3D["⚪ Profile / goals / coaching prefs"]
 
-  CC1 --> CCT["Team channel"]
-  CC1 --> CCC["Challenge channel"]
-  CC1 --> CCS["Sponsor channel"]
-  CC1 --> CCB["Broadcast composer (leader/admin role-gated)"]
+  CC1 -.-> CCT["⚪ Team channel"]
+  CC1 -.-> CCC["⚪ Challenge channel"]
+  CC1 -.-> CCS["⚪ Sponsor channel"]
+  CC1 -.-> CCB["⚪ Broadcast composer (leader/admin role-gated)"]
 
-  CC2 --> J1["Journey list"]
-  CC2 --> J2["Journey detail"]
-  CC2 --> J3["Lesson detail / progress"]
+  CC2 -.-> J1["⚪ Journey list"]
+  CC2 -.-> J2["⚪ Journey detail"]
+  CC2 -.-> J3["⚪ Lesson detail / progress"]
 ```
+
+## Coaching Insert Points and Destination Status (W1/W2 Planning)
+
+Manual-spec-driven planning only (no Figma-backed coaching screens identified in this pass).
+
+| Hosting surface / module | Persona(s) | Capability group | Destination / route intent | W1 status | W2 status | Entry point intent | Notes |
+|---|---|---|---|---|---|---|---|
+| Home / Priority coaching nudge | Team Leader, Team Member, Solo User | `goal_setting_momentum`, `coaching_content` | `coaching_journeys` (primary), `inbox` (secondary optional) | `⚪ planned` | `🟡 recommended` | embedded nudge card CTA | W1 allocates slot only; W2 may wire one CTA first. |
+| Team Dashboard leader coaching summary / broadcast preview | Team Leader | `communication`, `coaching_content` | `coach_broadcast_compose`, `coaching_journeys`, `inbox_channels` | `⚪ planned` | `🟡 recommended` | embedded module CTAs | Broadcast send remains role-gated; no KPI logging ownership changes. |
+| Team Dashboard member coaching progress / updates | Team Member | `communication`, `coaching_content` | `coaching_journeys`, `inbox_channels` | `⚪ planned` | `🟡 recommended` | embedded module CTAs | Member flow is participant-only for comms actions. |
+| Challenge Details / Results coaching block | Team Leader, Team Member, Solo User | `sponsor_challenge_coaching`, `communication` | `inbox_channels`, `channel_thread`, `coaching_journey_detail` | `⚪ planned` | `🟡 recommended` | challenge detail CTA/link block | Sponsor/challenge payload ownership remains separate from coaching content. |
+| Profile / Settings coaching prefs / notifications | Team Leader, Team Member, Solo User | `goal_setting_momentum`, `communication` | `inbox`, profile prefs subsection (manual-spec-driven) | `⚪ planned` | `🟡 recommended` | settings CTA / subsection | W1 names and placement only; W2 can wire prefs entry points. |
+| Inbox / Channels dedicated flow | Team Leader, Team Member, Solo User | `communication` | `inbox`, `inbox_channels`, `channel_thread` | `⚪ missing` | `🟡 stub target` | dedicated flow shell | First coding wave should create shells and route placeholders. |
+| Broadcast composer (leader/admin role-gated) | Team Leader (Admin/Coach later per DEP-003) | `communication` | `coach_broadcast_compose` | `⚪ missing` | `🟡 stub target` | Team Dashboard + Inbox role-gated CTA | Functional send flow belongs to W2 communication wave. |
+| Coaching Journeys dedicated flow | Team Leader, Team Member, Solo User | `coaching_content` | `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail` | `⚪ missing` | `🟡 stub target` | Home/Team/Challenge embedded CTA | W2 may keep journeys shell-only if comms consumes capacity. |
 
 ## Member App Shell (Intended)
 
@@ -169,8 +184,8 @@ flowchart TD
   TD --> TK["Team KPI Settings"]
   TD --> TPL["Team Pipeline"]
   TD --> TC["Team Challenges / Single Person Challenges"]
-  TD -.-> TComm["Team Channel / Broadcast (future)"]
-  TD -.-> TCoach["Team Coaching Summary (embedded)"]
+  TD -.-> TComm["⚪ Team Channel / Broadcast (future)"]
+  TD -.-> TCoach["⚪ Team Coaching Summary (embedded)"]
   TD --> TL["Team Logging (shared KPI logging block)"]
 
   TI --> TD
@@ -240,13 +255,13 @@ flowchart TD
   MT --> MTD["Team Dashboard (member variant)"]
   MTD --> MTC["Team Challenges"]
   MTD --> MPipe["Pipeline / Team Stats (read-first)"]
-  MTD -.-> MJP["My Coaching Progress / Lesson prompt"]
+  MTD -.-> MJP["⚪ My Coaching Progress / Lesson prompt"]
   MTD --> MLog["Team Logging (shared KPI logging block)"]
 
   MC --> MCL["Challenge List"]
   MCL --> MCD["Challenge Details"]
   MCD --> MCB["Leaderboard / Results"]
-  MCD -.-> MCC["Challenge Channel / Updates"]
+  MCD -.-> MCC["⚪ Challenge Channel / Updates"]
 
   classDef mvp fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
   classDef prod fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:2px;
@@ -273,7 +288,7 @@ flowchart TD
   SC --> SCL["Challenge List"]
   SCL --> SCD["Challenge Details / Progress"]
   SCD --> SCB["Leaderboard / Results"]
-  SCD -.-> SCN["Solo coaching prompt / sponsored content block"]
+  SCD -.-> SCN["⚪ Solo coaching prompt / sponsored content block"]
 
   classDef mvp fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
   classDef prod fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:2px;
@@ -293,8 +308,8 @@ This is a deliberate overlap and should be implemented as linked modules, not a 
 flowchart LR
   SCH["Sponsored Challenge"] --> SCP["Challenge Participation / Progress"]
   SCH --> SCM["Sponsor Metadata + CTA + Disclaimer"]
-  SCH --> SCC["Sponsor/Challenge Channel (optional)"]
-  SCH --> SCL["Coaching Content / Journey Link (optional)"]
+  SCH -.-> SCC["⚪ Sponsor/Challenge Channel (optional)"]
+  SCH -.-> SCL["⚪ Coaching Content / Journey Link (optional)"]
 
   SCP --> KPI["KPI Logging (single source of activity truth)"]
   SCL --> CJ["Coaching Journeys / Lessons"]
