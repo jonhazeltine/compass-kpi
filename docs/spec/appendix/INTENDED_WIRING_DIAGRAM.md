@@ -11,6 +11,13 @@ Use with:
 - `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
 - `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
 
+## Maintenance Rule (Required)
+This doc and `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md` must be updated **in the same change set** whenever:
+- a screen is added/removed/renamed
+- wiring/transitions change
+- status colors/badges change (`⚪/🔵/🟡/🟢/🔴`)
+- persona access or flow ownership changes
+
 ## Key Principles
 - Organize by **persona perspective** (`Solo User`, `Team Member`, `Team Leader`)
 - Reuse **shared flows/screens** where possible
@@ -327,3 +334,5 @@ Update this doc whenever:
 - persona-specific deltas become explicit in runtime (leader vs member variants)
 - coaching/communication destinations or embedded module entry points are added
 - the app moves from state-router navigation to a formal navigator
+
+See also the sync rule in `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`; these two docs should move together.
