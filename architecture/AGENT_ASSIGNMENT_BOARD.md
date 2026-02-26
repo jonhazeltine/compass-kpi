@@ -63,6 +63,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-UI-PACKAGE-VISIBILITY-GATING-A` | `committed+pushed` | `M6 coaching slice (runtime UI gating + fallback behavior)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`package visibility + entitlement UI gating`) | `Challenge Details/Results`, `coaching_journeys*`, `inbox*`, Team coaching modules (existing W3/W4 surfaces) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven + accepted packaging docs (`COACHING-PACKAGING-SPONSORED-PAID-A`) | Accepted and pushed: runtime package visibility/entitlement banners + safe fallback/gated/blocked states across W3/W4 coaching surfaces, with UI-only contract-gap triage and no backend/schema changes. |
 | `COACHING-BACKEND-PREP-PACKAGE-READMODEL-A` | `committed+pushed` | `M6 coaching slice (backend-prep planning/spec)` | `Admin operator`, `Coach`, downstream `Leader/Member/Solo` | `coaching content operations / publishing` (`package read-model + entitlement outputs`) | backend contract/read-model planning only (no runtime UI code) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs/backend-prep planning only; separate worktree preferred) | manual-spec-driven + accepted packaging/docs stack | Accepted and pushed: endpoint-family coverage map, read-model output requirement matrix, gap classification, `decision needed` list, and follow-on backend/UI implementation specs for packaging/entitlement runtime outputs |
 | `COACHING-W5-AI-READINESS-BOUNDARY-A` | `queued` | `M6 coaching slice (W5 AI coach assist readiness; planning-only)` | `Coach`, `Admin operator`, downstream `Leader/Member/Solo` | `coaching / AI assist` (`W5 boundary + implementation-readiness gating`) | AI coach assist planning docs + intended wiring overlays (no app/backend code) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + accepted coaching/packaging/read-model docs stack | Define W5 AI coach assist boundary, approvals, runtime insertion points, and implementation-ready gates before any AI UI/backend coding. |
+| `COACHING-SAMPLE-CONTENT-SEED-A` | `queued` | `M6 coaching slice (runtime realism / validation data)` | `Coach`, `Team Leader`, `Team Member`, `Solo User` | `coaching content delivery` (`journeys`, `lessons`, `assignments`, sample progress/messages`) | coaching journeys/lessons runtime surfaces + comms shells (`coaching_journeys*`, `inbox*`, Team/Challenge coaching modules) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree strongly preferred) | N/A (data/backend seed swath; no Figma requirement) | Seed realistic coaching sample content + assignments/progress/messages in existing tables/endpoints so W3/W4 UI checks show meaningful states instead of mostly fallback/placeholder behavior. |
 | `ADMIN-A3_5-USERS-LIST-PAGING-SORT-A` | `committed+pushed` | `A3.5 (parallel with M6 backend-prep implementation)` | `Admin operator` | `admin users list/search/sort/paging polish` | `/admin/users` (primary), `/admin/reports` regression check only | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web; preserve existing patterns) | Accepted and pushed (`5e59ad1`): `/admin/users` sorting/paging workflow polish (header asc/desc toggles, row-window clarity, reset-sort, show-more count labels, row-window reset on filter/sort changes). Manual browser spot-check remains recommended follow-up. |
 
 ## Blocked Assignments
@@ -1448,6 +1449,69 @@ Define an implementation-ready W5 AI coach assist boundary package before any AI
 
 #### Worker Launch (Short Form)
 `Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-W5-AI-READINESS-BOUNDARY-A exactly as written. Follow the assignment block, validation requirements, and report-back format.`
+
+### `COACHING-SAMPLE-CONTENT-SEED-A`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M6 coaching slice (runtime realism / validation data)`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `coaching content delivery` (`journeys`, `lessons`, `assignments`, sample progress/messages`)
+- `Owner:` `Mobile-2` (backend/data execution)
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (backend/data worktree strongly preferred)
+- `Figma refs:` `N/A` (data/backend seed swath)
+- `Dependency note:` Follows accepted W3/W4 coaching UI work + package visibility/read-model work so runtime surfaces can be reviewed against realistic states
+
+#### Primary Objective
+Seed realistic coaching content and assignment/progress data (using existing schema and endpoint families only) so M6 coaching runtime UI reviews are materially useful:
+- create sample coaching journeys with milestones/lessons (enough variety for list/detail/progress states)
+- create sample lesson progress states for current test user(s): `not_started`, `in_progress`, `completed`
+- create sample channels/messages/broadcast history tied to coaching/team/challenge contexts where existing schema supports it
+- ensure at least one sponsor-linked or package-attribution-visible path is represented where current seeded data can support it
+- preserve existing production/test rows; use clearly identifiable sample names/prefixes for cleanup/reseed repeatability
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/02_data_model.md` (if needed for table references)
+- `/Users/jon/compass-kpi/backend/src/index.ts`
+- `/Users/jon/compass-kpi/backend/.env` (read only; do not print secrets)
+
+#### Constraints (Hard)
+- No schema changes
+- No net-new endpoint families
+- Prefer SQL seed script(s) or repeatable backend-safe seed routine over ad hoc manual DB edits
+- Do not print secrets from `.env`
+- Keep seeded rows clearly labeled for later cleanup/reseed (`Sample`, `Seed`, etc.)
+- If structural/backend contract changes become necessary, stop and report exact gap (do not widen scope)
+
+#### Validation (Required)
+- Verify seeded content appears through existing endpoints (API smoke checks) for touched families:
+  - `/api/coaching/journeys`
+  - `/api/coaching/journeys/{id}`
+  - `/api/coaching/progress`
+  - `/api/channels`
+  - `/api/channels/{id}/messages`
+- Confirm at least one example each of: active journey, in-progress lesson, completed lesson, message thread with messages
+- If runtime mobile check is available, capture a few screenshots of W3/W4 surfaces using seeded data (optional but preferred)
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `Seeded content summary` (journeys/milestones/lessons/progress/messages/channels)
+- `Endpoints verified`
+- `Files/scripts touched`
+- `Repeatability / cleanup notes`
+- `Validation performed`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-SAMPLE-CONTENT-SEED-A exactly as written. Follow the assignment block, validation requirements, and report-back format.`
 
 
 ## Controller Review Checklist (Reference)
