@@ -62,6 +62,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `ADMIN-A2-TABLE-OPS-FIXPACK-B` | `committed+pushed` | `A2 (parallel with M6 coaching planning)` | `Admin operator` | `admin KPI catalog + challenge templates table ops` | `/admin/kpis`, `/admin/challenge-templates` (web admin tables/forms only) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web, no Figma parity requirement for this swath) | Accepted and pushed: baseline A2 fixpack + sorting follow-up landed (`91de8d2`, `6854cd1`). Owner cleared baseline manual validation blocker and deferred pagination; sortable KPI/template headers (asc/desc) added. |
 | `COACHING-UI-PACKAGE-VISIBILITY-GATING-A` | `committed+pushed` | `M6 coaching slice (runtime UI gating + fallback behavior)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`package visibility + entitlement UI gating`) | `Challenge Details/Results`, `coaching_journeys*`, `inbox*`, Team coaching modules (existing W3/W4 surfaces) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven + accepted packaging docs (`COACHING-PACKAGING-SPONSORED-PAID-A`) | Accepted and pushed: runtime package visibility/entitlement banners + safe fallback/gated/blocked states across W3/W4 coaching surfaces, with UI-only contract-gap triage and no backend/schema changes. |
 | `COACHING-BACKEND-PREP-PACKAGE-READMODEL-A` | `committed+pushed` | `M6 coaching slice (backend-prep planning/spec)` | `Admin operator`, `Coach`, downstream `Leader/Member/Solo` | `coaching content operations / publishing` (`package read-model + entitlement outputs`) | backend contract/read-model planning only (no runtime UI code) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs/backend-prep planning only; separate worktree preferred) | manual-spec-driven + accepted packaging/docs stack | Accepted and pushed: endpoint-family coverage map, read-model output requirement matrix, gap classification, `decision needed` list, and follow-on backend/UI implementation specs for packaging/entitlement runtime outputs |
+| `ADMIN-A3_5-USERS-LIST-PAGING-SORT-A` | `active` | `A3.5 (parallel with M6 backend-prep implementation)` | `Admin operator` | `admin users list/search/sort/paging polish` | `/admin/users` (primary), `/admin/reports` regression check only | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web; preserve existing patterns) | Large-swatch A3.5 users list/search/sort/paging and operator table workflow polish on admin web; no backend/schema/API changes. |
 
 ## Blocked Assignments
 
@@ -1305,6 +1306,73 @@ Consume server-provided packaging/entitlement read-model outputs on existing coa
 
 #### Worker Launch (Short Form)
 `Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-UI-PACKAGE-READMODEL-CONSUME-A exactly as written. Follow the assignment block, validation requirements, and report-back format.`
+
+### `ADMIN-A3_5-USERS-LIST-PAGING-SORT-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `A3.5 (parallel with M6 backend-prep implementation)`
+- `Persona:` `Admin operator`
+- `Flow:` `admin users list/search/sort/paging polish`
+- `Owner:` `Admin-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred)
+- `Figma refs:` `N/A` (admin web usability swath; preserve existing admin patterns)
+- `Controller seed note (2026-02-26):` Large admin swath to keep parallel momentum while M6 coaching backend/UI work continues. Scope is admin web only and should avoid mobile/coaching router files.
+- `Dependency note:` Follows accepted admin operator passes (`fc85b3b`, `91de8d2`, `6854cd1`). Build on existing table/operator affordances rather than redesigning admin shell.
+
+#### Screens In Scope (Large Swath)
+1. `/admin/users` (primary)
+2. `/admin/reports` (regression check only; optional small fixes if directly related to list/operator flow consistency)
+
+#### Primary Objective
+Deliver a substantial A3.5 admin users list workflow polish pass:
+- add/finish predictable client-side sorting on user table columns (asc/desc header toggles)
+- improve paging/show-more/list-window behavior clarity and operator control
+- tighten filter/search + selected-row/form coordination and recovery UX
+- improve row action discoverability and status readability for common operator workflows
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+
+#### Constraints (Hard)
+- Admin web only (`/Users/jon/compass-kpi/app/screens/AdminShellScreen.tsx` and directly related admin helpers only)
+- No mobile app screen edits
+- No backend/API/schema changes
+- No authz boundary changes
+- Follow existing admin shell visual patterns (no redesign pass)
+- If a needed fix requires API or route changes, stop and document blocker
+
+#### Implementation Pattern (Large Swath)
+- Start with a mismatch/issues list for `/admin/users`
+- Prioritize sort/search/filter/paging predictability and row action discoverability
+- Keep `1` commit preferred (`2` max if a clean split is clearly better)
+- If touching `/admin/reports`, keep it to direct consistency/regression fixes only
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Manual browser spot-check of `/admin/users` (and `/admin/reports` if touched)
+- Confirm no mobile files changed
+- Confirm no backend/API/schema files changed
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona affected`
+- `Screens changed`
+- `Top operator issues before changes`
+- `What improved`
+- `Still rough / deferred`
+- `Files touched` (with line refs)
+- `Validation performed` (`tsc`, manual browser checks)
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment ADMIN-A3_5-USERS-LIST-PAGING-SORT-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
 
 
 ## Controller Review Checklist (Reference)
