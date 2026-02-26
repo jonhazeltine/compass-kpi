@@ -484,7 +484,9 @@ function AdminKpiCatalogPanel({
   saveError: string | null;
   successMessage: string | null;
 }) {
+  const [visibleRowCount, setVisibleRowCount] = useState(24);
   const editing = Boolean(draft.id);
+  const selectedRowId = draft.id ?? null;
   const filteredRows = rows.filter((row) => {
     const q = searchQuery.trim().toLowerCase();
     const matchesSearch =
@@ -498,6 +500,17 @@ function AdminKpiCatalogPanel({
     const matchesType = typeFilter === 'all' || row.type === typeFilter;
     return matchesSearch && matchesStatus && matchesType;
   });
+  const selectedRow = selectedRowId ? rows.find((row) => row.id === selectedRowId) ?? null : null;
+  const selectedRowInFilteredIndex = selectedRowId ? filteredRows.findIndex((row) => row.id === selectedRowId) : -1;
+  const selectedRowHiddenByFilters = Boolean(selectedRowId && selectedRowInFilteredIndex === -1);
+  const visibleRows = filteredRows.slice(0, visibleRowCount);
+
+  useEffect(() => {
+    if (selectedRowInFilteredIndex >= 0 && selectedRowInFilteredIndex >= visibleRowCount) {
+      setVisibleRowCount(selectedRowInFilteredIndex + 1);
+    }
+  }, [selectedRowInFilteredIndex, visibleRowCount]);
+
   return (
     <View style={styles.panel}>
       <View style={styles.panelTopRow}>
@@ -506,11 +519,11 @@ function AdminKpiCatalogPanel({
           <Text style={styles.panelTitle}>KPI Catalog</Text>
         </View>
         <View style={[styles.stagePill, { backgroundColor: '#EEF3FF', borderColor: '#CEDBFF' }]}>
-          <Text style={[styles.stagePillText, { color: '#204ECF' }]}>A2 Later</Text>
+          <Text style={[styles.stagePillText, { color: '#204ECF' }]}>A2 Now</Text>
         </View>
       </View>
       <Text style={styles.panelBody}>
-        A2 KPI catalog baseline wired to existing admin endpoints with create/edit/deactivate controls.
+        Manage KPI definitions for admin operations with search, filtering, and create/edit/deactivate controls.
       </Text>
       <View style={styles.filterBar}>
         <View style={[styles.formField, styles.formFieldWide]}>
@@ -568,6 +581,42 @@ function AdminKpiCatalogPanel({
             <Text style={styles.smallGhostButtonText}>{editing ? 'New KPI' : 'Clear'}</Text>
           </TouchableOpacity>
         </View>
+        {selectedRow ? (
+          <View style={styles.selectedUserSummaryCard}>
+            <View style={styles.formHeaderRow}>
+              <View>
+                <Text style={styles.formTitle}>Selected KPI</Text>
+                <Text style={styles.metaRow}>{selectedRow.name}</Text>
+              </View>
+              <View style={styles.inlineToggleRow}>
+                <View style={[styles.statusChip, { backgroundColor: '#F4F8FF', borderColor: '#D8E4FA' }]}>
+                  <Text style={[styles.statusChipText, { color: '#345892' }]}>{selectedRow.type}</Text>
+                </View>
+                <View
+                  style={[
+                    styles.statusChip,
+                    selectedRow.is_active
+                      ? { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' }
+                      : { backgroundColor: '#FFF4F2', borderColor: '#F2C0B9' },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusChipText,
+                      { color: selectedRow.is_active ? '#1D7A4D' : '#B2483A' },
+                    ]}
+                  >
+                    {selectedRow.is_active ? 'active' : 'inactive'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+            <Text style={styles.metaRow}>Slug: {selectedRow.slug ?? selectedRow.id}</Text>
+            {selectedRowHiddenByFilters ? (
+              <Text style={styles.fieldHelpText}>Selected KPI is hidden by current search/filter settings, but remains loaded in the edit form.</Text>
+            ) : null}
+          </View>
+        ) : null}
         <View style={styles.formGrid}>
           <View style={styles.formField}>
             <Text style={styles.formLabel}>Name</Text>
@@ -746,7 +795,25 @@ function AdminKpiCatalogPanel({
       {error ? <Text style={[styles.metaRow, styles.errorText]}>Error: {error}</Text> : null}
       {!loading && !error ? (
         <>
-          <Text style={styles.metaRow}>Rows shown: {filteredRows.length} of {rows.length}</Text>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.metaRow}>
+              {filteredRows.length === 0
+                ? `No KPI rows match current search/filter (${rows.length} total loaded)`
+                : `Showing ${visibleRows.length} of ${filteredRows.length} filtered rows (${rows.length} total loaded)`}
+            </Text>
+            <View style={styles.formActionsRow}>
+              {filteredRows.length > visibleRowCount ? (
+                <TouchableOpacity style={styles.smallGhostButton} onPress={() => setVisibleRowCount((prev) => prev + 24)}>
+                  <Text style={styles.smallGhostButtonText}>Show more</Text>
+                </TouchableOpacity>
+              ) : null}
+              {visibleRowCount > 24 ? (
+                <TouchableOpacity style={styles.smallGhostButton} onPress={() => setVisibleRowCount(24)}>
+                  <Text style={styles.smallGhostButtonText}>Reset rows</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
           <View style={styles.tableWrap}>
             <View style={styles.tableHeaderRow}>
               <Text style={[styles.tableHeaderCell, styles.colWide]}>KPI</Text>
@@ -758,8 +825,12 @@ function AdminKpiCatalogPanel({
               <Text style={[styles.tableHeaderCell, styles.colSm]}>Status</Text>
               <Text style={[styles.tableHeaderCell, styles.colSm]}>Updated</Text>
             </View>
-            {filteredRows.slice(0, 12).map((row) => (
-              <Pressable key={row.id} style={styles.tableDataRow} onPress={() => onSelectRow(row)}>
+            {visibleRows.map((row) => (
+              <Pressable
+                key={row.id}
+                style={[styles.tableDataRow, selectedRowId === row.id && styles.tableDataRowSelectedStrong]}
+                onPress={() => onSelectRow(row)}
+              >
                 <View style={[styles.tableCell, styles.colWide]}>
                   <Text style={styles.tablePrimary}>{row.name}</Text>
                   <Text style={styles.tableSecondary}>{row.slug ?? row.id}</Text>
@@ -779,7 +850,15 @@ function AdminKpiCatalogPanel({
                 <Text style={[styles.tableCellText, styles.colSm]}>{formatDateShort(row.updated_at)}</Text>
               </Pressable>
             ))}
-            {filteredRows.length > 12 ? <Text style={styles.tableFootnote}>Showing first 12 filtered rows for A2 baseline UI (pagination later).</Text> : null}
+            {filteredRows.length === 0 ? (
+              <Text style={styles.tableFootnote}>No KPI rows match the current search/filter. Adjust filters or clear search to continue browsing.</Text>
+            ) : filteredRows.length > visibleRowCount ? (
+              <Text style={styles.tableFootnote}>
+                More KPI rows are available. Use “Show more” to continue browsing without leaving the current edit form.
+              </Text>
+            ) : (
+              <Text style={styles.tableFootnote}>End of filtered KPI results.</Text>
+            )}
           </View>
         </>
       ) : null}
@@ -824,7 +903,9 @@ function AdminChallengeTemplatesPanel({
   saveError: string | null;
   successMessage: string | null;
 }) {
+  const [visibleRowCount, setVisibleRowCount] = useState(24);
   const editing = Boolean(draft.id);
+  const selectedRowId = draft.id ?? null;
   const filteredRows = rows.filter((row) => {
     const q = searchQuery.trim().toLowerCase();
     const matchesSearch =
@@ -836,6 +917,17 @@ function AdminChallengeTemplatesPanel({
       (statusFilter === 'active' ? row.is_active : !row.is_active);
     return matchesSearch && matchesStatus;
   });
+  const selectedRow = selectedRowId ? rows.find((row) => row.id === selectedRowId) ?? null : null;
+  const selectedRowInFilteredIndex = selectedRowId ? filteredRows.findIndex((row) => row.id === selectedRowId) : -1;
+  const selectedRowHiddenByFilters = Boolean(selectedRowId && selectedRowInFilteredIndex === -1);
+  const visibleRows = filteredRows.slice(0, visibleRowCount);
+
+  useEffect(() => {
+    if (selectedRowInFilteredIndex >= 0 && selectedRowInFilteredIndex >= visibleRowCount) {
+      setVisibleRowCount(selectedRowInFilteredIndex + 1);
+    }
+  }, [selectedRowInFilteredIndex, visibleRowCount]);
+
   return (
     <View style={styles.panel}>
       <View style={styles.panelTopRow}>
@@ -844,11 +936,11 @@ function AdminChallengeTemplatesPanel({
           <Text style={styles.panelTitle}>Challenge Templates</Text>
         </View>
         <View style={[styles.stagePill, { backgroundColor: '#EEF3FF', borderColor: '#CEDBFF' }]}>
-          <Text style={[styles.stagePillText, { color: '#204ECF' }]}>A2 Later</Text>
+          <Text style={[styles.stagePillText, { color: '#204ECF' }]}>A2 Now</Text>
         </View>
       </View>
       <Text style={styles.panelBody}>
-        A2 challenge template baseline wired to existing admin endpoints with create/edit/deactivate controls.
+        Manage challenge templates with search, filtering, and create/edit/deactivate controls for admin operations.
       </Text>
       <View style={styles.filterBar}>
         <View style={[styles.formField, styles.formFieldWide]}>
@@ -887,6 +979,39 @@ function AdminChallengeTemplatesPanel({
             <Text style={styles.smallGhostButtonText}>{editing ? 'New Template' : 'Clear'}</Text>
           </TouchableOpacity>
         </View>
+        {selectedRow ? (
+          <View style={styles.selectedUserSummaryCard}>
+            <View style={styles.formHeaderRow}>
+              <View>
+                <Text style={styles.formTitle}>Selected Template</Text>
+                <Text style={styles.metaRow}>{selectedRow.name}</Text>
+              </View>
+              <View
+                style={[
+                  styles.statusChip,
+                  selectedRow.is_active
+                    ? { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' }
+                    : { backgroundColor: '#FFF4F2', borderColor: '#F2C0B9' },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusChipText,
+                    { color: selectedRow.is_active ? '#1D7A4D' : '#B2483A' },
+                  ]}
+                >
+                  {selectedRow.is_active ? 'active' : 'inactive'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.metaRow} numberOfLines={2}>
+              {selectedRow.description?.trim() || '(no description)'}
+            </Text>
+            {selectedRowHiddenByFilters ? (
+              <Text style={styles.fieldHelpText}>Selected template is hidden by current search/filter settings, but remains loaded in the edit form.</Text>
+            ) : null}
+          </View>
+        ) : null}
         <View style={styles.formField}>
           <Text style={styles.formLabel}>Name</Text>
           <TextInput value={draft.name} onChangeText={(name) => onDraftChange({ name })} style={styles.input} />
@@ -934,15 +1059,37 @@ function AdminChallengeTemplatesPanel({
       {error ? <Text style={[styles.metaRow, styles.errorText]}>Error: {error}</Text> : null}
       {!loading && !error ? (
         <>
-          <Text style={styles.metaRow}>Rows shown: {filteredRows.length} of {rows.length}</Text>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.metaRow}>
+              {filteredRows.length === 0
+                ? `No template rows match current search/filter (${rows.length} total loaded)`
+                : `Showing ${visibleRows.length} of ${filteredRows.length} filtered rows (${rows.length} total loaded)`}
+            </Text>
+            <View style={styles.formActionsRow}>
+              {filteredRows.length > visibleRowCount ? (
+                <TouchableOpacity style={styles.smallGhostButton} onPress={() => setVisibleRowCount((prev) => prev + 24)}>
+                  <Text style={styles.smallGhostButtonText}>Show more</Text>
+                </TouchableOpacity>
+              ) : null}
+              {visibleRowCount > 24 ? (
+                <TouchableOpacity style={styles.smallGhostButton} onPress={() => setVisibleRowCount(24)}>
+                  <Text style={styles.smallGhostButtonText}>Reset rows</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
           <View style={styles.tableWrap}>
             <View style={styles.tableHeaderRow}>
               <Text style={[styles.tableHeaderCell, styles.colWide]}>Template</Text>
               <Text style={[styles.tableHeaderCell, styles.colSm]}>Status</Text>
               <Text style={[styles.tableHeaderCell, styles.colSm]}>Updated</Text>
             </View>
-            {filteredRows.slice(0, 12).map((row) => (
-              <Pressable key={row.id} style={styles.tableDataRow} onPress={() => onSelectRow(row)}>
+            {visibleRows.map((row) => (
+              <Pressable
+                key={row.id}
+                style={[styles.tableDataRow, selectedRowId === row.id && styles.tableDataRowSelectedStrong]}
+                onPress={() => onSelectRow(row)}
+              >
                 <View style={[styles.tableCell, styles.colWide]}>
                   <Text style={styles.tablePrimary}>{row.name}</Text>
                   <Text numberOfLines={1} style={styles.tableSecondary}>
@@ -953,7 +1100,15 @@ function AdminChallengeTemplatesPanel({
                 <Text style={[styles.tableCellText, styles.colSm]}>{formatDateShort(row.updated_at)}</Text>
               </Pressable>
             ))}
-            {filteredRows.length > 12 ? <Text style={styles.tableFootnote}>Showing first 12 filtered rows for A2 baseline UI (pagination later).</Text> : null}
+            {filteredRows.length === 0 ? (
+              <Text style={styles.tableFootnote}>No templates match the current search/filter. Adjust filters or clear search to continue browsing.</Text>
+            ) : filteredRows.length > visibleRowCount ? (
+              <Text style={styles.tableFootnote}>
+                More templates are available. Use “Show more” to continue browsing without leaving the current edit form.
+              </Text>
+            ) : (
+              <Text style={styles.tableFootnote}>End of filtered template results.</Text>
+            )}
           </View>
         </>
       ) : null}
