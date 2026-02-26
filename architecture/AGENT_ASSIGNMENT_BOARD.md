@@ -24,18 +24,19 @@ Use this to reduce chat handoff overhead. The controller thread should read/upda
 
 | ID | Status | Program status | Persona | Flow | Screens in scope | Owner | Branch / Worktree | Figma refs | Deliverable |
 |---|---|---|---|---|---|---|---|---|---|
-| `TEAM-PARITY-A` | `active` | `M3/M3b + approved M5 overlap` | `Team Leader` | `team` | `Team Dashboard`, `Invite Member`, `Pending Invitations`, `Team KPI Settings`, `Pipeline`, `Single Person Challenges / Team Challenges` | worker (mobile) | `codex/a2-admin-list-usability-pass` (recommend dedicated worktree) | `173-29934`, `173-4448`, `173-4612`, `173-4531`, `168-16300`, `173-4905` | Large-swatch Team Leader Team-flow parity pass (dashboard parity + route wiring + management screens parity + navigation consistency) |
+| `TEAM-MEMBER-PARITY-A` | `active` | `M3/M3b + approved M5 overlap` | `Team Member` | `team + challenge participation` | `Team Dashboard (member perspective)`, `Team Challenges`, `Challenge List`, `Challenge Details`, `Challenge Leaderboard / Results` | worker (mobile) | `codex/a2-admin-list-usability-pass` (recommend dedicated worktree) | Team Member Team/Challenge flow refs from Figma persona groups; exact node IDs required in report | Large-swatch Team Member participation parity + wiring pass (role-appropriate CTA cleanup, member-view modules, team/challenge cross-surface consistency, docs status updates) |
 
 ## Blocked Assignments
 
 | ID | Status | Program status | Persona | Flow | Screens | Blocker | Next action |
 |---|---|---|---|---|---|---|---|
-| `COACHING-INTEGRATION-A` | `queued` | `post TEAM-PARITY-A planning` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` | host surfaces across `Home`, `Challenge`, `Team`, `Profile` + future `Inbox/Journeys` | Wait for Team parity baseline and manual feature-set definition details | Define first manual coaching slice against coaching matrix + wiring addendum |
+| `COACHING-INTEGRATION-A` | `queued` | `post Team Member parity planning` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` | host surfaces across `Home`, `Challenge`, `Team`, `Profile` + future `Inbox/Journeys` | Wait for Team Member participation parity baseline and manual feature-set definition details | Define first manual coaching slice against coaching matrix + wiring addendum |
 
 ## Recently Completed (Awaiting Review / Landed on Branch)
 
 | ID | Status | Program status | Persona | Screens affected | Commit(s) | Notes |
 |---|---|---|---|---|---|---|
+| `TEAM-PARITY-A` | `committed` | `M3/M3b + approved M5 overlap` | `Team Leader` | `Team Dashboard`, `Invite Member`, `Pending Invitations`, `Team KPI Settings`, `Pipeline`, `Single Person Challenges / Team Challenges` | `9e572e1` | Team Leader mobile flow parity swath completed; docs sync rule satisfied in same commit. |
 | `ADMIN-A2-USABILITY` | `committed` | `A2` | `Admin operator` | `Admin KPI Catalog`, `Challenge Templates` (web admin) | `0a45742` | Row-window reset, no-results recovery, show-more count, template ID visibility |
 | `MOBILE-CHALLENGE-RESCUE` | `committed` | `M3/M3b` | `Solo/User + Team contexts (challenge flow)` | `Challenge List`, `Challenge Details`, `Challenge Leaderboard` | `020ce4d` | CTA/link audit + misleading CTA fixes |
 | `FIGMA-TEAM-EXPORTS` | `committed+pushed` | `control-plane` | `N/A` | Team flow canonical exports/docs | `1638282`, `df8c825` | Added isolated Team exports; corrected Team Dashboard canonical node to `173-29934` |
@@ -72,4 +73,3 @@ Every worker report should include:
   - `design/figma/exports/screens/_team_dashboard_candidates/`
   - swap files / editor temp files
 - `references/...` is informational unless explicitly part of the assignment deliverable.
-
