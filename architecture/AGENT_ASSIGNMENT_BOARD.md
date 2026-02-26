@@ -318,7 +318,7 @@ Produce the first implementation-ready coaching integration planning package (ma
 ### `COACHING-UI-W1-ALLOCATION-SHELLS`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W1 allocation + route shells`)
