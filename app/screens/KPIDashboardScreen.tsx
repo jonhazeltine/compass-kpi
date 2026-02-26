@@ -4582,8 +4582,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 <View style={styles.challengeListShell}>
                   <View style={styles.challengeListHeaderRow}>
                     <Text style={styles.challengeListTitle}>Challenges</Text>
-                    <TouchableOpacity style={styles.challengeListCreateBtn}>
-                      <Text style={styles.challengeListCreateBtnText}>Create</Text>
+                    <TouchableOpacity
+                      style={[styles.challengeListCreateBtn, styles.disabled]}
+                      disabled
+                    >
+                      <Text style={styles.challengeListCreateBtnText}>Create (Soon)</Text>
                     </TouchableOpacity>
                   </View>
                   <Text style={styles.challengeListSub}>See active challenges and jump into challenge progress details.</Text>
@@ -4810,8 +4813,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <Text style={styles.challengeDetailsNavTitle}>
                       {challengeDetailsSurfaceLabel}
                     </Text>
-                    <TouchableOpacity style={styles.challengeDetailsActionBtn}>
-                      <Text style={styles.challengeDetailsActionBtnText}>Add KPI</Text>
+                    <TouchableOpacity
+                      style={[styles.challengeDetailsActionBtn, styles.disabled]}
+                      disabled
+                    >
+                      <Text style={styles.challengeDetailsActionBtnText}>KPIs Below</Text>
                     </TouchableOpacity>
                   </View>
 
