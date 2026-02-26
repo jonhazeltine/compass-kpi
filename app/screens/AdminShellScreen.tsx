@@ -277,6 +277,22 @@ function formatDateTimeShort(value?: string | null) {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 }
 
+function formatDiagnosticLabel(key: string) {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function formatDiagnosticValue(value: unknown) {
+  if (value == null) return 'n/a';
+  if (typeof value === 'number') {
+    if (Number.isInteger(value)) return String(value);
+    return value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+  }
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
+}
+
 function formatProbeStatus(status: EndpointProbeStatus): string {
   switch (status.kind) {
     case 'idle':
@@ -1038,6 +1054,41 @@ function AdminUsersPanel({
   calibrationEvents: AdminUserCalibrationEvent[];
   calibrationActionLoading: boolean;
 }) {
+  const [showAllCalibrationRows, setShowAllCalibrationRows] = useState(false);
+  const [showAllCalibrationEvents, setShowAllCalibrationEvents] = useState(false);
+  const [userActivityFeed, setUserActivityFeed] = useState<Array<{ id: string; tone: 'success' | 'error' | 'info'; text: string; at: string }>>([]);
+
+  const pushUserActivity = (tone: 'success' | 'error' | 'info', text: string) => {
+    setUserActivityFeed((prev) => {
+      const next = [{ id: `${Date.now()}-${Math.random()}`, tone, text, at: new Date().toISOString() }, ...prev];
+      return next.slice(0, 8);
+    });
+  };
+
+  useEffect(() => {
+    if (userSuccessMessage) pushUserActivity('success', userSuccessMessage);
+  }, [userSuccessMessage]);
+
+  useEffect(() => {
+    if (userSaveError) pushUserActivity('error', userSaveError);
+  }, [userSaveError]);
+
+  useEffect(() => {
+    if (createUserSuccessMessage) pushUserActivity('success', createUserSuccessMessage);
+  }, [createUserSuccessMessage]);
+
+  useEffect(() => {
+    if (createUserError) pushUserActivity('error', createUserError);
+  }, [createUserError]);
+
+  useEffect(() => {
+    if (copyNotice) pushUserActivity('info', copyNotice);
+  }, [copyNotice]);
+
+  useEffect(() => {
+    if (calibrationError) pushUserActivity('error', `Calibration: ${calibrationError}`);
+  }, [calibrationError]);
+
   const filteredRows = rows.filter((row) => {
     const q = searchQuery.trim().toLowerCase();
     const knownEmail = (row.email ?? knownUserEmailsById[row.id] ?? '').toLowerCase();
@@ -1070,6 +1121,29 @@ function AdminUsersPanel({
   const diagnostics = calibrationSnapshot?.diagnostics ?? null;
   const calibrationRows = calibrationSnapshot?.rows ?? [];
   const selectedVisibleRows = filteredRows.slice(0, rowLimit);
+  const selectedUserEmail = selectedUser ? selectedUser.email ?? knownUserEmailsById[selectedUser.id] ?? null : null;
+  const hasPendingUserChanges = Boolean(
+    selectedUser &&
+      (userDraft.role !== selectedUser.role ||
+        userDraft.tier !== selectedUser.tier ||
+        userDraft.accountStatus !== selectedUser.account_status)
+  );
+  const pendingUserChangeLabels = selectedUser
+    ? [
+        userDraft.role !== selectedUser.role ? `role: ${selectedUser.role} -> ${userDraft.role}` : null,
+        userDraft.tier !== selectedUser.tier ? `tier: ${selectedUser.tier} -> ${userDraft.tier}` : null,
+        userDraft.accountStatus !== selectedUser.account_status
+          ? `status: ${selectedUser.account_status} -> ${userDraft.accountStatus}`
+          : null,
+      ].filter(Boolean) as string[]
+    : [];
+  const selectedUserLooksTest = Boolean(
+    selectedUser &&
+      ((selectedUser.email ?? knownUserEmailsById[selectedUser.id] ?? '').toLowerCase().includes('test') ||
+        Boolean(selectedUser.created_at && Date.now() - new Date(selectedUser.created_at).getTime() < 1000 * 60 * 60 * 24 * 7))
+  );
+  const visibleCalibrationRows = showAllCalibrationRows ? calibrationRows : calibrationRows.slice(0, 5);
+  const visibleCalibrationEvents = showAllCalibrationEvents ? calibrationEvents : calibrationEvents.slice(0, 4);
 
   return (
     <View style={styles.panel}>
@@ -1090,15 +1164,36 @@ function AdminUsersPanel({
         <Text style={styles.metaRow}>
           Selected user: {selectedUser ? `${selectedUser.name ?? selectedUser.id} (${selectedUser.role} / ${selectedUser.tier} / ${selectedUser.account_status})` : 'none'}
         </Text>
-        {selectedUser && (selectedUser.email ?? knownUserEmailsById[selectedUser.id]) ? (
+        {selectedUser && selectedUserEmail ? (
           <View style={styles.inlineToggleRow}>
             <View style={[styles.statusChip, { backgroundColor: '#EAF1FF', borderColor: '#C8DAFF' }]}>
-              <Text style={[styles.statusChipText, { color: '#1E4FBE' }]}>Selected test user</Text>
+              <Text style={[styles.statusChipText, { color: '#1E4FBE' }]}>{selectedUserLooksTest ? 'Selected test user' : 'Selected user'}</Text>
             </View>
-            <Text style={styles.metaRow}>{selectedUser.email ?? knownUserEmailsById[selectedUser.id]}</Text>
+            <Text style={styles.metaRow}>{selectedUserEmail}</Text>
           </View>
         ) : null}
         {copyNotice ? <Text style={[styles.metaRow, styles.successText]}>{copyNotice}</Text> : null}
+      </View>
+
+      <View style={styles.usersWorkflowBanner}>
+        <View style={styles.usersWorkflowBannerCopy}>
+          <Text style={styles.usersWorkflowBannerTitle}>Test-user workflow</Text>
+          <Text style={styles.usersWorkflowBannerText}>
+            Create a test user, keep “Recent First” on, then select the row to manage access and run calibration checks.
+          </Text>
+        </View>
+        <View style={styles.inlineToggleRow}>
+          {testUsersOnly ? (
+            <View style={[styles.statusChip, { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' }]}>
+              <Text style={[styles.statusChipText, { color: '#1D7A4D' }]}>Test-user mode</Text>
+            </View>
+          ) : null}
+          {showRecentFirst ? (
+            <View style={[styles.statusChip, { backgroundColor: '#F4F8FF', borderColor: '#D8E4FA' }]}>
+              <Text style={[styles.statusChipText, { color: '#345892' }]}>Recent first</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
 
       {userSaveError ? (
@@ -1111,6 +1206,32 @@ function AdminUsersPanel({
         <View style={styles.alertSuccessBox}>
           <Text style={styles.alertSuccessTitle}>User action complete</Text>
           <Text style={styles.alertSuccessText}>{userSuccessMessage}</Text>
+        </View>
+      ) : null}
+      {userActivityFeed.length ? (
+        <View style={styles.activityFeedCard}>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.formTitle}>Recent Operator Activity</Text>
+            <Text style={styles.metaRow}>Latest {userActivityFeed.length}</Text>
+          </View>
+          {userActivityFeed.map((item) => (
+            <View key={item.id} style={styles.activityFeedRow}>
+              <View
+                style={[
+                  styles.activityFeedDot,
+                  item.tone === 'success'
+                    ? styles.activityFeedDotSuccess
+                    : item.tone === 'error'
+                      ? styles.activityFeedDotError
+                      : styles.activityFeedDotInfo,
+                ]}
+              />
+              <View style={styles.activityFeedCopy}>
+                <Text style={styles.activityFeedText} selectable>{item.text}</Text>
+                <Text style={styles.activityFeedMeta}>{formatDateTimeShort(item.at)}</Text>
+              </View>
+            </View>
+          ))}
         </View>
       ) : null}
 
@@ -1303,6 +1424,11 @@ function AdminUsersPanel({
             </TouchableOpacity>
           </View>
           <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Click a user row to open access/tier controls and calibration details.</Text>
+          {testUsersOnly ? (
+            <Text style={[styles.fieldHelpText, { paddingHorizontal: 12, paddingBottom: 2 }]}>
+              Test-user mode uses email/name heuristics and recent activity to prioritize QA accounts.
+            </Text>
+          ) : null}
           {loading ? <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Loading users...</Text> : null}
           {error ? <Text style={[styles.metaRow, styles.errorText, { paddingHorizontal: 12 }]}>Error: {error}</Text> : null}
           {!loading && !error ? (
@@ -1332,6 +1458,10 @@ function AdminUsersPanel({
               </View>
               {selectedVisibleRows.map((row) => {
                 const selected = selectedUser?.id === row.id;
+                const rowEmail = row.email ?? knownUserEmailsById[row.id] ?? '';
+                const rowLooksTest =
+                  rowEmail.toLowerCase().includes('test') ||
+                  Boolean(row.created_at && Date.now() - new Date(row.created_at).getTime() < 1000 * 60 * 60 * 24 * 7);
                 return (
                   <Pressable
                     key={row.id}
@@ -1340,7 +1470,14 @@ function AdminUsersPanel({
                   >
                     <View style={[styles.tableCell, styles.colMd]}>
                       <Text numberOfLines={1} style={styles.tablePrimary}>{row.name?.trim() || '(no name)'}</Text>
-                      <Text numberOfLines={1} style={styles.tableSecondary}>{row.email ?? knownUserEmailsById[row.id] ?? '(email unavailable)'}</Text>
+                      <Text numberOfLines={1} style={styles.tableSecondary}>{rowEmail || '(email unavailable)'}</Text>
+                      {rowLooksTest ? (
+                        <View style={styles.rowBadgeLine}>
+                          <View style={styles.rowMiniBadge}>
+                            <Text style={styles.rowMiniBadgeText}>test/recent</Text>
+                          </View>
+                        </View>
+                      ) : null}
                     </View>
                     <View style={[styles.tableCell, styles.colMd]}>
                       <Text style={styles.tableCellText}>{row.role}</Text>
@@ -1375,100 +1512,178 @@ function AdminUsersPanel({
           </View>
           {selectedUser ? (
             <>
-              <Text style={styles.metaRow}>User ID: {selectedUser.id}</Text>
-              {selectedUser.name ? <Text style={styles.metaRow}>Name: {selectedUser.name}</Text> : null}
-              {(selectedUser.email ?? knownUserEmailsById[selectedUser.id]) ? (
-                <Text style={styles.metaRow}>Email: {selectedUser.email ?? knownUserEmailsById[selectedUser.id]}</Text>
-              ) : null}
-              <Text style={styles.metaRow}>Created: {formatDateTimeShort(selectedUser.created_at)}</Text>
-              <Text style={styles.metaRow}>Last activity: {formatDateTimeShort(selectedUser.last_activity_timestamp)}</Text>
-              <View style={styles.formActionsRow}>
-                <TouchableOpacity style={styles.smallGhostButton} onPress={onCopyUserId}>
-                  <Text style={styles.smallGhostButtonText}>Copy User ID</Text>
-                </TouchableOpacity>
-                {(selectedUser.email ?? knownUserEmailsById[selectedUser.id]) ? (
-                  <TouchableOpacity style={styles.smallGhostButton} onPress={onCopyUserEmail}>
-                    <Text style={styles.smallGhostButtonText}>Copy Email</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-              <Text style={styles.formLabel}>Access Controls</Text>
-              <View style={styles.formGrid}>
-                <View style={styles.formField}>
-                  <Text style={styles.formLabel}>Role</Text>
-                  <View style={styles.chipRow}>
-                    {(['agent', 'team_leader', 'admin', 'super_admin'] as const).map((role) => {
-                      const selected = userDraft.role === role;
-                      return (
-                        <Pressable
-                          key={role}
-                          onPress={() => onUserDraftChange({ role })}
-                          style={[styles.formChip, selected && styles.formChipSelected]}
-                        >
-                          <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>{role}</Text>
-                        </Pressable>
-                      );
-                    })}
+              <View style={styles.selectedUserSummaryCard}>
+                <View style={styles.formHeaderRow}>
+                  <View>
+                    <Text style={styles.formTitle}>Selected User Summary</Text>
+                    <Text style={styles.metaRow}>{selectedUser.name?.trim() || '(no name)'}</Text>
                   </View>
-                </View>
-                <View style={styles.formField}>
-                  <Text style={styles.formLabel}>Tier</Text>
-                  <View style={styles.chipRow}>
-                    {(['free', 'basic', 'teams', 'enterprise'] as const).map((tier) => {
-                      const selected = userDraft.tier === tier;
-                      return (
-                        <Pressable
-                          key={tier}
-                          onPress={() => onUserDraftChange({ tier })}
-                          style={[styles.formChip, selected && styles.formChipSelected]}
-                        >
-                          <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>{tier}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-                <View style={styles.formField}>
-                  <Text style={styles.formLabel}>Account Status</Text>
                   <View style={styles.inlineToggleRow}>
-                    {(['active', 'deactivated'] as const).map((status) => {
-                      const selected = userDraft.accountStatus === status;
-                      return (
-                        <Pressable
-                          key={status}
-                          onPress={() => onUserDraftChange({ accountStatus: status })}
-                          style={[styles.toggleChip, selected && styles.toggleChipOn]}
-                        >
-                          <Text style={[styles.toggleChipText, selected && styles.toggleChipTextOn]}>{status}</Text>
-                        </Pressable>
-                      );
-                    })}
+                    {selectedUserLooksTest ? (
+                      <View style={[styles.statusChip, { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' }]}>
+                        <Text style={[styles.statusChipText, { color: '#1D7A4D' }]}>QA/Test</Text>
+                      </View>
+                    ) : null}
+                    <View style={[styles.statusChip, { backgroundColor: '#F4F8FF', borderColor: '#D8E4FA' }]}>
+                      <Text style={[styles.statusChipText, { color: '#345892' }]}>{selectedUser.role}</Text>
+                    </View>
+                    <View style={[styles.statusChip, { backgroundColor: '#F4F8FF', borderColor: '#D8E4FA' }]}>
+                      <Text style={[styles.statusChipText, { color: '#345892' }]}>{selectedUser.tier}</Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.statusChip,
+                        selectedUser.account_status === 'active'
+                          ? { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' }
+                          : { backgroundColor: '#FFF4F2', borderColor: '#F2C0B9' },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusChipText,
+                          { color: selectedUser.account_status === 'active' ? '#1D7A4D' : '#B2483A' },
+                        ]}
+                      >
+                        {selectedUser.account_status}
+                      </Text>
+                    </View>
                   </View>
                 </View>
+                <Text style={styles.metaRow}>User ID: {selectedUser.id}</Text>
+                {selectedUserEmail ? <Text style={styles.metaRow}>Email: {selectedUserEmail}</Text> : null}
+                <Text style={styles.metaRow}>
+                  Created: {formatDateTimeShort(selectedUser.created_at)} • Last activity: {formatDateTimeShort(selectedUser.last_activity_timestamp)}
+                </Text>
               </View>
-              <View style={styles.formActionsRow}>
-                <TouchableOpacity style={styles.primaryButton} onPress={onSaveUser} disabled={userSaving}>
-                  <Text style={styles.primaryButtonText}>{userSaving ? 'Saving...' : 'Save User Changes'}</Text>
-                </TouchableOpacity>
+
+              <View style={styles.userOpsSection}>
+                <View style={styles.formHeaderRow}>
+                  <Text style={styles.formTitle}>Quick Actions</Text>
+                  <Text style={styles.metaRow}>Copy values for QA login/setup</Text>
+                </View>
+                <View style={styles.formActionsRow}>
+                  <TouchableOpacity style={styles.smallGhostButton} onPress={onCopyUserId}>
+                    <Text style={styles.smallGhostButtonText}>Copy User ID</Text>
+                  </TouchableOpacity>
+                  {selectedUserEmail ? (
+                    <TouchableOpacity style={styles.smallGhostButton} onPress={onCopyUserEmail}>
+                      <Text style={styles.smallGhostButtonText}>Copy Email</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               </View>
-              <Text style={styles.formLabel}>Calibration Actions</Text>
+
+              <View style={styles.userOpsSection}>
+                <View style={styles.formHeaderRow}>
+                  <Text style={styles.formTitle}>Access Edits</Text>
+                  {hasPendingUserChanges ? (
+                    <View style={[styles.statusChip, { backgroundColor: '#FFF7E8', borderColor: '#FFE1AA' }]}>
+                      <Text style={[styles.statusChipText, { color: '#8A5600' }]}>Unsaved changes</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.statusChip, { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' }]}>
+                      <Text style={[styles.statusChipText, { color: '#1D7A4D' }]}>Saved state</Text>
+                    </View>
+                  )}
+                </View>
+                {hasPendingUserChanges ? (
+                  <Text style={styles.fieldHelpText}>Pending changes: {pendingUserChangeLabels.join(' • ')}</Text>
+                ) : (
+                  <Text style={styles.fieldHelpText}>No pending access/tier/status changes.</Text>
+                )}
+                <Text style={styles.formLabel}>Access Controls</Text>
+                <View style={styles.formGrid}>
+                  <View style={styles.formField}>
+                    <Text style={styles.formLabel}>Role</Text>
+                    <View style={styles.chipRow}>
+                      {(['agent', 'team_leader', 'admin', 'super_admin'] as const).map((role) => {
+                        const selected = userDraft.role === role;
+                        return (
+                          <Pressable
+                            key={role}
+                            onPress={() => onUserDraftChange({ role })}
+                            style={[styles.formChip, selected && styles.formChipSelected]}
+                          >
+                            <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>{role}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                  <View style={styles.formField}>
+                    <Text style={styles.formLabel}>Tier</Text>
+                    <View style={styles.chipRow}>
+                      {(['free', 'basic', 'teams', 'enterprise'] as const).map((tier) => {
+                        const selected = userDraft.tier === tier;
+                        return (
+                          <Pressable
+                            key={tier}
+                            onPress={() => onUserDraftChange({ tier })}
+                            style={[styles.formChip, selected && styles.formChipSelected]}
+                          >
+                            <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>{tier}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                  <View style={styles.formField}>
+                    <Text style={styles.formLabel}>Account Status</Text>
+                    <View style={styles.inlineToggleRow}>
+                      {(['active', 'deactivated'] as const).map((status) => {
+                        const selected = userDraft.accountStatus === status;
+                        return (
+                          <Pressable
+                            key={status}
+                            onPress={() => onUserDraftChange({ accountStatus: status })}
+                            style={[styles.toggleChip, selected && styles.toggleChipOn]}
+                          >
+                            <Text style={[styles.toggleChipText, selected && styles.toggleChipTextOn]}>{status}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </View>
+                <View style={styles.formActionsRow}>
+                  <TouchableOpacity
+                    style={[styles.primaryButton, (userSaving || !hasPendingUserChanges) && styles.primaryButtonDisabled]}
+                    onPress={onSaveUser}
+                    disabled={userSaving || !hasPendingUserChanges}
+                  >
+                    <Text style={styles.primaryButtonText}>
+                      {userSaving ? 'Saving...' : hasPendingUserChanges ? 'Save User Changes' : 'No Changes to Save'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.userOpsSection}>
+                <View style={styles.formHeaderRow}>
+                  <Text style={styles.formTitle}>Calibration Tools</Text>
+                  <Text style={styles.metaRow}>Reset or reinitialize user-level calibration state</Text>
+                </View>
               <View style={[styles.formActionsRow, { marginTop: 2 }]}>
-                <TouchableOpacity
-                  style={styles.smallGhostButton}
-                  onPress={onResetCalibration}
-                  disabled={calibrationActionLoading}
-                >
-                  <Text style={styles.smallGhostButtonText}>
-                    {calibrationActionLoading ? 'Working...' : 'Reset Calibration'}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.smallGhostButton}
-                  onPress={onReinitializeCalibration}
-                  disabled={calibrationActionLoading}
-                >
-                  <Text style={styles.smallGhostButtonText}>Reinitialize From Onboarding</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.smallGhostButton}
+                    onPress={onResetCalibration}
+                    disabled={calibrationActionLoading}
+                  >
+                    <Text style={styles.smallGhostButtonText}>
+                      {calibrationActionLoading ? 'Working...' : 'Reset Calibration'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.smallGhostButton}
+                    onPress={onReinitializeCalibration}
+                    disabled={calibrationActionLoading}
+                  >
+                    <Text style={styles.smallGhostButtonText}>Reinitialize From Onboarding</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.fieldHelpText}>
+                  Use these actions for QA resets when testing calibration behavior across repeated account changes.
+                </Text>
               </View>
             </>
           ) : (
@@ -1479,14 +1694,20 @@ function AdminUsersPanel({
 
       <View style={styles.usersDiagnosticsGrid}>
         <View style={[styles.summaryCard, { flex: 1 }]}>
-          <Text style={styles.summaryLabel}>Calibration Diagnostics</Text>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.summaryLabel}>Calibration Diagnostics</Text>
+            <Text style={styles.metaRow}>{diagnostics ? 'Grouped values' : 'No snapshot'}</Text>
+          </View>
           {calibrationLoading ? <Text style={styles.metaRow}>Loading calibration...</Text> : null}
           {calibrationError ? <Text style={[styles.metaRow, styles.errorText]}>Error: {calibrationError}</Text> : null}
           {!calibrationLoading && !calibrationError ? (
             diagnostics ? (
               <>
-                {Object.entries(diagnostics).slice(0, 6).map(([key, value]) => (
-                  <Text key={key} style={styles.metaRow}>{key}: {String(value)}</Text>
+                {Object.entries(diagnostics).map(([key, value]) => (
+                  <View key={key} style={styles.keyValueRow}>
+                    <Text style={styles.keyValueLabel}>{formatDiagnosticLabel(key)}</Text>
+                    <Text style={styles.keyValueValue}>{formatDiagnosticValue(value)}</Text>
+                  </View>
                 ))}
                 {!Object.keys(diagnostics).length ? <Text style={styles.metaRow}>No diagnostics values returned</Text> : null}
               </>
@@ -1496,24 +1717,69 @@ function AdminUsersPanel({
           ) : null}
         </View>
         <View style={[styles.summaryCard, { flex: 1 }]}>
-          <Text style={styles.summaryLabel}>Calibration Rows</Text>
-          <Text style={styles.metaRow}>Rows: {calibrationRows.length}</Text>
-          {calibrationRows.slice(0, 5).map((row) => (
-            <Text key={`${row.user_id}:${row.kpi_id}`} style={styles.metaRow}>
-              {(row.kpi_name ?? row.kpi_id)} • mult {row.multiplier ?? 1} • n={row.sample_size ?? 0}
-            </Text>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.summaryLabel}>Calibration Rows</Text>
+            <Text style={styles.metaRow}>Rows: {calibrationRows.length}</Text>
+          </View>
+          {visibleCalibrationRows.map((row) => (
+            <View key={`${row.user_id}:${row.kpi_id}`} style={styles.compactDataCard}>
+              <Text style={styles.compactDataTitle}>{row.kpi_name ?? row.kpi_id}</Text>
+              <View style={styles.compactDataRow}>
+                <Text style={styles.compactDataMeta}>Multiplier</Text>
+                <Text style={styles.compactDataValue}>{formatDiagnosticValue(row.multiplier ?? 1)}</Text>
+              </View>
+              <View style={styles.compactDataRow}>
+                <Text style={styles.compactDataMeta}>Sample Size</Text>
+                <Text style={styles.compactDataValue}>{formatDiagnosticValue(row.sample_size ?? 0)}</Text>
+              </View>
+            </View>
           ))}
-          {calibrationRows.length > 5 ? <Text style={styles.metaRow}>+ {calibrationRows.length - 5} more rows</Text> : null}
+          {calibrationRows.length > 5 ? (
+            <TouchableOpacity
+              style={styles.smallGhostButton}
+              onPress={() => setShowAllCalibrationRows((prev) => !prev)}
+            >
+              <Text style={styles.smallGhostButtonText}>
+                {showAllCalibrationRows ? 'Show fewer rows' : `Show ${calibrationRows.length - 5} more rows`}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
         <View style={[styles.summaryCard, { flex: 1 }]}>
-          <Text style={styles.summaryLabel}>Calibration Events</Text>
-          <Text style={styles.metaRow}>Events: {calibrationEvents.length}</Text>
-          {calibrationEvents.slice(0, 4).map((event) => (
-            <Text key={event.id} style={styles.metaRow}>
-              {formatDateShort(event.created_at)} • err {event.error_ratio == null ? 'n/a' : String(event.error_ratio)}
-            </Text>
+          <View style={styles.formHeaderRow}>
+            <Text style={styles.summaryLabel}>Calibration Events</Text>
+            <Text style={styles.metaRow}>Events: {calibrationEvents.length}</Text>
+          </View>
+          {visibleCalibrationEvents.map((event) => (
+            <View key={event.id} style={styles.compactDataCard}>
+              <View style={styles.compactDataRow}>
+                <Text style={styles.compactDataMeta}>Time</Text>
+                <Text style={styles.compactDataValue}>{formatDateTimeShort(event.created_at)}</Text>
+              </View>
+              <View style={styles.compactDataRow}>
+                <Text style={styles.compactDataMeta}>Error Ratio</Text>
+                <Text style={styles.compactDataValue}>{formatDiagnosticValue(event.error_ratio)}</Text>
+              </View>
+              <View style={styles.compactDataRow}>
+                <Text style={styles.compactDataMeta}>Predicted Window</Text>
+                <Text style={styles.compactDataValue}>{formatDiagnosticValue(event.predicted_gci_window)}</Text>
+              </View>
+              <View style={styles.compactDataRow}>
+                <Text style={styles.compactDataMeta}>Actual GCI</Text>
+                <Text style={styles.compactDataValue}>{formatDiagnosticValue(event.actual_gci)}</Text>
+              </View>
+            </View>
           ))}
-          {calibrationEvents.length > 4 ? <Text style={styles.metaRow}>+ {calibrationEvents.length - 4} more events</Text> : null}
+          {calibrationEvents.length > 4 ? (
+            <TouchableOpacity
+              style={styles.smallGhostButton}
+              onPress={() => setShowAllCalibrationEvents((prev) => !prev)}
+            >
+              <Text style={styles.smallGhostButtonText}>
+                {showAllCalibrationEvents ? 'Show fewer events' : `Show ${calibrationEvents.length - 4} more events`}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     </View>
@@ -1525,20 +1791,46 @@ function AdminReportsPanel({
   detailedStatus,
   lastCheckedAt,
   onRefresh,
+  onRefreshOverview,
+  onRefreshDetailed,
   loading,
 }: {
   overviewStatus: EndpointProbeStatus;
   detailedStatus: EndpointProbeStatus;
   lastCheckedAt: string | null;
   onRefresh: () => void;
+  onRefreshOverview?: () => void;
+  onRefreshDetailed?: () => void;
   loading: boolean;
 }) {
   const [expandedOverview, setExpandedOverview] = useState(false);
   const [expandedDetailed, setExpandedDetailed] = useState(false);
+  const [reportsCopyNotice, setReportsCopyNotice] = useState<string | null>(null);
   const overviewTone = getProbeTone(overviewStatus);
   const detailedTone = getProbeTone(detailedStatus);
   const hasOverviewPreview = overviewStatus.kind === 'ready';
   const hasDetailedPreview = detailedStatus.kind === 'ready';
+  const overallLabel =
+    loading || overviewStatus.kind === 'loading' || detailedStatus.kind === 'loading'
+      ? 'Checking'
+      : overviewStatus.kind === 'error' || detailedStatus.kind === 'error'
+        ? 'Attention'
+        : overviewStatus.kind === 'ready' || detailedStatus.kind === 'ready'
+          ? 'Ready'
+          : overviewStatus.kind === 'forbidden' || detailedStatus.kind === 'forbidden'
+            ? 'Forbidden'
+            : overviewStatus.kind === 'not_implemented' && detailedStatus.kind === 'not_implemented'
+              ? 'Unavailable'
+              : 'Idle';
+
+  const copyProbeDetails = async (label: string, status: EndpointProbeStatus) => {
+    const text = `${label}\n${formatProbeStatus(status)}${
+      status.kind === 'ready' ? `\n\n${status.bodyPreview}` : ''
+    }`;
+    const ok = await copyTextToClipboard(text);
+    setReportsCopyNotice(ok ? `Copied ${label} details` : 'Could not copy report details (clipboard unavailable)');
+  };
+
   return (
     <View style={styles.panel}>
       <View style={styles.panelTopRow}>
@@ -1554,11 +1846,25 @@ function AdminReportsPanel({
         Reporting tools check live backend availability for analytics endpoints and show readable status and response details.
       </Text>
       <View style={styles.metaList}>
-        <Text style={styles.metaRow}>Last checked: {lastCheckedAt ? formatDateTimeShort(lastCheckedAt) : 'Not checked yet'}</Text>
+        <View style={styles.endpointStatusBanner}>
+          <View style={styles.endpointStatusBannerCopy}>
+            <Text style={styles.endpointStatusBannerLabel}>Current probe state</Text>
+            <Text style={styles.endpointStatusBannerValue}>{overallLabel}</Text>
+            <Text style={styles.endpointStatusBannerNote}>
+              Last checked: {lastCheckedAt ? formatDateTimeShort(lastCheckedAt) : 'Not checked yet'}
+            </Text>
+          </View>
+          <View style={[styles.statusChip, { backgroundColor: '#EEF4FF', borderColor: '#D3E1FF' }]}>
+            <Text style={[styles.statusChipText, { color: '#1E4FBE' }]}>
+              {lastCheckedAt ? 'State loaded' : 'Awaiting check'}
+            </Text>
+          </View>
+        </View>
+        {reportsCopyNotice ? <Text style={[styles.metaRow, styles.successText]}>{reportsCopyNotice}</Text> : null}
       </View>
       <View style={styles.formActionsRow}>
         <TouchableOpacity style={styles.primaryButton} onPress={onRefresh} disabled={loading}>
-          <Text style={styles.primaryButtonText}>{loading ? 'Checking...' : 'Check Analytics Endpoints'}</Text>
+          <Text style={styles.primaryButtonText}>{loading ? 'Checking...' : 'Recheck All Endpoints'}</Text>
         </TouchableOpacity>
       </View>
       <View style={[styles.summaryRow, styles.summaryRowCompact]}>
@@ -1570,6 +1876,19 @@ function AdminReportsPanel({
             </View>
           </View>
           <Text style={styles.summaryValue} selectable>{formatProbeStatus(overviewStatus)}</Text>
+          <View style={styles.formActionsRow}>
+            <TouchableOpacity style={styles.smallGhostButton} onPress={onRefreshOverview ?? onRefresh} disabled={loading}>
+              <Text style={styles.smallGhostButtonText}>Recheck</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.smallGhostButton}
+              onPress={() => {
+                void copyProbeDetails('GET /admin/analytics/overview', overviewStatus);
+              }}
+            >
+              <Text style={styles.smallGhostButtonText}>Copy Details</Text>
+            </TouchableOpacity>
+          </View>
           {hasOverviewPreview ? (
             <>
               <TouchableOpacity
@@ -1598,6 +1917,19 @@ function AdminReportsPanel({
             </View>
           </View>
           <Text style={styles.summaryValue} selectable>{formatProbeStatus(detailedStatus)}</Text>
+          <View style={styles.formActionsRow}>
+            <TouchableOpacity style={styles.smallGhostButton} onPress={onRefreshDetailed ?? onRefresh} disabled={loading}>
+              <Text style={styles.smallGhostButtonText}>Recheck</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.smallGhostButton}
+              onPress={() => {
+                void copyProbeDetails('GET /admin/analytics/detailed-reports', detailedStatus);
+              }}
+            >
+              <Text style={styles.smallGhostButtonText}>Copy Details</Text>
+            </TouchableOpacity>
+          </View>
           {hasDetailedPreview ? (
             <>
               <TouchableOpacity
@@ -1624,6 +1956,7 @@ function AdminReportsPanel({
           <Text style={styles.summaryNote}>
             This panel shows the export endpoint used for reporting exports, but does not run export requests from this screen.
           </Text>
+          <Text style={styles.summaryNote}>Use this screen to confirm availability/status only.</Text>
         </View>
       </View>
     </View>
@@ -1901,6 +2234,32 @@ export default function AdminShellScreen() {
         probeAdminDetailedReports(session.access_token),
       ]);
       setAnalyticsOverviewStatus(overview);
+      setAnalyticsDetailedStatus(detailed);
+      setReportsLastCheckedAt(new Date().toISOString());
+    } finally {
+      setReportsProbeLoading(false);
+    }
+  };
+
+  const probeReportsOverviewOnly = async () => {
+    if (!session?.access_token) return;
+    setReportsProbeLoading(true);
+    setAnalyticsOverviewStatus({ kind: 'loading' });
+    try {
+      const overview = await probeAdminAnalyticsOverview(session.access_token);
+      setAnalyticsOverviewStatus(overview);
+      setReportsLastCheckedAt(new Date().toISOString());
+    } finally {
+      setReportsProbeLoading(false);
+    }
+  };
+
+  const probeReportsDetailedOnly = async () => {
+    if (!session?.access_token) return;
+    setReportsProbeLoading(true);
+    setAnalyticsDetailedStatus({ kind: 'loading' });
+    try {
+      const detailed = await probeAdminDetailedReports(session.access_token);
       setAnalyticsDetailedStatus(detailed);
       setReportsLastCheckedAt(new Date().toISOString());
     } finally {
@@ -2586,9 +2945,6 @@ export default function AdminShellScreen() {
                     selectedUser={selectedUser}
                     userDraft={userDraft}
                     onSelectUser={(row) => {
-                      setUserCopyNotice(null);
-                      setUserSaveError(null);
-                      setUserSuccessMessage(null);
                       setSelectedUser(row);
                       setUserDraft(userDraftFromRow(row));
                     }}
@@ -2611,7 +2967,6 @@ export default function AdminShellScreen() {
                     }}
                     devPreviewActive={devOverrideActive}
                     onRefreshUsers={() => {
-                      setUserCopyNotice(null);
                       void refreshUsers();
                     }}
                     onSaveUser={handleUserSave}
@@ -2652,6 +3007,12 @@ export default function AdminShellScreen() {
                     lastCheckedAt={reportsLastCheckedAt}
                     onRefresh={() => {
                       void probeReportsEndpoints();
+                    }}
+                    onRefreshOverview={() => {
+                      void probeReportsOverviewOnly();
+                    }}
+                    onRefreshDetailed={() => {
+                      void probeReportsDetailedOnly();
                     }}
                     loading={reportsProbeLoading}
                   />
@@ -2963,6 +3324,90 @@ const styles = StyleSheet.create({
     minWidth: 320,
     alignSelf: 'stretch',
   },
+  usersWorkflowBanner: {
+    borderWidth: 1,
+    borderColor: '#DCE6F8',
+    borderRadius: 12,
+    backgroundColor: '#F6FAFF',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  usersWorkflowBannerCopy: {
+    flex: 1,
+    minWidth: 220,
+    gap: 2,
+  },
+  usersWorkflowBannerTitle: {
+    color: '#20304A',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  usersWorkflowBannerText: {
+    color: '#5B6A84',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  activityFeedCard: {
+    borderWidth: 1,
+    borderColor: '#E3EBF8',
+    borderRadius: 12,
+    backgroundColor: '#FAFCFF',
+    padding: 12,
+    gap: 8,
+  },
+  activityFeedRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  activityFeedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 5,
+  },
+  activityFeedDotSuccess: {
+    backgroundColor: '#1FA56B',
+  },
+  activityFeedDotError: {
+    backgroundColor: '#C14A3A',
+  },
+  activityFeedDotInfo: {
+    backgroundColor: '#3E6FD8',
+  },
+  activityFeedCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  activityFeedText: {
+    color: '#2A3953',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  activityFeedMeta: {
+    color: '#7A869B',
+    fontSize: 11,
+  },
+  selectedUserSummaryCard: {
+    borderWidth: 1,
+    borderColor: '#DCE7FA',
+    borderRadius: 12,
+    backgroundColor: '#F7FAFF',
+    padding: 10,
+    gap: 6,
+  },
+  userOpsSection: {
+    borderWidth: 1,
+    borderColor: '#E5ECF8',
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    padding: 10,
+    gap: 8,
+  },
   usersDiagnosticsGrid: {
     flexDirection: 'row',
     gap: 12,
@@ -3014,6 +3459,37 @@ const styles = StyleSheet.create({
     color: '#748198',
     fontSize: 12,
     marginTop: 6,
+  },
+  endpointStatusBanner: {
+    borderWidth: 1,
+    borderColor: '#E1E9F7',
+    borderRadius: 12,
+    backgroundColor: '#F8FBFF',
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  endpointStatusBannerCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  endpointStatusBannerLabel: {
+    color: '#6A768D',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  endpointStatusBannerValue: {
+    color: '#243248',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  endpointStatusBannerNote: {
+    color: '#5E6D86',
+    fontSize: 12,
   },
   codePreviewBox: {
     marginTop: 8,
@@ -3370,6 +3846,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+  primaryButtonDisabled: {
+    opacity: 0.65,
+  },
   alertSuccessBox: {
     borderWidth: 1,
     borderColor: '#B6E6CB',
@@ -3511,6 +3990,76 @@ const styles = StyleSheet.create({
     color: '#73819A',
     fontSize: 11,
     backgroundColor: '#FBFCFF',
+  },
+  rowBadgeLine: {
+    marginTop: 3,
+    flexDirection: 'row',
+  },
+  rowMiniBadge: {
+    borderWidth: 1,
+    borderColor: '#CFE0FF',
+    backgroundColor: '#EEF4FF',
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  rowMiniBadgeText: {
+    color: '#2D58AA',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  keyValueRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEF3FA',
+    paddingVertical: 6,
+  },
+  keyValueLabel: {
+    flex: 1,
+    color: '#5F6F88',
+    fontSize: 12,
+  },
+  keyValueValue: {
+    color: '#23324A',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  compactDataCard: {
+    borderWidth: 1,
+    borderColor: '#E6EDF9',
+    borderRadius: 10,
+    backgroundColor: '#FBFDFF',
+    padding: 8,
+    gap: 5,
+    marginTop: 6,
+  },
+  compactDataTitle: {
+    color: '#223149',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  compactDataRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+  },
+  compactDataMeta: {
+    color: '#6E7E99',
+    fontSize: 11,
+  },
+  compactDataValue: {
+    color: '#31445F',
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'right',
+    flexShrink: 1,
   },
   debugBox: {
     marginTop: 10,
