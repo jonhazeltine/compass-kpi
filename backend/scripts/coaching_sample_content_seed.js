@@ -91,8 +91,12 @@ async function main() {
     memberUserId: null,
     soloUserId: null,
     teamId: null,
+    challengeId: null,
+    sponsorId: null,
     journeys: [],
     channels: [],
+    sponsoredChallenges: [],
+    kpis: {},
   };
 
   const server = spawn("node", ["dist/index.js"], {
@@ -144,6 +148,18 @@ async function main() {
        on conflict (id) do update set role = excluded.role`,
       [ids.adminUserId, ids.leaderUserId, ids.memberUserId, ids.soloUserId]
     );
+    await db.query(
+      `update public.users
+       set tier = case
+         when id = $1 then 'enterprise'
+         when id = $2 then 'teams'
+         when id = $3 then 'free'
+         when id = $4 then 'teams'
+         else tier
+       end
+       where id in ($1, $2, $3, $4)`,
+      [ids.adminUserId, ids.leaderUserId, ids.memberUserId, ids.soloUserId]
+    );
 
     const teamOut = await request(`${BACKEND_URL}/teams`, {
       method: "POST",
@@ -165,6 +181,19 @@ async function main() {
       body: JSON.stringify({ user_id: ids.memberUserId }),
     });
     assert(addMember.status === 201, `team member add failed: ${addMember.status}`);
+
+    const challengeInsert = await db.query(
+      `insert into public.challenges (name, description, mode, is_active, start_at, end_at, team_id, created_by)
+       values ($1, $2, 'team', true, now() - interval '2 days', now() + interval '21 days', $3, $4)
+       returning id, name`,
+      [
+        `${LABEL_PREFIX} Team Sprint Challenge (${seedTag})`,
+        "Seeded challenge linked to sponsored coaching content.",
+        ids.teamId,
+        ids.leaderUserId,
+      ]
+    );
+    ids.challengeId = challengeInsert.rows[0].id;
 
     // Team-scoped journey for leader/member visibility and package read model coverage.
     const teamJourneyInsert = await db.query(
@@ -277,6 +306,46 @@ async function main() {
       [soloLesson.rows[0].id, ids.soloUserId, now.toISOString(), now.toISOString()]
     );
 
+    // Sponsor realism: one sponsor with free + teams sponsored challenge visibility examples.
+    const sponsorInsert = await db.query(
+      `insert into public.sponsors (name, logo_url, brand_color, is_active)
+       values ($1, $2, $3, true)
+       returning id, name`,
+      [
+        `${LABEL_PREFIX} Sponsor (${seedTag})`,
+        "https://example.com/seed-sponsor-logo.png",
+        "#1F4EBF",
+      ]
+    );
+    ids.sponsorId = sponsorInsert.rows[0].id;
+
+    const sponsoredChallengeRows = await db.query(
+      `insert into public.sponsored_challenges (
+         sponsor_id, challenge_id, name, description, reward_text, cta_label, cta_url, disclaimer, required_tier, start_at, end_at, is_active
+       )
+       values
+         ($1, $2, $3, $4, $5, $6, $7, $8, 'free', now() - interval '1 day', now() + interval '20 days', true),
+         ($1, $2, $9, $10, $11, $12, $13, $14, 'teams', now() - interval '1 day', now() + interval '20 days', true)
+       returning id, name, required_tier`,
+      [
+        ids.sponsorId,
+        ids.challengeId,
+        `${LABEL_PREFIX} Free Tier Sprint (${seedTag})`,
+        "Seeded free-tier sponsor challenge for runtime visibility checks.",
+        "Coffee voucher",
+        "Join Free Sponsor Sprint",
+        "https://example.com/sponsor/free",
+        "Seed sponsor disclaimer (free tier)",
+        `${LABEL_PREFIX} Teams Tier Sprint (${seedTag})`,
+        "Seeded teams-tier sponsor challenge for tier-gated visibility checks.",
+        "Coaching stipend",
+        "Unlock Teams Sprint",
+        "https://example.com/sponsor/teams",
+        "Seed sponsor disclaimer (teams tier)",
+      ]
+    );
+    ids.sponsoredChallenges = sponsoredChallengeRows.rows;
+
     // Channels/messages: team + sponsor for message thread and sponsor/package attribution visibility.
     const channelInserts = [
       {
@@ -290,8 +359,15 @@ async function main() {
         type: "sponsor",
         name: `${LABEL_PREFIX} Sponsor Coaching Bulletin (${seedTag})`,
         teamId: ids.teamId,
-        contextId: ids.teamId, // UUID placeholder context for sponsor/channel linkage visibility
+        contextId: ids.sponsoredChallenges.find((row) => row.required_tier === "free")?.id ?? ids.challengeId,
         createdBy: ids.adminUserId,
+      },
+      {
+        type: "cohort",
+        name: `${LABEL_PREFIX} Cohort Coaching Circle (${seedTag})`,
+        teamId: ids.teamId,
+        contextId: teamJourney.id,
+        createdBy: ids.leaderUserId,
       },
     ];
     for (const ch of channelInserts) {
@@ -306,14 +382,19 @@ async function main() {
 
     const teamChannel = ids.channels.find((c) => c.type === "team");
     const sponsorChannel = ids.channels.find((c) => c.type === "sponsor");
+    const cohortChannel = ids.channels.find((c) => c.type === "cohort");
     assert(teamChannel, "seeded team channel missing");
     assert(sponsorChannel, "seeded sponsor channel missing");
+    assert(cohortChannel, "seeded cohort channel missing");
 
     const membershipRows = [
       [teamChannel.id, ids.leaderUserId, "admin"],
       [teamChannel.id, ids.memberUserId, "member"],
       [sponsorChannel.id, ids.memberUserId, "member"],
       [sponsorChannel.id, ids.adminUserId, "admin"],
+      [cohortChannel.id, ids.leaderUserId, "admin"],
+      [cohortChannel.id, ids.memberUserId, "member"],
+      [cohortChannel.id, ids.soloUserId, "member"],
     ];
     for (const [channelId, userId, role] of membershipRows) {
       await db.query(
@@ -336,7 +417,9 @@ async function main() {
          ($1, $2, $3, 'message'),
          ($1, $4, $5, 'message'),
          ($6, $7, $8, 'broadcast'),
-         ($6, $4, $9, 'message')`,
+         ($6, $4, $9, 'message'),
+         ($10, $2, $11, 'message'),
+         ($10, $4, $12, 'message')`,
       [
         teamChannel.id,
         ids.leaderUserId,
@@ -347,8 +430,30 @@ async function main() {
         ids.adminUserId,
         `${LABEL_PREFIX}: Sponsor spotlight coaching tip of the week is now available.`,
         `${LABEL_PREFIX}: Thanks — reviewing the sponsor challenge prep guide tonight.`,
+        cohortChannel.id,
+        `${LABEL_PREFIX}: Cohort check-in prompt — share one conversion blocker for peer feedback.`,
+        `${LABEL_PREFIX}: I need objection-handling reps for price resistance conversations.`,
       ]
     );
+
+    // KPI visibility examples for dashboard loggable KPI checks (active vs inactive).
+    const kpiRows = await db.query(
+      `insert into public.kpis (name, type, requires_direct_value_input, is_active)
+       values
+         ($1, 'Custom', true, true),
+         ($2, 'Custom', false, false)
+       returning id, name, is_active`,
+      [
+        `${LABEL_PREFIX} Member Value Capture (${seedTag})`,
+        `${LABEL_PREFIX} Hidden Deprecated KPI (${seedTag})`,
+      ]
+    );
+    for (const row of kpiRows.rows) {
+      if (row.is_active) ids.kpis.activeCustomId = row.id;
+      else ids.kpis.inactiveCustomId = row.id;
+    }
+    assert(ids.kpis.activeCustomId, "missing active sample KPI");
+    assert(ids.kpis.inactiveCustomId, "missing inactive sample KPI");
 
     // Endpoint smoke verification for required families.
     const memberJourneys = await request(`${BACKEND_URL}/api/coaching/journeys`, {
@@ -383,10 +488,16 @@ async function main() {
     assert(memberChannels.status === 200, `/api/channels failed: ${memberChannels.status}`);
     assert(Array.isArray(memberChannels.data.channels), "channels payload missing channels[]");
     const sponsorChannelListItem = memberChannels.data.channels.find((c) => c.id === sponsorChannel.id);
+    const cohortChannelListItem = memberChannels.data.channels.find((c) => c.id === cohortChannel.id);
     assert(sponsorChannelListItem, "member channels list missing seeded sponsor channel");
+    assert(cohortChannelListItem, "member channels list missing seeded cohort channel");
     assert(
       sponsorChannelListItem.packaging_read_model?.display_requirements?.sponsor_attribution_required === true,
       "sponsor channel packaging attribution flag missing"
+    );
+    assert(
+      String(cohortChannelListItem.packaging_read_model?.package_type ?? "") === "",
+      "cohort channel should remain package_type null in baseline read model"
     );
 
     const teamChannelMessages = await request(`${BACKEND_URL}/api/channels/${teamChannel.id}/messages`, {
@@ -395,6 +506,64 @@ async function main() {
     assert(teamChannelMessages.status === 200, `/api/channels/:id/messages failed: ${teamChannelMessages.status}`);
     assert(Array.isArray(teamChannelMessages.data.messages), "channel messages payload missing messages[]");
     assert(teamChannelMessages.data.messages.length >= 2, "seeded message thread should contain messages");
+
+    const cohortChannelMessages = await request(`${BACKEND_URL}/api/channels/${cohortChannel.id}/messages`, {
+      headers: { authorization: `Bearer ${tokens.member}` },
+    });
+    assert(cohortChannelMessages.status === 200, `/api/channels/:id/messages (cohort) failed: ${cohortChannelMessages.status}`);
+    assert(Array.isArray(cohortChannelMessages.data.messages), "cohort channel messages payload missing messages[]");
+    assert(cohortChannelMessages.data.messages.length >= 2, "seeded cohort thread should contain messages");
+
+    const memberDashboard = await request(`${BACKEND_URL}/dashboard`, {
+      headers: { authorization: `Bearer ${tokens.member}` },
+    });
+    assert(memberDashboard.status === 200, `/dashboard failed: ${memberDashboard.status}`);
+    assert(Array.isArray(memberDashboard.data.loggable_kpis), "dashboard payload missing loggable_kpis[]");
+    assert(
+      memberDashboard.data.loggable_kpis.some((kpi) => kpi.id === ids.kpis.activeCustomId),
+      "dashboard loggable_kpis missing active seeded KPI"
+    );
+    assert(
+      !memberDashboard.data.loggable_kpis.some((kpi) => kpi.id === ids.kpis.inactiveCustomId),
+      "dashboard loggable_kpis should not include inactive seeded KPI"
+    );
+
+    const memberSponsoredList = await request(`${BACKEND_URL}/sponsored-challenges`, {
+      headers: { authorization: `Bearer ${tokens.member}` },
+    });
+    assert(memberSponsoredList.status === 200, `/sponsored-challenges failed (member): ${memberSponsoredList.status}`);
+    assert(Array.isArray(memberSponsoredList.data.sponsored_challenges), "sponsored challenges payload missing sponsored_challenges[]");
+    const freeSponsored = ids.sponsoredChallenges.find((row) => row.required_tier === "free");
+    const teamsSponsored = ids.sponsoredChallenges.find((row) => row.required_tier === "teams");
+    assert(freeSponsored, "missing free-tier sponsored seed row");
+    assert(teamsSponsored, "missing teams-tier sponsored seed row");
+    assert(
+      memberSponsoredList.data.sponsored_challenges.some((row) => row.id === freeSponsored.id),
+      "free-tier sponsored challenge should be visible to free member"
+    );
+    assert(
+      !memberSponsoredList.data.sponsored_challenges.some((row) => row.id === teamsSponsored.id),
+      "teams-tier sponsored challenge should be hidden from free member"
+    );
+
+    const soloSponsoredList = await request(`${BACKEND_URL}/sponsored-challenges`, {
+      headers: { authorization: `Bearer ${tokens.solo}` },
+    });
+    assert(soloSponsoredList.status === 200, `/sponsored-challenges failed (teams user): ${soloSponsoredList.status}`);
+    assert(
+      soloSponsoredList.data.sponsored_challenges.some((row) => row.id === freeSponsored.id) &&
+      soloSponsoredList.data.sponsored_challenges.some((row) => row.id === teamsSponsored.id),
+      "teams-tier user should see both free and teams sponsored challenges"
+    );
+
+    const sponsorDetail = await request(`${BACKEND_URL}/sponsored-challenges/${freeSponsored.id}`, {
+      headers: { authorization: `Bearer ${tokens.member}` },
+    });
+    assert(sponsorDetail.status === 200, `/sponsored-challenges/:id failed: ${sponsorDetail.status}`);
+    assert(
+      sponsorDetail.data.sponsored_challenge?.packaging_read_model?.display_requirements?.sponsor_attribution_required === true,
+      "sponsored challenge detail should carry sponsor attribution requirement"
+    );
 
     const summary = {
       seed_tag: seedTag,
@@ -405,21 +574,32 @@ async function main() {
         solo: { email: emails.solo, id: ids.soloUserId },
       },
       team: { id: ids.teamId },
+      challenge: { id: ids.challengeId },
+      sponsor: { id: ids.sponsorId },
       journeys: ids.journeys,
       channels: ids.channels,
+      sponsored_challenges: ids.sponsoredChallenges,
+      kpi_visibility_examples: ids.kpis,
       verified_endpoints: [
         "/api/coaching/journeys",
         `/api/coaching/journeys/${teamJourney.id}`,
         "/api/coaching/progress",
+        "/dashboard",
         "/api/channels",
         `/api/channels/${teamChannel.id}/messages`,
+        `/api/channels/${cohortChannel.id}/messages`,
+        "/sponsored-challenges",
+        `/sponsored-challenges/${freeSponsored.id}`,
       ],
       examples_verified: {
         active_journey: true,
         in_progress_lesson: true,
         completed_lesson: true,
         message_thread_with_messages: true,
+        cohort_thread_with_messages: true,
         sponsor_package_attribution_visible: true,
+        sponsored_tier_gating_visible: true,
+        member_kpi_visibility_examples: true,
       },
       cleanup_hint: `Delete rows with names/titles containing '${seedTag}' and auth users with emails starting '${seedTag}.'`,
     };
