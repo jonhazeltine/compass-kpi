@@ -35,6 +35,11 @@ Isolated single-screen exports use `{domain}_{screen}_v{n}.png`. Node-id links: 
 | `team_kpi_settings` | [173-4531](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4531) | `screens/team_kpi_settings_v1.png` | `402x952` | `exported_v1` |
 | `team_pipeline` | [168-16300](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=168-16300) | `screens/team_pipeline_v1.png` | `402x952` | `exported_v1` |
 | `team_single_person_challenges` | [173-4905](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4905) | `screens/team_single_person_challenges_v1.png` | `402x977` | `exported_v1` |
+| `team_member_dashboard` | [389-19791](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=389-19791) | `screens/team_member_dashboard_v1.png` | `402x952` | `exported_v1` |
+| `team_member_team_challenges` | [389-21273](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=389-21273) | `screens/team_member_team_challenges_v1.png` | `402x977` | `exported_v1` |
+| `challenge_list_member` | [168-16436](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=168-16436) | `screens/challenge_list_member_v1.png` | `402x952` | `exported_v1` |
+| `challenge_details_progress` | [173-13190](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-13190) | `screens/challenge_details_progress_v1.png` | `402x952` | `exported_v1` |
+| `challenge_leaderboard_results` | [388-11502](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=388-11502) | `screens/challenge_leaderboard_results_v1.png` | `402x952` | `exported_v1` |
 | `coaching_overview` | TODO | `screens/coaching_overview_v1.png` | — | `mapped` |
 
 ## Component Sheets (Versioned exports)
@@ -77,6 +82,11 @@ Reusable primitives for auth + dashboard. Target: `components/{domain}_{componen
 | `team_kpi_settings` | [173-4531](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4531) |
 | `team_pipeline` | [168-16300](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=168-16300) |
 | `team_single_person_challenges` | [173-4905](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4905) |
+| `team_member_dashboard` | [389-19791](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=389-19791) |
+| `team_member_team_challenges` | [389-21273](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=389-21273) |
+| `challenge_list_member` | [168-16436](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=168-16436) |
+| `challenge_details_progress` | [173-13190](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-13190) |
+| `challenge_leaderboard_results` | [388-11502](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=388-11502) |
 
 All other screens/components: node-id TODO until frame is selected in Figma and link copied (or mapped via API inventory).
 

@@ -35,8 +35,13 @@ Map canonical Figma flows/screens to concrete Expo implementation targets and ac
 | Team | `team_kpi_settings` | `design/figma/exports/screens/team_kpi_settings_v1.png` | exported_v1 | Team management flow screen (mobile) | `05_acceptance_tests.md` scenario 8 | mapped | Node-id: `173-4531`. |
 | Team | `team_pipeline` | `design/figma/exports/screens/team_pipeline_v1.png` | exported_v1 | Team management flow screen (mobile) | `05_acceptance_tests.md` scenarios 8-9 | mapped | Node-id: `168-16300`. |
 | Team | `team_single_person_challenges` | `design/figma/exports/screens/team_single_person_challenges_v1.png` | exported_v1 | Team challenges screen (mobile) | `05_acceptance_tests.md` scenarios 8-9 | mapped | Node-id: `173-4905`. |
+| Team | `team_member_dashboard` | `design/figma/exports/screens/team_member_dashboard_v1.png` | exported_v1 | Team member dashboard perspective (mobile) | `05_acceptance_tests.md` scenarios 8-9 | mapped | Node-id: `389-19791`. |
+| Team | `team_member_team_challenges` | `design/figma/exports/screens/team_member_team_challenges_v1.png` | exported_v1 | Team member challenge participation screen (mobile) | `05_acceptance_tests.md` scenarios 8-9 | mapped | Node-id: `389-21273`. |
 | Challenge | `challenge_create_wizard` | `design/figma/exports/screens/challenge_create_wizard_v1.png` | pending | new challenge creation stack/screens | `05_acceptance_tests.md` scenarios 7-9, edge E6 | mapped | |
 | Challenge | `challenge_progress_results` | `design/figma/exports/screens/challenge_progress_results_v1.png` | pending | new challenge progress/results screens | `05_acceptance_tests.md` scenarios 7, 10 | mapped | |
+| Challenge | `challenge_list_member` | `design/figma/exports/screens/challenge_list_member_v1.png` | exported_v1 | member challenge list / manage-run challenge list (mobile) | `05_acceptance_tests.md` scenarios 7-10 | mapped | Node-id: `168-16436`. |
+| Challenge | `challenge_details_progress` | `design/figma/exports/screens/challenge_details_progress_v1.png` | exported_v1 | challenge details/progress screen (mobile) | `05_acceptance_tests.md` scenarios 7, 10 | mapped | Node-id: `173-13190`. Controller-approved canonical details/progress ref. |
+| Challenge | `challenge_leaderboard_results` | `design/figma/exports/screens/challenge_leaderboard_results_v1.png` | exported_v1 | challenge leaderboard/results screen (mobile) | `05_acceptance_tests.md` scenarios 7, 10 | mapped | Node-id: `388-11502`. Controller-approved canonical leaderboard/results ref. |
 | Communication | `messages_inbox` | `design/figma/exports/screens/messages_inbox_v1.png` | pending | new messages tab screen | future communication acceptance cases | mapped | |
 | Communication | `chat_thread` | `design/figma/exports/screens/chat_thread_v1.png` | pending | new chat thread screen | future communication acceptance cases | mapped | |
 | Community | `community_feed` | `design/figma/exports/screens/community_feed_v1.png` | pending | new community feed screen | future communication acceptance cases | mapped | |
@@ -73,6 +78,11 @@ Map canonical Figma flows/screens to concrete Expo implementation targets and ac
 | `team_kpi_settings` | [173-4531](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4531) |
 | `team_pipeline` | [168-16300](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=168-16300) |
 | `team_single_person_challenges` | [173-4905](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4905) |
+| `team_member_dashboard` | [389-19791](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=389-19791) |
+| `team_member_team_challenges` | [389-21273](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=389-21273) |
+| `challenge_list_member` | [168-16436](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=168-16436) |
+| `challenge_details_progress` | [173-13190](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-13190) |
+| `challenge_leaderboard_results` | [388-11502](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=388-11502) |
 
 All other screens: add node-id after selecting frame in Figma and copying link to selection (or map from `design/figma/FRAME_INVENTORY.md`).
 

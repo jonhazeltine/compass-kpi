@@ -22,6 +22,8 @@ Only use long custom prompts when the board is missing required details or a one
 - Prefer separate worktrees for concurrent code workers touching app code.
 - Every `active` assignment must have a detailed assignment block in `## Assignment Specs`.
 - Workers should be launched from assignment IDs, not ad hoc prompt names.
+- Workers must update the assignment row/block status (or add a blocker note) in this board before sending their final report back.
+- Worker reports to user/controller should be brief status summaries; detailed scope/proof belongs in the board assignment block/report section.
 
 ## Assignment Lifecycle (Status Values)
 - `queued`: approved but not started
@@ -48,7 +50,7 @@ Only use long custom prompts when the board is missing required details or a one
 
 | ID | Status | Program status | Persona | Flow | Screens in scope | Owner | Branch / Worktree | Figma refs | Deliverable |
 |---|---|---|---|---|---|---|---|---|---|
-| `TEAM-MEMBER-PARITY-A` | `active` | `M3/M3b + approved M5 overlap` | `Team Member` | `team + challenge participation` | `Team Dashboard (member perspective)`, `Team Challenges`, `Challenge List`, `Challenge Details`, `Challenge Leaderboard / Results` | worker (mobile) | `codex/a2-admin-list-usability-pass` (recommend dedicated worktree) | Team Member Team/Challenge flow refs from Figma persona groups; exact node IDs required in report | Large-swatch Team Member participation parity + wiring pass (role-appropriate CTA cleanup, member-view modules, team/challenge cross-surface consistency, docs status updates) |
+| `TEAM-MEMBER-PARITY-A` | `active` | `M3/M3b + approved M5 overlap` | `Team Member` | `team + challenge participation` | `Team Dashboard (member perspective)`, `Team Challenges`, `Challenge List`, `Challenge Details`, `Challenge Leaderboard / Results` | worker (mobile) | `codex/a2-admin-list-usability-pass` (recommend dedicated worktree) | `389-19791`, `389-21273`, `168-16436`, `173-13190`, `388-11502` | Large-swatch Team Member participation parity + wiring pass (role-appropriate CTA cleanup, member-view modules, team/challenge cross-surface consistency, docs status updates) |
 
 ## Blocked Assignments
 
@@ -101,6 +103,18 @@ Every worker report should include:
 4. `Challenge Details`
 5. `Challenge Leaderboard / Results`
 
+#### Canonical Figma References (Approved for This Assignment)
+- `Team Dashboard (member perspective)` -> node `389-19791`
+  - `/Users/jon/compass-kpi/design/figma/exports/screens/team_member_dashboard_v1.png`
+- `Team Challenges (member perspective)` -> node `389-21273`
+  - `/Users/jon/compass-kpi/design/figma/exports/screens/team_member_team_challenges_v1.png`
+- `Challenge List (member participation)` -> node `168-16436`
+  - `/Users/jon/compass-kpi/design/figma/exports/screens/challenge_list_member_v1.png`
+- `Challenge Details / Progress` -> node `173-13190` (controller-approved canonical)
+  - `/Users/jon/compass-kpi/design/figma/exports/screens/challenge_details_progress_v1.png`
+- `Challenge Leaderboard / Results` -> node `388-11502` (controller-approved canonical)
+  - `/Users/jon/compass-kpi/design/figma/exports/screens/challenge_leaderboard_results_v1.png`
+
 #### Primary Objective
 Complete a Team Member participation parity + wiring pass across Team/Challenge surfaces:
 - role-appropriate Team Dashboard member perspective (de-emphasize/remove leader-only management emphasis where needed)
@@ -126,6 +140,7 @@ Complete a Team Member participation parity + wiring pass across Team/Challenge 
 - Preserve shared KPI logging mechanics (tile actions/endpoints/dedupe/KPI identity)
 - Do not break Team Leader flow parity completed in `TEAM-PARITY-A` (`9e572e1`)
 - Figma-first: exact node IDs/exports required in report for every touched screen
+- Use the approved canonical refs listed in this assignment block for all five in-scope screens
 - No guessing from composite screenshots when exact export exists
 - If exact Team Member/Challenge refs for a touched screen are missing, stop and report blocker before coding that screen
 
@@ -150,6 +165,9 @@ If screen availability/wiring/status changes, update BOTH in the same change set
 2. `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
 
 #### Report-Back Format (Required)
+- First update this board:
+  - set assignment status (`blocked`, `review`, `committed`, etc.)
+  - add blocker or completion notes in this assignment block if status changed
 - `Program status`
 - `Persona affected`
 - `Screens changed`
