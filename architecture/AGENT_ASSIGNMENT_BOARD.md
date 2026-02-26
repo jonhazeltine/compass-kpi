@@ -5,6 +5,13 @@ Single control-plane board for active/blocked/completed agent assignments in `/U
 
 Use this to reduce chat handoff overhead. The controller thread should read/update this file before issuing new worker instructions or reviewing returned work.
 
+## Short-Form Worker Launch (Default)
+Default instruction to a worker should be:
+
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment <ASSIGNMENT_ID> exactly as written. Follow the assignment block, validation requirements, and report-back format.`
+
+Only use long custom prompts when the board is missing required details or a one-off exception is needed.
+
 ## Maintenance Rules (Required)
 - Update this board when an assignment is created, blocked, reassigned, completed, or approved.
 - Include `Program status`, `Persona`, and `Screens in scope` for every UI-facing assignment.
@@ -13,6 +20,23 @@ Use this to reduce chat handoff overhead. The controller thread should read/upda
   - `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
 - Figma-first UI assignments must include exact node IDs and export filenames.
 - Prefer separate worktrees for concurrent code workers touching app code.
+- Every `active` assignment must have a detailed assignment block in `## Assignment Specs`.
+- Workers should be launched from assignment IDs, not ad hoc prompt names.
+
+## Assignment Lifecycle (Status Values)
+- `queued`: approved but not started
+- `active`: currently assigned and in progress
+- `blocked`: cannot proceed; blocker must be listed
+- `review`: worker returned results/commit; awaiting controller review
+- `committed`: accepted commit exists (push may still be pending)
+- `pushed`: accepted and pushed
+- `closed`: fully complete and no further action expected
+
+## Concurrency / Ownership Rules (Default Rails)
+- Prefer separate worktrees for concurrent code workers.
+- One active code worker owns a high-conflict file/surface at a time (e.g. `app/screens/KPIDashboardScreen.tsx`).
+- If an assignment needs a shared file owned by another active assignment, worker must stop and report blocker.
+- Board is the authority for assignment ownership and status; chat summaries do not override the board.
 
 ## Program Status (Current)
 - Program baseline: `M3 / M3b` active
@@ -57,6 +81,93 @@ Every worker report should include:
 - `Files touched` (with line refs)
 - `Validation performed` (`tsc`, screenshots, route checks)
 - `Commit hash(es)` (if committed)
+
+## Assignment Specs (Execute from here)
+
+### `TEAM-MEMBER-PARITY-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M3/M3b + approved M5 overlap`
+- `Persona:` `Team Member`
+- `Flow:` `team + challenge participation`
+- `Owner:` worker (mobile)
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree preferred)
+
+#### Screens In Scope (Large Swath)
+1. `Team Dashboard (member perspective)`
+2. `Team Challenges`
+3. `Challenge List`
+4. `Challenge Details`
+5. `Challenge Leaderboard / Results`
+
+#### Primary Objective
+Complete a Team Member participation parity + wiring pass across Team/Challenge surfaces:
+- role-appropriate Team Dashboard member perspective (de-emphasize/remove leader-only management emphasis where needed)
+- Team Challenges member participation parity
+- Challenge surfaces consistency for Team Member participation perspective
+- cross-surface Team/Challenge navigation consistency
+- docs status/wiring updates if statuses or transitions change
+
+#### Required Reads (Standard + Assignment-Specific)
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/MOBILE_TEAM_CHALLENGE_SCREENMAP_AND_BUILD_SEQUENCE.md`
+- `/Users/jon/compass-kpi/design/figma/FIGMA_INDEX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/FIGMA_BUILD_MAPPING.md`
+
+#### Constraints (Hard)
+- No `Home/Priority` changes
+- No backend/API/schema changes
+- Preserve shared KPI logging mechanics (tile actions/endpoints/dedupe/KPI identity)
+- Do not break Team Leader flow parity completed in `TEAM-PARITY-A` (`9e572e1`)
+- Figma-first: exact node IDs/exports required in report for every touched screen
+- No guessing from composite screenshots when exact export exists
+- If exact Team Member/Challenge refs for a touched screen are missing, stop and report blocker before coding that screen
+
+#### Implementation Pattern (Large Swath)
+- Work in one focused run, but keep commits scoped (`1-2` commits max)
+- Start with mismatch lists by screen
+- Fix role-appropriate CTA hierarchy and routing first
+- Then tighten parity/layout consistency across Team + Challenge participation surfaces
+- Validate Team/Challenge member flows end-to-end
+- Keep Team Logging behavior unchanged if touched
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime screenshots (actual app) for each screen touched
+- Route map checks for Team Member participation paths
+- Confirm `Home/Priority` untouched
+- Confirm shared logging mechanics unchanged
+
+#### Docs Sync Rule (Required)
+If screen availability/wiring/status changes, update BOTH in the same change set:
+1. `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+2. `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+
+#### Report-Back Format (Required)
+- `Program status`
+- `Persona affected`
+- `Screens changed`
+- `Figma references used` (exact node IDs + exports)
+- `Top mismatches before changes` (by screen)
+- `What now matches` (by screen)
+- `Still differs` (by screen)
+- `Deferred intentionally` (by screen)
+- `Route map` (Team/Challenge member paths)
+- `Files touched` (with line refs)
+- `Home/Priority untouched?` (`yes/no`)
+- `Shared logging mechanics unchanged?` (`yes/no`)
+- `tsc result`
+- `Screenshot paths`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment TEAM-MEMBER-PARITY-A exactly as written. Follow the assignment block, validation requirements, and report-back format.`
 
 ## Controller Review Checklist (Reference)
 - Sprint scope alignment (`CURRENT_SPRINT.md`) and explicit exception approval if applicable
