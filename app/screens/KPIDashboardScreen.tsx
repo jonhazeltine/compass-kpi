@@ -522,6 +522,10 @@ function challengeListFilterMatches(item: ChallengeFlowItem, filter: ChallengeLi
   return item.challengeModeLabel === 'Team' || Boolean(item.raw?.team_id);
 }
 
+function isApiBackedChallenge(item?: ChallengeFlowItem | null) {
+  return Boolean(item?.raw?.id);
+}
+
 function confidenceColor(band: 'green' | 'yellow' | 'red') {
   if (band === 'green') return '#2f9f56';
   if (band === 'yellow') return '#e3a62a';
@@ -4493,24 +4497,48 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const challengeSelected =
     challengeListItems.find((item) => item.id === challengeSelectedId) ?? challengeListItems[0];
   const challengeIsCompleted = challengeSelected?.bucket === 'completed';
-  const challengeHasApiBackedDetail = Boolean(challengeSelected?.raw?.id);
+  const challengeHasApiBackedDetail = isApiBackedChallenge(challengeSelected);
+  const challengeIsPlaceholderOnly = !challengeHasApiBackedDetail;
   const challengeLeaderboardHasRealRows = (challengeSelected?.leaderboardPreview?.length ?? 0) > 0;
   const challengeDaysLeft =
     challengeSelected?.bucket === 'active' && challengeSelected?.endAtIso
       ? Math.max(0, Math.ceil((new Date(challengeSelected.endAtIso).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
       : 0;
-  const challengeLeaderboardPreview = (challengeSelected?.leaderboardPreview?.length
-    ? challengeSelected.leaderboardPreview
-    : defaultChallengeFlowItems()[0].leaderboardPreview) as ChallengeFlowLeaderboardEntry[];
+  const challengeLeaderboardPreview = (challengeSelected?.leaderboardPreview ?? []) as ChallengeFlowLeaderboardEntry[];
   const challengeLeaderboardRowsForScreen = useMemo(() => {
     if ((challengeSelected?.leaderboardPreview?.length ?? 0) > 0) return challengeSelected.leaderboardPreview;
-    if (challengeIsCompleted) {
-      return [
-        { rank: 1, name: 'Results pending', pct: Math.max(0, challengeSelected?.progressPct ?? 0), value: 0 },
-      ] satisfies ChallengeFlowLeaderboardEntry[];
-    }
     return [] as ChallengeFlowLeaderboardEntry[];
-  }, [challengeIsCompleted, challengeSelected]);
+  }, [challengeSelected]);
+  const challengeLeaderboardHasLowEntry = challengeLeaderboardRowsForScreen.length > 0 && challengeLeaderboardRowsForScreen.length < 3;
+  const challengeListUsingPlaceholderRows = !Array.isArray(challengeApiRows) || challengeApiRows.length === 0;
+  const challengeDetailsSurfaceLabel = challengeIsCompleted ? 'Challenge Results' : 'Challenge Details';
+  const challengeMembershipStateLabel = challengeIsCompleted
+    ? challengeSelected?.joined
+      ? 'Completed participation'
+      : 'Challenge completed'
+    : challengeSelected?.joined
+      ? 'Joined challenge'
+      : challengeSelected?.bucket === 'upcoming'
+        ? 'Not joined yet'
+        : 'Not joined';
+  const challengeDetailsSummaryTitle = challengeSelected?.joined ? 'Your participation' : 'Participation status';
+  const challengeDetailsSummaryMetricValue = challengeSelected?.joined
+    ? `${Math.max(0, challengeSelected?.progressPct ?? 0)}%`
+    : `${Math.max(0, challengeSelected?.participants ?? 0)}`;
+  const challengeDetailsSummaryMetricLabel = challengeSelected?.joined ? 'progress' : 'participants';
+  const challengeDetailsSummaryStatus = challengeSelected?.joined
+    ? challengeIsCompleted
+      ? 'Your tracked participation is complete.'
+      : challengeSelected?.bucket === 'upcoming'
+        ? 'You are joined. Progress starts when the challenge begins.'
+        : 'Your progress updates as you log qualifying activity.'
+    : challengeIsCompleted
+      ? 'You did not join this completed challenge.'
+      : challengeIsPlaceholderOnly
+        ? 'Placeholder challenge preview only. Join is available on live challenge rows.'
+        : challengeSelected?.bucket === 'upcoming'
+          ? 'Join now to be ready when this challenge starts.'
+          : 'Join to track progress and appear on the leaderboard.';
 
   if (state === 'loading') {
     return (
@@ -4561,7 +4589,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   <Text style={styles.challengeListSub}>See active challenges and jump into challenge progress details.</Text>
                   {challengeApiFetchError ? (
                     <Text style={styles.challengeListFallbackHint}>
-                      Using placeholder challenge cards because `GET /challenges` did not return usable data.
+                      Using placeholder challenge cards because `GET /challenges` failed. Pull to refresh to retry live challenge rows.
+                    </Text>
+                  ) : challengeListUsingPlaceholderRows ? (
+                    <Text style={styles.challengeListFallbackHint}>
+                      Showing placeholder challenge cards until live `GET /challenges` rows are available for this account.
                     </Text>
                   ) : null}
 
@@ -4640,6 +4672,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 <Text style={styles.challengeListItemMetaText}>{item.timeframe}</Text>
                                 <Text style={styles.challengeListItemMetaText}>{item.daysLabel}</Text>
                               </View>
+                              <View style={styles.challengeListItemMetaRow}>
+                                <Text style={styles.challengeListItemMetaText}>
+                                  {isApiBackedChallenge(item) ? 'Live challenge' : 'Placeholder preview'}
+                                </Text>
+                                {!isApiBackedChallenge(item) && item.bucket !== 'completed' ? (
+                                  <Text style={styles.challengeListItemMetaText}>Join unavailable</Text>
+                                ) : null}
+                              </View>
                               <View style={styles.challengeListItemProgressTrack}>
                                 <View style={[styles.challengeListItemProgressFill, { width: `${item.progressPct}%` }]} />
                               </View>
@@ -4661,10 +4701,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         <Text style={styles.challengeListEmptyFilterTitle}>No challenges match this filter</Text>
                         <Text style={styles.challengeListEmptyFilterSub}>
                           {challengeListFilter === 'sponsored'
-                            ? 'Try All or Team while sponsor flags are still limited in the current challenge payload.'
+                            ? 'Try All or Team. Sponsor flags are limited unless the challenge payload includes sponsor metadata.'
                             : challengeListFilter === 'team'
-                              ? 'No team challenges are available in this account right now.'
-                              : 'No challenges are available yet.'}
+                              ? 'No team-mode challenges match right now.'
+                              : challengeListUsingPlaceholderRows
+                                ? 'No placeholder challenge cards are available for this filter.'
+                                : 'No live challenges are available for this filter right now.'}
                         </Text>
                         {challengeListFilter !== 'all' ? (
                           <TouchableOpacity
@@ -4697,7 +4739,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   <Text style={styles.challengeLeaderboardScreenSub}>
                     {challengeIsCompleted
                       ? 'Challenge results and leaderboard standings.'
-                      : 'Leaderboard standings for this challenge.'}
+                      : challengeSelected.joined
+                        ? 'Leaderboard standings for this challenge.'
+                        : 'Leaderboard preview for this challenge. Join to track your progress.'}
                   </Text>
                   <View style={styles.challengeLeaderboardScreenTop3}>
                     {challengeLeaderboardRowsForScreen.slice(0, 3).map((entry) => (
@@ -4715,16 +4759,30 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ))}
                   </View>
                   {challengeLeaderboardRowsForScreen.length > 0 ? (
-                    <View style={styles.challengeLeaderboardScreenRows}>
-                      {challengeLeaderboardRowsForScreen.map((entry) => (
-                        <View key={`challenge-lb-screen-row-${entry.rank}`} style={styles.challengeLeaderboardScreenRow}>
-                          <Text style={styles.challengeDetailsLeaderboardRowRank}>{String(entry.rank).padStart(2, '0')}</Text>
-                          <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardRowName}>{entry.name}</Text>
-                          <Text style={styles.challengeLeaderboardScreenRowMetric}>{entry.value} logs</Text>
-                          <Text style={styles.challengeDetailsLeaderboardRowPct}>{entry.pct}%</Text>
+                    <>
+                      <View style={styles.challengeLeaderboardScreenRows}>
+                        {challengeLeaderboardRowsForScreen.map((entry) => (
+                          <View key={`challenge-lb-screen-row-${entry.rank}`} style={styles.challengeLeaderboardScreenRow}>
+                            <Text style={styles.challengeDetailsLeaderboardRowRank}>{String(entry.rank).padStart(2, '0')}</Text>
+                            <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardRowName}>{entry.name}</Text>
+                            <Text style={styles.challengeLeaderboardScreenRowMetric}>{entry.value} logs</Text>
+                            <Text style={styles.challengeDetailsLeaderboardRowPct}>{entry.pct}%</Text>
+                          </View>
+                        ))}
+                      </View>
+                      {challengeLeaderboardHasLowEntry ? (
+                        <View style={styles.challengeLeaderboardEmptyCard}>
+                          <Text style={styles.challengeLeaderboardEmptyTitle}>
+                            {challengeIsCompleted ? 'Limited results available' : 'Leaderboard has limited entries so far'}
+                          </Text>
+                          <Text style={styles.challengeLeaderboardEmptySub}>
+                            {challengeIsCompleted
+                              ? 'This completed challenge has only partial standings in the current payload.'
+                              : 'More rows will appear as additional participants join and log challenge activity.'}
+                          </Text>
                         </View>
-                      ))}
-                    </View>
+                      ) : null}
+                    </>
                   ) : (
                     <View style={styles.challengeLeaderboardEmptyCard}>
                       <Text style={styles.challengeLeaderboardEmptyTitle}>
@@ -4750,7 +4808,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <Text style={styles.challengeDetailsIconBtnText}>‹</Text>
                     </TouchableOpacity>
                     <Text style={styles.challengeDetailsNavTitle}>
-                      {challengeIsCompleted ? 'Challenge Results' : 'Challenge Details'}
+                      {challengeDetailsSurfaceLabel}
                     </Text>
                     <TouchableOpacity style={styles.challengeDetailsActionBtn}>
                       <Text style={styles.challengeDetailsActionBtnText}>Add KPI</Text>
@@ -4802,31 +4860,29 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <Text style={styles.challengeDetailsHeroHint}>
                       {challengeIsCompleted
                         ? 'Results summary is shown here. Some completion metrics still use fallback values where payload fields are missing.'
-                        : 'Progress and leaderboard update from challenge participation data. Some detail fields still use fallback values.'}
+                        : challengeIsPlaceholderOnly
+                          ? 'This is a placeholder preview card. Join/leave is disabled until a live challenge row is available.'
+                          : 'Progress and leaderboard update from challenge participation data. Some detail fields still use fallback values.'}
                     </Text>
                   </View>
 
                   <View style={styles.challengeDetailsOwnerCard}>
                     <View style={styles.challengeDetailsOwnerLeft}>
                       <View style={styles.challengeDetailsOwnerAvatar}>
-                        <Text style={styles.challengeDetailsOwnerAvatarText}>AJ</Text>
+                        <Text style={styles.challengeDetailsOwnerAvatarText}>
+                          {challengeSelected.joined ? 'ME' : challengeIsCompleted ? 'RS' : 'CH'}
+                        </Text>
                       </View>
                       <View style={styles.challengeDetailsOwnerCopy}>
-                        <Text style={styles.challengeDetailsOwnerName}>Amy Jackson</Text>
+                        <Text style={styles.challengeDetailsOwnerName}>{challengeDetailsSummaryTitle}</Text>
                         <Text style={styles.challengeDetailsOwnerStatus}>
-                          {challengeIsCompleted
-                            ? challengeSelected.joined
-                              ? 'Completed challenge participation'
-                              : 'Challenge completed'
-                            : challengeSelected.joined
-                              ? 'Joined challenge'
-                              : 'Not joined yet'}
+                          {challengeMembershipStateLabel} · {challengeDetailsSummaryStatus}
                         </Text>
                       </View>
                     </View>
                     <View style={styles.challengeDetailsOwnerMetric}>
-                      <Text style={styles.challengeDetailsOwnerMetricValue}>24</Text>
-                      <Text style={styles.challengeDetailsOwnerMetricLabel}>logs</Text>
+                      <Text style={styles.challengeDetailsOwnerMetricValue}>{challengeDetailsSummaryMetricValue}</Text>
+                      <Text style={styles.challengeDetailsOwnerMetricLabel}>{challengeDetailsSummaryMetricLabel}</Text>
                     </View>
                   </View>
 
@@ -4902,6 +4958,18 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             </View>
                           ))}
                         </View>
+                        {challengeLeaderboardPreview.length < 3 ? (
+                          <View style={styles.challengeLeaderboardPreviewEmpty}>
+                            <Text style={styles.challengeLeaderboardPreviewEmptyTitle}>
+                              {challengeIsCompleted ? 'Partial results loaded' : 'Leaderboard is just getting started'}
+                            </Text>
+                            <Text style={styles.challengeLeaderboardPreviewEmptySub}>
+                              {challengeIsCompleted
+                                ? 'Final standings are only partially available in the current payload.'
+                                : 'Additional leaderboard rows will appear after more participation activity.'}
+                            </Text>
+                          </View>
+                        ) : null}
                       </>
                     ) : (
                       <View style={styles.challengeLeaderboardPreviewEmpty}>
@@ -4921,6 +4989,23 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     {(() => {
                       const isJoinSubmitting = challengeJoinSubmittingId === challengeSelected.id;
                       const isLeaveSubmitting = challengeLeaveSubmittingId === challengeSelected.id;
+                      const canJoinLiveChallenge =
+                        challengeHasApiBackedDetail && !challengeSelected.joined && challengeSelected.bucket !== 'completed';
+                      const canLeaveJoinedActiveChallenge =
+                        challengeHasApiBackedDetail && challengeSelected.joined && !challengeIsCompleted;
+                      const primaryActionIsJoin = canJoinLiveChallenge;
+                      const primaryActionLabel = primaryActionIsJoin
+                        ? isJoinSubmitting
+                          ? 'Joining…'
+                          : 'Join Challenge'
+                        : challengeIsCompleted
+                          ? 'View Results'
+                          : 'View Full Leaderboard';
+                      const secondaryActionLabel = canLeaveJoinedActiveChallenge
+                        ? isLeaveSubmitting
+                          ? 'Leaving…'
+                          : 'Leave Challenge'
+                        : 'Back to Challenges';
                       const challengeMutationError =
                         challengeJoinError ??
                         challengeLeaveError ??
@@ -4929,51 +5014,55 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           : null);
                       return (
                         <>
-                    {!challengeSelected.joined && challengeSelected.bucket !== 'completed' ? (
-                      <TouchableOpacity
-                        style={[
-                          styles.challengeDetailsPrimaryCta,
-                          (isJoinSubmitting || !challengeHasApiBackedDetail) && styles.disabled,
-                        ]}
-                        onPress={() => {
-                          if (!challengeHasApiBackedDetail) return;
-                          void joinChallenge(challengeSelected.id);
-                        }}
-                        disabled={isJoinSubmitting || isLeaveSubmitting || !challengeHasApiBackedDetail}
-                      >
-                        <Text style={styles.challengeDetailsPrimaryCtaText}>
-                          {isJoinSubmitting
-                            ? 'Joining…'
-                            : challengeHasApiBackedDetail
-                              ? 'Join Challenge'
-                              : 'Challenge Unavailable'}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        style={[styles.challengeDetailsPrimaryCta, isLeaveSubmitting && styles.disabled]}
-                        onPress={() => setChallengeFlowScreen('leaderboard')}
-                        disabled={isLeaveSubmitting}
-                      >
-                        <Text style={styles.challengeDetailsPrimaryCtaText}>
-                          {challengeIsCompleted ? 'View Results' : 'View Full Leaderboard'}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
+                          <TouchableOpacity
+                            style={[
+                              styles.challengeDetailsPrimaryCta,
+                              (primaryActionIsJoin && (isJoinSubmitting || !challengeHasApiBackedDetail)) && styles.disabled,
+                              (!primaryActionIsJoin && isLeaveSubmitting) && styles.disabled,
+                            ]}
+                            onPress={() => {
+                              if (primaryActionIsJoin) {
+                                if (!challengeHasApiBackedDetail) return;
+                                void joinChallenge(challengeSelected.id);
+                                return;
+                              }
+                              setChallengeFlowScreen('leaderboard');
+                            }}
+                            disabled={
+                              isLeaveSubmitting ||
+                              isJoinSubmitting ||
+                              (primaryActionIsJoin && !challengeHasApiBackedDetail)
+                            }
+                          >
+                            <Text style={styles.challengeDetailsPrimaryCtaText}>{primaryActionLabel}</Text>
+                          </TouchableOpacity>
+                          {!challengeMutationError ? (
+                            <Text style={styles.challengeListFallbackHint}>
+                              {challengeIsCompleted
+                                ? 'Challenge is complete. Membership changes are disabled.'
+                                : canLeaveJoinedActiveChallenge
+                                  ? 'You are joined. Leave only if you want to stop tracking participation for this challenge.'
+                                  : challengeIsPlaceholderOnly && !challengeSelected.joined
+                                    ? 'Placeholder cards are preview-only and cannot be joined.'
+                                    : !challengeSelected.joined
+                                      ? 'Join to track progress and show your activity on the leaderboard.'
+                                      : 'Open leaderboard to review standings and progress.'}
+                            </Text>
+                          ) : null}
                     {challengeMutationError ? (
                       <Text style={styles.challengeJoinErrorText}>{challengeMutationError}</Text>
                     ) : null}
                     <TouchableOpacity
                       style={[
                         styles.challengeDetailsSecondaryCta,
-                        challengeSelected.joined && isLeaveSubmitting && styles.disabled,
+                        canLeaveJoinedActiveChallenge && isLeaveSubmitting && styles.disabled,
                       ]}
                       onPress={() => {
                         if (challengeIsCompleted) {
                           setChallengeFlowScreen('list');
                           return;
                         }
-                        if (challengeSelected.joined) {
+                        if (canLeaveJoinedActiveChallenge) {
                           if (isJoinSubmitting || isLeaveSubmitting) return;
                           Alert.alert(
                             'Leave Challenge',
@@ -4996,13 +5085,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       disabled={isJoinSubmitting || isLeaveSubmitting}
                     >
                       <Text style={styles.challengeDetailsSecondaryCtaText}>
-                        {challengeSelected.joined
-                          ? challengeIsCompleted
-                            ? 'Back to Challenges'
-                            : isLeaveSubmitting
-                              ? 'Leaving…'
-                              : 'Leave Challenge'
-                          : 'Back to Challenges'}
+                        {secondaryActionLabel}
                       </Text>
                     </TouchableOpacity>
                         </>
@@ -5054,80 +5137,216 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 <View style={[styles.challengeHeaderBadge, styles.teamHeaderBadge]}>
                   <Text style={[styles.challengeHeaderBadgeText, styles.teamHeaderBadgeText]}>Team</Text>
                 </View>
-                <Text style={styles.challengeHeaderMeta}>Participation hub</Text>
+                <Text style={styles.challengeHeaderMeta}>Dashboard / participation</Text>
               </View>
-              <Text style={styles.challengeHeaderTitle}>Team</Text>
+              <Text style={styles.challengeHeaderTitle}>Team Dashboard</Text>
               <Text style={styles.challengeHeaderSub}>
-                Stay on top of team priorities, team challenge actions, and shared KPI progress from one surface.
+                Team summary, member performance, and challenge participation previews live here. Team logging stays available lower on the page.
               </Text>
-              <View style={styles.challengeHeaderStatsRow}>
-                <View style={styles.challengeHeaderStatChip}>
-                  <Text style={styles.challengeHeaderStatLabel}>KPIs</Text>
-                  <Text style={styles.challengeHeaderStatValue}>{fmtNum(teamTileCount)}</Text>
-                  <Text style={styles.challengeHeaderStatFoot}>Eligible on this surface</Text>
-                </View>
-                <View style={styles.challengeHeaderStatChip}>
-                  <Text style={styles.challengeHeaderStatLabel}>Types</Text>
-                  <Text style={styles.challengeHeaderStatValue}>
-                    {fmtNum(
-                      (teamKpiGroups.PC.length > 0 ? 1 : 0) +
-                        (teamKpiGroups.GP.length > 0 ? 1 : 0) +
-                        (teamKpiGroups.VP.length > 0 ? 1 : 0)
-                    )}
-                  </Text>
-                  <Text style={styles.challengeHeaderStatFoot}>PC / GP / VP grouping</Text>
-                </View>
-              </View>
-              <View style={styles.challengeProgressCard}>
-                <View style={styles.challengeProgressHeader}>
-                  <Text style={styles.challengeProgressTitle}>Team focus pace</Text>
-                  <Text style={styles.challengeProgressMeta}>Placeholder</Text>
-                </View>
-                <View style={styles.challengeProgressTrack}>
-                  <View style={[styles.challengeProgressFill, styles.teamProgressFill]} />
-                </View>
-                <View style={styles.challengeProgressLegendRow}>
-                  <View style={[styles.challengePaceChip, styles.teamPaceChip]}>
-                    <Text style={[styles.challengePaceChipText, styles.teamPaceChipText]}>Behind pace (placeholder)</Text>
-                  </View>
-                  <Text style={styles.challengeProgressLegendText}>Team progress and rank wiring will use future team payload.</Text>
-                </View>
+              <View style={styles.teamDashboardHeroCtaRow}>
+                <TouchableOpacity style={styles.teamDashboardHeroPrimaryCta}>
+                  <Text style={styles.teamDashboardHeroPrimaryCtaText}>Team Challenges</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.teamDashboardHeroSecondaryCta}>
+                  <Text style={styles.teamDashboardHeroSecondaryCtaText}>Manage Team</Text>
+                </TouchableOpacity>
               </View>
               <Text style={styles.challengeHeaderHint}>
-                TODO: wire real team/team-challenge relevance + progress summary when team payload is available.
+                Placeholder shell aligned to Figma `388-8814`; aggregate stats, rank, and management routes will wire to team payload/contracts later.
               </Text>
             </View>
 
-            {teamTileCount === 0 ? (
-              <View style={styles.challengeEmptyCard}>
-                <View style={[styles.challengeEmptyBadge, styles.teamHeaderBadge]}>
-                  <Text style={[styles.challengeEmptyBadgeText, styles.teamHeaderBadgeText]}>Team</Text>
+            <View style={styles.teamDashboardModuleCard}>
+              <View style={styles.teamDashboardModuleHeader}>
+                <Text style={styles.teamDashboardModuleTitle}>Team Summary</Text>
+                <Text style={styles.teamDashboardModuleMeta}>Placeholder</Text>
+              </View>
+              <View style={styles.teamDashboardMetricGrid}>
+                <View style={styles.teamDashboardMetricCard}>
+                  <Text style={styles.teamDashboardMetricLabel}>Team Actual GCI</Text>
+                  <Text style={styles.teamDashboardMetricValue}>$583K</Text>
+                  <Text style={styles.teamDashboardMetricFoot}>Aggregated team actuals (placeholder)</Text>
                 </View>
-                <Text style={styles.challengeEmptyTitle}>No team KPIs available yet</Text>
-                <Text style={styles.challengeEmptyText}>
-                  Team-relevant KPIs will appear here once team context is available for your account.
-                </Text>
-                <TouchableOpacity
-                  style={styles.challengeEmptyCta}
-                  onPress={() => {
-                    setActiveTab('home');
-                    setViewMode('home');
-                  }}
-                >
-                  <Text style={styles.challengeEmptyCtaText}>Back to Home</Text>
+                <View style={styles.teamDashboardMetricCard}>
+                  <Text style={styles.teamDashboardMetricLabel}>90d Projected GCI</Text>
+                  <Text style={styles.teamDashboardMetricValue}>$320K</Text>
+                  <Text style={styles.teamDashboardMetricFoot}>Aggregated projections (placeholder)</Text>
+                </View>
+                <View style={styles.teamDashboardMetricCard}>
+                  <Text style={styles.teamDashboardMetricLabel}>Team Members</Text>
+                  <Text style={styles.teamDashboardMetricValue}>3</Text>
+                  <Text style={styles.teamDashboardMetricFoot}>Roster preview count</Text>
+                </View>
+                <View style={styles.teamDashboardMetricCard}>
+                  <Text style={styles.teamDashboardMetricLabel}>Active Challenges</Text>
+                  <Text style={styles.teamDashboardMetricValue}>2</Text>
+                  <Text style={styles.teamDashboardMetricFoot}>Participation hub preview</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.teamDashboardModuleCard}>
+              <View style={styles.teamDashboardModuleHeader}>
+                <Text style={styles.teamDashboardModuleTitle}>Team Performance Trend</Text>
+                <Text style={styles.teamDashboardModuleMeta}>Chart placeholder</Text>
+              </View>
+              <View style={styles.teamDashboardChartCard}>
+                <View style={styles.teamDashboardChartPlaceholderLine} />
+                <View style={styles.teamDashboardChartAxesRow}>
+                  <Text style={styles.teamDashboardChartAxisLabel}>Mar</Text>
+                  <Text style={styles.teamDashboardChartAxisLabel}>Jun</Text>
+                  <Text style={styles.teamDashboardChartAxisLabel}>Sep</Text>
+                  <Text style={styles.teamDashboardChartAxisLabel}>Dec</Text>
+                </View>
+              </View>
+              <Text style={styles.teamDashboardModuleHint}>
+                Preserve dashboard chart footprint now; wire team aggregate series later without moving surrounding modules.
+              </Text>
+            </View>
+
+            <View style={styles.teamDashboardSplitRow}>
+              <View style={[styles.teamDashboardModuleCard, styles.teamDashboardHalfCard]}>
+                <View style={styles.teamDashboardModuleHeader}>
+                  <Text style={styles.teamDashboardModuleTitle}>Performance Gauge</Text>
+                  <Text style={styles.teamDashboardModuleMeta}>Placeholder</Text>
+                </View>
+                <View style={styles.teamDashboardGaugePlaceholderWrap}>
+                  <View style={styles.teamDashboardGaugePlaceholderOuter}>
+                    <View style={styles.teamDashboardGaugePlaceholderInner}>
+                      <Text style={styles.teamDashboardGaugeValue}>80%</Text>
+                      <Text style={styles.teamDashboardGaugeCaption}>Performance on top</Text>
+                    </View>
+                  </View>
+                </View>
+                <View style={styles.teamDashboardMiniMetricsRow}>
+                  <View style={styles.teamDashboardMiniMetricChip}>
+                    <Text style={styles.teamDashboardMiniMetricLabel}>Confidence</Text>
+                    <Text style={styles.teamDashboardMiniMetricValue}>78%</Text>
+                  </View>
+                  <View style={styles.teamDashboardMiniMetricChip}>
+                    <Text style={styles.teamDashboardMiniMetricLabel}>Rank</Text>
+                    <Text style={styles.teamDashboardMiniMetricValue}>#3</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={[styles.teamDashboardModuleCard, styles.teamDashboardHalfCard]}>
+                <View style={styles.teamDashboardModuleHeader}>
+                  <Text style={styles.teamDashboardModuleTitle}>Team Challenges</Text>
+                  <TouchableOpacity style={styles.teamDashboardInlineLinkBtn}>
+                    <Text style={styles.teamDashboardInlineLinkBtnText}>View all</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.teamDashboardPreviewList}>
+                  {[
+                    { title: '30 Day Listing Challenge', status: 'Active', meta: 'Progress preview placeholder' },
+                    { title: 'No Buy Listing Challenge', status: 'Upcoming', meta: 'Schedule preview placeholder' },
+                  ].map((item) => (
+                    <View key={item.title} style={styles.teamDashboardPreviewRow}>
+                      <View style={styles.teamDashboardPreviewRowCopy}>
+                        <Text style={styles.teamDashboardPreviewRowTitle}>{item.title}</Text>
+                        <Text style={styles.teamDashboardPreviewRowMeta}>{item.meta}</Text>
+                      </View>
+                      <View style={styles.teamDashboardStatusPill}>
+                        <Text style={styles.teamDashboardStatusPillText}>{item.status}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.teamDashboardModuleCard}>
+              <View style={styles.teamDashboardModuleHeader}>
+                <Text style={styles.teamDashboardModuleTitle}>Team Members</Text>
+                <TouchableOpacity style={styles.teamDashboardInlineLinkBtn}>
+                  <Text style={styles.teamDashboardInlineLinkBtnText}>Leaderboard</Text>
                 </TouchableOpacity>
               </View>
-            ) : (
-              <View style={styles.challengeSectionsWrap}>
-                {renderParticipationFocusCard('team', teamSurfaceKpis, {
-                  title: 'Team focus actions',
-                  sub: 'Suggested team actions using current placeholder relevance ordering.',
-                })}
-                {renderTeamKpiSection('PC', 'Projections (PC)', teamKpiGroups.PC)}
-                {renderTeamKpiSection('GP', 'Growth (GP)', teamKpiGroups.GP)}
-                {renderTeamKpiSection('VP', 'Vitality (VP)', teamKpiGroups.VP)}
+              <View style={styles.teamDashboardPreviewList}>
+                {[
+                  { name: 'Sarah Johnson', value: '98%', sub: 'On track this week (placeholder)' },
+                  { name: 'Alex Rodriguez', value: '92%', sub: 'Momentum up (placeholder)' },
+                  { name: 'James Mateo', value: '90%', sub: 'Needs follow-up (placeholder)' },
+                ].map((member, idx) => (
+                  <TouchableOpacity key={member.name} style={styles.teamDashboardMemberRow}>
+                    <View style={styles.teamDashboardMemberRankBadge}>
+                      <Text style={styles.teamDashboardMemberRankBadgeText}>{idx + 1}</Text>
+                    </View>
+                    <View style={styles.teamDashboardMemberAvatar}>
+                      <Text style={styles.teamDashboardMemberAvatarText}>
+                        {member.name
+                          .split(' ')
+                          .map((part) => part[0])
+                          .join('')
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.teamDashboardMemberCopy}>
+                      <Text style={styles.teamDashboardMemberName}>{member.name}</Text>
+                      <Text style={styles.teamDashboardMemberSub}>{member.sub}</Text>
+                    </View>
+                    <Text style={styles.teamDashboardMemberMetric}>{member.value}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-            )}
+            </View>
+
+            <View style={styles.teamDashboardModuleCard}>
+              <View style={styles.teamDashboardModuleHeader}>
+                <Text style={styles.teamDashboardModuleTitle}>Team Actions</Text>
+                <Text style={styles.teamDashboardModuleMeta}>Leader tools (placeholder slots)</Text>
+              </View>
+              <View style={styles.teamDashboardActionGrid}>
+                {['Invite Member', 'Pending Invites', 'Team KPI Settings', 'View Pipeline'].map((label) => (
+                  <TouchableOpacity key={label} style={styles.teamDashboardActionTile}>
+                    <Text style={styles.teamDashboardActionTileTitle}>{label}</Text>
+                    <Text style={styles.teamDashboardActionTileSub}>Placeholder CTA slot</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.challengeSectionsWrap}>
+              <View style={styles.challengeLoggingHeaderCard}>
+                <Text style={styles.challengeLoggingHeaderTitle}>Team Logging</Text>
+                <Text style={styles.challengeLoggingHeaderSub}>
+                  Shared KPI logging mechanics stay unchanged. This module is intentionally lower so the Team screen reads dashboard-first.
+                </Text>
+              </View>
+
+              {teamTileCount === 0 ? (
+                <View style={styles.challengeEmptyCard}>
+                  <View style={[styles.challengeEmptyBadge, styles.teamHeaderBadge]}>
+                    <Text style={[styles.challengeEmptyBadgeText, styles.teamHeaderBadgeText]}>Team</Text>
+                  </View>
+                  <Text style={styles.challengeEmptyTitle}>No team KPIs available yet</Text>
+                  <Text style={styles.challengeEmptyText}>
+                    Team-relevant KPIs will appear here once team context is available for your account. Dashboard modules above remain in place for parity scaffolding.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.challengeEmptyCta}
+                    onPress={() => {
+                      setActiveTab('home');
+                      setViewMode('home');
+                    }}
+                  >
+                    <Text style={styles.challengeEmptyCtaText}>Back to Home</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  {renderParticipationFocusCard('team', teamSurfaceKpis, {
+                    title: 'Team focus actions',
+                    sub: 'Placeholder relevance ordering until team/team-challenge payload wiring is available.',
+                  })}
+                  {renderTeamKpiSection('PC', 'Projections (PC)', teamKpiGroups.PC)}
+                  {renderTeamKpiSection('GP', 'Growth (GP)', teamKpiGroups.GP)}
+                  {renderTeamKpiSection('VP', 'Vitality (VP)', teamKpiGroups.VP)}
+                </>
+              )}
+            </View>
           </View>
         ) : viewMode === 'home' ? (
           <>
@@ -6839,6 +7058,342 @@ const styles = StyleSheet.create({
   },
   teamPaceChipText: {
     color: '#8b5f14',
+  },
+  teamDashboardHeroCtaRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  teamDashboardHeroPrimaryCta: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: '#1f5fe2',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  teamDashboardHeroPrimaryCtaText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  teamDashboardHeroSecondaryCta: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d9e4f7',
+    backgroundColor: '#f8fbff',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  teamDashboardHeroSecondaryCtaText: {
+    color: '#35557f',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  teamDashboardModuleCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e1eaf5',
+    padding: 12,
+    gap: 10,
+    shadowColor: '#223453',
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  teamDashboardModuleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  teamDashboardModuleTitle: {
+    color: '#2f3442',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  teamDashboardModuleMeta: {
+    color: '#7a8799',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  teamDashboardModuleHint: {
+    color: '#7a8798',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  teamDashboardMetricGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  teamDashboardMetricCard: {
+    width: '48%',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e4ebf5',
+    backgroundColor: '#fbfdff',
+    padding: 10,
+    gap: 4,
+  },
+  teamDashboardMetricLabel: {
+    color: '#738094',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  teamDashboardMetricValue: {
+    color: '#2f3442',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  teamDashboardMetricFoot: {
+    color: '#8591a3',
+    fontSize: 10,
+    lineHeight: 12,
+  },
+  teamDashboardChartCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6edf7',
+    backgroundColor: '#fafdff',
+    padding: 12,
+    gap: 10,
+  },
+  teamDashboardChartPlaceholderLine: {
+    height: 88,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dfe8f5',
+    backgroundColor: '#fff',
+  },
+  teamDashboardChartAxesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  teamDashboardChartAxisLabel: {
+    color: '#8190a4',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  teamDashboardSplitRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'stretch',
+  },
+  teamDashboardHalfCard: {
+    flex: 1,
+  },
+  teamDashboardGaugePlaceholderWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 2,
+  },
+  teamDashboardGaugePlaceholderOuter: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    borderWidth: 5,
+    borderColor: '#e7edf7',
+    borderTopColor: '#5e94ff',
+    borderRightColor: '#5e94ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fafdff',
+  },
+  teamDashboardGaugePlaceholderInner: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 1,
+    borderColor: '#eaf0f8',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  teamDashboardGaugeValue: {
+    color: '#2f3442',
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 22,
+  },
+  teamDashboardGaugeCaption: {
+    marginTop: 1,
+    color: '#7b8799',
+    fontSize: 9,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  teamDashboardMiniMetricsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  teamDashboardMiniMetricChip: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5ebf4',
+    backgroundColor: '#f8fbff',
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    gap: 2,
+  },
+  teamDashboardMiniMetricLabel: {
+    color: '#7c879a',
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  teamDashboardMiniMetricValue: {
+    color: '#2f3442',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  teamDashboardInlineLinkBtn: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#dfe7f5',
+    backgroundColor: '#f7faff',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  teamDashboardInlineLinkBtnText: {
+    color: '#255ea7',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  teamDashboardPreviewList: {
+    gap: 8,
+  },
+  teamDashboardPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e7edf6',
+    backgroundColor: '#fbfdff',
+    padding: 9,
+  },
+  teamDashboardPreviewRowCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  teamDashboardPreviewRowTitle: {
+    color: '#334055',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  teamDashboardPreviewRowMeta: {
+    color: '#7a8699',
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  teamDashboardStatusPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d8e5ff',
+    backgroundColor: '#eef4ff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  teamDashboardStatusPillText: {
+    color: '#2d63e1',
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  teamDashboardMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e7edf6',
+    backgroundColor: '#fbfdff',
+    padding: 9,
+  },
+  teamDashboardMemberRankBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#eef4ff',
+    borderWidth: 1,
+    borderColor: '#d8e4fb',
+  },
+  teamDashboardMemberRankBadgeText: {
+    color: '#2b60b5',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  teamDashboardMemberAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f0f5ff',
+    borderWidth: 1,
+    borderColor: '#dfe7fb',
+  },
+  teamDashboardMemberAvatarText: {
+    color: '#3a63cf',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  teamDashboardMemberCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  teamDashboardMemberName: {
+    color: '#334055',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  teamDashboardMemberSub: {
+    color: '#7a8699',
+    fontSize: 10,
+    lineHeight: 12,
+  },
+  teamDashboardMemberMetric: {
+    color: '#2f3442',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  teamDashboardActionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  teamDashboardActionTile: {
+    width: '48%',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e4ebf5',
+    backgroundColor: '#fbfdff',
+    padding: 10,
+    gap: 4,
+  },
+  teamDashboardActionTileTitle: {
+    color: '#344156',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  teamDashboardActionTileSub: {
+    color: '#8090a4',
+    fontSize: 10,
+    lineHeight: 12,
   },
   participationFocusCard: {
     backgroundColor: '#fff',
