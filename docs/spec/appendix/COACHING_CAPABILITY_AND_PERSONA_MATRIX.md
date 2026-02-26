@@ -394,6 +394,66 @@ This is sequenced to avoid disrupting current Team parity work.
 
 5. `AI coach assist` (approval-first)
 - suggestions + queue + audit
+- human review and approval gates before any runtime send/publish action
+
+## W5 AI Coach Assist Readiness Boundary (Planning Package)
+
+This section defines the first implementation-ready AI boundary for coaching surfaces. It is planning-only and does not approve schema/API changes by itself.
+
+### Allowed vs disallowed AI action classes (W5)
+
+| Action class | W5 status | Human approval requirement | Boundary note |
+|---|---|---|---|
+| Draft coaching reply/message copy | `build now` | requester review; escalates by scope/policy | Advisory text only; execution still uses existing message/broadcast endpoints. |
+| Draft broadcast copy variants | `build now` | coach/admin approval when scope exceeds requester authority | No audience/scope override by AI. |
+| Rewrite/summarize coach-authored coaching content copy | `build now` | coach review; admin review for governed/sponsor content as policy requires | Content authoring lifecycle remains portal-owned. |
+| Reflection/check-in prompt suggestions | `build now` | requester review | No implicit lesson progress write or KPI mutation. |
+| KPI log writes/edits | `defer / disallowed` | N/A | Violates non-negotiables; AI may not mutate KPI source-of-truth. |
+| Forecast base/confidence mutation | `defer / disallowed` | N/A | AI may explain forecasts but not modify base values or confidence data. |
+| Auto-send messages/broadcasts/push | `defer / disallowed` | N/A | W5 is approval-first; no autonomous dispatch. |
+| Auto-publish packages/targeting/entitlements | `defer / disallowed` | N/A | Packaging/entitlement approvals remain human-owned ops functions. |
+| Challenge participation/results mutation | `defer / disallowed` | N/A | Challenge ownership boundary remains unchanged. |
+
+### AI assist surface insertion map (planning)
+
+| Surface / destination | Persona(s) | Primary W5 AI assist use-case | Approval gate baseline | Notes |
+|---|---|---|---|---|
+| `channel_thread` | Team Leader (member later optional) | draft/rewrite coaching reply | requester review + policy escalation | No direct send; send remains explicit human action. |
+| `coach_broadcast_compose` | Team Leader (Coach/Admin later per `DEP-003`) | draft scoped broadcast copy | coach/admin approval for elevated scope | Server remains role/throttle source of truth. |
+| `coaching_lesson_detail` | Team Leader, Team Member, Solo User | reflection/check-in prompt drafting | requester review | No auto-complete or progress mutation. |
+| `coaching_journeys` / `coaching_journey_detail` | Team Leader, Team Member, Solo User | journey-context coaching prompt suggestions | requester review | Advisory content only. |
+| Team coaching modules (embedded) | Team Leader | route to AI draft request/review | requester review + policy escalation | Embedded CTA only for first slice; no inline autonomous actions. |
+| Challenge coaching block (embedded) | Team Leader, Solo User | sponsor/challenge coaching copy assist (policy-limited) | likely coach/admin/sponsor approval (`decision needed`) | Must preserve sponsor/challenge ownership seam. |
+| `coach_ops_audit` (portal) | Coach, Admin operator | approval queue + audit review | approver action | Governance surface for approvals/rejections/audit trail review. |
+
+### Minimum AI contract/read-model outputs (planning requirements)
+
+These are planning-level requirements for a first safe W5 slice, preferably as additive shaping in existing AI suggestion endpoints (`/api/ai/suggestions*`) before any net-new family is proposed.
+
+| Consumer surface | Required outputs (minimum) | Optional later outputs | Boundary note |
+|---|---|---|---|
+| Runtime AI request/review shells | `suggestion_id`, `status`, `draft_content`, `source_surface`, `source_context_refs`, `required_approval_tier`, `disclaimer_requirements`, `safety_flags` | token usage summary, rationale summary | Client must not infer policy if explicit fields are absent; render fallback copy instead. |
+| Approval queue (`coach_ops_audit`) | requester summary, target scope summary, `status`, timestamps, approval history summary, edited indicator | priority/risk scoring, moderation labels | Queue is review/audit UI; no direct KPI/challenge mutation ownership. |
+| Audit detail / reporting | immutable status transitions, reviewer actor IDs, reasons, linked execution refs (if executed), model label/version family | richer diff history, policy rule traces | If persistence shape requires schema changes, mark `decision needed` + `DECISIONS_LOG.md` in implementation. |
+
+### W5 AI work split (`build now` vs `defer`)
+
+`Build now`:
+1. Manual-spec-driven UI shell/prototype for approved AI entry/review surfaces.
+2. Approval queue read-model shaping and additive contract fields inside existing AI suggestion endpoint family (if sufficient).
+3. Coach/Admin moderation + audit UI pass on portal companion surfaces.
+
+`Defer`:
+1. Autonomous send/publish paths.
+2. AI-driven entitlement/package/targeting decisions.
+3. KPI/forecast/challenge state mutations.
+4. Long-lived AI memory/personalization stores or cross-tenant inference.
+
+### AI-specific `decision needed` items (adds to existing open decisions)
+1. `decision needed` — Approval authority matrix by actor/surface/scope (`Leader` self-review vs `Coach/Admin` approval)
+2. `decision needed` — Sponsor ops participation in sponsor-linked AI copy approval
+3. `decision needed` — Whether `/api/ai/suggestions*` additive shaping is sufficient vs a net-new AI queue family (requires explicit approval + `DECISIONS_LOG.md`)
+4. `decision needed` — Audit linkage persistence shape for suggestion-to-send/publish traceability (schema impact may require separate implementation slice)
 
 ## Open Decisions (must remain explicit)
 - `DEP-003` Coaching ownership model (team leader vs dedicated coach role)

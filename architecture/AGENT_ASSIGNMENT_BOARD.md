@@ -62,11 +62,11 @@ Only use long custom prompts when the board is missing required details or a one
 | `ADMIN-A2-TABLE-OPS-FIXPACK-B` | `committed+pushed` | `A2 (parallel with M6 coaching planning)` | `Admin operator` | `admin KPI catalog + challenge templates table ops` | `/admin/kpis`, `/admin/challenge-templates` (web admin tables/forms only) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web, no Figma parity requirement for this swath) | Accepted and pushed: baseline A2 fixpack + sorting follow-up landed (`91de8d2`, `6854cd1`). Owner cleared baseline manual validation blocker and deferred pagination; sortable KPI/template headers (asc/desc) added. |
 | `COACHING-UI-PACKAGE-VISIBILITY-GATING-A` | `committed+pushed` | `M6 coaching slice (runtime UI gating + fallback behavior)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`package visibility + entitlement UI gating`) | `Challenge Details/Results`, `coaching_journeys*`, `inbox*`, Team coaching modules (existing W3/W4 surfaces) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven + accepted packaging docs (`COACHING-PACKAGING-SPONSORED-PAID-A`) | Accepted and pushed: runtime package visibility/entitlement banners + safe fallback/gated/blocked states across W3/W4 coaching surfaces, with UI-only contract-gap triage and no backend/schema changes. |
 | `COACHING-BACKEND-PREP-PACKAGE-READMODEL-A` | `committed+pushed` | `M6 coaching slice (backend-prep planning/spec)` | `Admin operator`, `Coach`, downstream `Leader/Member/Solo` | `coaching content operations / publishing` (`package read-model + entitlement outputs`) | backend contract/read-model planning only (no runtime UI code) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs/backend-prep planning only; separate worktree preferred) | manual-spec-driven + accepted packaging/docs stack | Accepted and pushed: endpoint-family coverage map, read-model output requirement matrix, gap classification, `decision needed` list, and follow-on backend/UI implementation specs for packaging/entitlement runtime outputs |
-| `COACHING-W5-AI-READINESS-BOUNDARY-A` | `review` | `M6 coaching slice (W5 AI coach assist readiness; planning-only)` | `Coach`, `Admin operator`, downstream `Leader/Member/Solo` | `coaching / AI assist` (`W5 boundary + implementation-readiness gating`) | AI coach assist planning docs + intended wiring overlays (no app/backend code) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + accepted coaching/packaging/read-model docs stack | W5 AI boundary planning package completed: approval-first action boundaries, runtime insert-point map, human approval/audit gates, minimum contract outputs, `build now` vs `defer` split, and next-wave assignment specs (UI shell/proto, backend AI queue in-family shaping, moderation/audit pass). |
+| `COACHING-W5-AI-READINESS-BOUNDARY-A` | `committed+pushed` | `M6 coaching slice (W5 AI coach assist readiness; planning-only)` | `Coach`, `Admin operator`, downstream `Leader/Member/Solo` | `coaching / AI assist` (`W5 boundary + implementation-readiness gating`) | AI coach assist planning docs + intended wiring overlays (no app/backend code) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + accepted coaching/packaging/read-model docs stack | Accepted and pushed: W5 AI boundary planning package (approval-first action boundaries, insert-point map, approval/audit gates, minimum contract outputs, `build now` vs `defer`, and next-wave W5 assignment specs). |
 | `COACHING-W5-UI-AI-ASSIST-SHELL-PROTO-A` | `queued` | `M6 coaching slice (W5 AI assist UI shell/proto; approval-first)` | `Team Leader`, `Coach`, `Admin operator` (review context), downstream `Member/Solo` limited | `coaching / AI assist` (`runtime insert-point shells + review UX`) | `channel_thread`, `coach_broadcast_compose`, `coaching_lesson_detail`, `coaching_journeys*`, embedded Team/Challenge coaching CTAs (approved insert points only) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree preferred) | manual-spec-driven + W5 AI boundary docs | Build manual-spec-driven W5 AI draft request/review shells and insert-point CTAs with approval-first guardrails and no autonomous send/publish paths. |
 | `COACHING-W5-BACKEND-AI-SUGGESTIONS-INFAMILY-QUEUE-A` | `queued` | `M6 coaching slice (W5 AI backend in-family approval queue shaping)` | `Coach`, `Admin operator`, downstream `Leader/Member/Solo` | `coaching / AI assist` (`/api/ai/suggestions*` additive shaping only) | Existing AI suggestion endpoints (`/api/ai/suggestions*`) + contract docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (backend worktree strongly preferred) | N/A (backend/contract; W5 boundary docs) | Add approval-first queue/read-model fields to existing AI suggestion endpoint family only (no net-new family/schema without explicit approval), supporting W5 UI review and ops audit surfaces. |
 | `COACHING-W5-OPS-AI-MODERATION-AUDIT-PASS-A` | `queued` | `M6 coaching slice (W5 AI moderation/audit ops surfaces; approval-first)` | `Coach`, `Admin operator`, `Sponsor ops` (limited review only) | `coaching / AI assist` (`approval queue`, `audit`, `policy visibility`) | `coach_ops_audit` admin extension touchpoints (`admin/coaching/audit` + AI queue/detail companion views) | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W5 AI boundary docs | Implement coach/admin AI approval queue and audit detail ops surfaces (review/reject/history) with no KPI/forecast/challenge mutation actions and no authz boundary widening. |
-| `COACHING-SAMPLE-CONTENT-SEED-A` | `review` | `M6 coaching slice (runtime realism / validation data)` | `Coach`, `Team Leader`, `Team Member`, `Solo User` | `coaching content delivery` (`journeys`, `lessons`, `assignments`, sample progress/messages`) | coaching journeys/lessons runtime surfaces + comms shells (`coaching_journeys*`, `inbox*`, Team/Challenge coaching modules) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree strongly preferred) | N/A (data/backend seed swath; no Figma requirement) | Review-ready repeatable backend seed+verify script (`backend/scripts/coaching_sample_content_seed.js`) creates labeled coaching journeys/progress + team/sponsor channels/messages and smoke-verifies `/api/coaching/*` + `/api/channels*` endpoints with seeded auth users. |
+| `COACHING-SAMPLE-CONTENT-SEED-A` | `committed+pushed` | `M6 coaching slice (runtime realism / validation data)` | `Coach`, `Team Leader`, `Team Member`, `Solo User` | `coaching content delivery` (`journeys`, `lessons`, `assignments`, sample progress/messages`) | coaching journeys/lessons runtime surfaces + comms shells (`coaching_journeys*`, `inbox*`, Team/Challenge coaching modules) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree strongly preferred) | N/A (data/backend seed swath; no Figma requirement) | Accepted and pushed (`695cab6`): repeatable backend seed+verify script (`backend/scripts/coaching_sample_content_seed.js`) creates labeled coaching journeys/progress + team/sponsor channels/messages and smoke-verifies `/api/coaching/*` + `/api/channels*` endpoints with seeded auth users. |
 | `ADMIN-A3_5-USERS-LIST-PAGING-SORT-A` | `committed+pushed` | `A3.5 (parallel with M6 backend-prep implementation)` | `Admin operator` | `admin users list/search/sort/paging polish` | `/admin/users` (primary), `/admin/reports` regression check only | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web; preserve existing patterns) | Accepted and pushed (`5e59ad1`): `/admin/users` sorting/paging workflow polish (header asc/desc toggles, row-window clarity, reset-sort, show-more count labels, row-window reset on filter/sort changes). Manual browser spot-check remains recommended follow-up. |
 
 ## Blocked Assignments
@@ -1264,7 +1264,7 @@ Implement additive packaging/entitlement read-model outputs within existing endp
 ### `COACHING-UI-PACKAGE-READMODEL-CONSUME-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 coaching slice (runtime UI follow-up; package read-model consumption)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`package visibility + entitlement outputs consumption`)
@@ -1411,6 +1411,7 @@ Deliver a substantial A3.5 admin users list workflow polish pass:
 - `Completion note (2026-02-26, Coach-1):` Completed W5 AI coach assist readiness package in coaching planning docs: mapped approved runtime insertion points (`channel_thread`, `coach_broadcast_compose`, `coaching_journeys*`, `coaching_lesson_detail`, Team/Challenge coaching modules, `coach_ops_audit`), defined allowed vs disallowed AI action boundaries (explicitly no KPI/forecast/challenge-state mutations and no auto-send), documented approval/escalation/audit workflow, and specified minimum planning-level AI suggestion contract/read-model outputs (prefer additive shaping in existing `/api/ai/suggestions*` family). Added explicit `build now` vs `defer` split and appended follow-on W5 coding-wave assignment specs for UI shell/proto, backend in-family queue shaping, and moderation/audit ops pass.
 - `Validation note (2026-02-26, Coach-1):` Docs-only planning changes. Cross-doc consistency checked across coaching matrix/addendum and intended screenmap/wiring docs for `approval-first`, `no auto-send`, coach/admin portal boundary, and AI surface insertion naming. No app/backend/schema/API implementation files changed in this assignment. Structural boundary changes remain `decision needed` and call out `DECISIONS_LOG.md` requirement for future implementation change sets.
 - `Current blocker status (2026-02-26, Coach-1, completion):` `none` for docs planning pass. Implementation blockers remain explicit `decision needed` items (approval authority matrix by scope, sponsor AI approval depth, AI suggestion contract expansion beyond existing family, audit linkage persistence shape).
+- `Controller review note (2026-02-26):` Accepted and pushed. W5 AI readiness boundary is now explicit enough to prevent uncontrolled AI scope drift: approved insert points, approval-first workflow, disallowed mutation actions, minimum contract/read-model outputs, and next-wave assignment specs are all documented without introducing implementation changes.
 
 #### Primary Objective
 Define an implementation-ready W5 AI coach assist boundary package before any AI UI/backend coding:
@@ -1458,10 +1459,178 @@ Define an implementation-ready W5 AI coach assist boundary package before any AI
 #### Worker Launch (Short Form)
 `Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-W5-AI-READINESS-BOUNDARY-A exactly as written. Follow the assignment block, validation requirements, and report-back format.`
 
+### `COACHING-W5-UI-AI-ASSIST-SHELL-PROTO-A`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M6 coaching slice (W5 AI assist UI shell/proto; approval-first)`
+- `Persona:` `Team Leader`, `Coach`, `Admin operator` (review context), downstream `Member/Solo` limited
+- `Flow:` `coaching / AI assist` (`runtime insert-point shells + review UX`)
+- `Owner:` `Mobile-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree preferred)
+- `Figma refs:` `manual-spec-driven` (W5 AI boundary docs; no canonical AI Figma set locked)
+- `Dependency note:` Follows accepted `COACHING-W5-AI-READINESS-BOUNDARY-A`; backend integration may remain stub/mock or use existing `/api/ai/suggestions*` if payloads are sufficient
+
+#### Primary Objective
+Implement manual-spec-driven W5 AI draft request/review UI shells and approved insert-point CTAs without introducing autonomous AI actions:
+- add AI assist entry CTAs on approved surfaces only (`channel_thread`, `coach_broadcast_compose`, `coaching_lesson_detail`, `coaching_journeys*`, embedded Team/Challenge coaching modules per policy)
+- add AI draft request/review shell(s) with explicit approval-first labels/disclaimers and human edit path
+- preserve existing send/publish flows as explicit human actions; no direct AI auto-send
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (if member-shell implementation starts)
+
+#### Constraints (Hard)
+- No KPI log writes, forecast base/confidence mutation, or challenge participation/results mutation via AI paths
+- No autonomous send/publish path
+- No authz boundary widening; server remains permission source of truth
+- If implementation requires net-new route/module boundary, mark `decision needed` and require `/Users/jon/compass-kpi/architecture/DECISIONS_LOG.md` in implementation change set
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Route/CTA gating review on touched surfaces
+- Confirm no backend/schema changes
+- Sync doc status updates in screenmap + wiring if runtime availability changes
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `AI assist entry points wired`
+- `Review shell behavior`
+- `Disallowed actions preserved`
+- `Files touched` (with line refs)
+- `Validation performed`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-W5-UI-AI-ASSIST-SHELL-PROTO-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
+
+### `COACHING-W5-BACKEND-AI-SUGGESTIONS-INFAMILY-QUEUE-A`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M6 coaching slice (W5 AI backend in-family approval queue shaping)`
+- `Persona:` `Coach`, `Admin operator`, downstream `Leader/Member/Solo`
+- `Flow:` `coaching / AI assist` (`/api/ai/suggestions*` additive shaping only)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (backend worktree strongly preferred)
+- `Figma refs:` `N/A` (backend/contract)
+- `Dependency note:` Follows accepted W5 AI boundary docs and is limited to existing AI suggestion endpoint family unless controller explicitly approves broader scope
+
+#### Primary Objective
+Implement additive approval-first queue/read-model outputs inside existing `/api/ai/suggestions*` endpoints to support W5 runtime review shells and coach/admin approval queue surfaces:
+- add planning-approved suggestion status/approval metadata/context refs as additive response fields
+- preserve current authz + approval semantics and role enforcement
+- stop and report blocker if net-new endpoint family or structural schema change is required
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/backend/src/index.ts`
+
+#### Constraints (Hard)
+- Existing AI suggestion endpoint family only (`/api/ai/suggestions*`) unless explicit approval expands scope
+- No schema changes without explicit approval
+- No KPI/forecast/challenge-state mutations through AI suggestion handlers
+- Any structural API/schema boundary change => `decision needed` + `/Users/jon/compass-kpi/architecture/DECISIONS_LOG.md` in implementation change set
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/backend && npm test -- --runInBand` (or assignment-approved fallback if no script exists)
+- `cd /Users/jon/compass-kpi/backend && npm run build`
+- Contract diff review in `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- Confirm no net-new endpoint families/schema changes
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `AI endpoint outputs changed`
+- `Approval queue/read-model fields added`
+- `Gaps still blocked` (`in-family` vs `decision needed`)
+- `Files touched` (with line refs)
+- `Validation performed`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-W5-BACKEND-AI-SUGGESTIONS-INFAMILY-QUEUE-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
+
+### `COACHING-W5-OPS-AI-MODERATION-AUDIT-PASS-A`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M6 coaching slice (W5 AI moderation/audit ops surfaces; approval-first)`
+- `Persona:` `Coach`, `Admin operator`, `Sponsor ops` (limited review only)
+- `Flow:` `coaching / AI assist` (`approval queue`, `audit`, `policy visibility`)
+- `Owner:` `Admin-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (admin web worktree preferred)
+- `Figma refs:` `manual-spec-driven` (coach ops + W5 AI boundary docs)
+- `Dependency note:` Follows W5 AI boundary docs and should prefer `Admin Shell` extension / `coach_ops_audit` companion surfaces; backend queue fields may be stubbed if backend slice is not yet landed
+
+#### Primary Objective
+Implement coach/admin AI approval queue and audit detail ops surfaces (admin extension / coach ops companion) with explicit review/reject/history workflows:
+- add queue list/detail UI for pending/approved/rejected AI suggestions
+- display approval requirements, scope summaries, disclaimers/safety flags, and audit history metadata
+- no KPI/forecast/challenge mutation actions and no authz boundary widening
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+- `/Users/jon/compass-kpi/app/screens/AdminShellScreen.tsx`
+
+#### Constraints (Hard)
+- Admin web / coach ops companion surfaces only (no member mobile AI implementation in this assignment)
+- No backend/API/schema changes unless explicitly approved as paired work
+- No authz boundary changes
+- Preserve approval-first and no-autonomous-send rules
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Manual browser spot-check of admin/coaching audit AI queue/detail views (if environment available)
+- Confirm no mobile/backend/schema changes
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `Ops AI queue/audit surfaces changed`
+- `Approval/audit behaviors implemented`
+- `Disallowed actions preserved`
+- `Files touched` (with line refs)
+- `Validation performed`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-W5-OPS-AI-MODERATION-AUDIT-PASS-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
+
 ### `COACHING-SAMPLE-CONTENT-SEED-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 coaching slice (runtime realism / validation data)`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching content delivery` (`journeys`, `lessons`, `assignments`, sample progress/messages`)
@@ -1471,6 +1640,7 @@ Define an implementation-ready W5 AI coach assist boundary package before any AI
 - `Dependency note:` Follows accepted W3/W4 coaching UI work + package visibility/read-model work so runtime surfaces can be reviewed against realistic states
 - `Execution note (2026-02-26):` Mobile-2 started backend/data seed pass; board status advanced to `in_progress` before implementation. Targeting repeatable seed routine + endpoint smoke verification only (no schema/endpoint changes).
 - `Completion note (2026-02-26):` Added repeatable script `backend/scripts/coaching_sample_content_seed.js` that seeds labeled sample coaching content (team + solo journeys, milestones/lessons, progress states) plus team/sponsor channels and messages, then smoke-verifies `/api/coaching/journeys`, `/api/coaching/journeys/{id}`, `/api/coaching/progress`, `/api/channels`, and `/api/channels/{id}/messages`. Script prints seed IDs/emails and cleanup hints; no schema or endpoint changes.
+- `Controller review note (2026-02-26):` Accepted and pushed as `695cab6`. This is the right realism step for W3/W4/W6 UI review: repeatable sample coaching content + message seeding with endpoint smoke verification, no schema changes, and clear cleanup/reseed hints.
 
 #### Primary Objective
 Seed realistic coaching content and assignment/progress data (using existing schema and endpoint families only) so M6 coaching runtime UI reviews are materially useful:

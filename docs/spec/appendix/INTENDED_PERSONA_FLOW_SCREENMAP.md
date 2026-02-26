@@ -241,6 +241,13 @@ Coach portal host recommendation (planning, manual-spec-driven):
 | Broadcast Composer (coach scope, role-gated) | Compose/send scoped coaching broadcasts within approved channel/package context | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Coach runtime send path is `decision needed` pending `DEP-003` ownership model + portal/runtime routing split; do not assume member-app availability. |
 | Coach inbox/channels oversight (optional later) | Monitor/respond in assigned coaching channels (not member chat parity) | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Prefer portal/admin extension surface first; runtime member shell remains leader/member/solo focused. |
 
+#### `coaching_ai_assist` (approval-first, manual-spec-driven)
+| Destination | Intended purpose | Figma source group | Runtime status | Notes |
+|---|---|---|---|---|
+| AI Assist Draft Request / Review (runtime companion shell) | Generate/edit AI suggestion drafts from approved coaching surfaces before any send/publish action | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | W5 planning boundary only; advisory text drafts, no KPI writes, no auto-send. Expected insert points include `channel_thread`, `coach_broadcast_compose`, and `coaching_lesson_detail`/`coaching_journeys*` helpers. |
+| AI Suggestion Approval Queue (coach/admin portal) | Review/approve/reject pending AI suggestions by scope/policy | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Prefer `Admin Shell extension` / `coach_ops_audit` companion touchpoint. Human approval gates required. |
+| AI Suggestion Audit Detail (coach/admin portal) | Inspect suggestion history, approvals/rejections, and execution linkage refs | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Audit-only/read-only ops surface; if implementation requires new module boundary, mark `decision needed` + `DECISIONS_LOG.md`. |
+
 ## Shared Runtime Router Map (Current Implementation Anchor)
 Use this to map intended screens to current code constraints.
 
@@ -293,6 +300,7 @@ For `Coach` persona assignments (manual-spec-driven), also specify:
 - portal host (`Admin Shell extension` vs `hybrid coach portal`)
 - authoring vs delivery boundary
 - packaging type in scope (`team`, `sponsored`, `paid`)
+- AI boundary mode (`approval-first`) + disallowed mutation actions (`KPI`, forecast base/confidence, challenge participation/results)
 
 Do not assign work as generic “polish Team” or “fix challenge screen.”
 

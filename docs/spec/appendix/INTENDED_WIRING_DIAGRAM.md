@@ -216,6 +216,34 @@ Hybrid/dedicated coach portal remains a deferred option and is `decision needed`
   - coaching owns linked content/comms experiences
 - Paid coaching entitlement decisions are package/access inputs to runtime delivery, not runtime journey authoring behavior.
 
+## W5 AI Coach Assist Approval-First Overlay (Planning Boundary)
+
+AI coach assist is a companion layer on top of coaching runtime and coach/admin ops surfaces. It is advisory-only in W5 and must route through human review/approval before any send/publish action.
+
+```mermaid
+flowchart LR
+  RS["Approved Runtime Insert Points (W5)"] --> AR["AI Draft Request / Review Shell"]
+  AR --> AQ["Coach/Admin Approval Queue"]
+  AQ -->|Approved| EX["Existing Send/Publish Paths (human-triggered)"]
+  AQ -->|Rejected| RJ["Rejection / Edit Loop"]
+  RJ --> AR
+  EX --> AU["Audit Linkage / Execution Refs"]
+  AQ --> AU
+
+  KP["KPI Logs / Forecast Base Values"] -. "no AI mutation" .- AR
+  CH["Challenge Participation / Results"] -. "no AI mutation" .- AR
+```
+
+### W5 AI insert-point map (planning)
+| Host surface | Persona(s) | AI entry mode | W5 status | Boundary note |
+|---|---|---|---|---|
+| `channel_thread` | Team Leader (member later optional) | CTA to AI draft/rewrite review shell | `⚪ planned` | No direct AI send; human send uses existing channel message/broadcast path after approval. |
+| `coach_broadcast_compose` | Team Leader (Coach/Admin later per `DEP-003`) | draft broadcast copy + review | `⚪ planned` | Audience/scope authority remains server-validated; AI cannot expand scope. |
+| `coaching_lesson_detail` | Team Leader, Team Member, Solo User | lesson-context reflection prompt draft | `⚪ planned` | Advisory only; no lesson progress or KPI writes. |
+| `coaching_journeys*` | Team Leader, Team Member, Solo User | journey-context coaching suggestion CTA | `⚪ planned` | Route-to-review shell preferred for first slice. |
+| Team/Challenge coaching embedded modules | Team Leader (+ policy-limited challenge contexts) | embedded CTA -> AI review shell | `⚪ planned` | Preserve sponsored/challenge ownership boundaries and approval requirements. |
+| `coach_ops_audit` (admin extension) | Coach, Admin operator | approval queue + audit detail | `⚪ planned` | Governance/audit surface; may expand with moderation views in later W5 follow-on. |
+
 ## Member App Shell (Intended)
 
 This maps to the current `KPIDashboardScreen` state router and its nested subflows.
