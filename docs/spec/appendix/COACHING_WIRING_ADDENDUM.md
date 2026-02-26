@@ -261,6 +261,113 @@ These are planning targets only and intentionally separate from current member-a
 | `coach_packages_entitlements` | Admin operator, Coach (limited authoring view), Sponsor ops (limited sponsor packages) | `sponsor_challenge_coaching`, paid packaging | Entitlement/package assignment -> runtime visibility | `⚪ planned` | Packaging/access policy layer; no content editing required. |
 | `coach_ops_audit` | Admin operator | `communication`, `coaching_content`, `ai_coach_assist` (later) | Audit/approval constraints -> runtime allowed actions | `⚪ planned` | Ops/governance layer; UI implementation deferred. |
 
+## Coach Ops Portal Host Recommendation and Route Grouping (Docs-First)
+
+### Near-term host recommendation (recommended)
+- `Admin Shell extension` (recommended near-term)
+  - rationale: existing authenticated web admin surface already exists and matches the ops-heavy nature of coach publishing/governance work
+  - reduces premature router/platform split while coach touchpoints remain manual-spec-driven
+  - keeps admin/operator and coach governance collaboration in one place
+- `Hybrid coach portal` (deferred option)
+  - consider only after touchpoints stabilize and role/workflow complexity justifies a dedicated portal shell
+  - treat as `decision needed` during implementation if route ownership, auth context, or UX isolation requirements force a split
+
+### Route grouping plan (manual-spec-driven, planning only)
+
+| Route group (provisional) | Host choice (near-term) | Touchpoints | Primary persona(s) | Status | Notes |
+|---|---|---|---|---|---|
+| `admin/coaching/library` | Admin Shell extension | `coach_content_library` | Coach, Admin operator | `⚪ planned` | Content catalog/curation and template management. |
+| `admin/coaching/authoring` | Admin Shell extension | `coach_journey_authoring` | Coach | `⚪ planned` | Journey/lesson draft editing and review prep. |
+| `admin/coaching/publishing` | Admin Shell extension | `coach_publish_targeting` | Coach, Admin operator, Sponsor ops (limited) | `⚪ planned` | Publish/target/schedule/link to channels/challenges. |
+| `admin/coaching/packages` | Admin Shell extension | `coach_packages_entitlements` | Admin operator, Coach (limited), Sponsor ops (limited) | `⚪ planned` | Team/sponsored/paid package visibility and entitlement policy ops. |
+| `admin/coaching/audit` | Admin Shell extension | `coach_ops_audit` | Admin operator | `⚪ planned` | Approvals, rollback, moderation, audit review. |
+
+### Hybrid portal fallback grouping (deferred planning only)
+- If a dedicated coach portal becomes necessary, preserve touchpoint IDs and regroup into:
+  - `coach-portal/library`
+  - `coach-portal/authoring`
+  - `coach-portal/publishing`
+  - `coach-portal/packages`
+- Keep `coach_ops_audit` in admin governance routes unless coach governance ownership is explicitly widened.
+- `DECISIONS_LOG.md` update required in implementation phase if route host ownership or module boundary changes are adopted.
+
+## Coach Ops Touchpoint Workflow Sequences (Authoring -> Publishing -> Runtime)
+
+### `coach_content_library`
+1. Coach uploads/curates content assets/templates/journey building blocks.
+2. Admin operator optionally reviews metadata/policy compliance flags.
+3. Assets become available to `coach_journey_authoring` and `coach_publish_targeting`.
+
+### `coach_journey_authoring`
+1. Coach creates/edits journey draft and lesson sequence.
+2. Coach marks draft ready for review/publish.
+3. Admin operator reviews/approves if governance policy requires.
+4. Approved content version becomes eligible for package inclusion and targeting.
+
+### `coach_publish_targeting`
+1. Coach selects approved content/bundles.
+2. Coach configures target scope (team/challenge/sponsor/user segment) and schedule window.
+3. Sponsor ops contributes campaign constraints/assets for sponsor-linked packages (limited scope).
+4. Admin operator approves/activates when required.
+5. Published assignment metadata is emitted for runtime delivery surfaces.
+
+### `coach_packages_entitlements`
+1. Admin operator defines/updates package visibility and entitlement policy (team, sponsored, paid).
+2. Coach verifies content mapping and package composition.
+3. Sponsor ops manages sponsor package constraints/eligibility inputs in sponsor-scoped cases.
+4. Active package/entitlement state becomes runtime visibility input (not runtime authoring state).
+
+### `coach_ops_audit`
+1. Admin operator reviews publish/send actions, approval history, and rollback needs.
+2. Admin operator executes rollback/suspend actions when policy/compliance issues occur.
+3. Runtime surfaces react to updated publish/visibility state via subsequent reads; no direct runtime mutation path from members.
+
+## Publish / Approval / Rollback Lifecycle States (Planning-Level)
+
+Use these lifecycle states for portal planning and worker prompts. These are conceptual states, not approved schema values.
+
+| Lifecycle state | Primary actor | Meaning | Runtime delivery effect |
+|---|---|---|---|
+| `draft` | Coach | Work in progress; not reviewable for delivery | Not visible in runtime delivery |
+| `in_review` | Coach / Admin operator | Submitted for review/approval | Not visible in runtime delivery |
+| `approved` | Admin operator (or policy-approved coach flow) | Content/package may be scheduled/published | Not yet visible unless activated |
+| `scheduled` | Coach / Admin operator | Approved with future activation window | Visible only when activation window starts |
+| `published` | Coach / Admin operator | Active for targeted audiences | Runtime surfaces may render if entitlement/targeting passes |
+| `paused` | Admin operator | Temporarily suspended without full retirement | Runtime hides or disables affected content/comms surfaces |
+| `retired` | Admin operator | No longer active for new delivery | Runtime may preserve historical references only |
+| `rolled_back` | Admin operator | Reverted due to issue/policy/error | Runtime should stop presenting replaced assignment/version |
+
+### Ops responsibilities by lifecycle stage
+- `Coach`: authoring quality, content curation, package composition inputs, targeting intent
+- `Admin operator`: approval governance, lifecycle enforcement, rollback, audit/compliance
+- `Sponsor ops` (limited): sponsor campaign asset/constraint inputs for sponsor-scoped packages only
+
+## Runtime Handoff Artifact Definition (Planning-Level, No Schema Approval)
+
+Runtime delivery surfaces should consume a published handoff artifact/read model with at least:
+- `package_type`
+  - `team_coaching_program`
+  - `sponsored_challenge_coaching_campaign`
+  - `paid_coaching_product`
+- `publish_state` (effective runtime-visible state only)
+- `content_refs`
+  - published journey IDs / lesson IDs / template IDs
+- `target_scope`
+  - org/team/challenge/sponsor/segment references
+- `entitlement_visibility`
+  - access flags / gating outcome inputs for runtime UI
+- `channel_links` (optional)
+  - linked channel IDs / broadcast template refs
+- `schedule_window`
+  - activation/deactivation timing metadata
+- `compliance_flags` (optional, portal-governed)
+  - disclaimer or moderation requirements for runtime display
+
+### Planning boundary reminder
+- This is a contract/read-model planning definition only.
+- It is not an approved schema or endpoint addition.
+- If implementation requires new endpoint families or structural schema changes, mark `decision needed` and update `DECISIONS_LOG.md` in the implementation change set.
+
 ### Phase W5 — AI coaching assist (approval-first)
 - Route from coaching surfaces to AI suggestion review/approval queues (leader/admin/coach)
 - No direct AI auto-send path

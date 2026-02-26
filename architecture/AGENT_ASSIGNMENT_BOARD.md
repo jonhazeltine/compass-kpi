@@ -728,7 +728,7 @@ Produce a planning package that clearly answers:
 ### `COACHING-OPS-PORTAL-A`
 
 #### Snapshot
-- `Status:` `queued`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 coaching slice (planning/architecture; coach ops portal)`
 - `Persona:` `Coach`, `Admin operator`, `Sponsor ops` (limited)
 - `Flow:` `coach content operations / publishing` (`authoring portal touchpoints + ops handoff`)
@@ -736,6 +736,11 @@ Produce a planning package that clearly answers:
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only by default; separate worktree preferred if UI shell work is later approved)
 - `Figma refs:` `manual-spec-driven` unless coach/admin portal exports are later added
 - `Dependency note:` Follows accepted `COACHING-ARCH-COACH-PERSONA-A` coach persona operating model
+- `Worker note (2026-02-26, Coach-1 execution start):` Board status/blocker check complete. Executing docs-first coach ops portal planning package (host recommendation, route grouping, touchpoint workflows, lifecycle states, runtime handoff artifacts) without app/backend/schema changes.
+- `Current blocker status (2026-02-26, Coach-1):` `none` at start. Planning assumes current `Admin Shell` is the near-term host baseline; any structural hybrid portal split beyond planning will be marked `decision needed`.
+- `Completion note (2026-02-26, Coach-1):` Completed docs-first coach ops portal planning package. Added near-term host recommendation (`Admin Shell extension`) + deferred hybrid option, provisional route grouping plan, touchpoint workflow sequences, publish/approval/rollback lifecycle states, and planning-level runtime handoff artifact definition. Synced portal host/route-grouping notes into intended screenmap and intended wiring docs.
+- `Validation note (2026-02-26, Coach-1):` Consistent with accepted `COACHING-ARCH-COACH-PERSONA-A` boundaries; explicit role-gating for `Coach`, `Admin operator`, and `Sponsor ops` is documented. No app/backend/schema/API files changed. Hybrid portal split remains `decision needed` and would require `DECISIONS_LOG.md` update in implementation phase.
+- `Controller review note (2026-02-26):` Accepted. Portal-host recommendation (`Admin Shell extension` near-term) and route grouping are clear, the lifecycle and handoff model are implementation-ready as planning guidance, and structural split is correctly held as `decision needed`.
 
 #### Primary Objective
 Turn the coach persona authoring/ops model into an implementation-ready portal planning package (or UI shell planning slice) without collapsing authoring into member runtime delivery surfaces:

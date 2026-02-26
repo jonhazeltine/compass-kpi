@@ -213,6 +213,10 @@ Exports in repo:
 
 Coach is an authoring/ops persona for coaching content and publishing. In current planning, Coach is modeled as a role-gated admin-web extension (or hybrid portal) rather than a member runtime persona.
 
+Coach portal host recommendation (planning, manual-spec-driven):
+- near-term: `Admin Shell extension` (recommended)
+- later option: `hybrid coach portal` if route/workflow complexity justifies a separate shell (`decision needed` during implementation)
+
 #### `coach_ops_authoring`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
 |---|---|---|---|---|
@@ -221,6 +225,15 @@ Coach is an authoring/ops persona for coaching content and publishing. In curren
 | Publishing & Targeting | Publish bundles, define audiences, link channels/challenges, schedule activation | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_publish_targeting`); handoff produces delivery assignments for runtime surfaces. |
 | Coaching Packages / Entitlements | Configure team/sponsored/paid coaching package visibility and access policy | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_packages_entitlements`); packaging/access layer, not content authoring. |
 | Coach Ops Audit / Approvals | Approvals, rollback, moderation, audit trail review for coaching publishing actions | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_ops_audit`); admin operator-heavy governance surface. |
+
+#### `coach_ops_authoring` route grouping (portal planning)
+| Route group (provisional) | Host surface | Persona access | Runtime status | Notes |
+|---|---|---|---|---|
+| `admin/coaching/library` | `Admin Shell extension` (recommended) | Coach, Admin operator | `⚪ missing` | Maps to `coach_content_library`. |
+| `admin/coaching/authoring` | `Admin Shell extension` (recommended) | Coach | `⚪ missing` | Maps to `coach_journey_authoring`. |
+| `admin/coaching/publishing` | `Admin Shell extension` (recommended) | Coach, Admin operator, Sponsor ops (limited) | `⚪ missing` | Maps to `coach_publish_targeting`; publish/target/schedule/link handoff. |
+| `admin/coaching/packages` | `Admin Shell extension` (recommended) | Admin operator, Coach (limited), Sponsor ops (limited) | `⚪ missing` | Maps to `coach_packages_entitlements`; packaging/entitlement policy ops. |
+| `admin/coaching/audit` | `Admin Shell extension` (recommended) | Admin operator | `⚪ missing` | Maps to `coach_ops_audit`; governance and rollback review. |
 
 #### `coaching_communication`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
@@ -237,6 +250,7 @@ Use this to map intended screens to current code constraints.
   - admin web extension routes (preferred near-term), or
   - hybrid portal routes sharing auth but separate from member `KPIDashboardScreen` state router.
 - Member runtime coaching destinations (`inbox*`, `coaching_journeys*`, `coach_broadcast_compose`) are delivery surfaces and must not absorb authoring/package-definition concerns.
+- If implementation adopts a hybrid portal route split, mark `decision needed` and log the structural boundary change in `/Users/jon/compass-kpi/architecture/DECISIONS_LOG.md` in that implementation change set.
 
 ### App shell
 - `/Users/jon/compass-kpi/app/App.tsx`

@@ -189,6 +189,20 @@ flowchart LR
 | Coaching Packages / Entitlements (`coach_packages_entitlements`) | Admin operator, Coach (limited), Sponsor ops (limited sponsor scopes) | `sponsor_challenge_coaching`, paid packaging | Runtime visibility/entitlement gating | `⚪ planned` | Packaging/access logic separated from journey authoring and runtime rendering. |
 | Coach Ops Audit / Approvals (`coach_ops_audit`) | Admin operator | `communication`, `coaching_content` (+ `ai_coach_assist` later) | Policy constraints on runtime allowed actions | `⚪ planned` | Governance/audit layer; no direct KPI data mutation. |
 
+## Coach Ops Portal Host Recommendation and Route Grouping (Planning)
+
+Near-term recommendation: use `Admin Shell` as the host (role-gated extension routes) and defer a hybrid/dedicated coach portal until touchpoint complexity justifies a structural split.
+
+| Route group (provisional) | Host | Touchpoint | Primary persona(s) | Status | Decision note |
+|---|---|---|---|---|---|
+| `admin/coaching/library` | `Admin Shell extension` | `coach_content_library` | Coach, Admin operator | `⚪ planned` | No structural split required. |
+| `admin/coaching/authoring` | `Admin Shell extension` | `coach_journey_authoring` | Coach | `⚪ planned` | No structural split required. |
+| `admin/coaching/publishing` | `Admin Shell extension` | `coach_publish_targeting` | Coach, Admin operator, Sponsor ops (limited) | `⚪ planned` | Keep sponsor inputs constrained to campaign packaging/targeting. |
+| `admin/coaching/packages` | `Admin Shell extension` | `coach_packages_entitlements` | Admin operator, Coach (limited), Sponsor ops (limited) | `⚪ planned` | Packaging/entitlement policy layer; not runtime delivery authoring. |
+| `admin/coaching/audit` | `Admin Shell extension` | `coach_ops_audit` | Admin operator | `⚪ planned` | Governance/audit touchpoint remains admin-heavy. |
+
+Hybrid/dedicated coach portal remains a deferred option and is `decision needed` in implementation if adopted (requires `DECISIONS_LOG.md` update for route/module boundary change).
+
 ## Authoring -> Runtime Publishing Handoff Rules (Planning Boundary)
 
 - Runtime coaching surfaces (`coaching_journeys*`, challenge overlays, team modules, `inbox*`) consume published assignments and content metadata only.
