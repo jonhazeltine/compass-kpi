@@ -177,6 +177,7 @@ type ChallengeApiRow = {
   created_at?: string | null;
   sponsored_challenge_id?: string | null;
   sponsor_id?: string | null;
+  package_visibility?: RuntimePackageVisibilityOutcome | null;
   my_participation?: {
     challenge_id?: string | null;
     user_id?: string | null;
@@ -268,6 +269,28 @@ type CoachingShellContext = {
   selectedLessonId: string | null;
   selectedLessonTitle: string | null;
 };
+type RuntimePackageDisplayRequirements = {
+  disclaimer?: string | null;
+  sponsor_attribution?: string | null;
+  paywall_cta_required?: boolean | null;
+};
+type RuntimePackageVisibilityOutcome = {
+  package_type?: string | null;
+  package_id?: string | null;
+  visibility_state?: string | null;
+  target_match?: boolean | null;
+  entitlement_result?: string | null;
+  linked_context_refs?: Record<string, unknown> | null;
+  display_requirements?: RuntimePackageDisplayRequirements | null;
+};
+type CoachingPackageGateTone = 'available' | 'gated' | 'blocked' | 'fallback';
+type CoachingPackageGatePresentation = {
+  tone: CoachingPackageGateTone;
+  title: string;
+  summary: string;
+  detail?: string | null;
+  policyNote?: string | null;
+};
 type CoachingJourneyListItem = {
   id: string;
   title: string;
@@ -279,9 +302,11 @@ type CoachingJourneyListItem = {
   lessons_total?: number;
   lessons_completed?: number;
   completion_percent?: number;
+  package_visibility?: RuntimePackageVisibilityOutcome | null;
 };
 type CoachingJourneyListResponse = {
   journeys?: CoachingJourneyListItem[];
+  package_visibility?: RuntimePackageVisibilityOutcome | null;
   error?: string;
 };
 type CoachingJourneyDetailLesson = {
@@ -302,6 +327,7 @@ type CoachingJourneyDetailMilestone = {
 type CoachingJourneyDetailResponse = {
   journey?: CoachingJourneyListItem;
   milestones?: CoachingJourneyDetailMilestone[];
+  package_visibility?: RuntimePackageVisibilityOutcome | null;
   error?: string;
 };
 type CoachingProgressSummaryResponse = {
@@ -312,6 +338,7 @@ type CoachingProgressSummaryResponse = {
     completed?: number;
   };
   completion_percent?: number;
+  package_visibility?: RuntimePackageVisibilityOutcome | null;
   error?: string;
 };
 type CoachingLessonProgressWriteResponse = {
@@ -335,9 +362,11 @@ type ChannelApiRow = {
   my_role?: string | null;
   unread_count?: number;
   last_seen_at?: string | null;
+  package_visibility?: RuntimePackageVisibilityOutcome | null;
 };
 type ChannelsListResponse = {
   channels?: ChannelApiRow[];
+  package_visibility?: RuntimePackageVisibilityOutcome | null;
   error?: string;
 };
 type ChannelMessageRow = {
@@ -347,9 +376,11 @@ type ChannelMessageRow = {
   body: string;
   message_type?: 'message' | 'broadcast' | string;
   created_at?: string | null;
+  package_visibility?: RuntimePackageVisibilityOutcome | null;
 };
 type ChannelMessagesResponse = {
   messages?: ChannelMessageRow[];
+  package_visibility?: RuntimePackageVisibilityOutcome | null;
   error?: string;
 };
 type ChannelMessageWriteResponse = {
@@ -501,6 +532,116 @@ function normalizeChannelTypeToScope(type?: string | null): CoachingChannelScope
   if (t === 'sponsor') return 'sponsor';
   if (t === 'cohort' || t === 'direct') return 'community';
   return null;
+}
+
+function pickRuntimePackageVisibility(
+  ...candidates: Array<RuntimePackageVisibilityOutcome | null | undefined>
+): RuntimePackageVisibilityOutcome | null {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const hasAnySignal =
+      candidate.package_type != null ||
+      candidate.package_id != null ||
+      candidate.visibility_state != null ||
+      candidate.entitlement_result != null ||
+      candidate.target_match != null ||
+      candidate.display_requirements != null;
+    if (hasAnySignal) return candidate;
+  }
+  return null;
+}
+
+function deriveCoachingPackageGatePresentation(
+  surfaceLabel: string,
+  outcome?: RuntimePackageVisibilityOutcome | null
+): CoachingPackageGatePresentation {
+  const packageType = String(outcome?.package_type ?? '').toLowerCase();
+  const visibilityState = String(outcome?.visibility_state ?? '').toLowerCase();
+  const entitlementResult = String(outcome?.entitlement_result ?? '').toLowerCase();
+  const targetMatch = outcome?.target_match;
+  const displayReq = outcome?.display_requirements ?? null;
+  const sponsorAttr = displayReq?.sponsor_attribution?.trim() || null;
+  const explicitDisclaimer = displayReq?.disclaimer?.trim() || null;
+  const paywallRequired = Boolean(displayReq?.paywall_cta_required);
+
+  const boundaryNote =
+    packageType === 'sponsored_challenge_coaching_campaign'
+      ? 'Sponsored coaching messaging/content is package-driven; challenge participation/results stay challenge-owned.'
+      : packageType === 'paid_coaching_product'
+        ? 'Paid coaching access is server-enforced; runtime UI only reflects entitlement outcomes.'
+        : packageType === 'team_coaching_program'
+          ? 'Team coaching package visibility is server-provided when available.'
+          : null;
+
+  if (!outcome || (!visibilityState && !entitlementResult && targetMatch == null)) {
+    return {
+      tone: 'fallback',
+      title: 'Package Visibility Pending',
+      summary: `${surfaceLabel} is using a safe fallback state because runtime package visibility/entitlement outcomes are not present on this payload.`,
+      detail: 'CTAs remain visible as shell/access attempts; server-side routes remain the source of truth for permission and entitlement enforcement.',
+      policyNote: boundaryNote ?? 'UI does not infer billing, sponsor approvals, or targeting policy from partial context.',
+    };
+  }
+
+  const blockedByEntitlement =
+    entitlementResult === 'blocked_not_entitled' ||
+    entitlementResult === 'blocked_not_in_audience' ||
+    entitlementResult === 'blocked_schedule' ||
+    entitlementResult === 'blocked_policy';
+  const blockedByVisibility =
+    visibilityState.includes('blocked') ||
+    visibilityState.includes('hidden') ||
+    visibilityState.includes('retired') ||
+    visibilityState.includes('paused');
+  const allowedByEntitlement = entitlementResult === 'allowed';
+  const available = allowedByEntitlement && targetMatch !== false && !blockedByVisibility;
+
+  if (available) {
+    return {
+      tone: 'available',
+      title: 'Package Available',
+      summary: `${surfaceLabel} is visible under the current runtime package/entitlement outcome.`,
+      detail:
+        [sponsorAttr ? `Sponsor: ${sponsorAttr}` : null, explicitDisclaimer, paywallRequired ? 'Paywall CTA may be required on linked access paths.' : null]
+          .filter(Boolean)
+          .join(' ') || boundaryNote || null,
+      policyNote: 'UI is reflecting server-provided visibility/entitlement outcomes only.',
+    };
+  }
+
+  if (blockedByEntitlement || blockedByVisibility || targetMatch === false) {
+    const reason =
+      entitlementResult === 'blocked_not_entitled'
+        ? 'Not entitled'
+        : entitlementResult === 'blocked_not_in_audience'
+          ? 'Not in target audience'
+          : entitlementResult === 'blocked_schedule'
+            ? 'Not currently scheduled'
+            : entitlementResult === 'blocked_policy'
+              ? 'Blocked by policy'
+              : targetMatch === false
+                ? 'Targeting mismatch'
+                : visibilityState
+                  ? `Visibility state: ${visibilityState}`
+                  : 'Access unavailable';
+    const tone: CoachingPackageGateTone =
+      entitlementResult === 'blocked_policy' || visibilityState.includes('blocked') ? 'blocked' : 'gated';
+    return {
+      tone,
+      title: tone === 'blocked' ? 'Package Blocked' : 'Package Gated',
+      summary: `${surfaceLabel} is not available for this context right now.`,
+      detail: [reason, sponsorAttr ? `Sponsor: ${sponsorAttr}` : null, explicitDisclaimer].filter(Boolean).join(' • '),
+      policyNote: boundaryNote ?? 'UI is displaying server outcomes and not computing local package policy.',
+    };
+  }
+
+  return {
+    tone: 'fallback',
+    title: 'Package Visibility Unclear',
+    summary: `${surfaceLabel} received partial packaging metadata without a reusable entitlement outcome.`,
+    detail: explicitDisclaimer ?? null,
+    policyNote: boundaryNote ?? 'UI fallback keeps CTAs non-authoritative and defers access enforcement to the server.',
+  };
 }
 
 function challengeBucketFromDates(input: { startAt?: string | null; endAt?: string | null; nowMs?: number }) {
@@ -1547,6 +1688,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     selectedLessonTitle: null,
   });
   const [coachingJourneys, setCoachingJourneys] = useState<CoachingJourneyListItem[] | null>(null);
+  const [coachingJourneysPackageVisibility, setCoachingJourneysPackageVisibility] =
+    useState<RuntimePackageVisibilityOutcome | null>(null);
   const [coachingJourneysLoading, setCoachingJourneysLoading] = useState(false);
   const [coachingJourneysError, setCoachingJourneysError] = useState<string | null>(null);
   const [coachingProgressSummary, setCoachingProgressSummary] = useState<CoachingProgressSummaryResponse | null>(null);
@@ -1558,11 +1701,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [coachingLessonProgressSubmittingId, setCoachingLessonProgressSubmittingId] = useState<string | null>(null);
   const [coachingLessonProgressError, setCoachingLessonProgressError] = useState<string | null>(null);
   const [channelsApiRows, setChannelsApiRows] = useState<ChannelApiRow[] | null>(null);
+  const [channelsPackageVisibility, setChannelsPackageVisibility] = useState<RuntimePackageVisibilityOutcome | null>(null);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [channelsError, setChannelsError] = useState<string | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [selectedChannelName, setSelectedChannelName] = useState<string | null>(null);
   const [channelMessages, setChannelMessages] = useState<ChannelMessageRow[] | null>(null);
+  const [channelThreadPackageVisibility, setChannelThreadPackageVisibility] =
+    useState<RuntimePackageVisibilityOutcome | null>(null);
   const [channelMessagesLoading, setChannelMessagesLoading] = useState(false);
   const [channelMessagesError, setChannelMessagesError] = useState<string | null>(null);
   const [channelMessageDraft, setChannelMessageDraft] = useState('');
@@ -4734,6 +4880,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const challengeHasApiBackedDetail = isApiBackedChallenge(challengeSelected);
   const challengeIsPlaceholderOnly = !challengeHasApiBackedDetail;
   const challengeLeaderboardHasRealRows = (challengeSelected?.leaderboardPreview?.length ?? 0) > 0;
+  const challengeCoachingPackageOutcome = pickRuntimePackageVisibility(
+    challengeSelected?.raw?.package_visibility ?? null
+  );
+  const challengeCoachingGatePresentation = deriveCoachingPackageGatePresentation(
+    'Challenge coaching and updates',
+    challengeCoachingPackageOutcome
+  );
+  const challengeCoachingGateBlocksCtas =
+    challengeCoachingGatePresentation.tone === 'gated' || challengeCoachingGatePresentation.tone === 'blocked';
   const challengeDaysLeft =
     challengeSelected?.bucket === 'active' && challengeSelected?.endAtIso
       ? Math.max(0, Math.ceil((new Date(challengeSelected.endAtIso).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
@@ -4794,11 +4949,42 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     setViewMode('log');
   }, []);
 
+  const renderCoachingPackageGateBanner = useCallback(
+    (
+      surfaceLabel: string,
+      outcome?: RuntimePackageVisibilityOutcome | null,
+      opts?: { compact?: boolean }
+    ) => {
+      const presentation = deriveCoachingPackageGatePresentation(surfaceLabel, outcome);
+      const toneStyle =
+        presentation.tone === 'available'
+          ? styles.coachingGateBannerAvailable
+          : presentation.tone === 'gated'
+            ? styles.coachingGateBannerGated
+            : presentation.tone === 'blocked'
+              ? styles.coachingGateBannerBlocked
+              : styles.coachingGateBannerFallback;
+      return (
+        <View style={[styles.coachingGateBanner, toneStyle, opts?.compact ? styles.coachingGateBannerCompact : null]}>
+          <View style={styles.coachingGateBannerTopRow}>
+            <Text style={styles.coachingGateBannerTitle}>{presentation.title}</Text>
+            <Text style={styles.coachingGateBannerToneText}>{presentation.tone}</Text>
+          </View>
+          <Text style={styles.coachingGateBannerSummary}>{presentation.summary}</Text>
+          {presentation.detail ? <Text style={styles.coachingGateBannerDetail}>{presentation.detail}</Text> : null}
+          {presentation.policyNote ? <Text style={styles.coachingGateBannerPolicy}>{presentation.policyNote}</Text> : null}
+        </View>
+      );
+    },
+    []
+  );
+
   const fetchCoachingJourneys = useCallback(async () => {
     const token = session?.access_token;
     if (!token) {
       setCoachingJourneysError('Sign in is required to view coaching journeys.');
       setCoachingJourneys([]);
+      setCoachingJourneysPackageVisibility(null);
       return;
     }
     setCoachingJourneysLoading(true);
@@ -4811,12 +4997,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       if (!response.ok) {
         setCoachingJourneysError(String(body.error ?? `Journeys request failed (${response.status})`));
         setCoachingJourneys([]);
+        setCoachingJourneysPackageVisibility(body.package_visibility ?? null);
         return;
       }
       setCoachingJourneys(Array.isArray(body.journeys) ? body.journeys : []);
+      setCoachingJourneysPackageVisibility(body.package_visibility ?? null);
     } catch (err) {
       setCoachingJourneysError(err instanceof Error ? err.message : 'Failed to load coaching journeys');
       setCoachingJourneys([]);
+      setCoachingJourneysPackageVisibility(null);
     } finally {
       setCoachingJourneysLoading(false);
     }
@@ -4935,6 +5124,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     if (!token) {
       setChannelsError('Sign in is required to view channels.');
       setChannelsApiRows([]);
+      setChannelsPackageVisibility(null);
       return;
     }
     setChannelsLoading(true);
@@ -4947,14 +5137,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       if (!response.ok) {
         setChannelsError(String(body.error ?? `Channels request failed (${response.status})`));
         setChannelsApiRows([]);
+        setChannelsPackageVisibility(body.package_visibility ?? null);
         return;
       }
       const rows = Array.isArray(body.channels) ? body.channels : [];
       setChannelsApiRows(rows);
+      setChannelsPackageVisibility(body.package_visibility ?? null);
       setSelectedChannelId((prev) => (prev && rows.some((r) => String(r.id) === prev) ? prev : prev));
     } catch (err) {
       setChannelsError(err instanceof Error ? err.message : 'Failed to load channels');
       setChannelsApiRows([]);
+      setChannelsPackageVisibility(null);
     } finally {
       setChannelsLoading(false);
     }
@@ -4966,11 +5159,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       if (!token) {
         setChannelMessagesError('Sign in is required to view channel messages.');
         setChannelMessages([]);
+        setChannelThreadPackageVisibility(null);
         return;
       }
       if (!channelId) {
         setChannelMessagesError('Channel id is required.');
         setChannelMessages([]);
+        setChannelThreadPackageVisibility(null);
         return;
       }
       setChannelMessagesLoading(true);
@@ -4983,9 +5178,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         if (!response.ok) {
           setChannelMessagesError(String(body.error ?? `Channel messages request failed (${response.status})`));
           setChannelMessages([]);
+          setChannelThreadPackageVisibility(body.package_visibility ?? null);
           return;
         }
         setChannelMessages(Array.isArray(body.messages) ? body.messages : []);
+        setChannelThreadPackageVisibility(body.package_visibility ?? null);
         if (markSeen) {
           await fetch(`${API_URL}/api/messages/mark-seen`, {
             method: 'POST',
@@ -5001,6 +5198,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       } catch (err) {
         setChannelMessagesError(err instanceof Error ? err.message : 'Failed to load channel messages');
         setChannelMessages([]);
+        setChannelThreadPackageVisibility(null);
       } finally {
         setChannelMessagesLoading(false);
       }
@@ -5863,9 +6061,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <Text style={styles.coachingEntrySub}>
                       Manual-spec-driven comms entry wiring for challenge/sponsor updates plus coaching prompts. Challenge progress/results ownership stays on this screen.
                     </Text>
+                    {renderCoachingPackageGateBanner('Challenge coaching and updates', challengeCoachingPackageOutcome, {
+                      compact: true,
+                    })}
                     <View style={styles.coachingEntryButtonRow}>
                       <TouchableOpacity
-                        style={styles.coachingEntryPrimaryBtn}
+                        style={[styles.coachingEntryPrimaryBtn, challengeCoachingGateBlocksCtas ? styles.disabled : null]}
+                        disabled={challengeCoachingGateBlocksCtas}
                         onPress={() =>
                           openCoachingShell('channel_thread', {
                             source: 'challenge_details',
@@ -5882,10 +6084,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           })
                         }
                       >
-                        <Text style={styles.coachingEntryPrimaryBtnText}>Challenge Updates</Text>
+                        <Text style={styles.coachingEntryPrimaryBtnText}>
+                          {challengeCoachingGateBlocksCtas ? 'Updates Gated' : 'Challenge Updates'}
+                        </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={styles.coachingEntrySecondaryBtn}
+                        style={[styles.coachingEntrySecondaryBtn, challengeCoachingGateBlocksCtas ? styles.disabled : null]}
+                        disabled={challengeCoachingGateBlocksCtas}
                         onPress={() =>
                           openCoachingShell(challengeIsCompleted ? 'coaching_journeys' : 'coaching_journey_detail', {
                             source: 'challenge_details',
@@ -5896,7 +6101,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           })
                         }
                       >
-                        <Text style={styles.coachingEntrySecondaryBtnText}>Coaching Prompt</Text>
+                        <Text style={styles.coachingEntrySecondaryBtnText}>
+                          {challengeCoachingGateBlocksCtas ? 'Coaching Gated' : 'Coaching Prompt'}
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -6486,6 +6693,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         <Text style={styles.coachingEntrySub}>
                           Team Member coaching progress shell plus team updates channel entry routing (W2 comms entry point pass).
                         </Text>
+                        {renderCoachingPackageGateBanner('Team member coaching module', null, { compact: true })}
                         <View style={styles.coachingEntryButtonRow}>
                           <TouchableOpacity
                             style={styles.coachingEntryPrimaryBtn}
@@ -6702,7 +6910,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       ))}
                     </View>
 
-                    <View style={styles.coachingEntryCard}>
+                      <View style={styles.coachingEntryCard}>
                       <View style={styles.coachingEntryHeaderRow}>
                         <Text style={styles.coachingEntryTitle}>Team Coaching Summary</Text>
                         <Text style={styles.coachingEntryBadge}>W2 comms</Text>
@@ -6710,6 +6918,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <Text style={styles.coachingEntrySub}>
                         Leader coaching summary with team updates channel entry and role-gated broadcast composer entry. Broadcast send/write remains deferred pending API wiring.
                       </Text>
+                      {renderCoachingPackageGateBanner('Team leader coaching module', null, { compact: true })}
                       <View style={styles.coachingEntryButtonRow}>
                         <TouchableOpacity
                           style={styles.coachingEntryPrimaryBtn}
@@ -6893,6 +7102,38 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 },
               };
               const meta = shellMeta[coachingShellScreen];
+              const shellPackageOutcome =
+                coachingShellScreen === 'inbox' || coachingShellScreen === 'inbox_channels'
+                  ? pickRuntimePackageVisibility(
+                      channelsPackageVisibility,
+                      selectedChannelRow?.package_visibility ?? null
+                    )
+                  : coachingShellScreen === 'channel_thread'
+                    ? pickRuntimePackageVisibility(
+                        channelThreadPackageVisibility,
+                        selectedChannelRow?.package_visibility ?? null,
+                        channelsPackageVisibility
+                      )
+                    : coachingShellScreen === 'coach_broadcast_compose'
+                      ? pickRuntimePackageVisibility(
+                          selectedChannelRow?.package_visibility ?? null,
+                          channelsPackageVisibility
+                        )
+                      : coachingShellScreen === 'coaching_journeys'
+                        ? pickRuntimePackageVisibility(
+                            coachingJourneysPackageVisibility,
+                            coachingProgressSummary?.package_visibility ?? null,
+                            journeyListRows[0]?.package_visibility ?? null
+                          )
+                        : pickRuntimePackageVisibility(
+                            coachingJourneyDetail?.package_visibility ?? null,
+                            coachingJourneyDetail?.journey?.package_visibility ?? null,
+                            coachingJourneysPackageVisibility,
+                            coachingProgressSummary?.package_visibility ?? null
+                          );
+              const shellPackageGatePresentation = deriveCoachingPackageGatePresentation(meta.title, shellPackageOutcome);
+              const shellPackageGateBlocksActions =
+                shellPackageGatePresentation.tone === 'gated' || shellPackageGatePresentation.tone === 'blocked';
               const channelRows = ([
                 { scope: 'team', label: 'Team Updates', context: 'team channel shell' },
                 { scope: 'challenge', label: 'Challenge Updates', context: 'challenge channel shell' },
@@ -6921,9 +7162,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </View>
                     </View>
                     <Text style={styles.coachingShellSub}>{meta.sub}</Text>
+                    {renderCoachingPackageGateBanner(meta.title, shellPackageOutcome, { compact: true })}
+                    {shellPackageGatePresentation.tone === 'fallback' ? (
+                      <View style={styles.coachingContractGapCard}>
+                        <Text style={styles.coachingContractGapTitle}>Contract-gap triage (runtime fallback)</Text>
+                        <Text style={styles.coachingContractGapText}>
+                          UI-only: fallback banner/copy + non-authoritative CTA state. Backend-prep (existing family): add package visibility and entitlement outcomes to current coaching/channel payloads. Net-new family: only if published assignment outcomes cannot fit documented coaching/channel endpoints.
+                        </Text>
+                      </View>
+                    ) : null}
                     <View style={styles.coachingShellActionRow}>
                       <TouchableOpacity
-                        style={styles.coachingShellActionBtn}
+                        style={[styles.coachingShellActionBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
+                        disabled={shellPackageGateBlocksActions}
                         onPress={() =>
                           openCoachingShell('inbox', {
                             source: 'user_tab',
@@ -6936,28 +7187,39 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           })
                         }
                       >
-                        <Text style={styles.coachingShellActionBtnText}>Inbox</Text>
+                        <Text style={styles.coachingShellActionBtnText}>
+                          {shellPackageGateBlocksActions ? 'Package Gated' : 'Inbox'}
+                        </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={styles.coachingShellActionBtn}
+                        style={[styles.coachingShellActionBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
+                        disabled={shellPackageGateBlocksActions}
                         onPress={() => openCoachingShell('inbox_channels')}
                       >
-                        <Text style={styles.coachingShellActionBtnText}>Channels</Text>
+                        <Text style={styles.coachingShellActionBtnText}>
+                          {shellPackageGateBlocksActions ? 'Package Gated' : 'Channels'}
+                        </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={styles.coachingShellActionBtn}
+                        style={[styles.coachingShellActionBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
+                        disabled={shellPackageGateBlocksActions}
                         onPress={() => openCoachingShell('coaching_journeys')}
                       >
-                        <Text style={styles.coachingShellActionBtnText}>Journeys</Text>
+                        <Text style={styles.coachingShellActionBtnText}>
+                          {shellPackageGateBlocksActions ? 'Package Gated' : 'Journeys'}
+                        </Text>
                       </TouchableOpacity>
                     </View>
                     {meta.primary?.map((action) => (
                       <TouchableOpacity
                         key={`${coachingShellScreen}-${action.to}`}
-                        style={styles.coachingShellPrimaryBtn}
+                        style={[styles.coachingShellPrimaryBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
+                        disabled={shellPackageGateBlocksActions}
                         onPress={() => openCoachingShell(action.to)}
                       >
-                        <Text style={styles.coachingShellPrimaryBtnText}>{action.label}</Text>
+                        <Text style={styles.coachingShellPrimaryBtnText}>
+                          {shellPackageGateBlocksActions ? 'Package Gated' : action.label}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                     {coachingShellScreen === 'inbox_channels' ? (
@@ -6987,11 +7249,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             return (
                               <TouchableOpacity
                                 key={`api-channel-${row.id}`}
-                                style={[
-                                  styles.coachingShellListRow,
-                                  isSelected ? styles.coachingShellListRowSelected : null,
-                                ]}
+                              style={[
+                                styles.coachingShellListRow,
+                                isSelected ? styles.coachingShellListRowSelected : null,
+                                shellPackageGateBlocksActions ? styles.disabled : null,
+                              ]}
+                                disabled={shellPackageGateBlocksActions}
                                 onPress={() => {
+                                  if (shellPackageGateBlocksActions) return;
                                   setSelectedChannelId(String(row.id));
                                   setSelectedChannelName(row.name);
                                   setChannelMessageSubmitError(null);
@@ -7025,8 +7290,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           channelRows.map((row) => (
                             <TouchableOpacity
                               key={row.label}
-                              style={styles.coachingShellListRow}
+                              style={[styles.coachingShellListRow, shellPackageGateBlocksActions ? styles.disabled : null]}
+                              disabled={shellPackageGateBlocksActions}
                               onPress={() =>
+                                shellPackageGateBlocksActions
+                                  ? undefined
+                                  :
                                 openCoachingShell('channel_thread', {
                                   preferredChannelScope: row.scope,
                                   preferredChannelLabel: row.label,
@@ -7140,15 +7409,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               style={[
                                 styles.coachingLessonActionBtn,
                                 styles.coachingLessonActionBtnActive,
-                                (!selectedChannelResolvedId || channelMessageSubmitting) ? styles.disabled : null,
+                                (!selectedChannelResolvedId || channelMessageSubmitting || shellPackageGateBlocksActions)
+                                  ? styles.disabled
+                                  : null,
                               ]}
-                              disabled={!selectedChannelResolvedId || channelMessageSubmitting}
+                              disabled={!selectedChannelResolvedId || channelMessageSubmitting || shellPackageGateBlocksActions}
                               onPress={() => {
                                 if (selectedChannelResolvedId) void sendChannelMessage(selectedChannelResolvedId);
                               }}
                             >
                               <Text style={[styles.coachingLessonActionBtnText, styles.coachingLessonActionBtnTextActive]}>
-                                {channelMessageSubmitting ? 'Sending…' : 'Send'}
+                                {shellPackageGateBlocksActions ? 'Package Gated' : channelMessageSubmitting ? 'Sending…' : 'Send'}
                               </Text>
                             </TouchableOpacity>
                           </View>
@@ -7196,15 +7467,23 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             style={[
                               styles.coachingLessonActionBtn,
                               styles.coachingLessonActionBtnActive,
-                              (!roleCanOpenBroadcast || !selectedChannelResolvedId || broadcastSubmitting) ? styles.disabled : null,
+                              (!roleCanOpenBroadcast || !selectedChannelResolvedId || broadcastSubmitting || shellPackageGateBlocksActions)
+                                ? styles.disabled
+                                : null,
                             ]}
-                            disabled={!roleCanOpenBroadcast || !selectedChannelResolvedId || broadcastSubmitting}
+                            disabled={!roleCanOpenBroadcast || !selectedChannelResolvedId || broadcastSubmitting || shellPackageGateBlocksActions}
                             onPress={() => {
                               if (selectedChannelResolvedId) void sendChannelBroadcast(selectedChannelResolvedId);
                             }}
                           >
                             <Text style={[styles.coachingLessonActionBtnText, styles.coachingLessonActionBtnTextActive]}>
-                              {broadcastSubmitting ? 'Sending…' : roleCanOpenBroadcast ? 'Send Broadcast' : 'Leader Only'}
+                              {shellPackageGateBlocksActions
+                                ? 'Package Gated'
+                                : broadcastSubmitting
+                                  ? 'Sending…'
+                                  : roleCanOpenBroadcast
+                                    ? 'Send Broadcast'
+                                    : 'Leader Only'}
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -7275,12 +7554,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               return (
                                 <TouchableOpacity
                                   key={`coaching-journey-${journey.id}`}
-                                  style={[
-                                    styles.coachingJourneyRow,
-                                    idx > 0 && styles.coachingJourneyRowDivider,
-                                    isSelected ? styles.coachingJourneyRowSelected : null,
-                                  ]}
-                                  onPress={() =>
+                                style={[
+                                  styles.coachingJourneyRow,
+                                  idx > 0 && styles.coachingJourneyRowDivider,
+                                  isSelected ? styles.coachingJourneyRowSelected : null,
+                                  shellPackageGateBlocksActions ? styles.disabled : null,
+                                ]}
+                                disabled={shellPackageGateBlocksActions}
+                                onPress={() =>
                                     openCoachingShell('coaching_journey_detail', {
                                       source: coachingShellContext.source,
                                       selectedJourneyId: String(journey.id),
@@ -7378,7 +7659,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                               styles.coachingLessonRow,
                                               lessonIdx > 0 ? styles.coachingLessonRowDivider : null,
                                               isActiveLesson ? styles.coachingLessonRowSelected : null,
+                                              shellPackageGateBlocksActions ? styles.disabled : null,
                                             ]}
+                                            disabled={shellPackageGateBlocksActions}
                                             onPress={() =>
                                               openCoachingShell('coaching_lesson_detail', {
                                                 selectedJourneyId: selectedJourneyId ?? null,
@@ -7456,10 +7739,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                       style={[
                                         styles.coachingLessonActionBtn,
                                         isCurrent ? styles.coachingLessonActionBtnActive : null,
-                                        isSubmitting ? styles.disabled : null,
+                                        isSubmitting || shellPackageGateBlocksActions ? styles.disabled : null,
                                       ]}
-                                      disabled={isSubmitting}
-                                      onPress={() => void submitCoachingLessonProgress(String(selectedLesson.id), status)}
+                                      disabled={isSubmitting || shellPackageGateBlocksActions}
+                                      onPress={() => {
+                                        if (shellPackageGateBlocksActions) return;
+                                        void submitCoachingLessonProgress(String(selectedLesson.id), status);
+                                      }}
                                     >
                                       <Text
                                         style={[
@@ -7467,7 +7753,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                           isCurrent ? styles.coachingLessonActionBtnTextActive : null,
                                         ]}
                                       >
-                                        {isSubmitting && isCurrent
+                                        {shellPackageGateBlocksActions
+                                          ? 'Package Gated'
+                                          : isSubmitting && isCurrent
                                           ? 'Saving…'
                                           : status === 'not_started'
                                             ? 'Reset'
@@ -7491,6 +7779,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <Text style={styles.coachingShellSub}>
                       W1 placeholder entry points for coaching preferences and notifications (`manual-spec-driven`, no backend writes).
                     </Text>
+                    {renderCoachingPackageGateBanner('Profile / Settings coaching allocation', null, { compact: true })}
                     <View style={styles.coachingEntryButtonRow}>
                       <TouchableOpacity
                         style={styles.coachingEntrySecondaryBtn}
@@ -7589,6 +7878,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               <Text style={styles.coachingEntrySub}>
                 Placeholder Home / Priority coaching entry. KPI logging behavior remains unchanged; this only reserves CTA placement and route shell intent.
               </Text>
+              {renderCoachingPackageGateBanner('Home / Priority coaching nudge', null, { compact: true })}
               <View style={styles.coachingEntryButtonRow}>
                 <TouchableOpacity
                   style={styles.coachingEntryPrimaryBtn}
@@ -10953,6 +11243,86 @@ const styles = StyleSheet.create({
     color: '#7a8699',
     fontSize: 11,
     lineHeight: 14,
+  },
+  coachingGateBanner: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+  },
+  coachingGateBannerCompact: {
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  coachingGateBannerAvailable: {
+    backgroundColor: '#edf9ef',
+    borderColor: '#bfe6c6',
+  },
+  coachingGateBannerGated: {
+    backgroundColor: '#fff8e9',
+    borderColor: '#efd79a',
+  },
+  coachingGateBannerBlocked: {
+    backgroundColor: '#fff0f0',
+    borderColor: '#efc1c1',
+  },
+  coachingGateBannerFallback: {
+    backgroundColor: '#f4f6fa',
+    borderColor: '#e1e7f0',
+  },
+  coachingGateBannerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  coachingGateBannerTitle: {
+    color: '#344054',
+    fontSize: 11,
+    fontWeight: '800',
+    flex: 1,
+  },
+  coachingGateBannerToneText: {
+    color: '#617086',
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  coachingGateBannerSummary: {
+    color: '#566579',
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  coachingGateBannerDetail: {
+    color: '#6b788d',
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  coachingGateBannerPolicy: {
+    color: '#7a8699',
+    fontSize: 9,
+    lineHeight: 12,
+  },
+  coachingContractGapCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dfe6f1',
+    backgroundColor: '#f8fafd',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+  },
+  coachingContractGapTitle: {
+    color: '#425066',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  coachingContractGapText: {
+    color: '#6f7d93',
+    fontSize: 10,
+    lineHeight: 13,
   },
   coachingEntryButtonRow: {
     flexDirection: 'row',
