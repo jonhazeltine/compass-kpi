@@ -58,6 +58,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-UI-W3-JOURNEYS-CONTENT-INTEGRATION` | `committed+pushed` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven coaching content integration)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`W3 coaching_content integration`) | `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail` + embedded CTA routes from `Home`, `Team`, `Challenge` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree required if app code worker is active elsewhere) | manual-spec-driven unless coaching Figma exports are later locked | Accepted: API-backed journeys list/detail/progress + explicit lesson progress actions on W1/W2 shells; docs statuses advanced to `🟡 partial` |
 | `COACHING-UI-W4-COMMS-API-INTEGRATION` | `committed+pushed` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven comms API integration)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`W4 comms API-backed inbox/thread/broadcast`) | `inbox_channels`, `channel_thread`, `coach_broadcast_compose` + Team/Challenge comms entry points | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree required if app code worker is active elsewhere) | manual-spec-driven unless coaching comms Figma exports are later locked | Accepted: API-backed channels list/thread read-send + mark-seen + leader broadcast send via documented endpoints; docs updated, runtime screenshots still pending |
 | `COACHING-ARCH-COACH-PERSONA-A` | `committed+pushed` | `M6 coaching slice (planning/architecture)` | `Coach`, `Admin operator` (authoring/ops), plus downstream `Leader/Member/Solo` | `coaching content operations / publishing` | coach content library, journey authoring/curation, publishing/targeting, sponsor/paid coaching packaging, admin portal touchpoints | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + Fourth Reason reference | Accepted and pushed: Coach persona/content-ops architecture package clarifying coach/admin/sponsor ownership, authoring-vs-delivery seam, portal touchpoints, and sponsored/paid packaging boundaries; follow-on planning assignments added |
+| `ADMIN-A2-TABLE-OPS-FIXPACK-B` | `active` | `A2 (parallel with M6 coaching planning)` | `Admin operator` | `admin KPI catalog + challenge templates table ops` | `/admin/kpis`, `/admin/challenge-templates` (web admin tables/forms only) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web, no Figma parity requirement for this swath) | Follow-up A2 operator fixpack: manual browser validation + friction cleanup for KPI Catalog and Challenge Templates (row-window reset, filter/search recovery, selection/edit discoverability, count clarity, table state consistency) |
 
 ## Blocked Assignments
 
@@ -806,7 +807,7 @@ Turn the coach persona authoring/ops model into an implementation-ready portal p
 ### `COACHING-PACKAGING-SPONSORED-PAID-A`
 
 #### Snapshot
-- `Status:` `queued`
+- `Status:` `review`
 - `Program status:` `M6 coaching slice (planning/architecture; packaging + entitlements)`
 - `Persona:` `Coach`, `Admin operator`, `Sponsor ops` (limited), downstream `Leader/Member/Solo`
 - `Flow:` `coaching content operations / publishing` (`packaging`, `entitlements`, `sponsored/paid boundaries`)
@@ -814,6 +815,10 @@ Turn the coach persona authoring/ops model into an implementation-ready portal p
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only)
 - `Figma refs:` `manual-spec-driven`
 - `Dependency note:` Follows accepted `COACHING-ARCH-COACH-PERSONA-A` packaging boundary model and `COACHING-OPS-PORTAL-A` portal touchpoints (if completed)
+- `Worker note (2026-02-26, Coach-1 execution start):` Board status/blocker check complete. Executing docs-only packaging/entitlement planning pass to formalize package taxonomy/lifecycle, ownership approvals, runtime consumption assumptions, and decision-needed risks for sponsored vs paid coaching.
+- `Current blocker status (2026-02-26, Coach-1):` `none` at start. Billing authority and sponsor approval workflow remain known decision dependencies and will be captured as `decision needed` items rather than implementation proposals.
+- `Completion note (2026-02-26, Coach-1):` Completed docs-only packaging/entitlement planning package. Added implementation-ready planning detail for package taxonomy/lifecycle states, ownership/approval matrix by package type, runtime packaging/entitlement consumption assumptions, explicit `decision needed` risks (billing authority, sponsor approvals, entitlement read-model shape, tenancy reuse, role overlap), and follow-on backend-prep/UI assignment suggestions for contract-gap scenarios.
+- `Validation note (2026-02-26, Coach-1):` Sponsored vs paid boundaries and authoring vs entitlement vs runtime delivery boundaries are explicit and non-overlapping in planning docs. No app/backend/schema/API files changed. Any schema/API implications remain marked `decision needed` with implementation-phase `DECISIONS_LOG.md` requirement.
 
 #### Primary Objective
 Produce an implementation-ready packaging/entitlement planning package that keeps sponsored coaching and paid coaching boundaries explicit:
@@ -942,6 +947,78 @@ Deliver a substantial A3 operator usability pass focused on admin users/reports 
 
 #### Worker Launch (Short Form)
 `Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment ADMIN-A3-USERS-OPS-POLISH-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
+
+
+### `ADMIN-A2-TABLE-OPS-FIXPACK-B`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `A2 (parallel with M6 coaching planning)`
+- `Persona:` `Admin operator`
+- `Flow:` `admin KPI catalog + challenge templates table ops`
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred)
+- `Figma refs:` `N/A` (admin web usability follow-up; preserve existing admin patterns)
+- `Controller seed note (2026-02-26):` Safe parallel swath while `Coach-1` executes docs-only packaging planning. Scope intentionally limited to admin A2 tables/forms in `AdminShellScreen.tsx`.
+- `Dependency note:` Follows accepted `ADMIN-A2-USABILITY` (`0a45742`); use that pass as baseline and close remaining operator friction discovered via manual browser validation.
+
+#### Screens In Scope (Large Swath)
+1. `/admin/kpis`
+2. `/admin/challenge-templates`
+
+#### Primary Objective
+Deliver a substantial A2 follow-up fixpack focused on real operator behavior in KPI Catalog and Challenge Templates after manual browser use:
+- validate accepted A2 table improvements in-browser and fix regressions/gaps
+- tighten filter/search/reset/selection interactions
+- improve table + form coordination clarity (selected row vs filtered rows)
+- improve count/visibility messaging and no-results recovery where still rough
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+
+#### Constraints (Hard)
+- Admin web only (`/Users/jon/compass-kpi/app/screens/AdminShellScreen.tsx` and directly related admin helpers only)
+- No mobile app screen edits
+- No backend/API/schema changes
+- No authz/route boundary changes
+- Follow existing admin shell visual patterns (no redesign)
+- If a fix requires backend/API/route changes, stop and document blocker instead
+
+#### Implementation Pattern (Large Swath)
+- Start with a browser-driven mismatch/issues list for `/admin/kpis` and `/admin/challenge-templates`
+- Prioritize operator pain:
+  - filter/search reset predictability
+  - selected-row persistence/visibility after filtering
+  - count labels / visible-window clarity
+  - no-results recovery actions
+  - row-to-form edit affordance clarity
+- Keep to `1` scoped commit if possible (`2` max if split by surface is cleaner)
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Manual browser spot-check of `/admin/kpis` and `/admin/challenge-templates`
+- Confirm no mobile files changed
+- Confirm no backend/API/schema files changed
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona affected`
+- `Screens changed`
+- `Top operator issues before changes`
+- `What improved`
+- `Still rough / deferred`
+- `Files touched` (with line refs)
+- `Validation performed` (`tsc`, manual browser checks)
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment ADMIN-A2-TABLE-OPS-FIXPACK-B exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
 
 ## Controller Review Checklist (Reference)
 - Sprint scope alignment (`CURRENT_SPRINT.md`) and explicit exception approval if applicable
