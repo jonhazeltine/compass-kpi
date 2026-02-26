@@ -29,7 +29,7 @@ Map canonical Figma flows/screens to concrete Expo implementation targets and ac
 | Agent Core | `agent_dashboard_my_qualifiers` | `design/figma/exports/screens/agent_dashboard_my_qualifiers_v1.png` | exported_v1 | `app/screens/KPIDashboardScreen.tsx` | `05_acceptance_tests.md` scenarios 2-7 | implemented_v1 | Node-id: `173-19541`. |
 | Agent Core | `agent_add_kpi` | `design/figma/exports/screens/agent_add_kpi_v1.png` (or flow) | pending | new add KPI flow screens | `05_acceptance_tests.md` scenarios 2-6 | mapped | |
 | Agent Core | `agent_notifications` | `design/figma/exports/screens/agent_notifications_v1.png` | pending | new notifications screen | future communication acceptance cases | mapped | |
-| Team | `team_dashboard` | `design/figma/exports/screens/team_dashboard_v1.png` | exported_v1 | `app/screens/KPIDashboardScreen.tsx` Team tab / Team dashboard route | `05_acceptance_tests.md` scenarios 8-9 | in_build | Node-id: `388-8814`. Canonical Team dashboard parity root. |
+| Team | `team_dashboard` | `design/figma/exports/screens/team_dashboard_v1.png` | exported_v1 | `app/screens/KPIDashboardScreen.tsx` Team tab / Team dashboard route | `05_acceptance_tests.md` scenarios 8-9 | in_build | Node-id: `173-29934`. Canonical Team dashboard parity root (corrected from profile-screen mismatch). |
 | Team | `team_invite_member` | `design/figma/exports/screens/team_invite_member_v1.png` | exported_v1 | Team management flow screen (mobile) | `05_acceptance_tests.md` scenario 8 | mapped | Node-id: `173-4448`. |
 | Team | `team_pending_invitations` | `design/figma/exports/screens/team_pending_invitations_v1.png` | exported_v1 | Team management flow screen (mobile) | `05_acceptance_tests.md` scenario 8 | mapped | Node-id: `173-4612`. |
 | Team | `team_kpi_settings` | `design/figma/exports/screens/team_kpi_settings_v1.png` | exported_v1 | Team management flow screen (mobile) | `05_acceptance_tests.md` scenario 8 | mapped | Node-id: `173-4531`. |
@@ -67,7 +67,7 @@ Map canonical Figma flows/screens to concrete Expo implementation targets and ac
 | `auth_login` | [173-31074](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-31074) |
 | `auth_forgot_password` | [173-31119](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-31119) |
 | `agent_dashboard_my_qualifiers` | [173-19541](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-19541) |
-| `team_dashboard` | [388-8814](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=388-8814) |
+| `team_dashboard` | [173-29934](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-29934) |
 | `team_invite_member` | [173-4448](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4448) |
 | `team_pending_invitations` | [173-4612](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4612) |
 | `team_kpi_settings` | [173-4531](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4531) |

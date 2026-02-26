@@ -29,7 +29,7 @@ Isolated single-screen exports use `{domain}_{screen}_v{n}.png`. Node-id links: 
 | `chat_thread` | TODO | `screens/chat_thread_v1.png` | — | `pending` |
 | `community_feed` | TODO | `screens/community_feed_v1.png` | — | `pending` |
 | `challenge_create_wizard` | TODO | `screens/challenge_create_wizard_v1.png` | — | `mapped` |
-| `team_dashboard` | [388-8814](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=388-8814) | `screens/team_dashboard_v1.png` | `402x952` | `exported_v1` |
+| `team_dashboard` | [173-29934](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-29934) | `screens/team_dashboard_v1.png` | `402x952` | `exported_v1` |
 | `team_invite_member` | [173-4448](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4448) | `screens/team_invite_member_v1.png` | `402x952` | `exported_v1` |
 | `team_pending_invitations` | [173-4612](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4612) | `screens/team_pending_invitations_v1.png` | `402x952` | `exported_v1` |
 | `team_kpi_settings` | [173-4531](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4531) | `screens/team_kpi_settings_v1.png` | `402x952` | `exported_v1` |
@@ -71,7 +71,7 @@ Reusable primitives for auth + dashboard. Target: `components/{domain}_{componen
 | `auth_login` | [173-31074](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-31074) |
 | `auth_forgot_password` | [173-31119](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-31119) |
 | `agent_dashboard_my_qualifiers` | [173-19541](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-19541) |
-| `team_dashboard` | [388-8814](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=388-8814) |
+| `team_dashboard` | [173-29934](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-29934) |
 | `team_invite_member` | [173-4448](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4448) |
 | `team_pending_invitations` | [173-4612](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4612) |
 | `team_kpi_settings` | [173-4531](https://www.figma.com/design/ebEWgwdjIZywvK2b4zf0ek/Compass-KPI--Copy-?node-id=173-4531) |
