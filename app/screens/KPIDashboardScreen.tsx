@@ -312,6 +312,22 @@ type CoachingPackageGatePresentation = {
   detail?: string | null;
   policyNote?: string | null;
 };
+type AIAssistHostSurface =
+  | 'challenge_coaching_module'
+  | 'team_member_coaching_module'
+  | 'team_leader_coaching_module'
+  | 'channel_thread'
+  | 'coach_broadcast_compose'
+  | 'coaching_journeys'
+  | 'coaching_journey_detail'
+  | 'coaching_lesson_detail';
+type AIAssistShellContext = {
+  host: AIAssistHostSurface;
+  title: string;
+  sub: string;
+  targetLabel: string;
+  approvedInsertOnly: boolean;
+};
 type CoachingJourneyListItem = {
   id: string;
   title: string;
@@ -1822,6 +1838,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [broadcastSubmitting, setBroadcastSubmitting] = useState(false);
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
   const [broadcastSuccessNote, setBroadcastSuccessNote] = useState<string | null>(null);
+  const [aiAssistVisible, setAiAssistVisible] = useState(false);
+  const [aiAssistContext, setAiAssistContext] = useState<AIAssistShellContext | null>(null);
+  const [aiAssistPrompt, setAiAssistPrompt] = useState('');
+  const [aiAssistDraftText, setAiAssistDraftText] = useState('');
+  const [aiAssistGenerating, setAiAssistGenerating] = useState(false);
+  const [aiAssistNotice, setAiAssistNotice] = useState<string | null>(null);
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
@@ -5084,6 +5106,62 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     []
   );
 
+  const openAiAssistShell = useCallback(
+    (ctx: AIAssistShellContext, seed?: { prompt?: string | null; draft?: string | null }) => {
+      setAiAssistContext(ctx);
+      setAiAssistPrompt(String(seed?.prompt ?? '').trim());
+      setAiAssistDraftText(String(seed?.draft ?? '').trim());
+      setAiAssistNotice(null);
+      setAiAssistGenerating(false);
+      setAiAssistVisible(true);
+    },
+    []
+  );
+
+  const generateAiAssistDraft = useCallback(() => {
+    if (!aiAssistContext) return;
+    const prompt = aiAssistPrompt.trim();
+    setAiAssistGenerating(true);
+    const hostLabel = aiAssistContext.targetLabel;
+    const host = aiAssistContext.host;
+    const generated = [
+      host === 'coach_broadcast_compose'
+        ? `Team update draft for ${hostLabel}:`
+        : host === 'channel_thread'
+          ? `Reply draft for ${hostLabel}:`
+          : host === 'coaching_lesson_detail'
+            ? `Lesson reflection prompt draft for ${hostLabel}:`
+            : `Coaching suggestion draft for ${hostLabel}:`,
+      prompt ? `Focus: ${prompt}` : 'Focus: Clarify the next best action and keep the tone supportive.',
+      host === 'coach_broadcast_compose'
+        ? 'Draft (human review required): Team, here is the suggested update. Please review and edit before sending.'
+        : 'Draft (human review required): Here is a suggested coaching/support message. Please edit before using.',
+    ].join('\n');
+    setAiAssistDraftText(generated);
+    setAiAssistNotice('AI draft shell generated locally for review. No request was sent and no content was published.');
+    setAiAssistGenerating(false);
+  }, [aiAssistContext, aiAssistPrompt]);
+
+  const applyAiAssistDraftToHumanInput = useCallback(() => {
+    const ctx = aiAssistContext;
+    const text = aiAssistDraftText.trim();
+    if (!ctx || !text) {
+      setAiAssistNotice('Add or generate a draft first.');
+      return;
+    }
+    if (ctx.host === 'channel_thread') {
+      setChannelMessageDraft(text);
+      setAiAssistNotice('Draft inserted into the message composer. Human send is still required.');
+      return;
+    }
+    if (ctx.host === 'coach_broadcast_compose') {
+      setBroadcastDraft(text);
+      setAiAssistNotice('Draft inserted into the broadcast composer. Human send is still required.');
+      return;
+    }
+    setAiAssistNotice('Draft is ready for manual review/copy. No send/publish action is available from AI assist.');
+  }, [aiAssistContext, aiAssistDraftText]);
+
   const fetchCoachingJourneys = useCallback(async () => {
     const token = session?.access_token;
     if (!token) {
@@ -6246,6 +6324,28 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </Text>
                       </TouchableOpacity>
                     </View>
+                      <TouchableOpacity
+                        style={[styles.coachingEntryDarkBtn, challengeCoachingGateBlocksCtas ? styles.disabled : null]}
+                        disabled={challengeCoachingGateBlocksCtas}
+                        onPress={() =>
+                          openAiAssistShell(
+                          {
+                            host: 'challenge_coaching_module',
+                            title: 'AI Assist (Approval-First)',
+                            sub: 'Challenge coaching helper draft shell. Advisory only, no challenge state mutation and no auto-send.',
+                            targetLabel: challengeSelected?.title ?? 'Challenge coaching module',
+                            approvedInsertOnly: true,
+                          },
+                          {
+                              prompt: `Draft a short coaching/support note for ${challengeSelected?.title ?? 'this challenge'} without changing challenge results or participation state.`,
+                            }
+                          )
+                        }
+                      >
+                      <Text style={styles.coachingEntryDarkBtnText}>
+                        {challengeCoachingGateBlocksCtas ? 'AI Assist Gated' : 'AI Assist Draft (Review)'}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
 
                   <View style={styles.challengeDetailsCtaBlock}>
@@ -6866,6 +6966,25 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             <Text style={styles.coachingEntrySecondaryBtnText}>Team Updates</Text>
                           </TouchableOpacity>
                         </View>
+                        <TouchableOpacity
+                          style={styles.coachingEntryDarkBtn}
+                          onPress={() =>
+                            openAiAssistShell(
+                              {
+                                host: 'team_member_coaching_module',
+                                title: 'AI Assist (Approval-First)',
+                                sub: 'Team member coaching helper draft shell. Advisory only; no KPI writes, no auto-send.',
+                                targetLabel: 'Team member coaching module',
+                                approvedInsertOnly: true,
+                              },
+                              {
+                                prompt: 'Draft a short coaching check-in message I can review before posting or using.',
+                              }
+                            )
+                          }
+                        >
+                          <Text style={styles.coachingEntryDarkBtnText}>AI Assist Draft (Review)</Text>
+                        </TouchableOpacity>
                       </View>
 
                       <Text style={styles.teamMemberSectionLabel}>Team Members</Text>
@@ -7106,6 +7225,25 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         }
                       >
                         <Text style={styles.coachingEntryDarkBtnText}>Broadcast Composer (Role-Gated)</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.coachingEntryDarkBtn}
+                        onPress={() =>
+                          openAiAssistShell(
+                            {
+                              host: 'team_leader_coaching_module',
+                              title: 'AI Assist (Approval-First)',
+                              sub: 'Leader coaching summary helper draft shell. Human review/edit required before any broadcast or message send.',
+                              targetLabel: 'Team leader coaching module',
+                              approvedInsertOnly: true,
+                            },
+                            {
+                              prompt: 'Draft a team coaching update summary with clear next steps. Do not send automatically.',
+                            }
+                          )
+                        }
+                      >
+                        <Text style={styles.coachingEntryDarkBtnText}>AI Assist Draft (Review)</Text>
                       </TouchableOpacity>
                     </View>
 
@@ -7485,6 +7623,32 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             ? `API-backed thread using /api/channels/${selectedChannelResolvedId}/messages`
                             : 'No API channel selected for this thread context. Showing shell fallback only.'}
                         </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.coachingAiAssistBtn,
+                            shellPackageGateBlocksActions ? styles.disabled : null,
+                          ]}
+                          disabled={shellPackageGateBlocksActions}
+                          onPress={() =>
+                            openAiAssistShell(
+                              {
+                                host: 'channel_thread',
+                                title: 'AI Reply Draft (Approval-First)',
+                                sub: 'AI assist can draft/rewrite text for this thread, but only a human can send the final message.',
+                                targetLabel: selectedChannelResolvedName ?? contextualThreadTitle,
+                                approvedInsertOnly: true,
+                              },
+                              {
+                                prompt: `Draft a reply for ${selectedChannelResolvedName ?? contextualThreadTitle} that is supportive and action-oriented.`,
+                                draft: channelMessageDraft,
+                              }
+                            )
+                          }
+                        >
+                          <Text style={styles.coachingAiAssistBtnText}>
+                            {shellPackageGateBlocksActions ? 'AI Assist Gated' : 'AI Assist Draft / Rewrite'}
+                          </Text>
+                        </TouchableOpacity>
                         {channelMessagesError ? (
                           <Text style={styles.coachingJourneyInlineError}>{channelMessagesError}</Text>
                         ) : null}
@@ -7582,6 +7746,35 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             ? `Leader-gated entry is wired. Audience context: ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'team/channel scope TBD'}.`
                             : 'Broadcast is hidden for non-leader flows; this shell is shown only as a blocked fallback if opened directly.'}
                         </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.coachingAiAssistBtn,
+                            (!roleCanOpenBroadcast || shellPackageGateBlocksActions) ? styles.disabled : null,
+                          ]}
+                          disabled={!roleCanOpenBroadcast || shellPackageGateBlocksActions}
+                          onPress={() =>
+                            openAiAssistShell(
+                              {
+                                host: 'coach_broadcast_compose',
+                                title: 'AI Broadcast Draft (Approval-First)',
+                                sub: 'AI assist may draft broadcast copy, but audience scope and send remain explicit human actions.',
+                                targetLabel:
+                                  coachingShellContext.broadcastAudienceLabel ??
+                                  selectedChannelResolvedName ??
+                                  'Broadcast audience',
+                                approvedInsertOnly: true,
+                              },
+                              {
+                                prompt: `Draft a team coaching broadcast for ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'this audience'} with a clear next action.`,
+                                draft: broadcastDraft,
+                              }
+                            )
+                          }
+                        >
+                          <Text style={styles.coachingAiAssistBtnText}>
+                            {!roleCanOpenBroadcast || shellPackageGateBlocksActions ? 'AI Assist Gated' : 'AI Assist Draft / Rewrite'}
+                          </Text>
+                        </TouchableOpacity>
                         <View style={styles.coachingShellInputGhost}>
                           <Text style={styles.coachingShellInputGhostText}>
                             {roleCanOpenBroadcast
@@ -7639,6 +7832,28 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
                     {coachingShellScreen === 'coaching_journeys' ? (
                       <View style={styles.coachingJourneyModule}>
+                        <TouchableOpacity
+                          style={[styles.coachingAiAssistBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
+                          disabled={shellPackageGateBlocksActions}
+                          onPress={() =>
+                            openAiAssistShell(
+                              {
+                                host: 'coaching_journeys',
+                                title: 'AI Coaching Suggestion (Approval-First)',
+                                sub: 'AI assist can draft a journey coaching suggestion. Human review is required before using it in any message or broadcast.',
+                                targetLabel: selectedJourneyTitle ?? 'Coaching Journeys',
+                                approvedInsertOnly: true,
+                              },
+                              {
+                                prompt: `Draft a coaching suggestion based on ${selectedJourneyTitle ?? 'the current journeys'} progress summary.`,
+                              }
+                            )
+                          }
+                        >
+                          <Text style={styles.coachingAiAssistBtnText}>
+                            {shellPackageGateBlocksActions ? 'AI Assist Gated' : 'AI Coaching Suggestion Draft'}
+                          </Text>
+                        </TouchableOpacity>
                         <View style={styles.coachingJourneySummaryRow}>
                           <View style={styles.coachingJourneySummaryCard}>
                             <Text style={styles.coachingJourneySummaryLabel}>Progress Rows</Text>
@@ -7702,14 +7917,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               return (
                                 <TouchableOpacity
                                   key={`coaching-journey-${journey.id}`}
-                                style={[
-                                  styles.coachingJourneyRow,
-                                  idx > 0 && styles.coachingJourneyRowDivider,
-                                  isSelected ? styles.coachingJourneyRowSelected : null,
-                                  shellPackageGateBlocksActions ? styles.disabled : null,
-                                ]}
-                                disabled={shellPackageGateBlocksActions}
-                                onPress={() =>
+                                  style={[
+                                    styles.coachingJourneyRow,
+                                    idx > 0 && styles.coachingJourneyRowDivider,
+                                    isSelected ? styles.coachingJourneyRowSelected : null,
+                                    shellPackageGateBlocksActions ? styles.disabled : null,
+                                  ]}
+                                  disabled={shellPackageGateBlocksActions}
+                                  onPress={() =>
                                     openCoachingShell('coaching_journey_detail', {
                                       source: coachingShellContext.source,
                                       selectedJourneyId: String(journey.id),
@@ -7776,6 +7991,29 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 {String(coachingJourneyDetail?.journey?.description ?? 'Milestones and lessons loaded from coaching endpoints.')}
                               </Text>
                             </View>
+                            <TouchableOpacity
+                              style={[styles.coachingAiAssistBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
+                              disabled={shellPackageGateBlocksActions}
+                              onPress={() =>
+                                openAiAssistShell(
+                                  {
+                                    host: 'coaching_journey_detail',
+                                    title: 'AI Journey Coaching Draft (Approval-First)',
+                                    sub: 'AI assist can draft guidance tied to this journey context. Human review/edit is required.',
+                                    targetLabel:
+                                      coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'Journey Detail',
+                                    approvedInsertOnly: true,
+                                  },
+                                  {
+                                    prompt: `Draft a coaching note for the journey ${coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'current journey'} using milestone progress context.`,
+                                  }
+                                )
+                              }
+                            >
+                              <Text style={styles.coachingAiAssistBtnText}>
+                                {shellPackageGateBlocksActions ? 'AI Assist Gated' : 'AI Journey Draft'}
+                              </Text>
+                            </TouchableOpacity>
                             {milestoneRows.length === 0 ? (
                               <View style={styles.coachingJourneyEmptyCard}>
                                 <Text style={styles.coachingJourneyEmptyTitle}>No milestones found</Text>
@@ -7863,6 +8101,28 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 {selectedLesson.body?.trim() || 'Lesson body is empty in the current payload. Progress actions are still available explicitly.'}
                               </Text>
                             </View>
+                            <TouchableOpacity
+                              style={[styles.coachingAiAssistBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
+                              disabled={shellPackageGateBlocksActions}
+                              onPress={() =>
+                                openAiAssistShell(
+                                  {
+                                    host: 'coaching_lesson_detail',
+                                    title: 'AI Lesson Reflection Draft (Approval-First)',
+                                    sub: 'AI assist can draft a lesson-context reflection or coaching prompt. Advisory only; no lesson progress writes or KPI actions.',
+                                    targetLabel: selectedLesson.title,
+                                    approvedInsertOnly: true,
+                                  },
+                                  {
+                                    prompt: `Draft a short reflection prompt and next-step coaching note for the lesson "${selectedLesson.title}".`,
+                                  }
+                                )
+                              }
+                            >
+                              <Text style={styles.coachingAiAssistBtnText}>
+                                {shellPackageGateBlocksActions ? 'AI Assist Gated' : 'AI Lesson Draft'}
+                              </Text>
+                            </TouchableOpacity>
                             <View style={styles.coachingLessonProgressCard}>
                               <Text style={styles.coachingLessonProgressTitle}>Lesson Progress</Text>
                               <Text style={styles.coachingLessonProgressStatus}>
@@ -8453,6 +8713,84 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           </TouchableOpacity>
         ))}
       </View>
+
+      <Modal visible={aiAssistVisible} transparent animationType="fade" onRequestClose={() => setAiAssistVisible(false)}>
+        <Pressable style={styles.aiAssistBackdrop} onPress={() => setAiAssistVisible(false)}>
+          <Pressable style={styles.aiAssistCard} onPress={() => {}}>
+            <View style={styles.aiAssistHeader}>
+              <View style={styles.aiAssistHeaderCopy}>
+                <Text style={styles.aiAssistTitle}>{aiAssistContext?.title ?? 'AI Assist (Approval-First)'}</Text>
+                <Text style={styles.aiAssistSub}>
+                  {aiAssistContext?.sub ??
+                    'AI assist is advisory only. Review and edit all content before any human send/publish action.'}
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.aiAssistCloseBtn} onPress={() => setAiAssistVisible(false)}>
+                <Text style={styles.aiAssistCloseBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.aiAssistPolicyBanner}>
+              <Text style={styles.aiAssistPolicyBannerText}>
+                Approval-first shell: no KPI writes, no forecast/challenge-state mutation, no auto-send or auto-publish.
+              </Text>
+            </View>
+            <View style={styles.aiAssistField}>
+              <Text style={styles.aiAssistFieldLabel}>Approved insert point</Text>
+              <Text style={styles.aiAssistFieldValue}>{aiAssistContext?.targetLabel ?? 'Unknown context'}</Text>
+            </View>
+            <View style={styles.aiAssistField}>
+              <Text style={styles.aiAssistFieldLabel}>Draft request (human guided)</Text>
+              <TextInput
+                value={aiAssistPrompt}
+                onChangeText={(text) => {
+                  setAiAssistPrompt(text);
+                  if (aiAssistNotice) setAiAssistNotice(null);
+                }}
+                placeholder="Describe the draft tone, purpose, and audience..."
+                placeholderTextColor="#97a1af"
+                multiline
+                style={[styles.aiAssistInput, styles.aiAssistInputTall]}
+              />
+            </View>
+            <View style={styles.aiAssistField}>
+              <Text style={styles.aiAssistFieldLabel}>AI draft review (editable)</Text>
+              <TextInput
+                value={aiAssistDraftText}
+                onChangeText={(text) => {
+                  setAiAssistDraftText(text);
+                  if (aiAssistNotice) setAiAssistNotice(null);
+                }}
+                placeholder="Generated draft appears here. Edit before applying."
+                placeholderTextColor="#97a1af"
+                multiline
+                style={[styles.aiAssistInput, styles.aiAssistDraftInput]}
+              />
+            </View>
+            {aiAssistNotice ? <Text style={styles.aiAssistNotice}>{aiAssistNotice}</Text> : null}
+            <View style={styles.aiAssistActionRow}>
+              <TouchableOpacity
+                style={[styles.aiAssistSecondaryBtn, aiAssistGenerating ? styles.disabled : null]}
+                disabled={aiAssistGenerating}
+                onPress={generateAiAssistDraft}
+              >
+                <Text style={styles.aiAssistSecondaryBtnText}>
+                  {aiAssistGenerating ? 'Generating…' : 'Generate Draft (Shell)'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.aiAssistSecondaryBtn} onPress={applyAiAssistDraftToHumanInput}>
+                <Text style={styles.aiAssistSecondaryBtnText}>
+                  {aiAssistContext?.host === 'channel_thread' || aiAssistContext?.host === 'coach_broadcast_compose'
+                    ? 'Insert Into Human Composer'
+                    : 'Mark Ready For Human Review'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={[styles.aiAssistPrimaryBtn, styles.disabled]} disabled onPress={() => undefined}>
+              <Text style={styles.aiAssistPrimaryBtnText}>Queue AI Suggestion (W5 Backend Follow-on)</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal visible={addDrawerVisible} transparent animationType="fade" onRequestClose={() => setAddDrawerVisible(false)}>
         <View style={styles.drawerBackdrop}>
@@ -11514,6 +11852,160 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   coachingEntryDarkBtnText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  coachingAiAssistBtn: {
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: '#d7def0',
+    backgroundColor: '#f7f9fe',
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachingAiAssistBtnText: {
+    color: '#344b77',
+    fontSize: 11,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  aiAssistBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.42)',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  aiAssistCard: {
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#dbe4f2',
+    padding: 14,
+    gap: 10,
+    shadowColor: '#1f2f46',
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+    maxHeight: '86%',
+  },
+  aiAssistHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  aiAssistHeaderCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  aiAssistTitle: {
+    color: '#263142',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  aiAssistSub: {
+    color: '#6d7a8d',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  aiAssistCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#eef2f8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#dce4f1',
+  },
+  aiAssistCloseBtnText: {
+    color: '#44536a',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  aiAssistPolicyBanner: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e3d7ff',
+    backgroundColor: '#f7f1ff',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  aiAssistPolicyBannerText: {
+    color: '#55476f',
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: '700',
+  },
+  aiAssistField: {
+    gap: 5,
+  },
+  aiAssistFieldLabel: {
+    color: '#57657a',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  aiAssistFieldValue: {
+    color: '#2f3949',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  aiAssistInput: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dde5f0',
+    backgroundColor: '#fbfcfe',
+    color: '#2e3646',
+    fontSize: 12,
+    lineHeight: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    textAlignVertical: 'top',
+  },
+  aiAssistInputTall: {
+    minHeight: 70,
+  },
+  aiAssistDraftInput: {
+    minHeight: 118,
+  },
+  aiAssistNotice: {
+    color: '#4c5f79',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  aiAssistActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  aiAssistSecondaryBtn: {
+    flex: 1,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: '#d8e1ef',
+    backgroundColor: '#f5f8fd',
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiAssistSecondaryBtnText: {
+    color: '#364a6d',
+    fontSize: 10,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  aiAssistPrimaryBtn: {
+    borderRadius: 9,
+    backgroundColor: '#2f3442',
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiAssistPrimaryBtnText: {
     color: '#fff',
     fontSize: 11,
     fontWeight: '800',
