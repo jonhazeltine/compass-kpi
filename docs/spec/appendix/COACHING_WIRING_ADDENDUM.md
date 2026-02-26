@@ -582,6 +582,113 @@ Approval/audit read-model outputs (server -> client):
 4. `decision needed` — Sponsor/co-branded AI content approval depth
 - Sponsor ops approval requirements for sponsor-linked coaching copy remain policy-dependent and must stay explicit.
 
+### Phase W6 — Notifications + coaching readiness (planning-only)
+- W6 notifications/coaching work must preserve existing module ownership:
+  - coaching surfaces own notification entry points, inbox rendering context, and preference UX
+  - notification queue/dispatch remains backend/admin/ops owned (`/api/notifications*`)
+  - AI approval-first boundaries remain unchanged (notificationing an AI event must not bypass approval gates)
+- No notification delivery coding is approved by this section; this is a readiness boundary + assignment handoff package.
+
+#### Notification classes (coaching-integrated) and allowed delivery channels
+| Notification class | Typical trigger | Persona(s) | Allowed channels (W6 first slice planning) | Gate / approval rule | Boundary note |
+|---|---|---|---|---|---|
+| `coaching_assignment_published` | journey/package assignment becomes visible | Leader, Member, Solo | in-app inbox row, badge/count, optional push | server-side visibility/entitlement required | no local entitlement inference |
+| `coaching_lesson_reminder` | reminder cadence for assigned lesson/journey | Leader, Member, Solo | in-app banner/list, badge, optional push | user prefs + schedule window | no lesson auto-complete/write side effects |
+| `coaching_progress_nudge` | inactivity/progress threshold | Leader, Member, Solo | in-app inbox/list, optional push | user prefs + org policy | KPI/forecast values referenced only as display context |
+| `coaching_channel_message` | new channel message in scoped coaching channel | Leader, Member, Solo | inbox/channels unread badge/list, optional push | membership + mute/prefs | existing channels/messages ownership remains primary |
+| `coaching_broadcast_sent` | leader/coach/admin broadcast delivery event | Leader, Member, Solo | inbox row, banner, optional push | existing broadcast authz; notify-only | notification does not expand broadcast scope |
+| `ai_review_queue_pending` | AI suggestion enters approval queue | Coach, Admin operator | admin/ops queue badge/list, optional push later | W5 approval-first; admin/coach authority only | no runtime member notification unless policy approved |
+| `ai_review_outcome` | AI suggestion approved/rejected | requester (`Leader`/Coach/Admin) | in-app inbox row, admin queue status, optional push | follows AI approval path | no execution/send implied by approval outcome alone |
+| `package_access_changed` | package visibility/entitlement state changed | Leader, Member, Solo | in-app inbox row/banner, badge | server entitlement outcome required | no billing authority assumptions beyond accepted notes |
+| `sponsored_coaching_campaign_update` | sponsor-linked coaching content/comms update | Leader, Member, Solo (eligible) | in-app inbox row/banner, optional push | sponsor/challenge eligibility + disclaimer requirements | challenge participation/results remain challenge-owned |
+
+#### Delivery channel policy (`build now` vs `defer`)
+`Build now` (readiness + first implementation targets):
+1. `in_app_inbox_row` (`inbox_channels` / `channel_thread` / inbox summary contexts)
+2. `in_app_badge_count` (unread + queue counts where role-appropriate)
+3. `in_app_banner_inline` (Home/Team/Challenge/`coaching_journeys*` embedded surfaces)
+4. `push_notification` (placeholder/contract-prep + queue mapping only; dispatch UX can remain limited)
+
+`Defer`:
+1. `email` delivery content templates/sending
+2. SMS/3rd-party messaging channels
+3. autonomous AI-triggered notification sends
+4. cross-channel orchestration rules (dedupe/frequency optimization) beyond basic throttles
+
+#### W6 insertion-point map (member + admin/ops surfaces)
+| Surface / destination | Persona(s) | Notification insertion mode | Primary classes | W6 note |
+|---|---|---|---|---|
+| `home` / priority coaching nudge | Leader, Member, Solo | inline banner/card state + CTA | assignment published, reminder, package access changed | advisory/informational only; routes into `coaching_journeys*` or `inbox` |
+| Team coaching modules | Leader, Member | embedded badge/banner + CTA | assignment/reminder/progress nudge, broadcast/message summary | preserve team vs coaching vs KPI ownership boundaries |
+| Challenge coaching block | Leader, Member, Solo | embedded banner/disclaimer + CTA | sponsor campaign update, package access changed, reminder | sponsor/challenge eligibility + disclaimer requirements remain server-owned |
+| `coaching_journeys*` | Leader, Member, Solo | inline banner/status chips + reminder CTA | assignment/reminder/progress/AI outcome (requester only) | no lesson progress mutation from notifications alone |
+| `inbox` / `inbox_channels` | Leader, Member, Solo | canonical notification list rows + badges | message, broadcast, assignment, reminder, access changed | `channels` unread and notification queue summaries may coexist but not conflict |
+| `channel_thread` | Leader (member optional contextual) | thread-level banners/system rows | message/broadcast context, AI review outcome (requester), sponsor disclaimers | no auto-send actions |
+| `coach_ops_audit` (`admin/coaching/audit`) | Coach, Admin operator | queue badges/list filters/system alerts | AI review queue pending/outcome, policy alerts (later), notification dispatch errors (later) | prefer admin/ops notification visibility in portal surfaces, not member runtime |
+| profile/settings coaching prefs | Leader, Member, Solo | preference controls + summary labels | channel/message/broadcast/reminder push/in-app prefs | no policy authority changes in UI |
+
+#### Minimum contract/read-model outputs for W6 notifications readiness (planning)
+Runtime/member-facing outputs (prefer additive shaping in existing families first):
+- `notification_summary_read_model` (top-level or scoped)
+  - unread counts by class (`messages`, `broadcasts`, `coaching_assignments`, `reminders`, `ai_outcomes`)
+  - badge count total
+  - last_event_at
+  - `read_model_status`
+- `notification_items[]` for inbox/list contexts
+  - `notification_id`, `class`, `title`, `body_preview`, `created_at`, `is_read`
+  - `route_target` + `route_params`
+  - `linked_context_refs` (team/challenge/channel/journey/lesson/package/suggestion as available)
+  - `display_requirements` (sponsor disclaimer/paywall flags where applicable)
+  - `delivery_channel_origin` (`in_app`, `push`, `system`)
+- `preference_read_model` (profile/settings + role-specific controls)
+  - per-class channel toggles, mute windows, role-restricted controls flags
+
+Admin/ops outputs (notifications queue + audit visibility):
+- queue summaries/status buckets from `/api/notifications/queue` (or additive shaping in same family)
+- dispatch outcome metadata (`pending`, `dispatched`, `failed`, retry counts/next retry)
+- policy/audit flags for sensitive classes (AI queue pending/outcome, sponsor campaign updates) without widening execution permissions
+
+#### W6 notifications gating rules (planning)
+1. Visibility/entitlement gate first
+- Notification generation and rendering must use server-side visibility/entitlement outcomes for package/sponsor classes.
+
+2. Approval gate inheritance
+- AI-related notification classes (`ai_review_queue_pending`, `ai_review_outcome`) inherit W5 approval-first boundaries and cannot imply execution/send.
+
+3. Preference gate
+- Member-facing reminder/message/broadcast push delivery respects preference/mute windows; UI must render fallback if explicit preference fields are absent.
+
+4. Role/ops gate
+- Coach/Admin notification queue views and policy alerts are role-gated and should default to admin extension surfaces.
+
+#### W6 `build now` vs `defer` split (implementation planning)
+`Build now`:
+1. Notifications/coaching UI insertion-point shells + banners/badges/list rows on approved member surfaces (manual-spec-driven)
+2. Backend in-family notification read-model shaping using existing `channels/messages`, `coaching`, and `notifications` endpoint families where feasible
+3. Profile/settings coaching notification prefs UI + admin/ops notification queue visibility pass (within current surfaces)
+
+`Defer`:
+1. Net-new notification endpoint families or structural schema changes (unless separately approved)
+2. Email/SMS delivery content systems and provider integrations
+3. Advanced notification dedupe/frequency orchestration and experimentation logic
+4. Any AI/autonomous dispatch coupling that bypasses W5 approval-first flow
+
+#### W6 notifications `decision needed` items (implementation phase)
+1. `decision needed` — Canonical notification class taxonomy and enum ownership
+- Whether to normalize classes centrally in notification queue family vs per-module additive mapping first.
+
+2. `decision needed` — Preferred host family for member notification summaries
+- `channels/messages` unread + coaching family additive shaping vs dedicated notifications read family expansion.
+
+3. `decision needed` — Preference read/write host surface and endpoint family
+- profile/me payload additive fields vs notifications family preference endpoints.
+
+4. `decision needed` — Sponsor/package notification disclaimer source
+- Whether disclaimer/paywall requirements are sourced from package read-model fields, sponsored challenge payloads, or notification payload snapshots.
+
+5. `decision needed` — Retention/compliance policy for notification/audit history
+- Notification + AI/coach moderation history retention depends on `DEP-004` and may require schema/policy changes.
+
 ## Runtime Constraint Notes (Current App)
 - Current member navigation is state-driven inside `KPIDashboardScreen.tsx`, not a formal navigation library.
 - Near-term coaching wiring may begin as:

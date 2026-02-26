@@ -244,6 +244,36 @@ flowchart LR
 | Team/Challenge coaching embedded modules | Team Leader (+ policy-limited challenge contexts) | embedded CTA -> AI review shell | `🟡 partial` | W5 UI shell proto adds AI draft review CTAs on approved Team/Challenge coaching modules only; preserves sponsored/challenge ownership boundaries and approval-first requirements. |
 | `coach_ops_audit` (admin extension) | Coach, Admin operator | approval queue + audit detail | `🟡 partial` | Admin shell extension route `/admin/coaching/audit` now renders approval queue + audit detail/review UI (approve/reject/history workflows, approval-first/no autonomous send). |
 
+## W6 Notifications + Coaching Overlay (Planning Boundary)
+
+Notifications are a delivery/awareness layer across coaching/comms/AI surfaces. They must not mutate coaching progress, KPI logs, forecasts, challenge participation/results, or bypass W5 AI approval-first execution rules.
+
+```mermaid
+flowchart LR
+  EV["Coaching/Comms/AI Events"] --> RM["Notification Read-Model Shaping (in-family first)"]
+  RM --> MB["Member Runtime Banners / Badges / Inbox Rows"]
+  RM --> OP["Ops Queue Visibility (coach_ops_audit / admin)"]
+  RM --> PQ["Push Queue Mapping (placeholder/approved classes)"]
+
+  AP["AI Approval Queue Outcomes"] --> RM
+  PK["Package / Entitlement Outcomes"] --> RM
+
+  KP["KPI Logs / Forecast Base Values"] -. "no mutation" .- RM
+  CH["Challenge Participation / Results"] -. "no mutation" .- RM
+  EX["Message/Broadcast Execution Paths"] -. "notify only; no scope widening" .- RM
+```
+
+### W6 notification insertion-point map (planning)
+| Surface / host | Persona(s) | Notification mode | W6 status | Boundary note |
+|---|---|---|---|---|
+| Home / Priority coaching nudge | Leader, Member, Solo | inline banners/cards + badge labels | `⚪ planned` | Informational routing only (`coaching_journeys*` / `inbox`); no side-effect writes. |
+| Team coaching modules | Leader, Member | embedded banners/badges + CTA | `⚪ planned` | Preserve KPI/team/coaching ownership seams. |
+| Challenge coaching block | Leader, Member, Solo | banner/disclaimer + CTA | `⚪ planned` | Sponsor/challenge eligibility + disclaimer rules remain server-owned. |
+| `coaching_journeys*` / `coaching_lesson_detail` | Leader, Member, Solo | inline status banners/chips | `⚪ planned` | Notifications may reference progress state but cannot mutate progress. |
+| `inbox*` / `channel_thread` | Leader, Member, Solo | canonical list rows, badges, thread system rows | `⚪ planned` | Coordinate `channels` unread and notifications summaries explicitly; no silent double-counting assumptions. |
+| profile/settings coaching prefs | Leader, Member, Solo | preference controls + summary labels | `⚪ planned` | Preference persistence family remains `decision needed`. |
+| `coach_ops_audit` (admin extension) | Coach, Admin operator | queue badges/alerts + notification dispatch visibility companion | `⚪ planned` | Visibility first; no dispatch authority widening. |
+
 ## Member App Shell (Intended)
 
 This maps to the current `KPIDashboardScreen` state router and its nested subflows.

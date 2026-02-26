@@ -248,6 +248,14 @@ Coach portal host recommendation (planning, manual-spec-driven):
 | AI Suggestion Approval Queue (coach/admin portal) | Review/approve/reject pending AI suggestions by scope/policy | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | Admin shell extension `coach_ops_audit` now includes sortable queue list + approve/reject UI workflow (approval-first, queue-only actions, no autonomous send/publish). |
 | AI Suggestion Audit Detail (coach/admin portal) | Inspect suggestion history, approvals/rejections, and execution linkage refs | `manual-spec-driven (COACHING_* docs)` | `🟡 partial` | Admin shell extension `coach_ops_audit` now includes audit detail/history rendering with disclaimers/safety flags and linkage refs (stub-safe local data until backend queue shaping lands). |
 
+#### `coaching_notifications` (W6 readiness, manual-spec-driven)
+| Destination | Intended purpose | Figma source group | Runtime status | Notes |
+|---|---|---|---|---|
+| Coaching Notification Banner / Badge States (member runtime) | Surface assignment/reminder/message/access-change signals on Home/Team/Challenge/`coaching_journeys*` without requiring inbox open | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | W6 planning boundary only. Notification classes must preserve coaching/package visibility and sponsor disclaimer rules; no side-effect writes from notification display. |
+| Coaching Notification Inbox Rows (member runtime companion to `inbox*`) | Render coaching notification list rows with route targets, context labels, and read states | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Prefer additive shaping in existing `channels/messages` + `coaching` + `notifications` families before any net-new family. |
+| Coaching Notification Preferences (profile/settings) | Per-class/per-channel coaching notification toggles and mute windows (UI shell first) | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Persistence host family is `decision needed` (`/me` additive fields vs notifications family). |
+| Ops Notification Queue Visibility (coach/admin portal companion) | View notification queue summaries/dispatch outcomes/policy alerts relevant to coaching + AI moderation ops | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Prefer `coach_ops_audit`/admin extension visibility companion first; no dispatch authority widening. |
+
 ## Shared Runtime Router Map (Current Implementation Anchor)
 Use this to map intended screens to current code constraints.
 
@@ -301,6 +309,7 @@ For `Coach` persona assignments (manual-spec-driven), also specify:
 - authoring vs delivery boundary
 - packaging type in scope (`team`, `sponsored`, `paid`)
 - AI boundary mode (`approval-first`) + disallowed mutation actions (`KPI`, forecast base/confidence, challenge participation/results)
+- notification class(es) in scope + allowed delivery channels (`in-app`, `badge`, `push`, etc.) + `build now` vs `defer`
 
 Do not assign work as generic “polish Team” or “fix challenge screen.”
 
