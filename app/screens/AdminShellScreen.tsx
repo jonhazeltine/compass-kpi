@@ -1369,6 +1369,23 @@ function AdminUsersPanel({
   );
   const visibleCalibrationRows = showAllCalibrationRows ? calibrationRows : calibrationRows.slice(0, 5);
   const visibleCalibrationEvents = showAllCalibrationEvents ? calibrationEvents : calibrationEvents.slice(0, 4);
+  const activeUserFilterCount =
+    (searchQuery.trim() ? 1 : 0) +
+    (roleFilter !== 'all' ? 1 : 0) +
+    (statusFilter !== 'all' ? 1 : 0) +
+    (testUsersOnly ? 1 : 0);
+  const hasNoUserResults = !loading && !error && rows.length > 0 && filteredRows.length === 0;
+  const selectedUserHiddenByFilters = Boolean(
+    selectedUser && !filteredRows.some((row) => row.id === selectedUser.id)
+  );
+  const clearUserFiltersAndRecovery = () => {
+    onSearchQueryChange('');
+    onRoleFilterChange('all');
+    onStatusFilterChange('all');
+    if (testUsersOnly) onToggleTestUsersOnly();
+    if (!showRecentFirst) onToggleShowRecentFirst();
+    onResetRowLimit();
+  };
 
   return (
     <View style={styles.panel}>
@@ -1573,6 +1590,25 @@ function AdminUsersPanel({
           <Text style={styles.formTitle}>Find & Select User</Text>
           <Text style={styles.metaRow}>Filter and select an account to manage access and calibration.</Text>
         </View>
+        <View style={styles.usersFilterSummaryRow}>
+          <Text style={styles.metaRow}>
+            {filteredRows.length} filtered / {rows.length} total
+            {activeUserFilterCount ? ` • ${activeUserFilterCount} filter${activeUserFilterCount === 1 ? '' : 's'} active` : ' • no filters'}
+            {showRecentFirst ? ' • recent-first sort' : ''}
+          </Text>
+          <View style={styles.formActionsRow}>
+            {activeUserFilterCount > 0 || !showRecentFirst ? (
+              <TouchableOpacity style={styles.smallGhostButton} onPress={clearUserFiltersAndRecovery}>
+                <Text style={styles.smallGhostButtonText}>Reset filters</Text>
+              </TouchableOpacity>
+            ) : null}
+            {searchQuery.trim() ? (
+              <TouchableOpacity style={styles.smallGhostButton} onPress={() => onSearchQueryChange('')}>
+                <Text style={styles.smallGhostButtonText}>Clear search</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
         <View style={[styles.formField, styles.formFieldWide]}>
           <Text style={styles.formLabel}>Search</Text>
           <TextInput
@@ -1656,6 +1692,19 @@ function AdminUsersPanel({
           ) : null}
           {loading ? <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Loading users...</Text> : null}
           {error ? <Text style={[styles.metaRow, styles.errorText, { paddingHorizontal: 12 }]}>Error: {error}</Text> : null}
+          {selectedUserHiddenByFilters ? (
+            <View style={[styles.noticeBox, { marginHorizontal: 12, marginTop: 8 }]}>
+              <Text style={styles.noticeTitle}>Selected user is hidden by current filters</Text>
+              <Text style={styles.noticeText}>
+                {selectedUser?.name?.trim() || selectedUser?.id} is still selected for the right-side panel, but the row is not visible in the list.
+              </Text>
+              <View style={styles.formActionsRow}>
+                <TouchableOpacity style={styles.noticeButton} onPress={clearUserFiltersAndRecovery}>
+                  <Text style={styles.noticeButtonText}>Show selected row</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
           {!loading && !error ? (
             <>
               <View style={[styles.formHeaderRow, { paddingHorizontal: 12 }]}>
@@ -1663,7 +1712,9 @@ function AdminUsersPanel({
                 <View style={styles.formActionsRow}>
                   {filteredRows.length > rowLimit ? (
                     <TouchableOpacity style={styles.smallGhostButton} onPress={onShowMoreRows}>
-                      <Text style={styles.smallGhostButtonText}>Show more</Text>
+                      <Text style={styles.smallGhostButtonText}>
+                        Show {Math.min(16, filteredRows.length - rowLimit)} more
+                      </Text>
                     </TouchableOpacity>
                   ) : null}
                   {rowLimit > 16 ? (
@@ -1726,6 +1777,22 @@ function AdminUsersPanel({
                 );
               })}
               {filteredRows.length > rowLimit ? <Text style={styles.tableFootnote}>Showing first {rowLimit} filtered rows. Use “Show more” to inspect more users.</Text> : null}
+              {hasNoUserResults ? (
+                <View style={styles.usersNoResultsCard}>
+                  <Text style={styles.usersNoResultsTitle}>No users match the current filters</Text>
+                  <Text style={styles.usersNoResultsText}>
+                    Try clearing search/filter chips or turn off Test User Focus to restore the full list.
+                  </Text>
+                  <View style={styles.formActionsRow}>
+                    <TouchableOpacity style={styles.smallGhostButton} onPress={clearUserFiltersAndRecovery}>
+                      <Text style={styles.smallGhostButtonText}>Reset filters</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.smallGhostButton} onPress={onRefreshUsers}>
+                      <Text style={styles.smallGhostButtonText}>Refresh users</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
             </>
           ) : null}
         </View>
@@ -2047,6 +2114,32 @@ function AdminReportsPanel({
             : overviewStatus.kind === 'not_implemented' && detailedStatus.kind === 'not_implemented'
               ? 'Unavailable'
               : 'Idle';
+  const endpointOpsRows = [
+    {
+      key: 'overview',
+      label: 'Overview analytics',
+      path: 'GET /admin/analytics/overview',
+      status: overviewStatus,
+      tone: overviewTone,
+    },
+    {
+      key: 'detailed',
+      label: 'Detailed reports',
+      path: 'GET /admin/analytics/detailed-reports',
+      status: detailedStatus,
+      tone: detailedTone,
+    },
+  ] as const;
+  const operatorNextStep =
+    loading || endpointOpsRows.some((row) => row.status.kind === 'loading')
+      ? 'Wait for endpoint checks to complete.'
+      : endpointOpsRows.some((row) => row.status.kind === 'error')
+        ? 'Retry the failed endpoint and copy details for backend triage.'
+        : endpointOpsRows.some((row) => row.status.kind === 'forbidden')
+          ? 'Confirm admin authz/session role before retrying.'
+          : endpointOpsRows.every((row) => row.status.kind === 'not_implemented')
+            ? 'Endpoints are unavailable (expected pre-A3 backend coverage). Capture status and proceed.'
+            : 'Copy endpoint details and continue operator verification.';
 
   const copyProbeDetails = async (label: string, status: EndpointProbeStatus) => {
     const text = `${label}\n${formatProbeStatus(status)}${
@@ -2054,6 +2147,13 @@ function AdminReportsPanel({
     }`;
     const ok = await copyTextToClipboard(text);
     setReportsCopyNotice(ok ? `Copied ${label} details` : 'Could not copy report details (clipboard unavailable)');
+  };
+  const copyAllProbeSummary = async () => {
+    const text = endpointOpsRows
+      .map((row) => `${row.path}\n${formatProbeStatus(row.status)}`)
+      .join('\n\n');
+    const ok = await copyTextToClipboard(text);
+    setReportsCopyNotice(ok ? 'Copied all probe statuses' : 'Could not copy probe statuses (clipboard unavailable)');
   };
 
   return (
@@ -2091,6 +2191,27 @@ function AdminReportsPanel({
         <TouchableOpacity style={styles.primaryButton} onPress={onRefresh} disabled={loading}>
           <Text style={styles.primaryButtonText}>{loading ? 'Checking...' : 'Recheck All Endpoints'}</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.smallGhostButton} onPress={() => void copyAllProbeSummary()}>
+          <Text style={styles.smallGhostButtonText}>Copy All Probe Status</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.reportsOpsSummaryCard}>
+        <View style={styles.formHeaderRow}>
+          <Text style={styles.formTitle}>Operator Probe Summary</Text>
+          <Text style={styles.metaRow}>{endpointOpsRows.filter((row) => row.status.kind === 'ready').length} ready</Text>
+        </View>
+        {endpointOpsRows.map((row) => (
+          <View key={row.key} style={styles.reportsOpsSummaryRow}>
+            <View style={styles.reportsOpsSummaryCopy}>
+              <Text style={styles.reportsOpsSummaryLabel}>{row.label}</Text>
+              <Text style={styles.reportsOpsSummaryPath}>{row.path}</Text>
+            </View>
+            <View style={[styles.statusChip, { backgroundColor: row.tone.bg, borderColor: row.tone.border }]}>
+              <Text style={[styles.statusChipText, { color: row.tone.text }]}>{row.tone.label}</Text>
+            </View>
+          </View>
+        ))}
+        <Text style={styles.fieldHelpText}>{operatorNextStep}</Text>
       </View>
       <View style={[styles.summaryRow, styles.summaryRowCompact]}>
         <View style={styles.summaryCard}>
@@ -2511,6 +2632,11 @@ export default function AdminShellScreen() {
     if (!effectiveHasAdminAccess) return;
     void refreshUsers().catch(() => {});
   }, [activeRouteKey, effectiveHasAdminAccess, session?.access_token]);
+
+  useEffect(() => {
+    if (activeRouteKey !== 'users') return;
+    setUserRowLimit(16);
+  }, [activeRouteKey, userSearchQuery, userRoleFilter, userStatusFilter, userTestUsersOnly]);
 
   useEffect(() => {
     if (!session?.access_token) return;
@@ -3576,6 +3702,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
+  usersFilterSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  usersNoResultsCard: {
+    marginTop: 10,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#DFE7F3',
+    borderRadius: 12,
+    backgroundColor: '#FAFCFF',
+    padding: 12,
+    gap: 8,
+  },
+  usersNoResultsTitle: {
+    color: '#20314a',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  usersNoResultsText: {
+    color: '#667792',
+    fontSize: 12,
+    lineHeight: 17,
+  },
   activityFeedCard: {
     borderWidth: 1,
     borderColor: '#E3EBF8',
@@ -3715,6 +3869,34 @@ const styles = StyleSheet.create({
   endpointStatusBannerNote: {
     color: '#5E6D86',
     fontSize: 12,
+  },
+  reportsOpsSummaryCard: {
+    borderWidth: 1,
+    borderColor: '#E1E9F7',
+    borderRadius: 12,
+    backgroundColor: '#F8FBFF',
+    padding: 12,
+    gap: 8,
+  },
+  reportsOpsSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  reportsOpsSummaryCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  reportsOpsSummaryLabel: {
+    color: '#23314A',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  reportsOpsSummaryPath: {
+    color: '#6E7B92',
+    fontSize: 11,
+    marginTop: 2,
   },
   codePreviewBox: {
     marginTop: 8,

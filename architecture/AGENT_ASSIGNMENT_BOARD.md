@@ -54,7 +54,7 @@ Only use long custom prompts when the board is missing required details or a one
 | ID | Status | Program status | Persona | Flow | Screens in scope | Owner | Branch / Worktree | Figma refs | Deliverable |
 |---|---|---|---|---|---|---|---|---|---|
 | `COACHING-UI-W2-COMMS-ENTRYPOINTS` | `committed+pushed` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`W2 comms entry points`) | `Team Dashboard (leader/member)`, `Challenge Details/Results`, `User/Coaching shells` (`Inbox/Channels`, `Channel Thread`, `Broadcast Composer`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven (`COACHING_*` docs + intended wiring docs; W1 shells required) | Large-swatch W2 communication entry-point wiring pass accepted: context-aware channel/thread shell routing + leader broadcast composer entry context labels; API-backed messaging/send remains deferred |
-| `ADMIN-A3-USERS-OPS-POLISH-A` | `active` | `A3 (parallel with M5/M6)` | `Admin operator` | `admin users + reports ops workflow` | `/admin/users`, `/admin/reports` (operator lists/actions only) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web, no Figma parity requirement for this swath) | Large-swatch operator usability/hardening pass for user list/search/sort/paging and report list workflow affordances without backend/API changes |
+| `ADMIN-A3-USERS-OPS-POLISH-A` | `review` | `A3 (parallel with M5/M6)` | `Admin operator` | `admin users + reports ops workflow` | `/admin/users`, `/admin/reports` (operator lists/actions only) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web, no Figma parity requirement for this swath) | Admin users/reports operator usability pass implemented in `AdminShellScreen.tsx`; `tsc` passed; awaiting controller review |
 
 ## Blocked Assignments
 
@@ -465,6 +465,8 @@ Implement the first functional communication entry points on existing Compass su
 - `Dependency note:` `COACHING-UI-W1-ALLOCATION-SHELLS` and `COACHING-UI-W2-COMMS-ENTRYPOINTS` accepted (`committed+pushed`)
 - `Controller seed note (2026-02-26):` Prioritize API-backed journeys/progress rendering on existing shell destinations before expanding comms read/write behavior.
 - `Controller activation note (2026-02-26):` Activated after accepted W2 shell/context routing and post-W2 contract-boundary planning update from `Coach-1`.
+- `Worker pickup note (2026-02-26, Mobile-1):` Picked up on `codex/a2-admin-list-usability-pass` for W3 coaching content integration; proceeding on accepted W1/W2 destination naming and shell baseline.
+- `Current blocker status (2026-02-26, Mobile-1):` `none` at start for UI-on-existing-contracts attempt; payload-shape mismatches (if any) will be documented without widening backend scope.
 
 #### Primary Objective
 Implement the first functional coaching content layer on the accepted W1/W2 shells:
@@ -623,6 +625,7 @@ Upgrade accepted W2 comms entry routing from shell/context-only to API-backed be
 - `Figma refs:` `N/A` (admin usability/polish swath; follow existing admin UI patterns)
 - `Controller seed note (2026-02-26):` Run in parallel with coaching docs work. Admin-only scope to avoid collision with mobile/coaching router surfaces.
 - `Worker note (2026-02-26):` Execution started. Scope locked to admin web `/admin/users` + `/admin/reports` in existing admin shell patterns; no mobile/backend changes.
+- `Worker completion note (2026-02-26):` Implemented operator workflow friction fixes in `/admin/users` and `/admin/reports` (filter/no-results recovery, visible-count clarity, filtered-selection warning, reports probe summary/copy-all status). `tsc` passed. Manual browser spot-check not completed in this session (no browser automation path used).
 
 #### Screens In Scope (Large Swath)
 1. `/admin/users`
