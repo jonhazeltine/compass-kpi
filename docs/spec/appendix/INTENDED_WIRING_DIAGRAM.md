@@ -161,7 +161,7 @@ Manual-spec-driven planning only (no Figma-backed coaching screens identified in
 | Broadcast composer (leader/admin role-gated) | Team Leader (Admin/Coach later per DEP-003) | `communication` | `coach_broadcast_compose` | `🟡 stub` | `🟡 partial` | Team Dashboard + Inbox role-gated CTA | W4 wires leader broadcast send via `/api/channels/{id}/broadcast` (channel-based path) with UI role gating + API error handling; server remains source of permission/throttle enforcement. Package visibility gating banners are UI-only until explicit entitlement outcomes are provided. |
 | Coaching Journeys dedicated flow | Team Leader, Team Member, Solo User | `coaching_content` | `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail` | `🟡 stub` | `🟡 partial` | Home/Team/Challenge embedded CTA | W3 wires API-backed journeys list/detail and explicit lesson progress actions (`GET /api/coaching/journeys*`, `GET /api/coaching/progress`, `POST /api/coaching/lessons/{id}/progress`); no KPI logging writes and no auto-complete on view. Runtime package visibility banners/fallback states now surface entitlement contract gaps without local policy inference. |
 
-## Coach / Admin Authoring-Delivery Companion Overlay (Intended, Manual-Spec-Driven)
+## W7 Coach Portal Foundation Overlay (Intended, Manual-Spec-Driven)
 
 Coach persona planning is modeled as an authoring/ops companion layer (admin-web extension or hybrid portal), not a member runtime fork.
 
@@ -181,11 +181,11 @@ flowchart LR
   RD --> RI["🟡 Inbox / Channels context routing"]
 ```
 
-## Coach Authoring / Packaging Touchpoints and Handoff Status
+## W7 Coach Authoring / Packaging Touchpoints and Handoff Status
 
 | Authoring/ops surface | Persona(s) | Capability group(s) | Handoff target (runtime) | Status | Boundary note |
 |---|---|---|---|---|---|
-| Content Upload (`content_upload`) | Coach, Admin operator, Challenge Sponsor (limited sponsor campaign uploads) | `coaching_content`, sponsor campaign assets | `coach_content_library` ingestion -> runtime linked content/templates | `⚪ planned` | Foundation surface for asset intake only; no KPI logging/edit actions. |
+| Content Upload (`content_upload`) | Coach, Admin operator, Team Leader (team-scoped uploads only), Challenge Sponsor (limited sponsor campaign uploads) | `coaching_content`, sponsor campaign assets | `coach_content_library` ingestion -> runtime linked content/templates | `⚪ planned` | Foundation surface for asset intake only; Team Leader uploads are own-team scoped (no org-wide authoring ownership, no sponsor package authority); no KPI logging/edit actions. |
 | Coach Content Library (`coach_content_library`) | Coach, Admin operator | `coaching_content`, `communication` templates | `coaching_journeys*`, `inbox*` template usage | `⚪ planned` | Authoring/curation only; runtime delivery never edits canonical content here. |
 | Journey Authoring Studio (`coach_journey_authoring`) | Coach | `coaching_content` | `coaching_journeys*` published journey versions | `⚪ planned` | Draft/review/publish lifecycle is ops concern, not member runtime concern. |
 | Cohorts / Audience Segments (`cohorts`) | Coach, Admin operator, Challenge Sponsor (limited sponsor scopes) | targeting/visibility planning (`communication`, `sponsor_challenge_coaching`) | runtime cohort-based channels + package targeting inputs | `⚪ planned` | Cohort visibility/constraints only; no challenge participation ownership or KPI logging actions. |
@@ -194,13 +194,13 @@ flowchart LR
 | Coaching Packages / Entitlements (`coach_packages_entitlements`) | Admin operator, Coach (limited), Challenge Sponsor (limited sponsor scopes) | `sponsor_challenge_coaching`, paid packaging | Runtime visibility/entitlement gating | `⚪ planned` | Packaging/access logic separated from journey authoring and runtime rendering; sponsor access is sponsor-scoped only. |
 | Coach Ops Audit / Approvals (`coach_ops_audit`) | Admin operator | `communication`, `coaching_content` (+ `ai_coach_assist` later) | Policy constraints on runtime allowed actions | `🟡 partial` | Admin shell extension now provides approval-first AI suggestion moderation queue + audit detail companion UI; no direct KPI data mutation or execution actions. |
 
-## Coach Ops Portal Host Recommendation and Route Grouping (Planning)
+## W7 Coach Ops Portal Host Recommendation and Route Grouping (Planning)
 
 Near-term recommendation: use `Admin Shell` as the host (role-gated extension routes) and defer a hybrid/dedicated coach portal until touchpoint complexity justifies a structural split.
 
 | Route group (provisional) | Host | Touchpoint | Primary persona(s) | Status | Decision note |
 |---|---|---|---|---|---|
-| `admin/coaching/uploads` | `Admin Shell extension` | `content_upload` | Coach, Admin operator, Challenge Sponsor (limited sponsor uploads) | `⚪ planned` | W7 foundation intake surface; sponsor uploads are sponsor-scope + policy-gated. |
+| `admin/coaching/uploads` | `Admin Shell extension` | `content_upload` | Coach, Admin operator, Team Leader (team-scoped uploads only), Challenge Sponsor (limited sponsor uploads) | `⚪ planned` | W7 foundation intake surface; Team Leader uploads are team-scoped only (no org-wide authoring ownership, no sponsor package authority); sponsor uploads are sponsor-scope + policy-gated. |
 | `admin/coaching/library` | `Admin Shell extension` | `coach_content_library` | Coach, Admin operator | `⚪ planned` | No structural split required. |
 | `admin/coaching/authoring` | `Admin Shell extension` | `coach_journey_authoring` | Coach | `⚪ planned` | No structural split required. |
 | `admin/coaching/cohorts` | `Admin Shell extension` | `cohorts` | Coach, Admin operator, Challenge Sponsor (limited sponsor scopes) | `⚪ planned` | W7 foundation cohort targeting/visibility surface; supports non-team cohort contexts. |
