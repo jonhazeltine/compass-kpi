@@ -56,6 +56,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-UI-W2-COMMS-ENTRYPOINTS` | `committed+pushed` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`W2 comms entry points`) | `Team Dashboard (leader/member)`, `Challenge Details/Results`, `User/Coaching shells` (`Inbox/Channels`, `Channel Thread`, `Broadcast Composer`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven (`COACHING_*` docs + intended wiring docs; W1 shells required) | Large-swatch W2 communication entry-point wiring pass accepted: context-aware channel/thread shell routing + leader broadcast composer entry context labels; API-backed messaging/send remains deferred |
 | `ADMIN-A3-USERS-OPS-POLISH-A` | `committed+pushed` | `A3 (parallel with M5/M6)` | `Admin operator` | `admin users + reports ops workflow` | `/admin/users`, `/admin/reports` (operator lists/actions only) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web, no Figma parity requirement for this swath) | Accepted and pushed (`fc85b3b`): users/reports operator workflow usability improvements in `AdminShellScreen.tsx`; manual browser spot-check still recommended follow-up |
 | `COACHING-UI-W3-JOURNEYS-CONTENT-INTEGRATION` | `committed+pushed` | `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven coaching content integration)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`W3 coaching_content integration`) | `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail` + embedded CTA routes from `Home`, `Team`, `Challenge` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree required if app code worker is active elsewhere) | manual-spec-driven unless coaching Figma exports are later locked | Accepted: API-backed journeys list/detail/progress + explicit lesson progress actions on W1/W2 shells; docs statuses advanced to `🟡 partial` |
+| `COACHING-ARCH-COACH-PERSONA-A` | `active` | `M6 coaching slice (planning/architecture)` | `Coach`, `Admin operator` (authoring/ops), plus downstream `Leader/Member/Solo` | `coaching content operations / publishing` | coach content library, journey authoring/curation, publishing/targeting, sponsor/paid coaching packaging, admin portal touchpoints | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + Fourth Reason reference | Large-swatch Coach persona operating model and content-ops architecture package (authoring ownership, delivery packaging, admin/coach portal boundaries, sponsorship/paid coaching integration seams) |
 
 ## Blocked Assignments
 
@@ -547,7 +548,7 @@ Implement the first functional coaching content layer on the accepted W1/W2 shel
 ### `COACHING-UI-W4-COMMS-API-INTEGRATION`
 
 #### Snapshot
-- `Status:` `queued`
+- `Status:` `active`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven comms API integration)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W4 comms API-backed inbox/thread/broadcast`)
@@ -556,6 +557,8 @@ Implement the first functional coaching content layer on the accepted W1/W2 shel
 - `Figma refs:` `manual-spec-driven` unless coaching comms Figma exports are later locked
 - `Dependency note:` Run after `COACHING-UI-W3-JOURNEYS-CONTENT-INTEGRATION` or with explicit controller reprioritization
 - `Controller seed note (2026-02-26):` W4 may proceed on documented channel/coaching endpoint families only; split backend-prep if payload gaps block UI work.
+- `Worker pickup note (2026-02-26, Mobile-1):` Picked up on `codex/a2-admin-list-usability-pass` after W3 blocker-resolution verification; starting with contract-shape verification for channels/messages/broadcast endpoints before UI wiring.
+- `Current blocker status (2026-02-26, Mobile-1):` `none` at start; will stop and document exact payload/read-model gaps if channel list/thread/broadcast payloads are insufficient for UI assumptions.
 
 #### Primary Objective
 Upgrade accepted W2 comms entry routing from shell/context-only to API-backed behavior where existing documented contracts allow:
@@ -622,6 +625,96 @@ Upgrade accepted W2 comms entry routing from shell/context-only to API-backed be
 
 #### Worker Launch (Short Form)
 `Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-UI-W4-COMMS-API-INTEGRATION exactly as written. Follow the assignment block, validation requirements, and report-back format.`
+
+### `COACHING-ARCH-COACH-PERSONA-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 coaching slice (planning/architecture)`
+- `Persona:` `Coach`, `Admin operator` (authoring/ops), plus downstream `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `coaching content operations / publishing`
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; dedicated worktree preferred)
+- `Figma refs:` `manual-spec-driven` (coach authoring/ops model not yet Figma-backed)
+- `Controller seed note (2026-02-26):` Owner identified a critical architecture gap: coach persona/content library/authoring/publishing model is not yet explicit and likely overlaps sponsored + paid coaching packaging.
+
+#### Primary Objective
+Define the Coach persona operating model and content operations architecture so upcoming coaching implementation waves do not hard-code the wrong ownership or packaging assumptions.
+
+Produce a planning package that clearly answers:
+- where the `Coach` persona lives (admin web extension vs dedicated coach portal vs hybrid)
+- who owns content library upload/curation/publishing (`Coach`, `Admin`, `Sponsor ops`)
+- how journeys/lessons are packaged for:
+  - team coaching
+  - sponsored challenge coaching
+  - paid coaching products
+- how runtime delivery surfaces (`Coaching Journeys`, challenge overlays, team modules) consume published content without owning authoring concerns
+- what is in-scope for current app UI vs deferred content-ops/portal implementation
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/FOURTH_REASON_INTEGRATION_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/references/the fourth reason integration` (as reference only; do not commit changes)
+
+#### Constraints (Hard)
+- Docs/planning only (`no app code`, `no backend code`, `no schema/API changes`)
+- Do not edit mobile or admin implementation files
+- No net-new endpoint families or schema proposals presented as approved implementation
+- Keep non-negotiables explicit (coaching content/comms cannot mutate KPI engine/base values; KPI logging remains activity source of truth)
+- Preserve sponsored challenge boundary: challenge system owns participation/progress/results; coaching owns content/comms
+- Clearly separate:
+  - authoring/ops surfaces
+  - runtime delivery surfaces
+  - entitlement/packaging logic
+
+#### Deliverables (Large Swath, docs-only)
+1. Extend `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+   - add explicit `Coach` persona row(s)/access model
+   - clarify authoring vs delivery ownership per capability group
+2. Extend `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+   - add coach/admin authoring portal touchpoints and handoff to runtime delivery
+   - define publishing/targeting integration seam
+3. Update `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+   - add `Coach` persona section (manual-spec-driven) or explicit admin/coach ops note if coach is modeled as admin portal extension
+4. Update `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+   - add coach content-ops/publishing overlay or companion authoring-delivery flow
+5. Add next assignment specs to the board (at least one, preferably two) for implementation-ready follow-ons:
+   - `COACHING-OPS-PORTAL-A` (docs/admin portal planning or UI shells)
+   - `COACHING-PACKAGING-SPONSORED-PAID-A` (packaging/entitlement integration planning)
+
+#### Validation (Required)
+- Consistency check across docs:
+  - `Coach` persona terminology is consistent
+  - authoring vs delivery boundaries are explicit
+  - sponsored vs paid coaching packaging boundaries are explicit
+  - statuses use standard legend (`⚪ 🔵 🟡 🟢 🔴`) where applicable
+- Confirm no app/backend/schema/API files changed
+- If any proposal implies structural API/schema boundary changes, mark as `decision needed` and note `DECISIONS_LOG.md` requirement for implementation phase (do not implement now)
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `What Coach persona now means` (plain English)
+- `Authoring vs delivery model` (who owns what)
+- `Sponsored vs paid coaching packaging model` (proposed boundary)
+- `Docs updated` (which docs + what changed)
+- `Next assignments created` (IDs + short purpose)
+- `Open decisions / risks`
+- `Files touched`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-ARCH-COACH-PERSONA-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
 
 ### `ADMIN-A3-USERS-OPS-POLISH-A`
 
