@@ -60,6 +60,8 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-ARCH-COACH-PERSONA-A` | `committed+pushed` | `M6 coaching slice (planning/architecture)` | `Coach`, `Admin operator` (authoring/ops), plus downstream `Leader/Member/Solo` | `coaching content operations / publishing` | coach content library, journey authoring/curation, publishing/targeting, sponsor/paid coaching packaging, admin portal touchpoints | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + Fourth Reason reference | Accepted and pushed: Coach persona/content-ops architecture package clarifying coach/admin/sponsor ownership, authoring-vs-delivery seam, portal touchpoints, and sponsored/paid packaging boundaries; follow-on planning assignments added |
 | `COACHING-PACKAGING-SPONSORED-PAID-A` | `committed+pushed` | `M6 coaching slice (planning/architecture; packaging + entitlements)` | `Coach`, `Admin operator`, `Sponsor ops` (limited), downstream `Leader/Member/Solo` | `coaching content operations / publishing` (`packaging`, `entitlements`, `sponsored/paid boundaries`) | coaching packaging + entitlements planning docs (no app UI) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | manual-spec-driven | Accepted and pushed: implementation-ready packaging taxonomy/lifecycle, ownership/approval matrix, runtime entitlement/visibility consumption assumptions, and explicit `decision needed` risks for billing/sponsor approvals/read-model gaps |
 | `ADMIN-A2-TABLE-OPS-FIXPACK-B` | `active` | `A2 (parallel with M6 coaching planning)` | `Admin operator` | `admin KPI catalog + challenge templates table ops` | `/admin/kpis`, `/admin/challenge-templates` (web admin tables/forms only) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web, no Figma parity requirement for this swath) | Follow-up A2 operator fixpack: manual browser validation + friction cleanup for KPI Catalog and Challenge Templates (row-window reset, filter/search recovery, selection/edit discoverability, count clarity, table state consistency) |
+| `COACHING-UI-PACKAGE-VISIBILITY-GATING-A` | `active` | `M6 coaching slice (runtime UI gating + fallback behavior)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` (`package visibility + entitlement UI gating`) | `Challenge Details/Results`, `coaching_journeys*`, `inbox*`, Team coaching modules (existing W3/W4 surfaces) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | manual-spec-driven + accepted packaging docs (`COACHING-PACKAGING-SPONSORED-PAID-A`) | Large-swatch runtime package visibility/entitlement UI gating pass with safe fallbacks and contract-gap triage on existing coaching surfaces (no backend/schema changes) |
+| `COACHING-BACKEND-PREP-PACKAGE-READMODEL-A` | `active` | `M6 coaching slice (backend-prep planning/spec)` | `Admin operator`, `Coach`, downstream `Leader/Member/Solo` | `coaching content operations / publishing` (`package read-model + entitlement outputs`) | backend contract/read-model planning only (no runtime UI code) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs/backend-prep planning only; separate worktree preferred) | manual-spec-driven + accepted packaging/docs stack | Large-swatch backend-prep planning package for runtime packaging/entitlement read-model outputs within existing endpoint families where possible; isolate `decision needed` for any net-new family/schema boundary |
 
 ## Blocked Assignments
 
@@ -963,6 +965,7 @@ Deliver a substantial A3 operator usability pass focused on admin users/reports 
 - `Figma refs:` `N/A` (admin web usability follow-up; preserve existing admin patterns)
 - `Controller seed note (2026-02-26):` Safe parallel swath while `Coach-1` executes docs-only packaging planning. Scope intentionally limited to admin A2 tables/forms in `AdminShellScreen.tsx`.
 - `Dependency note:` Follows accepted `ADMIN-A2-USABILITY` (`0a45742`); use that pass as baseline and close remaining operator friction discovered via manual browser validation.
+- `Execution note (2026-02-26):` Mobile-2 started `ADMIN-A2-TABLE-OPS-FIXPACK-B`; board updated before coding per controller requirement. Scope remains admin web only (`/admin/kpis`, `/admin/challenge-templates`) with `AdminShellScreen.tsx` target.
 
 #### Screens In Scope (Large Swath)
 1. `/admin/kpis`
@@ -1021,6 +1024,151 @@ Deliver a substantial A2 follow-up fixpack focused on real operator behavior in 
 
 #### Worker Launch (Short Form)
 `Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment ADMIN-A2-TABLE-OPS-FIXPACK-B exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
+
+### `COACHING-UI-PACKAGE-VISIBILITY-GATING-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 coaching slice (runtime UI gating + fallback behavior)`
+- `Persona:` `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `coaching / communication` (`package visibility + entitlement UI gating`)
+- `Owner:` `Mobile-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred)
+- `Figma refs:` `manual-spec-driven` (use accepted coaching docs + current runtime surfaces)
+- `Dependency note:` Follows accepted `COACHING-PACKAGING-SPONSORED-PAID-A`, `COACHING-UI-W3-JOURNEYS-CONTENT-INTEGRATION`, and `COACHING-UI-W4-COMMS-API-INTEGRATION`.
+- `Controller seed note (2026-02-26):` Large-swatch runtime hardening pass to make packaging/entitlement outcomes visible and safe on current coaching surfaces without embedding policy logic in UI or adding backend/schema changes.
+
+#### Screens In Scope (Large Swath)
+1. `Challenge Details / Results` coaching overlays
+2. `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail`
+3. `inbox_channels`, `channel_thread`, `coach_broadcast_compose`
+4. Existing Team coaching modules / coaching CTA inserts where package-linked visibility is shown
+
+#### Primary Objective
+Apply package visibility / entitlement outcome handling to existing coaching runtime surfaces using server-provided fields where available and safe fallback behavior where not available:
+- render explicit gated/blocked/available states
+- preserve sponsored-vs-paid boundary language and disclaimers
+- avoid inferring policy locally from partial data
+- document contract gaps encountered using the triage model (UI-only vs backend-prep within existing family vs net-new family)
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+
+#### Constraints (Hard)
+- Mobile runtime UI only (`/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` and directly related mobile helpers only)
+- No backend/API/schema changes
+- No Home/Priority redesign work beyond coaching-related gating/CTA states already in scope
+- Preserve challenge participation/results ownership boundary
+- Do not embed billing/entitlement policy logic in UI; consume outcomes only
+- If required fields are missing, implement safe fallback and log contract gap category instead of inventing policy
+
+#### Implementation Pattern (Large Swath)
+- Start with surface-by-surface mismatch list (available/gated/blocked/fallback states)
+- Add consistent package visibility/entitlement rendering patterns and copy across in-scope coaching surfaces
+- Add sponsor attribution / paid gating placeholders only when driven by available fields or explicit fallback
+- Produce contract-gap triage notes (UI-only / backend-prep existing family / net-new family)
+- Keep to `1` commit if possible (`2` max if a docs-sync follow-up is cleaner)
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime screenshots of in-scope coaching surfaces showing at least:
+  - available state
+  - fallback unavailable/gated state (if reproducible)
+- Confirm no backend/API/schema files changed
+- Update `INTENDED_PERSONA_FLOW_SCREENMAP.md` + `INTENDED_WIRING_DIAGRAM.md` together if runtime status/wiring notes change
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `Screens changed`
+- `Package/entitlement UI states added`
+- `Sponsored vs paid runtime boundary handling`
+- `Contract-gap triage` (UI-only / backend-prep existing family / net-new family)
+- `Files touched` (with line refs)
+- `Validation performed` (`tsc`, runtime screenshots)
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-UI-PACKAGE-VISIBILITY-GATING-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
+
+
+### `COACHING-BACKEND-PREP-PACKAGE-READMODEL-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 coaching slice (backend-prep planning/spec)`
+- `Persona:` `Admin operator`, `Coach`, downstream `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `coaching content operations / publishing` (`package read-model + entitlement outputs`)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs/backend-prep planning only; separate worktree preferred)
+- `Figma refs:` `manual-spec-driven`
+- `Dependency note:` Follows accepted `COACHING-PACKAGING-SPONSORED-PAID-A`; may also consume contract-gap triage from `COACHING-UI-PACKAGE-VISIBILITY-GATING-A` if available.
+- `Controller seed note (2026-02-26):` Large-swatch backend-prep planning package to define runtime packaging/entitlement read-model outputs inside existing endpoint families where possible and isolate approval-required structural gaps.
+
+#### Primary Objective
+Define an implementation-ready backend-prep plan for packaging/entitlement runtime read-model outputs:
+- identify which existing endpoint families could carry packaging/entitlement outcomes for coaching/challenge/team runtime surfaces
+- define read-model output requirements (planning-level) by surface/use-case
+- classify gaps as in-family extension vs net-new family/schema need
+- produce follow-on implementation assignment specs (backend + UI) without approving schema/API changes in this docs pass
+
+#### Required Reads
+- `/Users/jon/compass-kpi/AGENTS.md`
+- `/Users/jon/compass-kpi/architecture/ARCHITECTURE.md`
+- `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/FOURTH_REASON_INTEGRATION_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/backend/src/index.ts` (read-only contract/handler inspection)
+
+#### Constraints (Hard)
+- Docs/planning + code inspection only (no backend or schema edits)
+- No net-new endpoint families presented as approved
+- Preserve challenge participation/results ownership boundary
+- Preserve authoring vs entitlement vs runtime delivery separation
+- Any structural API/schema proposal must be marked `decision needed` and call out `DECISIONS_LOG.md` requirement for implementation phase
+
+#### Deliverables (Large Swath, Docs-First)
+1. Endpoint-family coverage map for required runtime packaging/entitlement outputs (by in-scope surfaces)
+2. Read-model output requirement matrix (planning-level)
+3. Gap classification (`in-family extension` vs `net-new family/schema need`)
+4. `decision needed` list with impact/risk notes
+5. Follow-on implementation assignment specs:
+   - one backend-prep implementation swath (if justified)
+   - one runtime UI follow-up swath (if justified)
+
+#### Validation (Required)
+- No backend/schema/app code files changed
+- Coverage map references current documented contracts and/or existing handlers only
+- `decision needed` items are explicit and not silently converted into implementation assumptions
+
+#### Report-Back Format (Required)
+- First update this board status + completion/blocker notes
+- `Program status`
+- `Persona(s) affected`
+- `Endpoint-family coverage map summary`
+- `Read-model output requirements`
+- `Gap classification`
+- `Open decisions / risks`
+- `Files touched`
+- `Commit hash(es)`
+
+#### Worker Launch (Short Form)
+`Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-BACKEND-PREP-PACKAGE-READMODEL-A exactly as written. Follow the assignment block, validation requirements, and report-back format. Update the board status/blocker/completion notes first, then send a brief report back.`
+
 
 ## Controller Review Checklist (Reference)
 - Sprint scope alignment (`CURRENT_SPRINT.md`) and explicit exception approval if applicable
