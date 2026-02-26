@@ -50,7 +50,7 @@ Only use long custom prompts when the board is missing required details or a one
 
 | ID | Status | Program status | Persona | Flow | Screens in scope | Owner | Branch / Worktree | Figma refs | Deliverable |
 |---|---|---|---|---|---|---|---|---|---|
-| `TEAM-MEMBER-PARITY-A` | `active` | `M3/M3b + approved M5 overlap` | `Team Member` | `team + challenge participation` | `Team Dashboard (member perspective)`, `Team Challenges`, `Challenge List`, `Challenge Details`, `Challenge Leaderboard / Results` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (recommend dedicated worktree) | `389-19791`, `389-21273`, `168-16436`, `173-13190`, `388-11502` | Large-swatch Team Member participation parity + wiring pass (role-appropriate CTA cleanup, member-view modules, team/challenge cross-surface consistency, docs status updates) |
+| `TEAM-MEMBER-PARITY-A` | `review` | `M3/M3b + approved M5 overlap` | `Team Member` | `team + challenge participation` | `Team Dashboard (member perspective)`, `Team Challenges`, `Challenge List`, `Challenge Details`, `Challenge Leaderboard / Results` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (recommend dedicated worktree) | `389-19791`, `389-21273`, `168-16436`, `173-13190`, `388-11502` | Large-swatch Team Member participation parity + wiring pass (role-appropriate CTA cleanup, member-view modules, team/challenge cross-surface consistency, docs status updates) |
 | `COACHING-INTEGRATION-A` | `active` | `M3/M3b baseline + approved M6 planning overlap (docs-only)` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` | host surfaces across `Home`, `Challenge`, `Team`, `Profile` + future `Inbox/Journeys` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven (`COACHING_*` docs + intended wiring docs) | Large-swatch coaching integration allocation + wiring planning package (manual/non-Figma) with implementation-ready assignment specs for next coding wave |
 
 ## Blocked Assignments
@@ -90,7 +90,7 @@ Every worker report should include:
 ### `TEAM-MEMBER-PARITY-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `M3/M3b + approved M5 overlap`
 - `Persona:` `Team Member`
 - `Flow:` `team + challenge participation`
@@ -98,6 +98,8 @@ Every worker report should include:
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated worktree preferred)
 - `Worker note (2026-02-26):` Figma export blocker resolved. Canonical exports for all five in-scope Team Member/Challenge screens verified in `design/figma/exports/screens/`. Implementation pass in progress.
 - `Worker note (2026-02-26, handoff pickup):` TEAM-MEMBER-PARITY-A execution resumed on `codex/a2-admin-list-usability-pass`; worker owns `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` for this pass and will preserve shared KPI logging mechanics + Home/Priority lock.
+- `Worker completion note (2026-02-26):` Team Member participation parity + wiring pass implemented in `KPIDashboardScreen.tsx`; runtime screenshots captured for all five in-scope screens and `tsc` passed. Assignment remains `review` pending controller approval/commit verification.
+- `Worker note (2026-02-26, returned for review):` Tightened Team Member participation parity in `KPIDashboardScreen.tsx` with member challenge list segmentation + create chooser modal (Figma `168-16436` / `173-13190` alignment), Team Challenges member CTA cleanup (`389-21273`), and member route metadata/wiring polish. `cd app && npx tsc --noEmit --pretty false` passed. Runtime screenshots + route walkthrough capture still pending controller/device validation.
 
 #### Screens In Scope (Large Swath)
 1. `Team Dashboard (member perspective)`
@@ -201,6 +203,7 @@ If screen availability/wiring/status changes, update BOTH in the same change set
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; dedicated worktree preferred)
 - `Controller note (2026-02-26):` Activated in parallel with `TEAM-MEMBER-PARITY-A` because it is docs-only and does not touch mobile app code.
 - `Approval note (2026-02-26):` User explicitly approved coaching planning integration and requested minimal chat handoff via assignment board.
+- `Worker note (2026-02-26, Coach-1 execution start):` Board status/blocker check complete; executing docs-only planning package now (`matrix`, `coaching wiring addendum`, `intended wiring`, `persona screenmap`) and will add next-wave assignment specs before returning for review.
 
 #### Surfaces In Scope (Large Swath)
 1. `Home / Priority` (coaching nudge allocation only; no UI implementation)

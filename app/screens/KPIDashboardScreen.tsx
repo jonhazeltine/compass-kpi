@@ -129,6 +129,7 @@ type ViewMode = 'home' | 'log';
 type BottomTab = 'home' | 'challenge' | 'newkpi' | 'team' | 'user';
 type DrawerFilter = 'Quick' | 'PC' | 'GP' | 'VP';
 type HomePanel = 'Quick' | 'PC' | 'GP' | 'VP';
+type ChallengeMemberListTab = 'all' | 'completed';
 type KpiTileContextBadge = 'CH' | 'TM' | 'TC' | 'REQ';
 type KpiTileContextMeta = {
   badges: KpiTileContextBadge[];
@@ -1378,6 +1379,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [activeTab, setActiveTab] = useState<BottomTab>('home');
   const [challengeFlowScreen, setChallengeFlowScreen] = useState<'list' | 'details' | 'leaderboard'>('list');
   const [challengeListFilter, setChallengeListFilter] = useState<ChallengeListFilter>('all');
+  const [challengeMemberListTab, setChallengeMemberListTab] = useState<ChallengeMemberListTab>('all');
   const [challengeSelectedId, setChallengeSelectedId] = useState<string>('challenge-30-day-listing');
   const [challengeApiRows, setChallengeApiRows] = useState<ChallengeApiRow[] | null>(null);
   const [challengeApiFetchError, setChallengeApiFetchError] = useState<string | null>(null);
@@ -1385,6 +1387,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [challengeLeaveSubmittingId, setChallengeLeaveSubmittingId] = useState<string | null>(null);
   const [challengeJoinError, setChallengeJoinError] = useState<string | null>(null);
   const [challengeLeaveError, setChallengeLeaveError] = useState<string | null>(null);
+  const [challengeMemberCreateModalVisible, setChallengeMemberCreateModalVisible] = useState(false);
+  const [challengeMemberCreateMode, setChallengeMemberCreateMode] = useState<'public' | 'team'>('team');
   const [teamFlowScreen, setTeamFlowScreen] = useState<TeamFlowScreen>('dashboard');
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
@@ -3941,6 +3945,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   }, [allSelectableKpis, managedKpiIds]);
 
   const sessionUserMeta = (session?.user?.user_metadata ?? {}) as Record<string, unknown>;
+  const sessionAppMeta = (session?.user?.app_metadata ?? {}) as Record<string, unknown>;
   const estAveragePricePoint = Number(sessionUserMeta.average_price_point ?? 300000) || 300000;
   const estCommissionRatePct = Number(sessionUserMeta.commission_rate_percent ?? 3) || 3;
   const estCommissionRate = estCommissionRatePct / 100;
@@ -4502,6 +4507,27 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     () => challengeListItems.filter((item) => challengeListFilterMatches(item, challengeListFilter)),
     [challengeListItems, challengeListFilter]
   );
+  const teamPersonaVariant = useMemo<'leader' | 'member'>(() => {
+    const roleCandidates = [
+      sessionUserMeta.team_role,
+      sessionUserMeta.role,
+      sessionAppMeta.team_role,
+      sessionAppMeta.role,
+    ]
+      .map((v) => String(v ?? '').toLowerCase())
+      .filter(Boolean);
+    if (roleCandidates.some((r) => r.includes('lead') || r.includes('manager'))) return 'leader';
+    if (roleCandidates.some((r) => r.includes('member'))) return 'member';
+    // TEAM-MEMBER-PARITY-A default: prefer member preview when role is absent.
+    return 'member';
+  }, [sessionAppMeta.role, sessionAppMeta.team_role, sessionUserMeta.role, sessionUserMeta.team_role]);
+  const challengeMemberListItems = useMemo(
+    () =>
+      challengeListItems.filter((item) =>
+        challengeMemberListTab === 'all' ? true : item.bucket === 'completed'
+      ),
+    [challengeListItems, challengeMemberListTab]
+  );
   const challengeSelected =
     challengeListItems.find((item) => item.id === challengeSelectedId) ?? challengeListItems[0];
   const challengeIsCompleted = challengeSelected?.bucket === 'completed';
@@ -4519,7 +4545,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   }, [challengeSelected]);
   const challengeLeaderboardHasLowEntry = challengeLeaderboardRowsForScreen.length > 0 && challengeLeaderboardRowsForScreen.length < 3;
   const challengeListUsingPlaceholderRows = !Array.isArray(challengeApiRows) || challengeApiRows.length === 0;
-  const challengeDetailsSurfaceLabel = challengeIsCompleted ? 'Challenge Results' : 'Challenge Details';
+  const challengeDetailsSurfaceLabel =
+    teamPersonaVariant === 'member'
+      ? challengeIsCompleted
+        ? 'Challenge Results'
+        : 'Challenge Details'
+      : challengeIsCompleted
+        ? 'Challenge Results'
+        : 'Challenge Details';
   const challengeMembershipStateLabel = challengeIsCompleted
     ? challengeSelected?.joined
       ? 'Completed participation'
@@ -4546,7 +4579,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         ? 'Placeholder challenge preview only. Join is available on live challenge rows.'
         : challengeSelected?.bucket === 'upcoming'
           ? 'Join now to be ready when this challenge starts.'
-          : 'Join to track progress and appear on the leaderboard.';
+        : 'Join to track progress and appear on the leaderboard.';
+  const challengeMemberResultsRequiresUpgrade =
+    teamPersonaVariant === 'member' && challengeIsCompleted && !challengeSelected?.joined;
 
   if (state === 'loading') {
     return (
@@ -4591,13 +4626,59 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   <View style={styles.challengeListHeaderRow}>
                     <Text style={styles.challengeListTitle}>Challenges</Text>
                     <TouchableOpacity
-                      style={[styles.challengeListCreateBtn, styles.disabled]}
-                      disabled
+                      style={[
+                        styles.challengeListCreateBtn,
+                        teamPersonaVariant === 'member' ? undefined : styles.disabled,
+                      ]}
+                      disabled={teamPersonaVariant !== 'member'}
+                      onPress={() => {
+                        if (teamPersonaVariant !== 'member') return;
+                        setChallengeMemberCreateMode('team');
+                        setChallengeMemberCreateModalVisible(true);
+                      }}
                     >
-                      <Text style={styles.challengeListCreateBtnText}>Create (Soon)</Text>
+                      <Text style={styles.challengeListCreateBtnText}>
+                        {teamPersonaVariant === 'member' ? 'Create ⊕' : 'Create (Soon)'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
-                  <Text style={styles.challengeListSub}>See active challenges and jump into challenge progress details.</Text>
+                  <Text style={styles.challengeListSub}>
+                    {teamPersonaVariant === 'member'
+                      ? 'Browse active and completed challenges for participation progress.'
+                      : 'See active challenges and jump into challenge progress details.'}
+                  </Text>
+                  {teamPersonaVariant === 'member' ? (
+                    <>
+                      <View style={styles.challengeMemberSearchGhost}>
+                        <Text style={styles.challengeMemberSearchGhostIcon}>⌕</Text>
+                        <Text style={styles.challengeMemberSearchGhostText}>Search challenges..</Text>
+                      </View>
+                      <View style={styles.challengeMemberSegmentRow}>
+                        {([
+                          { key: 'all', label: 'ALL' },
+                          { key: 'completed', label: 'Completed' },
+                        ] as const).map((tab) => {
+                          const active = challengeMemberListTab === tab.key;
+                          return (
+                            <TouchableOpacity
+                              key={`challenge-member-tab-${tab.key}`}
+                              style={[styles.challengeMemberSegmentPill, active && styles.challengeMemberSegmentPillActive]}
+                              onPress={() => setChallengeMemberListTab(tab.key)}
+                            >
+                              <Text
+                                style={[
+                                  styles.challengeMemberSegmentPillText,
+                                  active && styles.challengeMemberSegmentPillTextActive,
+                                ]}
+                              >
+                                {tab.label}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </>
+                  ) : null}
                   {challengeApiFetchError ? (
                     <Text style={styles.challengeListFallbackHint}>
                       Using placeholder challenge cards because `GET /challenges` failed. Pull to refresh to retry live challenge rows.
@@ -4608,6 +4689,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     </Text>
                   ) : null}
 
+                  {teamPersonaVariant !== 'member' ? (
                   <View style={styles.challengeListFilterRow}>
                     {([
                       { key: 'all', label: 'All' },
@@ -4628,14 +4710,66 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       );
                     })}
                   </View>
-                  {challengeListFilter === 'sponsored' && !challengeHasSponsorSignal ? (
+                  ) : null}
+                  {teamPersonaVariant !== 'member' && challengeListFilter === 'sponsored' && !challengeHasSponsorSignal ? (
                     <Text style={styles.challengeListFallbackHint}>
                       Sponsored filter is active. This payload does not yet expose sponsor flags, so only locally tagged sponsored rows can appear.
                     </Text>
                   ) : null}
 
                   <View style={styles.challengeListCardStack}>
-                    {(['active', 'upcoming', 'completed'] as const).map((bucket) => {
+                    {teamPersonaVariant === 'member'
+                      ? challengeMemberListItems.map((item) => (
+                          <TouchableOpacity
+                            key={item.id}
+                            style={styles.challengeMemberListCard}
+                            onPress={() => {
+                              setChallengeSelectedId(item.id);
+                              setChallengeFlowScreen('details');
+                            }}
+                          >
+                            <View style={styles.challengeListItemTopRow}>
+                              <Text numberOfLines={2} style={styles.challengeMemberListCardTitle}>{item.title}</Text>
+                              <View
+                                style={[
+                                  styles.challengeListStatusPill,
+                                  item.bucket === 'completed'
+                                    ? styles.challengeListStatusCompleted
+                                    : styles.challengeListStatusActive,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.challengeListStatusPillText,
+                                    item.bucket === 'completed'
+                                      ? styles.challengeListStatusCompletedText
+                                      : styles.challengeListStatusActiveText,
+                                  ]}
+                                >
+                                  {item.bucket === 'completed' ? 'Completed' : 'Active'}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text numberOfLines={2} style={styles.challengeMemberListCardSub}>
+                              {item.subtitle}
+                            </Text>
+                            <View style={styles.challengeMemberListCardMeta}>
+                              <Text style={styles.challengeMemberListMetaStrong}>{item.timeframe}</Text>
+                              <Text style={styles.challengeListItemMetaText}>{item.daysLabel}</Text>
+                            </View>
+                            <View style={styles.teamChallengesProgressTrack}>
+                              <View
+                                style={[
+                                  styles.teamChallengesProgressFill,
+                                  item.progressPct < 40 && styles.teamChallengesProgressFillYellow,
+                                  { width: `${Math.max(2, item.progressPct)}%` },
+                                ]}
+                              />
+                            </View>
+                            <Text style={styles.challengeMemberListProgressText}>Progress: {item.progressPct}%</Text>
+                          </TouchableOpacity>
+                        ))
+                      : (['active', 'upcoming', 'completed'] as const).map((bucket) => {
                       const rows = challengeFilteredListItems.filter((item) => item.bucket === bucket);
                       if (rows.length === 0) return null;
                       return (
@@ -4707,11 +4841,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </View>
                       );
                     })}
-                    {challengeFilteredListItems.length === 0 ? (
+                    {(teamPersonaVariant === 'member' ? challengeMemberListItems.length === 0 : challengeFilteredListItems.length === 0) ? (
                       <View style={styles.challengeListEmptyFilterCard}>
                         <Text style={styles.challengeListEmptyFilterTitle}>No challenges match this filter</Text>
                         <Text style={styles.challengeListEmptyFilterSub}>
-                          {challengeListFilter === 'sponsored'
+                          {teamPersonaVariant === 'member'
+                            ? challengeMemberListTab === 'completed'
+                              ? 'No completed challenges are available for this account yet.'
+                              : 'No challenge cards are available yet.'
+                            : challengeListFilter === 'sponsored'
                             ? 'Try All or Team. Sponsor flags are limited unless the challenge payload includes sponsor metadata.'
                             : challengeListFilter === 'team'
                               ? 'No team-mode challenges match right now.'
@@ -4719,7 +4857,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 ? 'No placeholder challenge cards are available for this filter.'
                                 : 'No live challenges are available for this filter right now.'}
                         </Text>
-                        {challengeListFilter !== 'all' ? (
+                        {teamPersonaVariant !== 'member' && challengeListFilter !== 'all' ? (
                           <TouchableOpacity
                             style={styles.challengeListEmptyFilterBtn}
                             onPress={() => setChallengeListFilter('all')}
@@ -4731,6 +4869,71 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
                   </View>
                 </View>
+                {teamPersonaVariant === 'member' ? (
+                  <Modal
+                    visible={challengeMemberCreateModalVisible}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setChallengeMemberCreateModalVisible(false)}
+                  >
+                    <Pressable
+                      style={styles.challengeMemberCreateModalBackdrop}
+                      onPress={() => setChallengeMemberCreateModalVisible(false)}
+                    >
+                      <Pressable style={styles.challengeMemberCreateModalCard} onPress={() => {}}>
+                        <Text style={styles.challengeMemberCreateModalTitle}>Create New Challenge</Text>
+                        <View style={styles.challengeMemberCreateModeGrid}>
+                          {([
+                            { key: 'public', label: 'Public Challenge', icon: '👜' },
+                            { key: 'team', label: 'Team Challenge', icon: '👥' },
+                          ] as const).map((option) => {
+                            const active = challengeMemberCreateMode === option.key;
+                            return (
+                              <TouchableOpacity
+                                key={option.key}
+                                style={[
+                                  styles.challengeMemberCreateModeCard,
+                                  active && styles.challengeMemberCreateModeCardActive,
+                                ]}
+                                onPress={() => setChallengeMemberCreateMode(option.key)}
+                              >
+                                <Text style={styles.challengeMemberCreateModeIcon}>{option.icon}</Text>
+                                <Text
+                                  style={[
+                                    styles.challengeMemberCreateModeLabel,
+                                    active && styles.challengeMemberCreateModeLabelActive,
+                                  ]}
+                                >
+                                  {option.label}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                        <TouchableOpacity
+                          style={styles.challengeMemberCreateContinueBtn}
+                          onPress={() => {
+                            setChallengeMemberCreateModalVisible(false);
+                            if (challengeMemberCreateMode === 'team') {
+                              const completedOrTeam =
+                                challengeListItems.find((item) => item.bucket === 'completed') ??
+                                challengeListItems.find((item) => item.challengeModeLabel === 'Team') ??
+                                challengeListItems[0];
+                              if (completedOrTeam) setChallengeSelectedId(completedOrTeam.id);
+                              setChallengeFlowScreen('leaderboard');
+                              return;
+                            }
+                            const preferred = challengeListItems[0];
+                            if (preferred) setChallengeSelectedId(preferred.id);
+                            setChallengeFlowScreen('details');
+                          }}
+                        >
+                          <Text style={styles.challengeMemberCreateContinueBtnText}>Continue</Text>
+                        </TouchableOpacity>
+                      </Pressable>
+                    </Pressable>
+                  </Modal>
+                ) : null}
               </>
             ) : challengeFlowScreen === 'leaderboard' ? (
               <View style={styles.challengeDetailsShell}>
@@ -4741,10 +4944,65 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   >
                     <Text style={styles.challengeDetailsIconBtnText}>‹</Text>
                   </TouchableOpacity>
-                  <Text style={styles.challengeDetailsNavTitle}>Leaderboard</Text>
+                  <Text style={styles.challengeDetailsNavTitle}>
+                    {challengeIsCompleted ? 'Results' : 'Leaderboard'}
+                  </Text>
                   <View style={styles.challengeDetailsNavSpacer} />
                 </View>
 
+                {challengeMemberResultsRequiresUpgrade ? (
+                  <View style={styles.challengeMemberUpgradeShell}>
+                    <View style={styles.challengeMemberUpgradeHeroIcon}>
+                      <Text style={styles.challengeMemberUpgradeHeroIconText}>👑</Text>
+                    </View>
+                    <Text style={styles.challengeMemberUpgradeTitle}>This Feature Is for Pro Users</Text>
+                    <Text style={styles.challengeMemberUpgradeSub}>
+                      This challenge is part of our Pro plan. Upgrade now to join exclusive challenges, unlock premium KPIs, and boost your performance tracking.
+                    </Text>
+                    <View style={styles.challengeMemberUpgradeChallengeCard}>
+                      <View style={styles.challengeMemberUpgradeChallengeIcon}>
+                        <Text style={styles.challengeMemberUpgradeChallengeIconText}>🏆</Text>
+                      </View>
+                      <View style={styles.challengeMemberUpgradeChallengeCopy}>
+                        <Text style={styles.challengeMemberUpgradeChallengeTitle}>{challengeSelected.title}</Text>
+                        <Text style={styles.challengeMemberUpgradeChallengeSub}>Monthly Target</Text>
+                        <Text style={styles.challengeMemberUpgradeChallengeGoal}>
+                          Goal: {challengeSelected.targetValueLabel} · {challengeSelected.participants} participants
+                        </Text>
+                      </View>
+                      <Text style={styles.challengeMemberUpgradeLock}>🔒</Text>
+                    </View>
+                    <Text style={styles.challengeMemberUpgradeSectionLabel}>What You Get With Pro</Text>
+                    <View style={styles.challengeMemberUpgradeBenefits}>
+                      {[
+                        ['✨', 'Access to All KPI Tracking Features', 'Track unlimited KPIs and get detailed analytics'],
+                        ['🏆', 'Join Unlimited Challenges', 'Participate in exclusive team and individual challenges'],
+                        ['🎯', 'Custom Goal Setting', 'Set personalized targets and milestones'],
+                        ['👥', 'Team Performance Tools', 'Collaborate and compete with your team'],
+                        ['❓', 'Priority Support', 'Get help when you need it most'],
+                      ].map(([icon, title, sub]) => (
+                        <View key={title} style={styles.challengeMemberUpgradeBenefitCard}>
+                          <View style={styles.challengeMemberUpgradeBenefitIcon}>
+                            <Text style={styles.challengeMemberUpgradeBenefitIconText}>{icon}</Text>
+                          </View>
+                          <View style={styles.challengeMemberUpgradeBenefitCopy}>
+                            <Text style={styles.challengeMemberUpgradeBenefitTitle}>{title}</Text>
+                            <Text style={styles.challengeMemberUpgradeBenefitSub}>{sub}</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                    <TouchableOpacity style={styles.challengeMemberUpgradePrimaryBtn}>
+                      <Text style={styles.challengeMemberUpgradePrimaryBtnText}>Upgrade to Pro</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.challengeMemberUpgradeSecondaryBtn}
+                      onPress={() => setChallengeFlowScreen('details')}
+                    >
+                      <Text style={styles.challengeMemberUpgradeSecondaryBtnText}>May Be Later</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
                 <View style={styles.challengeLeaderboardScreenCard}>
                   <Text style={styles.challengeLeaderboardScreenTitle}>{challengeSelected.title}</Text>
                   <Text style={styles.challengeLeaderboardScreenSub}>
@@ -4807,6 +5065,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     </View>
                   )}
                 </View>
+                )}
               </View>
             ) : (
               <>
@@ -5149,10 +5408,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             {(() => {
               const teamRouteMeta: Record<Exclude<TeamFlowScreen, 'dashboard'>, { title: string; figmaNode: string }> = {
                 invite_member: { title: 'Invite Member', figmaNode: '173-4448' },
-                pending_invitations: { title: 'Pending Invitations', figmaNode: '173-4612' },
-                kpi_settings: { title: 'Team KPI Settings', figmaNode: '173-4531' },
+                pending_invitations: { title: teamPersonaVariant === 'member' ? 'Pending Invites' : 'Pending Invitations', figmaNode: '173-4612' },
+                kpi_settings: { title: teamPersonaVariant === 'member' ? 'Team KPI Setting' : 'Team KPI Settings', figmaNode: '173-4531' },
                 pipeline: { title: 'Pipeline', figmaNode: '168-16300' },
-                team_challenges: { title: 'Single Person Challenges', figmaNode: '173-4905' },
+                team_challenges: {
+                  title: teamPersonaVariant === 'member' ? 'Team Challenges' : 'Single Person Challenges',
+                  figmaNode: teamPersonaVariant === 'member' ? '389-21273' : '173-4905',
+                },
               };
 
               const teamMembers = [
@@ -5196,6 +5458,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 { title: '30 Day Listing Challenge', started: 'Started Oct 15, 2025', due: 'Till Nov 30, 2025', daysLeft: '12 days left', progress: 60, tone: 'green' },
                 { title: '30 Day Listing Challenge', started: 'Started Oct 15, 2025', due: 'Till Nov 30, 2025', daysLeft: '12 days left', progress: 35, tone: 'yellow' },
               ] as const;
+              const openChallengeFlowFromTeam = (mode: 'list' | 'details' | 'leaderboard' = 'details') => {
+                const preferred = challengeListItems.find((item) => item.challengeModeLabel === 'Team') ?? challengeListItems[0];
+                if (preferred) setChallengeSelectedId(preferred.id);
+                setChallengeFlowScreen(mode);
+                setActiveTab('challenge');
+              };
 
               const teamLoggingBlock = (
                 <View style={styles.challengeSectionsWrap}>
@@ -5459,9 +5727,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             </View>
                             <Text style={styles.teamChallengesUpcomingDate}>Nov 8</Text>
                           </View>
-                          <TouchableOpacity style={styles.teamChallengesCreateBtn} onPress={() => setTeamFlowScreen('invite_member')}>
-                            <Text style={styles.teamChallengesCreateBtnText}>Create ⊕</Text>
-                          </TouchableOpacity>
+                          {teamPersonaVariant !== 'member' ? (
+                            <TouchableOpacity
+                              style={styles.teamChallengesCreateBtn}
+                              onPress={() => setTeamFlowScreen('invite_member')}
+                            >
+                              <Text style={styles.teamChallengesCreateBtnText}>Create ⊕</Text>
+                            </TouchableOpacity>
+                          ) : null}
                         </View>
                         <View style={styles.teamChallengesStatsRow}>
                           <View style={[styles.teamChallengesStatCard, styles.teamParityStatCardGreen]}>
@@ -5485,7 +5758,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </View>
                         <View style={styles.teamRouteStack}>
                           {teamChallengeRows.map((row) => (
-                            <TouchableOpacity key={`${row.title}-${row.progress}`} style={styles.teamChallengesCard}>
+                            <TouchableOpacity
+                              key={`${row.title}-${row.progress}`}
+                              style={styles.teamChallengesCard}
+                              onPress={() => openChallengeFlowFromTeam('details')}
+                            >
                               <View style={styles.teamChallengesCardTopRow}>
                                 <View style={styles.teamRouteCardRowCopy}>
                                   <Text style={styles.teamRouteCardRowTitle}>{row.title}</Text>
@@ -5524,6 +5801,86 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
               return (
                 <>
+                  {teamPersonaVariant === 'member' ? (
+                    <View style={styles.teamMemberDashboardWrap}>
+                      <Text style={styles.teamMemberDashTitle}>Team</Text>
+
+                      <View style={styles.teamMemberGroupCard}>
+                        <View style={styles.teamMemberGroupRow}>
+                          <View style={styles.teamMemberGroupIcon}>
+                            <Text style={styles.teamMemberGroupIconText}>👥</Text>
+                          </View>
+                          <View style={styles.teamMemberGroupCopy}>
+                            <Text style={styles.teamMemberGroupName}>The Elite Group</Text>
+                            <Text style={styles.teamMemberGroupSub}>3 Members | 2 Ongoing challenges</Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity style={styles.teamMemberInviteBtn} onPress={() => setTeamFlowScreen('invite_member')}>
+                          <Text style={styles.teamMemberInviteBtnText}>⊕ Invite Member</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <TouchableOpacity
+                        style={styles.teamMemberPerformanceCard}
+                        activeOpacity={0.92}
+                        onPress={() => setTeamFlowScreen('pipeline')}
+                      >
+                        <View style={styles.teamMemberPerformanceIcon}>
+                          <Text style={styles.teamMemberPerformanceIconText}>⚙️</Text>
+                        </View>
+                        <View style={styles.teamMemberPerformanceCopy}>
+                          <Text style={styles.teamMemberPerformanceTitle}>Performance on Top</Text>
+                          <Text style={styles.teamMemberPerformanceSub}>Check Team Perfomance</Text>
+                        </View>
+                        <Text style={styles.teamMemberPerformanceValue}>80%</Text>
+                      </TouchableOpacity>
+
+                      <Text style={styles.teamMemberSectionLabel}>Team Members</Text>
+                      <View style={styles.teamMemberRowsCard}>
+                        {[
+                          { name: 'Sarah Johnson', role: 'Team Lead', tone: '#e8dfcc' },
+                          { name: 'Alex Rodriguez', role: 'Member', tone: '#f1cb66' },
+                          { name: 'James Matew', role: 'Team Lead', tone: '#dfc2a4' },
+                        ].map((member, idx) => (
+                          <TouchableOpacity
+                            key={member.name}
+                            style={[styles.teamMemberRow, idx > 0 && styles.teamParityDividerTop]}
+                            activeOpacity={0.92}
+                            onPress={() => setTeamFlowScreen('team_challenges')}
+                          >
+                            <View style={[styles.teamMemberRowAvatar, { backgroundColor: member.tone }]}>
+                              <Text style={styles.teamMemberRowAvatarText}>
+                                {member.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}
+                              </Text>
+                            </View>
+                            <View style={styles.teamMemberRowCopy}>
+                              <Text style={styles.teamMemberRowName}>{member.name}</Text>
+                              <Text style={styles.teamMemberRowSub}>{member.role}</Text>
+                            </View>
+                            <Text style={styles.teamMemberRowMenu}>⋮</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      <View style={styles.teamMemberFooterButtonsRow}>
+                        <TouchableOpacity
+                          style={[styles.teamMemberFooterBtn, styles.teamMemberFooterBtnPrimary]}
+                          onPress={() => setTeamFlowScreen('pending_invitations')}
+                        >
+                          <Text style={styles.teamMemberFooterBtnTextPrimary}>Pending Invites</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.teamMemberFooterBtn, styles.teamMemberFooterBtnDark]}
+                          onPress={() => setTeamFlowScreen('kpi_settings')}
+                        >
+                          <Text style={styles.teamMemberFooterBtnTextDark}>Team KPI Setting</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <TouchableOpacity style={styles.teamMemberViewChallengesBtn} onPress={() => setTeamFlowScreen('team_challenges')}>
+                        <Text style={styles.teamMemberViewChallengesBtnText}>View Team Challenges</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
                   <View style={styles.teamParityDashboardWrap}>
                     <View style={styles.teamParityNavRow}>
                       <TouchableOpacity style={styles.teamParityBackBtn}>
@@ -5672,6 +6029,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </TouchableOpacity>
                     </View>
                   </View>
+                  )}
 
                   {teamLoggingBlock}
                 </>
@@ -6522,6 +6880,51 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
+  challengeMemberSearchGhost: {
+    marginTop: 8,
+    borderRadius: 10,
+    backgroundColor: '#eef0f4',
+    height: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  challengeMemberSearchGhostIcon: {
+    color: '#a3acb9',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  challengeMemberSearchGhostText: {
+    color: '#a3acb9',
+    fontSize: 12,
+  },
+  challengeMemberSegmentRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    backgroundColor: '#eceff4',
+    borderRadius: 999,
+    padding: 3,
+    gap: 4,
+  },
+  challengeMemberSegmentPill: {
+    flex: 1,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  challengeMemberSegmentPillActive: {
+    backgroundColor: '#1f5fe2',
+  },
+  challengeMemberSegmentPillText: {
+    color: '#485467',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  challengeMemberSegmentPillTextActive: {
+    color: '#fff',
+  },
   challengeListFallbackHint: {
     color: '#8b5f14',
     fontSize: 10,
@@ -6553,6 +6956,111 @@ const styles = StyleSheet.create({
   },
   challengeListCardStack: {
     gap: 10,
+  },
+  challengeMemberListCard: {
+    borderRadius: 10,
+    backgroundColor: '#eef0f4',
+    padding: 12,
+    gap: 8,
+  },
+  challengeMemberListCardTitle: {
+    flex: 1,
+    color: '#3d4655',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  challengeMemberListCardSub: {
+    color: '#7d8797',
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: -2,
+  },
+  challengeMemberListCardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  challengeMemberListMetaStrong: {
+    color: '#454e5f',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  challengeMemberListProgressText: {
+    color: '#8d97a6',
+    fontSize: 11,
+  },
+  challengeMemberCreateModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.22)',
+    justifyContent: 'flex-end',
+    padding: 10,
+  },
+  challengeMemberCreateModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e3eaf5',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 14,
+    gap: 12,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.1,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  challengeMemberCreateModalTitle: {
+    color: '#2f3442',
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  challengeMemberCreateModeGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  challengeMemberCreateModeCard: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e4e8ef',
+    backgroundColor: '#fafbff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    gap: 8,
+  },
+  challengeMemberCreateModeCardActive: {
+    backgroundColor: '#eef0f7',
+    borderColor: '#d5dbe8',
+  },
+  challengeMemberCreateModeIcon: {
+    fontSize: 24,
+    lineHeight: 28,
+  },
+  challengeMemberCreateModeLabel: {
+    color: '#2f3442',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  challengeMemberCreateModeLabelActive: {
+    color: '#23283a',
+  },
+  challengeMemberCreateContinueBtn: {
+    borderRadius: 10,
+    backgroundColor: '#474a6f',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  challengeMemberCreateContinueBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
   },
   challengeListBucket: {
     gap: 8,
@@ -7149,6 +7657,142 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     gap: 4,
   },
+  challengeMemberUpgradeShell: {
+    gap: 12,
+    paddingTop: 2,
+  },
+  challengeMemberUpgradeHeroIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  challengeMemberUpgradeHeroIconText: {
+    fontSize: 40,
+  },
+  challengeMemberUpgradeTitle: {
+    color: '#2f3442',
+    fontSize: 22,
+    lineHeight: 26,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  challengeMemberUpgradeSub: {
+    color: '#7f8998',
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+  challengeMemberUpgradeChallengeCard: {
+    borderRadius: 12,
+    backgroundColor: '#eef0f4',
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  challengeMemberUpgradeChallengeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#1f5fe2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  challengeMemberUpgradeChallengeIconText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  challengeMemberUpgradeChallengeCopy: {
+    flex: 1,
+    gap: 1,
+  },
+  challengeMemberUpgradeChallengeTitle: {
+    color: '#36404f',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  challengeMemberUpgradeChallengeSub: {
+    color: '#8a93a3',
+    fontSize: 11,
+  },
+  challengeMemberUpgradeChallengeGoal: {
+    color: '#576274',
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  challengeMemberUpgradeLock: {
+    fontSize: 14,
+  },
+  challengeMemberUpgradeSectionLabel: {
+    color: '#6a7381',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginTop: 2,
+  },
+  challengeMemberUpgradeBenefits: {
+    gap: 8,
+  },
+  challengeMemberUpgradeBenefitCard: {
+    borderRadius: 10,
+    backgroundColor: '#eef0f4',
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  challengeMemberUpgradeBenefitIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#a7df5f',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  challengeMemberUpgradeBenefitIconText: {
+    fontSize: 14,
+  },
+  challengeMemberUpgradeBenefitCopy: {
+    flex: 1,
+  },
+  challengeMemberUpgradeBenefitTitle: {
+    color: '#384252',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  challengeMemberUpgradeBenefitSub: {
+    color: '#8a94a3',
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 1,
+  },
+  challengeMemberUpgradePrimaryBtn: {
+    borderRadius: 8,
+    backgroundColor: '#1f5fe2',
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  challengeMemberUpgradePrimaryBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  challengeMemberUpgradeSecondaryBtn: {
+    borderRadius: 8,
+    backgroundColor: '#343c49',
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  challengeMemberUpgradeSecondaryBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   challengeLeaderboardEmptyCard: {
     borderRadius: 12,
     borderWidth: 1,
@@ -7727,6 +8371,188 @@ const styles = StyleSheet.create({
   },
   teamParityDashboardWrap: {
     gap: 12,
+  },
+  teamMemberDashboardWrap: {
+    gap: 12,
+  },
+  teamMemberDashTitle: {
+    color: '#3a4250',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  teamMemberGroupCard: {
+    borderRadius: 12,
+    backgroundColor: '#eef0f4',
+    padding: 12,
+    gap: 10,
+  },
+  teamMemberGroupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  teamMemberGroupIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#a7df5f',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamMemberGroupIconText: {
+    fontSize: 15,
+  },
+  teamMemberGroupCopy: {
+    flex: 1,
+  },
+  teamMemberGroupName: {
+    color: '#3d4655',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  teamMemberGroupSub: {
+    color: '#818b9a',
+    fontSize: 11,
+    marginTop: 1,
+  },
+  teamMemberInviteBtn: {
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: '#5f6773',
+    borderRadius: 8,
+    backgroundColor: '#f7f8fb',
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+  },
+  teamMemberInviteBtnText: {
+    color: '#404958',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamMemberPerformanceCard: {
+    borderRadius: 10,
+    backgroundColor: '#f6efdb',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  teamMemberPerformanceIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#fff5db',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamMemberPerformanceIconText: {
+    fontSize: 13,
+  },
+  teamMemberPerformanceCopy: {
+    flex: 1,
+  },
+  teamMemberPerformanceTitle: {
+    color: '#3f4858',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  teamMemberPerformanceSub: {
+    color: '#7f8999',
+    fontSize: 11,
+    marginTop: 1,
+  },
+  teamMemberPerformanceValue: {
+    color: '#3c4452',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  teamMemberSectionLabel: {
+    color: '#444d5b',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  teamMemberRowsCard: {
+    borderRadius: 10,
+    backgroundColor: '#eef0f4',
+    overflow: 'hidden',
+  },
+  teamMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  teamMemberRowAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamMemberRowAvatarText: {
+    color: '#4b4f57',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  teamMemberRowCopy: {
+    flex: 1,
+  },
+  teamMemberRowName: {
+    color: '#3f4756',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  teamMemberRowSub: {
+    color: '#8b94a3',
+    fontSize: 11,
+    marginTop: 1,
+  },
+  teamMemberRowMenu: {
+    color: '#303746',
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: -2,
+  },
+  teamMemberFooterButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  teamMemberFooterBtn: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamMemberFooterBtnPrimary: {
+    backgroundColor: '#1f5fe2',
+  },
+  teamMemberFooterBtnDark: {
+    backgroundColor: '#343c49',
+  },
+  teamMemberFooterBtnTextPrimary: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamMemberFooterBtnTextDark: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamMemberViewChallengesBtn: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#707886',
+    backgroundColor: '#f8f9fb',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  teamMemberViewChallengesBtnText: {
+    color: '#404958',
+    fontSize: 12,
+    fontWeight: '700',
   },
   teamParityNavRow: {
     flexDirection: 'row',
