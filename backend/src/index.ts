@@ -223,6 +223,72 @@ type PackagingReadModel = {
   notes?: string[];
 };
 
+type AiSuggestionRow = {
+  id?: unknown;
+  user_id?: unknown;
+  scope?: unknown;
+  proposed_message?: unknown;
+  status?: unknown;
+  created_by?: unknown;
+  approved_by?: unknown;
+  rejected_by?: unknown;
+  created_at?: unknown;
+  updated_at?: unknown;
+  sent_at?: unknown;
+};
+
+type AiSuggestionQueueReadModel = {
+  source_surface:
+    | "channel_thread"
+    | "coach_broadcast_compose"
+    | "coaching_journey_detail"
+    | "coaching_lesson_detail"
+    | "challenge_coaching_block"
+    | "team_coaching_module"
+    | null;
+  source_context_refs: {
+    team_id: string | null;
+    challenge_id: string | null;
+    channel_id: string | null;
+    journey_id: string | null;
+    lesson_id: string | null;
+    package_id: string | null;
+  };
+  request_intent: "draft_reply" | "draft_broadcast" | "rewrite" | "reflection_prompt" | "unknown";
+  required_approval_tier: "admin";
+  disclaimer_requirements: string[];
+  safety_flags: string[];
+  target_scope_summary: string;
+  draft_content: string;
+  audit_summary: {
+    requester_user_id: string | null;
+    target_user_id: string | null;
+    reviewer_user_id: string | null;
+    review_decision: "pending" | "approved" | "rejected" | "unknown";
+    created_at: string | null;
+    updated_at: string | null;
+    decision_at: string | null;
+    linked_execution_refs: {
+      message_id: string | null;
+      broadcast_id: string | null;
+      publish_event_id: string | null;
+    };
+    edited_content_indicator: "unknown";
+    reviewer_reason_present: false;
+  };
+  approval_queue: {
+    queue_status: "pending_review" | "approved" | "rejected" | "unknown";
+    approval_authority_model: "platform_admin_only_current_baseline";
+    escalation_required: boolean;
+  };
+  model_meta: {
+    provider: null;
+    model_family: null;
+  };
+  read_model_status: "partial_in_family";
+  notes: string[];
+};
+
 function buildPackagingReadModel(
   partial: Partial<PackagingReadModel> & Pick<PackagingReadModel, "linked_context_refs">
 ): PackagingReadModel {
@@ -350,6 +416,132 @@ function packagingReadModelForSponsoredChallenge(row: {
       "linked coaching journey/channel refs are not present in current sponsored challenge payload baseline",
     ],
   });
+}
+
+function parseAiSuggestionScope(scopeRaw: string): Pick<
+  AiSuggestionQueueReadModel,
+  "source_surface" | "source_context_refs" | "request_intent" | "target_scope_summary" | "disclaimer_requirements" | "safety_flags"
+> {
+  const lower = scopeRaw.toLowerCase();
+  const sourceSurface: AiSuggestionQueueReadModel["source_surface"] = lower.includes("channel_thread")
+    ? "channel_thread"
+    : lower.includes("broadcast")
+      ? "coach_broadcast_compose"
+      : lower.includes("lesson")
+        ? "coaching_lesson_detail"
+        : lower.includes("journey")
+          ? "coaching_journey_detail"
+          : lower.includes("challenge")
+            ? "challenge_coaching_block"
+            : lower.includes("team")
+              ? "team_coaching_module"
+              : null;
+  const requestIntent: AiSuggestionQueueReadModel["request_intent"] = lower.includes("broadcast")
+    ? "draft_broadcast"
+    : lower.includes("rewrite")
+      ? "rewrite"
+      : lower.includes("reflection") || lower.includes("lesson")
+        ? "reflection_prompt"
+        : lower.includes("reply") || lower.includes("channel")
+          ? "draft_reply"
+          : "unknown";
+  const disclaimerRequirements: string[] = [];
+  if (lower.includes("sponsor")) {
+    disclaimerRequirements.push("sponsor_disclaimer_review");
+  }
+  if (lower.includes("broadcast") || lower.includes("challenge")) {
+    disclaimerRequirements.push("human_approval_required");
+  }
+  return {
+    source_surface: sourceSurface,
+    source_context_refs: {
+      team_id: null,
+      challenge_id: null,
+      channel_id: null,
+      journey_id: null,
+      lesson_id: null,
+      package_id: null,
+    },
+    request_intent: requestIntent,
+    target_scope_summary: scopeRaw,
+    disclaimer_requirements: disclaimerRequirements,
+    safety_flags: [],
+  };
+}
+
+function buildAiSuggestionQueueReadModel(row: AiSuggestionRow): AiSuggestionQueueReadModel {
+  const scopeRaw = String(row.scope ?? "");
+  const scopeParts = parseAiSuggestionScope(scopeRaw);
+  const statusRaw = String(row.status ?? "");
+  const queueStatus: AiSuggestionQueueReadModel["approval_queue"]["queue_status"] =
+    statusRaw === "pending" ? "pending_review" : statusRaw === "approved" ? "approved" : statusRaw === "rejected" ? "rejected" : "unknown";
+  const reviewDecision: AiSuggestionQueueReadModel["audit_summary"]["review_decision"] =
+    statusRaw === "pending" || statusRaw === "approved" || statusRaw === "rejected" ? (statusRaw as "pending" | "approved" | "rejected") : "unknown";
+  return {
+    ...scopeParts,
+    draft_content: String(row.proposed_message ?? ""),
+    required_approval_tier: "admin",
+    audit_summary: {
+      requester_user_id: String(row.created_by ?? "") || null,
+      target_user_id: String(row.user_id ?? "") || null,
+      reviewer_user_id: String(row.approved_by ?? row.rejected_by ?? "") || null,
+      review_decision: reviewDecision,
+      created_at: String(row.created_at ?? "") || null,
+      updated_at: String(row.updated_at ?? "") || null,
+      decision_at: String(row.sent_at ?? row.updated_at ?? "") || null,
+      linked_execution_refs: {
+        message_id: null,
+        broadcast_id: null,
+        publish_event_id: null,
+      },
+      edited_content_indicator: "unknown",
+      reviewer_reason_present: false,
+    },
+    approval_queue: {
+      queue_status: queueStatus,
+      approval_authority_model: "platform_admin_only_current_baseline",
+      escalation_required: queueStatus === "pending_review",
+    },
+    model_meta: {
+      provider: null,
+      model_family: null,
+    },
+    read_model_status: "partial_in_family",
+    notes: [
+      "W5 in-family AI suggestion queue read-model is inferred from existing ai_suggestions columns only",
+      "source_context_refs and model metadata are not persisted in current schema baseline",
+      "approval reasons and execution linkage refs are unavailable without further contract/schema work",
+    ],
+  };
+}
+
+function attachAiSuggestionQueueReadModel<T extends AiSuggestionRow>(row: T): T & { ai_queue_read_model: AiSuggestionQueueReadModel } {
+  return {
+    ...row,
+    ai_queue_read_model: buildAiSuggestionQueueReadModel(row),
+  };
+}
+
+function buildAiSuggestionQueueSummary(rows: AiSuggestionRow[]) {
+  let pending = 0;
+  let approved = 0;
+  let rejected = 0;
+  for (const row of rows) {
+    const status = String(row.status ?? "");
+    if (status === "pending") pending += 1;
+    else if (status === "approved") approved += 1;
+    else if (status === "rejected") rejected += 1;
+  }
+  return {
+    total: rows.length,
+    by_status: { pending, approved, rejected },
+    approval_authority_model: "platform_admin_only_current_baseline" as const,
+    read_model_status: "partial_in_family" as const,
+    notes: [
+      "Queue summary is derived from ai_suggestions.status only",
+      "No per-scope queue partitioning is available in current in-family baseline",
+    ],
+  };
 }
 
 type UserMetadata = {
@@ -1926,13 +2118,13 @@ app.post("/api/ai/suggestions", async (req, res) => {
         created_by: auth.user.id,
         updated_at: new Date().toISOString(),
       })
-      .select("id,user_id,scope,proposed_message,status,created_by,approved_by,rejected_by,created_at,updated_at")
+      .select("id,user_id,scope,proposed_message,status,created_by,approved_by,rejected_by,sent_at,created_at,updated_at")
       .single();
     if (error) {
       return handleSupabaseError(res, "Failed to create AI suggestion", error);
     }
 
-    return res.status(201).json({ suggestion: row });
+    return res.status(201).json({ suggestion: attachAiSuggestionQueueReadModel(row) });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/ai/suggestions", err);
@@ -1950,25 +2142,33 @@ app.get("/api/ai/suggestions", async (req, res) => {
     if (platformAdmin) {
       const { data, error } = await dataClient
         .from("ai_suggestions")
-        .select("id,user_id,scope,proposed_message,status,created_by,approved_by,rejected_by,created_at,updated_at")
+        .select("id,user_id,scope,proposed_message,status,created_by,approved_by,rejected_by,sent_at,created_at,updated_at")
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) {
         return handleSupabaseError(res, "Failed to fetch AI suggestions", error);
       }
-      return res.json({ suggestions: data ?? [] });
+      const rows = (data ?? []) as AiSuggestionRow[];
+      return res.json({
+        suggestions: rows.map((row) => attachAiSuggestionQueueReadModel(row)),
+        queue_summary: buildAiSuggestionQueueSummary(rows),
+      });
     }
 
     const { data, error } = await dataClient
       .from("ai_suggestions")
-      .select("id,user_id,scope,proposed_message,status,created_by,approved_by,rejected_by,created_at,updated_at")
+      .select("id,user_id,scope,proposed_message,status,created_by,approved_by,rejected_by,sent_at,created_at,updated_at")
       .or(`created_by.eq.${auth.user.id},user_id.eq.${auth.user.id}`)
       .order("created_at", { ascending: false })
       .limit(500);
     if (error) {
       return handleSupabaseError(res, "Failed to fetch AI suggestions", error);
     }
-    return res.json({ suggestions: data ?? [] });
+    const rows = (data ?? []) as AiSuggestionRow[];
+    return res.json({
+      suggestions: rows.map((row) => attachAiSuggestionQueueReadModel(row)),
+      queue_summary: buildAiSuggestionQueueSummary(rows),
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in GET /api/ai/suggestions", err);
@@ -2018,7 +2218,7 @@ app.post("/api/ai/suggestions/:id/approve", async (req, res) => {
     if (updateError) {
       return handleSupabaseError(res, "Failed to approve AI suggestion", updateError);
     }
-    return res.json({ suggestion: updated });
+    return res.json({ suggestion: attachAiSuggestionQueueReadModel(updated) });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/ai/suggestions/:id/approve", err);
@@ -2068,7 +2268,7 @@ app.post("/api/ai/suggestions/:id/reject", async (req, res) => {
     if (updateError) {
       return handleSupabaseError(res, "Failed to reject AI suggestion", updateError);
     }
-    return res.json({ suggestion: updated });
+    return res.json({ suggestion: attachAiSuggestionQueueReadModel(updated) });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/ai/suggestions/:id/reject", err);

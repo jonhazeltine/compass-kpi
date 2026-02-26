@@ -269,8 +269,16 @@
 - `POST /api/ai/suggestions`
   - Always creates records in `pending` status; no outbound send side effects.
   - Cross-user creation is restricted to platform admins or team leaders targeting users on their own team.
+  - Additive response fields (W5 in-family AI queue read-model shaping baseline):
+    - `suggestion.ai_queue_read_model` (partial/inferred approval-first review/queue/audit metadata from current `ai_suggestions` columns)
+- `GET /api/ai/suggestions`
+  - Additive response fields (W5 in-family AI queue read-model shaping baseline):
+    - `suggestions[].ai_queue_read_model` (partial/inferred per-suggestion queue/read-model metadata)
+    - top-level `queue_summary` (derived status counts + queue authority model baseline)
 - `POST /api/ai/suggestions/{id}/approve` and `/reject`
   - Admin-only transitions from `pending`; non-pending transitions return `422`.
+  - Additive response fields (W5 in-family AI queue read-model shaping baseline):
+    - `suggestion.ai_queue_read_model`
 - `GET /api/coaching/journeys` and `GET /api/coaching/journeys/{id}`
   - Team-scoped journeys are visible only to team members (or platform admins).
 - `POST /api/coaching/lessons/{id}/progress`
