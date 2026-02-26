@@ -275,11 +275,11 @@ flowchart LR
 ### W6 notification insertion-point map (planning)
 | Surface / host | Persona(s) | Notification mode | W6 status | Boundary note |
 |---|---|---|---|---|
-| Home / Priority coaching nudge | Leader, Member, Solo | inline banners/cards + badge labels | `⚪ planned` | Informational routing only (`coaching_journeys*` / `inbox`); no side-effect writes. |
-| Team coaching modules | Leader, Member | embedded banners/badges + CTA | `⚪ planned` | Preserve KPI/team/coaching ownership seams. |
-| Challenge coaching block | Leader, Member, Solo | banner/disclaimer + CTA | `⚪ planned` | Sponsor/challenge eligibility + disclaimer rules remain server-owned. |
-| `coaching_journeys*` / `coaching_lesson_detail` | Leader, Member, Solo | inline status banners/chips | `⚪ planned` | Notifications may reference progress state but cannot mutate progress. |
-| `inbox*` / `channel_thread` | Leader, Member, Solo | canonical list rows, badges, thread system rows | `⚪ planned` | Coordinate `channels` unread and notifications summaries explicitly; no silent double-counting assumptions. |
+| Home / Priority coaching nudge | Leader, Member, Solo | inline banners/cards + badge labels | `🟡 partial` | Runtime W6 member notifications now render fallback+read-model-driven coaching banners/badges with route-only taps (`coaching_journeys*` / `inbox`); no side-effect writes from notification display actions. |
+| Team coaching modules | Leader, Member | embedded banners/badges + CTA | `🟡 partial` | Runtime W6 member/leader Team coaching modules now include notification banners/badges using coaching/channel/AI queue visibility signals; preserve KPI/team/coaching ownership seams. |
+| Challenge coaching block | Leader, Member, Solo | banner/disclaimer + CTA | `🟡 partial` | Runtime W6 challenge coaching block now includes notification banner rows (challenge/sponsor/access-change classes) with route-only taps; sponsor/challenge eligibility + disclaimer rules remain server-owned. |
+| `coaching_journeys*` / `coaching_lesson_detail` | Leader, Member, Solo | inline status banners/chips | `🟡 partial` | Runtime W6 notifications now render inline banners/chips on journey/journey-detail/lesson-detail surfaces using coaching progress/journey + local lesson status context; no progress mutation from notification display. |
+| `inbox*` / `channel_thread` | Leader, Member, Solo | canonical list rows, badges, thread system rows | `🟡 partial` | Runtime W6 adds notification inbox rows, channel badges, and thread system notification rows using in-family `channels/messages/coaching` read-models + safe fallbacks; explicit double-counting avoidance remains a follow-up refinement. |
 | profile/settings coaching prefs | Leader, Member, Solo | preference controls + summary labels | `⚪ planned` | Preference persistence family remains `decision needed`. |
 | `coach_ops_audit` (admin extension) | Coach, Admin operator | queue badges/alerts + notification dispatch visibility companion | `⚪ planned` | Visibility first; no dispatch authority widening. |
 

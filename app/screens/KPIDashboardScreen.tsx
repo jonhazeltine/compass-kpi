@@ -293,6 +293,44 @@ type RuntimePackagingReadModel = {
   read_model_status?: string | null;
   notes?: string[] | null;
 };
+type RuntimeNotificationReadState = 'read' | 'unread' | 'unknown' | string;
+type RuntimeNotificationSeverity = 'info' | 'warning' | 'success' | 'error' | string;
+type RuntimeNotificationDeliveryChannel = 'in_app' | 'badge' | 'banner' | 'push' | string;
+type RuntimeNotificationRouteTarget = {
+  screen?: string | null;
+  channel_id?: string | null;
+  channel_name?: string | null;
+  journey_id?: string | null;
+  journey_title?: string | null;
+  lesson_id?: string | null;
+  lesson_title?: string | null;
+  challenge_id?: string | null;
+  challenge_title?: string | null;
+  preferred_channel_scope?: string | null;
+  preferred_channel_label?: string | null;
+} | null;
+type RuntimeNotificationItem = {
+  id: string;
+  notification_class: string;
+  title: string;
+  body?: string | null;
+  badge_label?: string | null;
+  read_state?: RuntimeNotificationReadState | null;
+  severity?: RuntimeNotificationSeverity | null;
+  delivery_channels?: RuntimeNotificationDeliveryChannel[] | null;
+  route_target?: RuntimeNotificationRouteTarget;
+  source_family?: string | null;
+  created_at?: string | null;
+};
+type RuntimeNotificationSummaryReadModel = {
+  total_count?: number | null;
+  unread_count?: number | null;
+  banner_count?: number | null;
+  badge_count?: number | null;
+  badge_label?: string | null;
+  read_model_status?: string | null;
+  notes?: string[] | null;
+};
 type RuntimePackageVisibilityOutcome = {
   package_type?: string | null;
   package_id?: string | null;
@@ -399,6 +437,8 @@ type CoachingJourneyListResponse = {
   journeys?: CoachingJourneyListItem[];
   package_visibility?: RuntimePackageVisibilityOutcome | null;
   packaging_read_model?: RuntimePackagingReadModel | null;
+  notification_items?: unknown[] | null;
+  notification_summary_read_model?: unknown | null;
   error?: string;
 };
 type CoachingJourneyDetailLesson = {
@@ -433,6 +473,8 @@ type CoachingProgressSummaryResponse = {
   completion_percent?: number;
   package_visibility?: RuntimePackageVisibilityOutcome | null;
   packaging_read_model?: RuntimePackagingReadModel | null;
+  notification_items?: unknown[] | null;
+  notification_summary_read_model?: unknown | null;
   error?: string;
 };
 type CoachingLessonProgressWriteResponse = {
@@ -463,6 +505,8 @@ type ChannelsListResponse = {
   channels?: ChannelApiRow[];
   package_visibility?: RuntimePackageVisibilityOutcome | null;
   packaging_read_model?: RuntimePackagingReadModel | null;
+  notification_items?: unknown[] | null;
+  notification_summary_read_model?: unknown | null;
   error?: string;
 };
 type ChannelMessageRow = {
@@ -480,6 +524,8 @@ type ChannelMessagesResponse = {
   messages?: ChannelMessageRow[];
   package_visibility?: RuntimePackageVisibilityOutcome | null;
   packaging_read_model?: RuntimePackagingReadModel | null;
+  notification_items?: unknown[] | null;
+  notification_summary_read_model?: unknown | null;
   error?: string;
 };
 type ChannelMessageWriteResponse = {
@@ -814,6 +860,160 @@ function deriveCoachingPackageGatePresentation(
     summary: `${surfaceLabel} received partial packaging metadata without a reusable entitlement outcome.`,
     detail: explicitDisclaimer ?? null,
     policyNote: boundaryNote ?? 'UI fallback keeps CTAs non-authoritative and defers access enforcement to the server.',
+  };
+}
+
+function normalizeRuntimeNotificationSummary(input?: unknown): RuntimeNotificationSummaryReadModel | null {
+  if (!input || typeof input !== 'object') return null;
+  const row = input as Record<string, unknown>;
+  const readModelStatus = typeof row.read_model_status === 'string' ? row.read_model_status : null;
+  const notes = Array.isArray(row.notes) ? row.notes.filter((v): v is string => typeof v === 'string') : null;
+  const totalCount = Number(row.total_count ?? row.total ?? row.count ?? 0);
+  const unreadCount = Number(row.unread_count ?? row.unread ?? 0);
+  const bannerCount = Number(row.banner_count ?? row.banner ?? 0);
+  const badgeCount = Number(row.badge_count ?? row.badge ?? unreadCount);
+  const badgeLabel =
+    typeof row.badge_label === 'string'
+      ? row.badge_label
+      : badgeCount > 0
+        ? `${Math.max(0, Math.round(badgeCount))}`
+        : null;
+  const hasSignal =
+    Number.isFinite(totalCount) ||
+    Number.isFinite(unreadCount) ||
+    Number.isFinite(bannerCount) ||
+    Number.isFinite(badgeCount) ||
+    Boolean(readModelStatus) ||
+    Boolean(notes?.length);
+  if (!hasSignal) return null;
+  return {
+    total_count: Number.isFinite(totalCount) ? Math.max(0, Math.round(totalCount)) : null,
+    unread_count: Number.isFinite(unreadCount) ? Math.max(0, Math.round(unreadCount)) : null,
+    banner_count: Number.isFinite(bannerCount) ? Math.max(0, Math.round(bannerCount)) : null,
+    badge_count: Number.isFinite(badgeCount) ? Math.max(0, Math.round(badgeCount)) : null,
+    badge_label: badgeLabel,
+    read_model_status: readModelStatus,
+    notes,
+  };
+}
+
+function normalizeRuntimeNotificationItems(input?: unknown, sourceFamily?: string): RuntimeNotificationItem[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((raw, idx): RuntimeNotificationItem | null => {
+      if (!raw || typeof raw !== 'object') return null;
+      const row = raw as Record<string, unknown>;
+      const notificationClass = String(
+        row.notification_class ?? row.class ?? row.kind ?? row.type ?? 'notification'
+      ).trim();
+      const title = String(row.title ?? row.label ?? row.headline ?? '').trim();
+      const bodyCandidate = row.body ?? row.summary ?? row.sub ?? row.description ?? null;
+      const body = typeof bodyCandidate === 'string' ? bodyCandidate.trim() || null : null;
+      const badgeLabelCandidate = row.badge_label ?? row.badge ?? row.chip_label ?? null;
+      const badgeLabel = typeof badgeLabelCandidate === 'string' ? badgeLabelCandidate.trim() || null : null;
+      const readStateCandidate = row.read_state ?? row.read ?? row.state ?? null;
+      const readState =
+        typeof readStateCandidate === 'string' && readStateCandidate.trim()
+          ? (readStateCandidate.trim() as RuntimeNotificationReadState)
+          : null;
+      const severityCandidate = row.severity ?? row.tone ?? null;
+      const severity =
+        typeof severityCandidate === 'string' && severityCandidate.trim()
+          ? (severityCandidate.trim() as RuntimeNotificationSeverity)
+          : null;
+      const deliveryRaw =
+        Array.isArray(row.delivery_channels)
+          ? row.delivery_channels
+          : row.delivery_channel != null
+            ? [row.delivery_channel]
+            : Array.isArray(row.channels)
+              ? row.channels
+              : [];
+      const deliveryChannels = deliveryRaw
+        .map((v) => (typeof v === 'string' ? v.trim() : ''))
+        .filter(Boolean) as RuntimeNotificationDeliveryChannel[];
+      const routeRaw = (row.route_target && typeof row.route_target === 'object'
+        ? row.route_target
+        : null) as Record<string, unknown> | null;
+      const routeTarget: RuntimeNotificationRouteTarget = {
+        screen: typeof (routeRaw?.screen ?? row.screen) === 'string' ? String(routeRaw?.screen ?? row.screen) : null,
+        channel_id:
+          typeof (routeRaw?.channel_id ?? row.channel_id) === 'string'
+            ? String(routeRaw?.channel_id ?? row.channel_id)
+            : null,
+        channel_name:
+          typeof (routeRaw?.channel_name ?? row.channel_name) === 'string'
+            ? String(routeRaw?.channel_name ?? row.channel_name)
+            : null,
+        journey_id:
+          typeof (routeRaw?.journey_id ?? row.journey_id) === 'string'
+            ? String(routeRaw?.journey_id ?? row.journey_id)
+            : null,
+        journey_title:
+          typeof (routeRaw?.journey_title ?? row.journey_title) === 'string'
+            ? String(routeRaw?.journey_title ?? row.journey_title)
+            : null,
+        lesson_id:
+          typeof (routeRaw?.lesson_id ?? row.lesson_id) === 'string'
+            ? String(routeRaw?.lesson_id ?? row.lesson_id)
+            : null,
+        lesson_title:
+          typeof (routeRaw?.lesson_title ?? row.lesson_title) === 'string'
+            ? String(routeRaw?.lesson_title ?? row.lesson_title)
+            : null,
+        challenge_id:
+          typeof (routeRaw?.challenge_id ?? row.challenge_id) === 'string'
+            ? String(routeRaw?.challenge_id ?? row.challenge_id)
+            : null,
+        challenge_title:
+          typeof (routeRaw?.challenge_title ?? row.challenge_title) === 'string'
+            ? String(routeRaw?.challenge_title ?? row.challenge_title)
+            : null,
+        preferred_channel_scope:
+          typeof (routeRaw?.preferred_channel_scope ?? row.preferred_channel_scope) === 'string'
+            ? String(routeRaw?.preferred_channel_scope ?? row.preferred_channel_scope)
+            : null,
+        preferred_channel_label:
+          typeof (routeRaw?.preferred_channel_label ?? row.preferred_channel_label) === 'string'
+            ? String(routeRaw?.preferred_channel_label ?? row.preferred_channel_label)
+            : null,
+      };
+      const createdAt = typeof row.created_at === 'string' ? row.created_at : null;
+      const id = String(row.id ?? `${sourceFamily ?? 'notification'}-${notificationClass}-${idx}`).trim();
+      if (!notificationClass || !title) return null;
+      return {
+        id,
+        notification_class: notificationClass,
+        title,
+        body,
+        badge_label: badgeLabel,
+        read_state: readState,
+        severity,
+        delivery_channels: deliveryChannels.length > 0 ? deliveryChannels : null,
+        route_target: routeTarget,
+        source_family: sourceFamily ?? (typeof row.source_family === 'string' ? row.source_family : null),
+        created_at: createdAt,
+      };
+    })
+    .filter((item): item is RuntimeNotificationItem => Boolean(item));
+}
+
+function summarizeNotificationRows(
+  rows: RuntimeNotificationItem[],
+  fallback?: { sourceLabel?: string; readModelStatus?: string | null }
+): RuntimeNotificationSummaryReadModel | null {
+  if (!rows.length && !fallback?.readModelStatus) return null;
+  const unreadCount = rows.filter((row) => String(row.read_state ?? 'unknown').toLowerCase() !== 'read').length;
+  const badgeCount = rows.filter((row) => (row.delivery_channels ?? []).some((ch) => ch === 'badge')).length || unreadCount;
+  const bannerCount = rows.filter((row) => (row.delivery_channels ?? []).some((ch) => ch === 'banner')).length;
+  return {
+    total_count: rows.length,
+    unread_count: unreadCount,
+    banner_count: bannerCount,
+    badge_count: badgeCount,
+    badge_label: badgeCount > 0 ? String(badgeCount) : null,
+    read_model_status: fallback?.readModelStatus ?? null,
+    notes: fallback?.sourceLabel ? [`source:${fallback.sourceLabel}`] : null,
   };
 }
 
@@ -1870,9 +2070,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [coachingJourneys, setCoachingJourneys] = useState<CoachingJourneyListItem[] | null>(null);
   const [coachingJourneysPackageVisibility, setCoachingJourneysPackageVisibility] =
     useState<RuntimePackageVisibilityOutcome | null>(null);
+  const [coachingJourneysNotificationItems, setCoachingJourneysNotificationItems] = useState<RuntimeNotificationItem[]>([]);
+  const [coachingJourneysNotificationSummary, setCoachingJourneysNotificationSummary] =
+    useState<RuntimeNotificationSummaryReadModel | null>(null);
   const [coachingJourneysLoading, setCoachingJourneysLoading] = useState(false);
   const [coachingJourneysError, setCoachingJourneysError] = useState<string | null>(null);
   const [coachingProgressSummary, setCoachingProgressSummary] = useState<CoachingProgressSummaryResponse | null>(null);
+  const [coachingProgressNotificationItems, setCoachingProgressNotificationItems] = useState<RuntimeNotificationItem[]>([]);
+  const [coachingProgressNotificationSummary, setCoachingProgressNotificationSummary] =
+    useState<RuntimeNotificationSummaryReadModel | null>(null);
   const [coachingProgressLoading, setCoachingProgressLoading] = useState(false);
   const [coachingProgressError, setCoachingProgressError] = useState<string | null>(null);
   const [coachingJourneyDetail, setCoachingJourneyDetail] = useState<CoachingJourneyDetailResponse | null>(null);
@@ -1882,6 +2088,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [coachingLessonProgressError, setCoachingLessonProgressError] = useState<string | null>(null);
   const [channelsApiRows, setChannelsApiRows] = useState<ChannelApiRow[] | null>(null);
   const [channelsPackageVisibility, setChannelsPackageVisibility] = useState<RuntimePackageVisibilityOutcome | null>(null);
+  const [channelsNotificationItems, setChannelsNotificationItems] = useState<RuntimeNotificationItem[]>([]);
+  const [channelsNotificationSummary, setChannelsNotificationSummary] = useState<RuntimeNotificationSummaryReadModel | null>(null);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [channelsError, setChannelsError] = useState<string | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
@@ -1889,6 +2097,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [channelMessages, setChannelMessages] = useState<ChannelMessageRow[] | null>(null);
   const [channelThreadPackageVisibility, setChannelThreadPackageVisibility] =
     useState<RuntimePackageVisibilityOutcome | null>(null);
+  const [channelThreadNotificationItems, setChannelThreadNotificationItems] = useState<RuntimeNotificationItem[]>([]);
+  const [channelThreadNotificationSummary, setChannelThreadNotificationSummary] =
+    useState<RuntimeNotificationSummaryReadModel | null>(null);
   const [channelMessagesLoading, setChannelMessagesLoading] = useState(false);
   const [channelMessagesError, setChannelMessagesError] = useState<string | null>(null);
   const [channelMessageDraft, setChannelMessageDraft] = useState('');
@@ -5083,6 +5294,200 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   );
   const challengeCoachingGateBlocksCtas =
     challengeCoachingGatePresentation.tone === 'gated' || challengeCoachingGatePresentation.tone === 'blocked';
+  const fallbackChannelsNotificationRows = useMemo<RuntimeNotificationItem[]>(() => {
+    if (channelsNotificationItems.length > 0) return channelsNotificationItems;
+    const rows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
+    const unreadRows = rows
+      .filter((row) => Math.max(0, Number(row.unread_count ?? 0)) > 0)
+      .slice(0, 4);
+    return unreadRows.map((row) => {
+      const scope = normalizeChannelTypeToScope(row.type) ?? 'community';
+      return {
+        id: `fallback-channel-unread-${row.id}`,
+        notification_class: scope === 'team' ? 'team_message_unread' : scope === 'challenge' ? 'challenge_message_unread' : 'message_unread',
+        title: `${row.name}: ${Math.max(0, Number(row.unread_count ?? 0))} unread`,
+        body: `Open ${row.name} to review recent ${String(row.type ?? 'channel')} messages.`,
+        badge_label: Math.max(0, Number(row.unread_count ?? 0)) > 0 ? String(Math.max(0, Number(row.unread_count ?? 0))) : null,
+        read_state: 'unread',
+        severity: 'info',
+        delivery_channels: ['in_app', 'badge', 'banner'],
+        route_target: {
+          screen: 'channel_thread',
+          channel_id: String(row.id),
+          channel_name: row.name,
+          preferred_channel_scope: scope,
+          preferred_channel_label: row.name,
+        },
+        source_family: 'channels_fallback',
+      };
+    });
+  }, [channelsApiRows, channelsNotificationItems]);
+  const fallbackCoachingProgressNotificationRows = useMemo<RuntimeNotificationItem[]>(() => {
+    if (coachingProgressNotificationItems.length > 0) return coachingProgressNotificationItems;
+    const progress = coachingProgressSummary;
+    if (!progress) return [];
+    const totalRows = Math.max(0, Number(progress.total_progress_rows ?? 0));
+    const inProgress = Math.max(0, Number(progress.status_counts?.in_progress ?? 0));
+    const notStarted = Math.max(0, Number(progress.status_counts?.not_started ?? 0));
+    const pct = Math.max(0, Math.round(Number(progress.completion_percent ?? 0)));
+    const rows: RuntimeNotificationItem[] = [];
+    if (notStarted > 0) {
+      rows.push({
+        id: 'fallback-coaching-assignment',
+        notification_class: 'coaching_assignment_available',
+        title: `${notStarted} coaching item${notStarted === 1 ? '' : 's'} not started`,
+        body: 'Open Coaching Journeys to view assigned lessons and next actions.',
+        read_state: 'unread',
+        severity: 'info',
+        delivery_channels: ['in_app', 'banner'],
+        route_target: { screen: 'coaching_journeys' },
+        source_family: 'coaching_progress_fallback',
+      });
+    }
+    if (inProgress > 0 || totalRows > 0) {
+      rows.push({
+        id: 'fallback-coaching-reminder',
+        notification_class: 'coaching_progress_reminder',
+        title: `Coaching progress ${pct}%`,
+        body: inProgress > 0 ? `${inProgress} lesson(s) are in progress.` : 'Continue your coaching journey progress.',
+        badge_label: `${pct}%`,
+        read_state: inProgress > 0 ? 'unread' : 'unknown',
+        severity: pct >= 100 ? 'success' : 'info',
+        delivery_channels: ['in_app', 'badge'],
+        route_target: { screen: 'coaching_journeys' },
+        source_family: 'coaching_progress_fallback',
+      });
+    }
+    return rows;
+  }, [coachingProgressNotificationItems, coachingProgressSummary]);
+  const aiApprovalNotificationRows = useMemo<RuntimeNotificationItem[]>(() => {
+    const pendingCount = Math.max(0, Number(aiSuggestionQueueSummary?.by_status?.pending ?? 0));
+    const rows: RuntimeNotificationItem[] = [];
+    if (pendingCount > 0) {
+      rows.push({
+        id: 'ai-approval-queue-pending',
+        notification_class: 'ai_approval_queue_pending_review',
+        title: `${pendingCount} AI draft${pendingCount === 1 ? '' : 's'} pending approval review`,
+        body: 'Approval-first queue visibility only. No autonomous send/publish occurs from this state.',
+        badge_label: String(pendingCount),
+        read_state: 'unread',
+        severity: 'warning',
+        delivery_channels: ['in_app', 'badge', 'banner'],
+        route_target: { screen: 'inbox' },
+        source_family: 'ai_suggestions',
+      });
+    }
+    const recentPending = (aiSuggestionRows ?? [])
+      .filter((row) => String(row.status ?? '').toLowerCase() === 'pending')
+      .slice(0, 2);
+    for (const row of recentPending) {
+      rows.push({
+        id: `ai-queued-${row.id}`,
+        notification_class: 'ai_queue_status_update',
+        title: 'AI suggestion queued for approval review',
+        body:
+          row.ai_queue_read_model?.target_scope_summary ??
+          row.scope ??
+          'Approval queue item visible. Human review remains required before any send/publish.',
+        read_state: 'unknown',
+        severity: 'info',
+        delivery_channels: ['in_app'],
+        route_target: { screen: 'inbox' },
+        source_family: 'ai_suggestions',
+        created_at: row.created_at ?? null,
+      });
+    }
+    return rows;
+  }, [aiSuggestionQueueSummary, aiSuggestionRows]);
+  const challengeSurfaceNotificationRows = useMemo<RuntimeNotificationItem[]>(() => {
+    const rows: RuntimeNotificationItem[] = [];
+    const channelRows = fallbackChannelsNotificationRows.filter((row) => {
+      const cls = row.notification_class.toLowerCase();
+      return cls.includes('challenge') || cls.includes('sponsor');
+    });
+    rows.push(...channelRows.slice(0, 2));
+    if (challengeHasSponsorSignal) {
+      rows.push({
+        id: `challenge-sponsor-coaching-${challengeSelected?.id ?? 'current'}`,
+        notification_class: 'sponsor_coaching_linked',
+        title: 'Sponsor coaching updates available',
+        body: 'Sponsor-linked challenge coaching routing is available from this challenge surface.',
+        read_state: 'unknown',
+        severity: 'info',
+        delivery_channels: ['in_app', 'banner'],
+        route_target: {
+          screen: 'channel_thread',
+          preferred_channel_scope: 'sponsor',
+          preferred_channel_label: 'Sponsor / Challenge Updates',
+          challenge_id: challengeSelected?.id ?? null,
+          challenge_title: challengeSelected?.title ?? null,
+        },
+        source_family: 'challenge_surface_fallback',
+      });
+    }
+    if (challengeCoachingGatePresentation.tone === 'gated' || challengeCoachingGatePresentation.tone === 'blocked') {
+      rows.push({
+        id: `challenge-access-change-${challengeSelected?.id ?? 'current'}`,
+        notification_class: 'coaching_access_change',
+        title: 'Challenge coaching access changed',
+        body: challengeCoachingGatePresentation.summary,
+        read_state: 'unread',
+        severity: challengeCoachingGatePresentation.tone === 'blocked' ? 'error' : 'warning',
+        delivery_channels: ['in_app', 'banner'],
+        route_target: { screen: 'coaching_journeys' },
+        source_family: 'challenge_surface_gate',
+      });
+    }
+    return rows.slice(0, 3);
+  }, [
+    challengeCoachingGatePresentation.summary,
+    challengeCoachingGatePresentation.tone,
+    challengeHasSponsorSignal,
+    challengeSelected?.id,
+    challengeSelected?.title,
+    fallbackChannelsNotificationRows,
+  ]);
+  const homeNotificationRows = useMemo(
+    () => [...fallbackCoachingProgressNotificationRows, ...aiApprovalNotificationRows, ...fallbackChannelsNotificationRows].slice(0, 3),
+    [aiApprovalNotificationRows, fallbackChannelsNotificationRows, fallbackCoachingProgressNotificationRows]
+  );
+  const teamNotificationRows = useMemo(
+    () =>
+      [
+        ...fallbackChannelsNotificationRows.filter((row) => row.notification_class.toLowerCase().includes('team')),
+        ...fallbackCoachingProgressNotificationRows,
+        ...aiApprovalNotificationRows,
+      ].slice(0, 3),
+    [aiApprovalNotificationRows, fallbackChannelsNotificationRows, fallbackCoachingProgressNotificationRows]
+  );
+  const journeysNotificationRows = useMemo(
+    () => [...coachingJourneysNotificationItems, ...fallbackCoachingProgressNotificationRows].slice(0, 4),
+    [coachingJourneysNotificationItems, fallbackCoachingProgressNotificationRows]
+  );
+  const journeysNotificationSummaryEffective = useMemo(
+    () =>
+      coachingJourneysNotificationSummary ??
+      coachingProgressNotificationSummary ??
+      summarizeNotificationRows(journeysNotificationRows, { sourceLabel: 'coaching_journeys:effective' }),
+    [coachingJourneysNotificationSummary, coachingProgressNotificationSummary, journeysNotificationRows]
+  );
+  const inboxNotificationRows = useMemo(
+    () =>
+      [
+        ...fallbackChannelsNotificationRows,
+        ...fallbackCoachingProgressNotificationRows,
+        ...coachingJourneysNotificationItems,
+        ...aiApprovalNotificationRows,
+      ].slice(0, 6),
+    [aiApprovalNotificationRows, coachingJourneysNotificationItems, fallbackChannelsNotificationRows, fallbackCoachingProgressNotificationRows]
+  );
+  const inboxNotificationSummaryEffective = useMemo(
+    () =>
+      channelsNotificationSummary ??
+      coachingProgressNotificationSummary ??
+      summarizeNotificationRows(inboxNotificationRows, { sourceLabel: 'inbox:effective' }),
+    [channelsNotificationSummary, coachingProgressNotificationSummary, inboxNotificationRows]
+  );
   const challengeDaysLeft =
     challengeSelected?.bucket === 'active' && challengeSelected?.endAtIso
       ? Math.max(0, Math.ceil((new Date(challengeSelected.endAtIso).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
@@ -5142,6 +5547,188 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     setActiveTab('user');
     setViewMode('log');
   }, []);
+
+  const openCoachingNotificationTarget = useCallback(
+    (item: RuntimeNotificationItem) => {
+      const route = item.route_target ?? null;
+      const screenRaw = String(route?.screen ?? '').toLowerCase();
+      const preferredScopeRaw = String(route?.preferred_channel_scope ?? '').toLowerCase();
+      const preferredScope: CoachingChannelScope | null =
+        preferredScopeRaw === 'team' || preferredScopeRaw === 'challenge' || preferredScopeRaw === 'sponsor' || preferredScopeRaw === 'community'
+          ? preferredScopeRaw
+          : null;
+      if (screenRaw === 'challenge_details') {
+        if (route?.challenge_id) setChallengeSelectedId(String(route.challenge_id));
+        setActiveTab('challenge');
+        setViewMode('log');
+        setChallengeFlowScreen('details');
+        return;
+      }
+      if (screenRaw === 'channel_thread') {
+        if (route?.channel_id) {
+          setSelectedChannelId(String(route.channel_id));
+        }
+        if (route?.channel_name) {
+          setSelectedChannelName(String(route.channel_name));
+        }
+        openCoachingShell('channel_thread', {
+          preferredChannelScope: preferredScope,
+          preferredChannelLabel: route?.preferred_channel_label ?? route?.channel_name ?? null,
+          threadTitle: route?.channel_name ?? route?.preferred_channel_label ?? coachingShellContext.threadTitle,
+          threadSub:
+            item.body ??
+            'Notification-linked channel thread route. Display action only; send/write remains explicit human action.',
+          broadcastAudienceLabel: preferredScope === 'team' ? route?.preferred_channel_label ?? route?.channel_name ?? null : null,
+          broadcastRoleAllowed: preferredScope === 'team' ? coachingShellContext.broadcastRoleAllowed : false,
+        });
+        return;
+      }
+      if (screenRaw === 'coaching_journey_detail' || route?.journey_id) {
+        openCoachingShell('coaching_journey_detail', {
+          selectedJourneyId: route?.journey_id ?? null,
+          selectedJourneyTitle: route?.journey_title ?? null,
+          selectedLessonId: route?.lesson_id ?? null,
+          selectedLessonTitle: route?.lesson_title ?? null,
+        });
+        return;
+      }
+      if (screenRaw === 'coaching_lesson_detail' || route?.lesson_id) {
+        openCoachingShell('coaching_lesson_detail', {
+          selectedJourneyId: route?.journey_id ?? coachingShellContext.selectedJourneyId,
+          selectedJourneyTitle: route?.journey_title ?? coachingShellContext.selectedJourneyTitle,
+          selectedLessonId: route?.lesson_id ?? null,
+          selectedLessonTitle: route?.lesson_title ?? null,
+        });
+        return;
+      }
+      if (screenRaw === 'inbox_channels') {
+        openCoachingShell('inbox_channels', {
+          preferredChannelScope: preferredScope,
+          preferredChannelLabel: route?.preferred_channel_label ?? null,
+        });
+        return;
+      }
+      if (screenRaw === 'coaching_journeys') {
+        openCoachingShell('coaching_journeys');
+        return;
+      }
+      openCoachingShell('inbox');
+    },
+    [
+      coachingShellContext.broadcastRoleAllowed,
+      coachingShellContext.selectedJourneyId,
+      coachingShellContext.selectedJourneyTitle,
+      coachingShellContext.threadTitle,
+      openCoachingShell,
+    ]
+  );
+
+  const renderCoachingNotificationSurface = useCallback(
+    (
+      title: string,
+      items: RuntimeNotificationItem[],
+      summary?: RuntimeNotificationSummaryReadModel | null,
+      opts?: { compact?: boolean; maxRows?: number; mode?: 'banner' | 'list' | 'thread'; emptyHint?: string }
+    ) => {
+      const visibleRows = items.slice(0, Math.max(1, opts?.maxRows ?? (opts?.compact ? 2 : 4)));
+      if (visibleRows.length === 0 && !summary) return null;
+      const unreadCount = Math.max(0, Number(summary?.unread_count ?? 0));
+      const badgeLabel = summary?.badge_label ?? (unreadCount > 0 ? String(unreadCount) : null);
+      return (
+        <View
+          style={[
+            styles.coachingNotificationCard,
+            opts?.compact ? styles.coachingNotificationCardCompact : null,
+            opts?.mode === 'thread' ? styles.coachingNotificationCardThread : null,
+          ]}
+        >
+          <View style={styles.coachingNotificationHeaderRow}>
+            <Text style={styles.coachingNotificationTitle}>{title}</Text>
+            <View style={styles.coachingNotificationHeaderMetaRow}>
+              {badgeLabel ? (
+                <View style={styles.coachingNotificationCountBadge}>
+                  <Text style={styles.coachingNotificationCountBadgeText}>{badgeLabel}</Text>
+                </View>
+              ) : null}
+              <Text style={styles.coachingNotificationHeaderLabel}>in-app</Text>
+              {unreadCount > 0 ? <Text style={styles.coachingNotificationHeaderUnread}>{unreadCount} unread</Text> : null}
+            </View>
+          </View>
+          {summary?.read_model_status ? (
+            <Text style={styles.coachingNotificationSummaryMeta}>read-model: {summary.read_model_status}</Text>
+          ) : null}
+          {visibleRows.length === 0 ? (
+            <Text style={styles.coachingNotificationEmptyText}>{opts?.emptyHint ?? 'No notification rows available.'}</Text>
+          ) : (
+            <View style={styles.coachingNotificationRowsWrap}>
+              {visibleRows.map((item, idx) => {
+                const severity = String(item.severity ?? 'info').toLowerCase();
+                const isUnread = String(item.read_state ?? 'unknown').toLowerCase() !== 'read';
+                const toneStyle =
+                  severity === 'warning'
+                    ? styles.coachingNotificationRowWarning
+                    : severity === 'error'
+                      ? styles.coachingNotificationRowError
+                      : severity === 'success'
+                        ? styles.coachingNotificationRowSuccess
+                        : styles.coachingNotificationRowInfo;
+                const hasRoute =
+                  Boolean(item.route_target?.screen) ||
+                  Boolean(item.route_target?.channel_id) ||
+                  Boolean(item.route_target?.journey_id) ||
+                  Boolean(item.route_target?.lesson_id);
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[
+                      styles.coachingNotificationRow,
+                      toneStyle,
+                      idx > 0 ? styles.coachingNotificationRowDivider : null,
+                      !hasRoute ? styles.coachingNotificationRowDisabled : null,
+                    ]}
+                    disabled={!hasRoute}
+                    onPress={() => {
+                      if (!hasRoute) return;
+                      openCoachingNotificationTarget(item);
+                    }}
+                  >
+                    <View style={styles.coachingNotificationRowDotWrap}>
+                      <View style={[styles.coachingNotificationRowDot, isUnread ? styles.coachingNotificationRowDotUnread : null]} />
+                    </View>
+                    <View style={styles.coachingNotificationRowCopy}>
+                      <View style={styles.coachingNotificationRowTitleLine}>
+                        <Text numberOfLines={1} style={styles.coachingNotificationRowTitle}>{item.title}</Text>
+                        {item.badge_label ? (
+                          <View style={styles.coachingNotificationInlineBadge}>
+                            <Text style={styles.coachingNotificationInlineBadgeText}>{item.badge_label}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      {item.body ? <Text numberOfLines={2} style={styles.coachingNotificationRowBody}>{item.body}</Text> : null}
+                      <View style={styles.coachingNotificationRowMetaLine}>
+                        <Text style={styles.coachingNotificationRowClass}>{item.notification_class.replace(/_/g, ' ')}</Text>
+                        <Text style={styles.coachingNotificationRowMetaSep}>•</Text>
+                        <Text style={styles.coachingNotificationRowChannels}>
+                          {(item.delivery_channels ?? ['in_app']).slice(0, 3).join(', ')}
+                        </Text>
+                        {hasRoute ? (
+                          <>
+                            <Text style={styles.coachingNotificationRowMetaSep}>•</Text>
+                            <Text style={styles.coachingNotificationRowLink}>Open</Text>
+                          </>
+                        ) : null}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      );
+    },
+    [openCoachingNotificationTarget]
+  );
 
   const renderCoachingPackageGateBanner = useCallback(
     (
@@ -5358,6 +5945,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setCoachingJourneysError('Sign in is required to view coaching journeys.');
       setCoachingJourneys([]);
       setCoachingJourneysPackageVisibility(null);
+      setCoachingJourneysNotificationItems([]);
+      setCoachingJourneysNotificationSummary(null);
       return;
     }
     setCoachingJourneysLoading(true);
@@ -5376,8 +5965,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             body.package_visibility ?? null
           )
         );
+        setCoachingJourneysNotificationItems(normalizeRuntimeNotificationItems(body.notification_items, 'coaching_journeys'));
+        setCoachingJourneysNotificationSummary(
+          normalizeRuntimeNotificationSummary(body.notification_summary_read_model) ??
+            summarizeNotificationRows(normalizeRuntimeNotificationItems(body.notification_items, 'coaching_journeys'), {
+              sourceLabel: 'coaching_journeys:error',
+            })
+        );
         return;
       }
+      const normalizedJourneyNotifications = normalizeRuntimeNotificationItems(body.notification_items, 'coaching_journeys');
       setCoachingJourneys(Array.isArray(body.journeys) ? body.journeys : []);
       setCoachingJourneysPackageVisibility(
         pickRuntimePackageVisibility(
@@ -5385,10 +5982,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           body.package_visibility ?? null
         )
       );
+      setCoachingJourneysNotificationItems(normalizedJourneyNotifications);
+      setCoachingJourneysNotificationSummary(
+        normalizeRuntimeNotificationSummary(body.notification_summary_read_model) ??
+          summarizeNotificationRows(normalizedJourneyNotifications, {
+            sourceLabel: 'coaching_journeys',
+          })
+      );
     } catch (err) {
       setCoachingJourneysError(err instanceof Error ? err.message : 'Failed to load coaching journeys');
       setCoachingJourneys([]);
       setCoachingJourneysPackageVisibility(null);
+      setCoachingJourneysNotificationItems([]);
+      setCoachingJourneysNotificationSummary(null);
     } finally {
       setCoachingJourneysLoading(false);
     }
@@ -5399,6 +6005,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     if (!token) {
       setCoachingProgressError('Sign in is required to view coaching progress.');
       setCoachingProgressSummary(null);
+      setCoachingProgressNotificationItems([]);
+      setCoachingProgressNotificationSummary(null);
       return;
     }
     setCoachingProgressLoading(true);
@@ -5411,12 +6019,29 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       if (!response.ok) {
         setCoachingProgressError(String(body.error ?? `Progress request failed (${response.status})`));
         setCoachingProgressSummary(null);
+        setCoachingProgressNotificationItems(normalizeRuntimeNotificationItems(body.notification_items, 'coaching_progress'));
+        setCoachingProgressNotificationSummary(
+          normalizeRuntimeNotificationSummary(body.notification_summary_read_model) ??
+            summarizeNotificationRows(normalizeRuntimeNotificationItems(body.notification_items, 'coaching_progress'), {
+              sourceLabel: 'coaching_progress:error',
+            })
+        );
         return;
       }
+      const normalizedProgressNotifications = normalizeRuntimeNotificationItems(body.notification_items, 'coaching_progress');
       setCoachingProgressSummary(body);
+      setCoachingProgressNotificationItems(normalizedProgressNotifications);
+      setCoachingProgressNotificationSummary(
+        normalizeRuntimeNotificationSummary(body.notification_summary_read_model) ??
+          summarizeNotificationRows(normalizedProgressNotifications, {
+            sourceLabel: 'coaching_progress',
+          })
+      );
     } catch (err) {
       setCoachingProgressError(err instanceof Error ? err.message : 'Failed to load coaching progress');
       setCoachingProgressSummary(null);
+      setCoachingProgressNotificationItems([]);
+      setCoachingProgressNotificationSummary(null);
     } finally {
       setCoachingProgressLoading(false);
     }
@@ -5508,6 +6133,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setChannelsError('Sign in is required to view channels.');
       setChannelsApiRows([]);
       setChannelsPackageVisibility(null);
+      setChannelsNotificationItems([]);
+      setChannelsNotificationSummary(null);
       return;
     }
     setChannelsLoading(true);
@@ -5526,9 +6153,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             body.package_visibility ?? null
           )
         );
+        setChannelsNotificationItems(normalizeRuntimeNotificationItems(body.notification_items, 'channels'));
+        setChannelsNotificationSummary(
+          normalizeRuntimeNotificationSummary(body.notification_summary_read_model) ??
+            summarizeNotificationRows(normalizeRuntimeNotificationItems(body.notification_items, 'channels'), {
+              sourceLabel: 'channels:error',
+            })
+        );
         return;
       }
       const rows = Array.isArray(body.channels) ? body.channels : [];
+      const normalizedChannelNotifications = normalizeRuntimeNotificationItems(body.notification_items, 'channels');
       setChannelsApiRows(rows);
       setChannelsPackageVisibility(
         pickRuntimePackageVisibility(
@@ -5537,10 +6172,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         )
       );
       setSelectedChannelId((prev) => (prev && rows.some((r) => String(r.id) === prev) ? prev : prev));
+      setChannelsNotificationItems(normalizedChannelNotifications);
+      setChannelsNotificationSummary(
+        normalizeRuntimeNotificationSummary(body.notification_summary_read_model) ??
+          summarizeNotificationRows(normalizedChannelNotifications, {
+            sourceLabel: 'channels',
+          })
+      );
     } catch (err) {
       setChannelsError(err instanceof Error ? err.message : 'Failed to load channels');
       setChannelsApiRows([]);
       setChannelsPackageVisibility(null);
+      setChannelsNotificationItems([]);
+      setChannelsNotificationSummary(null);
     } finally {
       setChannelsLoading(false);
     }
@@ -5553,12 +6197,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         setChannelMessagesError('Sign in is required to view channel messages.');
         setChannelMessages([]);
         setChannelThreadPackageVisibility(null);
+        setChannelThreadNotificationItems([]);
+        setChannelThreadNotificationSummary(null);
         return;
       }
       if (!channelId) {
         setChannelMessagesError('Channel id is required.');
         setChannelMessages([]);
         setChannelThreadPackageVisibility(null);
+        setChannelThreadNotificationItems([]);
+        setChannelThreadNotificationSummary(null);
         return;
       }
       setChannelMessagesLoading(true);
@@ -5578,8 +6226,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               body.package_visibility ?? null
             )
           );
+          setChannelThreadNotificationItems(normalizeRuntimeNotificationItems(body.notification_items, 'channel_thread'));
+          setChannelThreadNotificationSummary(
+            normalizeRuntimeNotificationSummary(body.notification_summary_read_model) ??
+              summarizeNotificationRows(normalizeRuntimeNotificationItems(body.notification_items, 'channel_thread'), {
+                sourceLabel: 'channel_thread:error',
+              })
+          );
           return;
         }
+        const normalizedThreadNotifications = normalizeRuntimeNotificationItems(body.notification_items, 'channel_thread');
         setChannelMessages(Array.isArray(body.messages) ? body.messages : []);
         setChannelThreadPackageVisibility(
           pickRuntimePackageVisibility(
@@ -5591,6 +6247,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         if (body.channel?.name && (!selectedChannelName || String(selectedChannelId) === String(channelId))) {
           setSelectedChannelName(String(body.channel.name));
         }
+        setChannelThreadNotificationItems(normalizedThreadNotifications);
+        setChannelThreadNotificationSummary(
+          normalizeRuntimeNotificationSummary(body.notification_summary_read_model) ??
+            summarizeNotificationRows(normalizedThreadNotifications, {
+              sourceLabel: 'channel_thread',
+            })
+        );
         if (markSeen) {
           await fetch(`${API_URL}/api/messages/mark-seen`, {
             method: 'POST',
@@ -5607,6 +6270,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         setChannelMessagesError(err instanceof Error ? err.message : 'Failed to load channel messages');
         setChannelMessages([]);
         setChannelThreadPackageVisibility(null);
+        setChannelThreadNotificationItems([]);
+        setChannelThreadNotificationSummary(null);
       } finally {
         setChannelMessagesLoading(false);
       }
@@ -6472,6 +7137,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     {renderCoachingPackageGateBanner('Challenge coaching and updates', challengeCoachingPackageOutcome, {
                       compact: true,
                     })}
+                    {renderCoachingNotificationSurface(
+                      'Challenge notifications',
+                      challengeSurfaceNotificationRows,
+                      summarizeNotificationRows(challengeSurfaceNotificationRows, { sourceLabel: 'challenge_surface' }),
+                      { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No challenge coaching notifications yet.' }
+                    )}
                     <View style={styles.coachingEntryButtonRow}>
                       <TouchableOpacity
                         style={[styles.coachingEntryPrimaryBtn, challengeCoachingGateBlocksCtas ? styles.disabled : null]}
@@ -7124,6 +7795,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           Team Member coaching progress shell plus team updates channel entry routing (W2 comms entry point pass).
                         </Text>
                         {renderCoachingPackageGateBanner('Team member coaching module', null, { compact: true })}
+                        {renderCoachingNotificationSurface(
+                          'Team coaching notifications',
+                          teamNotificationRows,
+                          summarizeNotificationRows(teamNotificationRows, { sourceLabel: 'team_member_module' }),
+                          { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No team coaching notifications yet.' }
+                        )}
                         <View style={styles.coachingEntryButtonRow}>
                           <TouchableOpacity
                             style={styles.coachingEntryPrimaryBtn}
@@ -7368,6 +8045,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         Leader coaching summary with team updates channel entry and role-gated broadcast composer entry. Broadcast send/write remains deferred pending API wiring.
                       </Text>
                       {renderCoachingPackageGateBanner('Team leader coaching module', null, { compact: true })}
+                      {renderCoachingNotificationSurface(
+                        'Team coaching notifications',
+                        teamNotificationRows,
+                        summarizeNotificationRows(teamNotificationRows, { sourceLabel: 'team_leader_module' }),
+                        { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No team coaching notifications yet.' }
+                      )}
                       <View style={styles.coachingEntryButtonRow}>
                         <TouchableOpacity
                           style={styles.coachingEntryPrimaryBtn}
@@ -7698,8 +8381,31 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </Text>
                       </TouchableOpacity>
                     ))}
+                    {coachingShellScreen === 'inbox'
+                      ? renderCoachingNotificationSurface(
+                          'Coaching notifications inbox rows',
+                          inboxNotificationRows,
+                          inboxNotificationSummaryEffective,
+                          {
+                            maxRows: 4,
+                            mode: 'list',
+                            emptyHint: 'No coaching notification rows are available yet.',
+                          }
+                        )
+                      : null}
                     {coachingShellScreen === 'inbox_channels' ? (
                       <View style={styles.coachingShellList}>
+                        {renderCoachingNotificationSurface(
+                          'Channel notification rows',
+                          fallbackChannelsNotificationRows,
+                          channelsNotificationSummary ?? summarizeNotificationRows(fallbackChannelsNotificationRows, { sourceLabel: 'channels:effective' }),
+                          {
+                            compact: true,
+                            maxRows: 3,
+                            mode: 'list',
+                            emptyHint: 'No channel notification rows yet.',
+                          }
+                        )}
                         {channelsLoading ? (
                           <View style={styles.coachingJourneyEmptyCard}>
                             <ActivityIndicator size="small" />
@@ -7813,6 +8519,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             ? `API-backed thread using /api/channels/${selectedChannelResolvedId}/messages`
                             : 'No API channel selected for this thread context. Showing shell fallback only.'}
                         </Text>
+                        {renderCoachingNotificationSurface(
+                          'Thread system notifications',
+                          channelThreadNotificationItems,
+                          channelThreadNotificationSummary,
+                          {
+                            compact: true,
+                            maxRows: 2,
+                            mode: 'thread',
+                            emptyHint: 'No thread notification rows returned for this channel.',
+                          }
+                        )}
                         <TouchableOpacity
                           style={[
                             styles.coachingAiAssistBtn,
@@ -8022,6 +8739,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
                     {coachingShellScreen === 'coaching_journeys' ? (
                       <View style={styles.coachingJourneyModule}>
+                        {renderCoachingNotificationSurface(
+                          'Coaching journey notifications',
+                          journeysNotificationRows,
+                          journeysNotificationSummaryEffective,
+                          {
+                            compact: true,
+                            maxRows: 3,
+                            mode: 'banner',
+                            emptyHint: 'No coaching journey notifications available.',
+                          }
+                        )}
                         <TouchableOpacity
                           style={[styles.coachingAiAssistBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
                           disabled={shellPackageGateBlocksActions}
@@ -8146,6 +8874,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
                     {coachingShellScreen === 'coaching_journey_detail' ? (
                       <View style={styles.coachingJourneyModule}>
+                        {renderCoachingNotificationSurface(
+                          'Journey detail notifications',
+                          journeysNotificationRows,
+                          journeysNotificationSummaryEffective,
+                          {
+                            compact: true,
+                            maxRows: 2,
+                            mode: 'banner',
+                            emptyHint: 'No journey detail notifications available.',
+                          }
+                        )}
                         {!selectedJourneyId ? (
                           <View style={styles.coachingJourneyEmptyCard}>
                             <Text style={styles.coachingJourneyEmptyTitle}>Choose a journey first</Text>
@@ -8271,6 +9010,57 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
                     {coachingShellScreen === 'coaching_lesson_detail' ? (
                       <View style={styles.coachingJourneyModule}>
+                        {renderCoachingNotificationSurface(
+                          'Lesson notifications',
+                          selectedLesson
+                            ? [
+                                {
+                                  id: `lesson-progress-notice-${selectedLesson.id}`,
+                                  notification_class:
+                                    selectedLessonStatus === 'completed'
+                                      ? 'lesson_completed_status'
+                                      : selectedLessonStatus === 'in_progress'
+                                        ? 'lesson_progress_reminder'
+                                        : 'lesson_assignment_prompt',
+                                  title:
+                                    selectedLessonStatus === 'completed'
+                                      ? 'Lesson completed'
+                                      : selectedLessonStatus === 'in_progress'
+                                        ? 'Lesson in progress'
+                                        : 'Lesson ready to start',
+                                  body:
+                                    selectedLessonStatus === 'completed'
+                                      ? 'Progress is already recorded. Notification UI is informational only.'
+                                      : 'Use explicit progress buttons below to update status. Notification taps do not write progress.',
+                                  read_state: selectedLessonStatus === 'completed' ? 'read' : 'unread',
+                                  severity: selectedLessonStatus === 'completed' ? 'success' : 'info',
+                                  delivery_channels: ['in_app', 'banner'],
+                                  route_target: { screen: 'coaching_lesson_detail', lesson_id: String(selectedLesson.id) },
+                                  source_family: 'lesson_detail_local',
+                                },
+                                ...aiApprovalNotificationRows.slice(0, 1),
+                              ]
+                            : aiApprovalNotificationRows.slice(0, 1),
+                          summarizeNotificationRows(
+                            selectedLesson
+                              ? [
+                                  {
+                                    id: `lesson-progress-notice-${selectedLesson.id}`,
+                                    notification_class: 'lesson_progress_status',
+                                    title: 'Lesson progress status',
+                                  },
+                                  ...aiApprovalNotificationRows.slice(0, 1),
+                                ]
+                              : aiApprovalNotificationRows.slice(0, 1),
+                            { sourceLabel: 'lesson_detail' }
+                          ),
+                          {
+                            compact: true,
+                            maxRows: 2,
+                            mode: 'banner',
+                            emptyHint: 'No lesson notifications available.',
+                          }
+                        )}
                         {!selectedLesson ? (
                           <View style={styles.coachingJourneyEmptyCard}>
                             <Text style={styles.coachingJourneyEmptyTitle}>Choose a lesson first</Text>
@@ -8477,6 +9267,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 Placeholder Home / Priority coaching entry. KPI logging behavior remains unchanged; this only reserves CTA placement and route shell intent.
               </Text>
               {renderCoachingPackageGateBanner('Home / Priority coaching nudge', null, { compact: true })}
+              {renderCoachingNotificationSurface(
+                'Coaching notifications',
+                homeNotificationRows,
+                summarizeNotificationRows(homeNotificationRows, { sourceLabel: 'home_coaching_nudge' }),
+                { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No coaching notifications right now.' }
+              )}
               <View style={styles.coachingEntryButtonRow}>
                 <TouchableOpacity
                   style={styles.coachingEntryPrimaryBtn}
@@ -12000,6 +12796,178 @@ const styles = StyleSheet.create({
     color: '#7a8699',
     fontSize: 11,
     lineHeight: 14,
+  },
+  coachingNotificationCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dfe7f3',
+    backgroundColor: '#f8fbff',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  coachingNotificationCardCompact: {
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  coachingNotificationCardThread: {
+    backgroundColor: '#f5f7fb',
+    borderColor: '#e3e8f1',
+  },
+  coachingNotificationHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  coachingNotificationTitle: {
+    color: '#344054',
+    fontSize: 11,
+    fontWeight: '800',
+    flex: 1,
+  },
+  coachingNotificationHeaderMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  coachingNotificationCountBadge: {
+    borderRadius: 999,
+    backgroundColor: '#1f5fe2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  coachingNotificationCountBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  coachingNotificationHeaderLabel: {
+    color: '#67768c',
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  coachingNotificationHeaderUnread: {
+    color: '#45566e',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  coachingNotificationSummaryMeta: {
+    color: '#79879a',
+    fontSize: 9,
+    lineHeight: 12,
+  },
+  coachingNotificationRowsWrap: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e6edf6',
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+  coachingNotificationRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+  },
+  coachingNotificationRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#eef2f7',
+  },
+  coachingNotificationRowDisabled: {
+    opacity: 0.88,
+  },
+  coachingNotificationRowInfo: {
+    backgroundColor: '#ffffff',
+  },
+  coachingNotificationRowWarning: {
+    backgroundColor: '#fffdf4',
+  },
+  coachingNotificationRowError: {
+    backgroundColor: '#fff7f7',
+  },
+  coachingNotificationRowSuccess: {
+    backgroundColor: '#f6fff7',
+  },
+  coachingNotificationRowDotWrap: {
+    width: 10,
+    alignItems: 'center',
+    paddingTop: 5,
+  },
+  coachingNotificationRowDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: '#c0cad8',
+  },
+  coachingNotificationRowDotUnread: {
+    backgroundColor: '#2d63e1',
+  },
+  coachingNotificationRowCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  coachingNotificationRowTitleLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  coachingNotificationRowTitle: {
+    color: '#364254',
+    fontSize: 10,
+    fontWeight: '800',
+    flex: 1,
+  },
+  coachingNotificationInlineBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d9e5fa',
+    backgroundColor: '#eef4ff',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  coachingNotificationInlineBadgeText: {
+    color: '#315fc5',
+    fontSize: 8,
+    fontWeight: '800',
+  },
+  coachingNotificationRowBody: {
+    color: '#67768c',
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  coachingNotificationRowMetaLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  coachingNotificationRowClass: {
+    color: '#516175',
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'lowercase',
+  },
+  coachingNotificationRowMetaSep: {
+    color: '#98a3b4',
+    fontSize: 9,
+  },
+  coachingNotificationRowChannels: {
+    color: '#708096',
+    fontSize: 9,
+  },
+  coachingNotificationRowLink: {
+    color: '#245fd6',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  coachingNotificationEmptyText: {
+    color: '#7a879a',
+    fontSize: 10,
+    lineHeight: 13,
   },
   coachingGateBanner: {
     borderRadius: 10,
