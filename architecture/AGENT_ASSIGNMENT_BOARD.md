@@ -2542,3 +2542,19 @@ Prepare/advance an implementation-guiding W7 docs-first foundation package for c
 
 #### Worker Launch (Short Form)
 `Check /Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md and execute assignment COACHING-W7-COACH-PORTAL-FOUNDATION-SURFACES-A exactly as written. Use the accepted W6/W7 coach/sponsor/cohort rescope direction (coach runtime operator, sponsor persona, no sponsor KPI logging) and prepare/advance the W7 coach portal foundation surfaces package. Update the board status/blocker/completion notes first, then send a brief report back.`
+
+### `COACHING-W7-RUNTIME-COACH-SPONSOR-VISIBILITY-A`
+
+#### Snapshot
+- `Status:` `committed+pushed`
+- `Program status:` `W7 runtime coaching visibility swath (mobile)`
+- `Persona:` `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `coaching / notifications / participation visibility`
+- `Owner:` `Mobile-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred)
+- `Figma refs:` `manual-spec-driven` (W6/W7 rescope package; runtime visibility swath)
+- `Worker pickup note (2026-02-26, Mobile-1):` Board status updated first. Executing W7 runtime swath in `KPIDashboardScreen.tsx` for coach+sponsor visibility modules across Home/Team/Challenge/Journeys/Inbox surfaces using existing notification/package read-model outputs with no backend/schema/API changes.
+- `Current blocker status (2026-02-26, Mobile-1, start):` `none` (owner approved W6/W7 direction; runtime swath unblocked).
+- `Completion note (2026-02-26, Mobile-1):` Added W7 runtime visibility modules for coach runtime operator, challenge sponsor scoped visibility, cohort channel context, and team-leader creator+participant behavior on in-scope host/runtime surfaces. Preserved no-sponsor-KPI-logging boundaries and did not add backend/schema/API changes.
+- `Current blocker status (2026-02-26, Mobile-1, completion):` `none`. Remaining work is UX polish/tuning only.
+- `Validation note (2026-02-26, Mobile-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed.

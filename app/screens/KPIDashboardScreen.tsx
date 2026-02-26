@@ -249,7 +249,7 @@ type CoachingShellScreen =
   | 'coaching_journeys'
   | 'coaching_journey_detail'
   | 'coaching_lesson_detail';
-type CoachingChannelScope = 'team' | 'challenge' | 'sponsor' | 'community';
+type CoachingChannelScope = 'team' | 'challenge' | 'sponsor' | 'cohort' | 'community';
 type CoachingShellEntrySource =
   | 'home'
   | 'challenge_details'
@@ -675,7 +675,8 @@ function normalizeChannelTypeToScope(type?: string | null): CoachingChannelScope
   if (t === 'team') return 'team';
   if (t === 'challenge') return 'challenge';
   if (t === 'sponsor') return 'sponsor';
-  if (t === 'cohort' || t === 'direct') return 'community';
+  if (t === 'cohort') return 'cohort';
+  if (t === 'direct') return 'community';
   return null;
 }
 
@@ -5271,6 +5272,44 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     // TEAM-MEMBER-PARITY-A default: prefer member preview when role is absent.
     return 'member';
   }, [sessionAppMeta.role, sessionAppMeta.team_role, sessionUserMeta.role, sessionUserMeta.team_role]);
+  const runtimeRoleSignals = useMemo(() => {
+    const rawValues: unknown[] = [
+      sessionUserMeta.team_role,
+      sessionUserMeta.role,
+      sessionUserMeta.persona,
+      sessionAppMeta.team_role,
+      sessionAppMeta.role,
+      sessionAppMeta.persona,
+      Array.isArray(sessionUserMeta.roles) ? sessionUserMeta.roles.join(',') : null,
+      Array.isArray(sessionAppMeta.roles) ? sessionAppMeta.roles.join(',') : null,
+    ];
+    return rawValues
+      .flatMap((v) => String(v ?? '').toLowerCase().split(/[,\s|/]+/g))
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }, [
+    sessionAppMeta.persona,
+    sessionAppMeta.role,
+    sessionAppMeta.roles,
+    sessionAppMeta.team_role,
+    sessionUserMeta.persona,
+    sessionUserMeta.role,
+    sessionUserMeta.roles,
+    sessionUserMeta.team_role,
+  ]);
+  const isCoachRuntimeOperator = useMemo(
+    () => runtimeRoleSignals.some((signal) => signal.includes('coach')),
+    [runtimeRoleSignals]
+  );
+  const isChallengeSponsorRuntime = useMemo(
+    () => runtimeRoleSignals.some((signal) => signal.includes('sponsor')),
+    [runtimeRoleSignals]
+  );
+  const isTeamLeaderCreatorParticipant = useMemo(
+    () => teamPersonaVariant === 'leader' || runtimeRoleSignals.some((signal) => signal.includes('lead') || signal.includes('manager')),
+    [runtimeRoleSignals, teamPersonaVariant]
+  );
+  const challengeCreateAllowed = teamPersonaVariant === 'member' || isTeamLeaderCreatorParticipant;
   const challengeMemberListItems = useMemo(
     () =>
       challengeListItems.filter((item) =>
@@ -5304,7 +5343,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       const scope = normalizeChannelTypeToScope(row.type) ?? 'community';
       return {
         id: `fallback-channel-unread-${row.id}`,
-        notification_class: scope === 'team' ? 'team_message_unread' : scope === 'challenge' ? 'challenge_message_unread' : 'message_unread',
+        notification_class:
+          scope === 'team'
+            ? 'team_message_unread'
+            : scope === 'challenge'
+              ? 'challenge_message_unread'
+              : scope === 'sponsor'
+                ? 'sponsor_message_unread'
+                : scope === 'cohort'
+                  ? 'cohort_message_unread'
+                  : 'message_unread',
         title: `${row.name}: ${Math.max(0, Number(row.unread_count ?? 0))} unread`,
         body: `Open ${row.name} to review recent ${String(row.type ?? 'channel')} messages.`,
         badge_label: Math.max(0, Number(row.unread_count ?? 0)) > 0 ? String(Math.max(0, Number(row.unread_count ?? 0))) : null,
@@ -5488,6 +5536,141 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       summarizeNotificationRows(inboxNotificationRows, { sourceLabel: 'inbox:effective' }),
     [channelsNotificationSummary, coachingProgressNotificationSummary, inboxNotificationRows]
   );
+  const cohortChannelContextCount = useMemo(
+    () =>
+      (Array.isArray(channelsApiRows) ? channelsApiRows : []).filter(
+        (row) => normalizeChannelTypeToScope(row.type) === 'cohort'
+      ).length,
+    [channelsApiRows]
+  );
+  const sponsorVisibilitySignalsPresent = useMemo(() => {
+    const packageType = String(challengeCoachingPackageOutcome?.package_type ?? '').toLowerCase();
+    return isChallengeSponsorRuntime || challengeHasSponsorSignal || packageType.includes('sponsored');
+  }, [challengeCoachingPackageOutcome?.package_type, challengeHasSponsorSignal, isChallengeSponsorRuntime]);
+  const runtimeCoachSponsorVisibilityRows = useMemo<RuntimeNotificationItem[]>(() => {
+    const rows: RuntimeNotificationItem[] = [];
+    if (isCoachRuntimeOperator) {
+      rows.push({
+        id: 'w7-coach-runtime-operator',
+        notification_class: 'coach_runtime_operator',
+        title: 'Coach runtime operator visibility enabled',
+        body:
+          cohortChannelContextCount > 0
+            ? `Coach can operate on host surfaces/channels with ${cohortChannelContextCount} cohort context channel(s).`
+            : 'Coach can operate on host surfaces/channels using current team/challenge/sponsor context signals.',
+        read_state: 'unknown',
+        severity: 'info',
+        delivery_channels: ['in_app', 'badge', 'banner'],
+        route_target: {
+          screen: 'inbox_channels',
+          preferred_channel_scope: cohortChannelContextCount > 0 ? 'cohort' : 'team',
+          preferred_channel_label: cohortChannelContextCount > 0 ? 'Cohort Updates' : 'Team Updates',
+        },
+        source_family: 'w7_runtime_visibility',
+      });
+    }
+    if (sponsorVisibilitySignalsPresent) {
+      rows.push({
+        id: 'w7-challenge-sponsor-visibility',
+        notification_class: 'challenge_sponsor_runtime_visibility',
+        title: 'Challenge Sponsor scoped runtime visibility',
+        body:
+          'Sponsor-scoped coaching visibility is active on challenge/coaching channels. Sponsor persona remains no-KPI-logging.',
+        read_state: 'unknown',
+        severity: 'info',
+        delivery_channels: ['in_app', 'banner'],
+        route_target: {
+          screen: 'channel_thread',
+          preferred_channel_scope: 'sponsor',
+          preferred_channel_label: 'Sponsor Updates',
+        },
+        source_family: 'w7_runtime_visibility',
+      });
+    }
+    if (isTeamLeaderCreatorParticipant) {
+      rows.push({
+        id: 'w7-team-leader-creator-participant',
+        notification_class: 'team_leader_creator_participant',
+        title: 'Team Leader creator + participant behavior active',
+        body:
+          'Team Leaders can create challenge/coaching flows and remain participants in the same runtime coaching surfaces.',
+        read_state: 'unknown',
+        severity: 'success',
+        delivery_channels: ['in_app', 'banner'],
+        route_target: {
+          screen: 'challenge_details',
+          challenge_id: challengeSelected?.id ?? null,
+          challenge_title: challengeSelected?.title ?? null,
+        },
+        source_family: 'w7_runtime_visibility',
+      });
+    }
+    if (cohortChannelContextCount > 0) {
+      rows.push({
+        id: 'w7-cohort-channel-context',
+        notification_class: 'cohort_channel_context',
+        title: `${cohortChannelContextCount} cohort channel context${cohortChannelContextCount === 1 ? '' : 's'} available`,
+        body: 'Cohort channels are available for non-team individual coaching/comms routing.',
+        read_state: 'unread',
+        severity: 'info',
+        delivery_channels: ['in_app', 'badge', 'banner'],
+        route_target: {
+          screen: 'inbox_channels',
+          preferred_channel_scope: 'cohort',
+          preferred_channel_label: 'Cohort Updates',
+        },
+        source_family: 'w7_runtime_visibility',
+      });
+    }
+    return rows;
+  }, [
+    challengeSelected?.id,
+    challengeSelected?.title,
+    cohortChannelContextCount,
+    isCoachRuntimeOperator,
+    isTeamLeaderCreatorParticipant,
+    sponsorVisibilitySignalsPresent,
+  ]);
+  const homeRuntimeVisibilityRows = useMemo(
+    () => runtimeCoachSponsorVisibilityRows.slice(0, 2),
+    [runtimeCoachSponsorVisibilityRows]
+  );
+  const teamRuntimeVisibilityRows = useMemo(
+    () =>
+      runtimeCoachSponsorVisibilityRows
+        .filter((row) => row.notification_class !== 'challenge_sponsor_runtime_visibility' || sponsorVisibilitySignalsPresent)
+        .slice(0, 3),
+    [runtimeCoachSponsorVisibilityRows, sponsorVisibilitySignalsPresent]
+  );
+  const challengeRuntimeVisibilityRows = useMemo(
+    () =>
+      runtimeCoachSponsorVisibilityRows.filter(
+        (row) =>
+          row.notification_class === 'challenge_sponsor_runtime_visibility' ||
+          row.notification_class === 'team_leader_creator_participant'
+      ),
+    [runtimeCoachSponsorVisibilityRows]
+  );
+  const journeysRuntimeVisibilityRows = useMemo(
+    () =>
+      runtimeCoachSponsorVisibilityRows.filter(
+        (row) =>
+          row.notification_class === 'coach_runtime_operator' ||
+          row.notification_class === 'cohort_channel_context' ||
+          row.notification_class === 'challenge_sponsor_runtime_visibility'
+      ),
+    [runtimeCoachSponsorVisibilityRows]
+  );
+  const inboxRuntimeVisibilityRows = useMemo(
+    () =>
+      runtimeCoachSponsorVisibilityRows.filter(
+        (row) =>
+          row.notification_class === 'cohort_channel_context' ||
+          row.notification_class === 'coach_runtime_operator' ||
+          row.notification_class === 'challenge_sponsor_runtime_visibility'
+      ),
+    [runtimeCoachSponsorVisibilityRows]
+  );
   const challengeDaysLeft =
     challengeSelected?.bucket === 'active' && challengeSelected?.endAtIso
       ? Math.max(0, Math.ceil((new Date(challengeSelected.endAtIso).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
@@ -5554,7 +5737,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       const screenRaw = String(route?.screen ?? '').toLowerCase();
       const preferredScopeRaw = String(route?.preferred_channel_scope ?? '').toLowerCase();
       const preferredScope: CoachingChannelScope | null =
-        preferredScopeRaw === 'team' || preferredScopeRaw === 'challenge' || preferredScopeRaw === 'sponsor' || preferredScopeRaw === 'community'
+        preferredScopeRaw === 'team' ||
+        preferredScopeRaw === 'challenge' ||
+        preferredScopeRaw === 'sponsor' ||
+        preferredScopeRaw === 'cohort' ||
+        preferredScopeRaw === 'community'
           ? preferredScopeRaw
           : null;
       if (screenRaw === 'challenge_details') {
@@ -6494,17 +6681,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <TouchableOpacity
                       style={[
                         styles.challengeListCreateBtn,
-                        teamPersonaVariant === 'member' ? undefined : styles.disabled,
+                        challengeCreateAllowed ? undefined : styles.disabled,
                       ]}
-                      disabled={teamPersonaVariant !== 'member'}
+                      disabled={!challengeCreateAllowed}
                       onPress={() => {
-                        if (teamPersonaVariant !== 'member') return;
+                        if (!challengeCreateAllowed) return;
                         setChallengeMemberCreateMode('team');
                         setChallengeMemberCreateModalVisible(true);
                       }}
                     >
                       <Text style={styles.challengeListCreateBtnText}>
-                        {teamPersonaVariant === 'member' ? 'Create ⊕' : 'Create (Soon)'}
+                        {challengeCreateAllowed ? 'Create ⊕' : 'Create (Soon)'}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -6735,7 +6922,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
                   </View>
                 </View>
-                {teamPersonaVariant === 'member' ? (
+                {challengeCreateAllowed ? (
                   <Modal
                     visible={challengeMemberCreateModalVisible}
                     transparent
@@ -7142,6 +7329,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       challengeSurfaceNotificationRows,
                       summarizeNotificationRows(challengeSurfaceNotificationRows, { sourceLabel: 'challenge_surface' }),
                       { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No challenge coaching notifications yet.' }
+                    )}
+                    {renderCoachingNotificationSurface(
+                      'W7 runtime visibility',
+                      challengeRuntimeVisibilityRows,
+                      summarizeNotificationRows(challengeRuntimeVisibilityRows, { sourceLabel: 'challenge_runtime_visibility' }),
+                      { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No runtime visibility updates for this challenge context.' }
                     )}
                     <View style={styles.coachingEntryButtonRow}>
                       <TouchableOpacity
@@ -7801,6 +7994,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           summarizeNotificationRows(teamNotificationRows, { sourceLabel: 'team_member_module' }),
                           { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No team coaching notifications yet.' }
                         )}
+                        {renderCoachingNotificationSurface(
+                          'W7 runtime visibility',
+                          teamRuntimeVisibilityRows,
+                          summarizeNotificationRows(teamRuntimeVisibilityRows, { sourceLabel: 'team_member_runtime_visibility' }),
+                          { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No runtime visibility updates for this team context.' }
+                        )}
                         <View style={styles.coachingEntryButtonRow}>
                           <TouchableOpacity
                             style={styles.coachingEntryPrimaryBtn}
@@ -8051,6 +8250,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         summarizeNotificationRows(teamNotificationRows, { sourceLabel: 'team_leader_module' }),
                         { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No team coaching notifications yet.' }
                       )}
+                      {renderCoachingNotificationSurface(
+                        'W7 runtime visibility',
+                        teamRuntimeVisibilityRows,
+                        summarizeNotificationRows(teamRuntimeVisibilityRows, { sourceLabel: 'team_leader_runtime_visibility' }),
+                        { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No runtime visibility updates for this team context.' }
+                      )}
                       <View style={styles.coachingEntryButtonRow}>
                         <TouchableOpacity
                           style={styles.coachingEntryPrimaryBtn}
@@ -8297,6 +8502,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 { scope: 'team', label: 'Team Updates', context: 'team channel shell' },
                 { scope: 'challenge', label: 'Challenge Updates', context: 'challenge channel shell' },
                 { scope: 'sponsor', label: 'Sponsor Updates', context: 'sponsor channel shell' },
+                { scope: 'cohort', label: 'Cohort Updates', context: 'cohort channel shell' },
                 { scope: 'community', label: 'Community Updates', context: 'community channel shell' },
               ] as const)
                 .filter((row) => {
@@ -8390,6 +8596,21 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             maxRows: 4,
                             mode: 'list',
                             emptyHint: 'No coaching notification rows are available yet.',
+                          }
+                        )
+                      : null}
+                    {coachingShellScreen === 'inbox' ||
+                    coachingShellScreen === 'inbox_channels' ||
+                    coachingShellScreen === 'channel_thread'
+                      ? renderCoachingNotificationSurface(
+                          'W7 runtime visibility',
+                          inboxRuntimeVisibilityRows,
+                          summarizeNotificationRows(inboxRuntimeVisibilityRows, { sourceLabel: 'inbox_runtime_visibility' }),
+                          {
+                            compact: true,
+                            maxRows: 2,
+                            mode: 'banner',
+                            emptyHint: 'No runtime visibility updates for this inbox context.',
                           }
                         )
                       : null}
@@ -8750,6 +8971,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             emptyHint: 'No coaching journey notifications available.',
                           }
                         )}
+                        {renderCoachingNotificationSurface(
+                          'W7 runtime visibility',
+                          journeysRuntimeVisibilityRows,
+                          summarizeNotificationRows(journeysRuntimeVisibilityRows, {
+                            sourceLabel: 'journeys_runtime_visibility',
+                          }),
+                          {
+                            compact: true,
+                            maxRows: 2,
+                            mode: 'banner',
+                            emptyHint: 'No runtime visibility updates for journeys.',
+                          }
+                        )}
                         <TouchableOpacity
                           style={[styles.coachingAiAssistBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
                           disabled={shellPackageGateBlocksActions}
@@ -8885,6 +9119,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             emptyHint: 'No journey detail notifications available.',
                           }
                         )}
+                        {renderCoachingNotificationSurface(
+                          'W7 runtime visibility',
+                          journeysRuntimeVisibilityRows,
+                          summarizeNotificationRows(journeysRuntimeVisibilityRows, {
+                            sourceLabel: 'journey_detail_runtime_visibility',
+                          }),
+                          {
+                            compact: true,
+                            maxRows: 2,
+                            mode: 'banner',
+                            emptyHint: 'No runtime visibility updates for this journey detail.',
+                          }
+                        )}
                         {!selectedJourneyId ? (
                           <View style={styles.coachingJourneyEmptyCard}>
                             <Text style={styles.coachingJourneyEmptyTitle}>Choose a journey first</Text>
@@ -9010,6 +9257,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
                     {coachingShellScreen === 'coaching_lesson_detail' ? (
                       <View style={styles.coachingJourneyModule}>
+                        {renderCoachingNotificationSurface(
+                          'W7 runtime visibility',
+                          journeysRuntimeVisibilityRows,
+                          summarizeNotificationRows(journeysRuntimeVisibilityRows, {
+                            sourceLabel: 'lesson_runtime_visibility',
+                          }),
+                          {
+                            compact: true,
+                            maxRows: 2,
+                            mode: 'banner',
+                            emptyHint: 'No runtime visibility updates for this lesson context.',
+                          }
+                        )}
                         {renderCoachingNotificationSurface(
                           'Lesson notifications',
                           selectedLesson
@@ -9272,6 +9532,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 homeNotificationRows,
                 summarizeNotificationRows(homeNotificationRows, { sourceLabel: 'home_coaching_nudge' }),
                 { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No coaching notifications right now.' }
+              )}
+              {renderCoachingNotificationSurface(
+                'W7 runtime visibility',
+                homeRuntimeVisibilityRows,
+                summarizeNotificationRows(homeRuntimeVisibilityRows, { sourceLabel: 'home_runtime_visibility' }),
+                { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No runtime visibility updates right now.' }
               )}
               <View style={styles.coachingEntryButtonRow}>
                 <TouchableOpacity
