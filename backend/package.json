@@ -20,7 +20,10 @@
     "test:backend-mvp": "npm run test:sprint10",
     "test:release": "npm run test:backend-mvp",
     "ops:summary": "npm run build && node scripts/ops_summaries.js",
-    "test:algorithms": "npm run build && node scripts/algorithm_acceptance.js"
+    "test:algorithms": "npm run build && node scripts/algorithm_acceptance.js",
+    "seed:coaching:realism:reset": "npm run build && node scripts/coaching_sample_content_seed.js --reset-only",
+    "seed:coaching:realism": "npm run build && node scripts/coaching_sample_content_seed.js",
+    "seed:coaching:realism:smoke": "npm run seed:coaching:realism"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",

@@ -7,6 +7,8 @@ const { Client } = require("pg");
 const BACKEND_URL = "http://127.0.0.1:4000";
 const PASSWORD = "TempPass!23456";
 const LABEL_PREFIX = "Seed Sample Coaching";
+const DEFAULT_SEED_TAG = "seed-m6-realism-ui-eval";
+const FIXED_NOW_ISO = "2026-02-27T12:00:00.000Z";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -32,6 +34,17 @@ async function request(url, options = {}) {
   return { status: response.status, data };
 }
 
+async function authAdminRequest(path, options = {}) {
+  return request(`${process.env.SUPABASE_URL}${path}`, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+  });
+}
+
 async function waitForHealth(timeoutMs = 10000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -47,17 +60,41 @@ async function waitForHealth(timeoutMs = 10000) {
 }
 
 async function createAuthUser(email, password) {
-  const out = await request(`${process.env.SUPABASE_URL}/auth/v1/admin/users`, {
+  const out = await authAdminRequest("/auth/v1/admin/users", {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-      authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
     },
     body: JSON.stringify({ email, password, email_confirm: true }),
   });
   assert(out.status < 300, `create auth user failed (${email}): ${out.status}`);
   return out.data.id;
+}
+
+async function getAuthUserByEmail(email) {
+  let page = 1;
+  while (page <= 10) {
+    const out = await authAdminRequest(`/auth/v1/admin/users?page=${page}&per_page=200`);
+    assert(out.status < 300, `list auth users failed (${out.status})`);
+    const users = asArray(out.data?.users);
+    const match = users.find((user) => String(user.email || "").toLowerCase() === email.toLowerCase());
+    if (match) return match;
+    if (users.length === 0 || users.length < 200) break;
+    page += 1;
+  }
+  return null;
+}
+
+async function ensureAuthUser(email, password) {
+  const existing = await getAuthUserByEmail(email);
+  if (!existing) return createAuthUser(email, password);
+  const update = await authAdminRequest(`/auth/v1/admin/users/${existing.id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ password, email_confirm: true }),
+  });
+  assert(update.status < 300, `update auth user password failed (${email}): ${update.status}`);
+  return existing.id;
 }
 
 async function signIn(email, password) {
@@ -74,6 +111,60 @@ async function signIn(email, password) {
   return out.data.access_token;
 }
 
+async function resetSeedData(db, seedTag) {
+  const like = `%(${seedTag})%`;
+  await db.query(
+    `delete from public.lesson_progress
+     where lesson_id in (
+       select l.id
+       from public.lessons l
+       join public.milestones m on m.id = l.milestone_id
+       join public.journeys j on j.id = m.journey_id
+       where j.title ilike $1
+     )`,
+    [like]
+  );
+  await db.query(
+    `delete from public.lessons
+     where milestone_id in (
+       select m.id
+       from public.milestones m
+       join public.journeys j on j.id = m.journey_id
+       where j.title ilike $1
+     )`,
+    [like]
+  );
+  await db.query(
+    `delete from public.milestones
+     where journey_id in (select id from public.journeys where title ilike $1)`,
+    [like]
+  );
+  await db.query(`delete from public.journeys where title ilike $1`, [like]);
+
+  await db.query(
+    `delete from public.channel_messages
+     where channel_id in (select id from public.channels where name ilike $1)`,
+    [like]
+  );
+  await db.query(
+    `delete from public.message_unreads
+     where channel_id in (select id from public.channels where name ilike $1)`,
+    [like]
+  );
+  await db.query(
+    `delete from public.channel_memberships
+     where channel_id in (select id from public.channels where name ilike $1)`,
+    [like]
+  );
+  await db.query(`delete from public.channels where name ilike $1`, [like]);
+
+  await db.query(`delete from public.sponsored_challenges where name ilike $1`, [like]);
+  await db.query(`delete from public.sponsors where name ilike $1`, [like]);
+  await db.query(`delete from public.challenges where name ilike $1`, [like]);
+  await db.query(`delete from public.teams where name ilike $1`, [like]);
+  await db.query(`delete from public.kpis where name ilike $1`, [like]);
+}
+
 async function main() {
   const required = [
     "SUPABASE_URL",
@@ -83,8 +174,10 @@ async function main() {
   ];
   for (const key of required) assert(process.env[key], `${key} is required`);
 
-  const stamp = Date.now();
-  const seedTag = `seed-${stamp}`;
+  const args = new Set(process.argv.slice(2));
+  const resetOnly = args.has("--reset-only");
+  const skipReset = args.has("--skip-reset");
+  const seedTag = process.env.COACHING_SAMPLE_SEED_TAG || DEFAULT_SEED_TAG;
 
   const emails = {
     coach: `${seedTag}.coach@example.com`,
@@ -109,12 +202,7 @@ async function main() {
     kpis: {},
   };
 
-  const server = spawn("node", ["dist/index.js"], {
-    cwd: process.cwd(),
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  server.stdout.on("data", (chunk) => process.stdout.write(`[backend] ${String(chunk)}`));
-  server.stderr.on("data", (chunk) => process.stderr.write(`[backend] ${String(chunk)}`));
+  let server = null;
 
   const db = new Client({
     connectionString: process.env.SUPABASE_DATABASE_URL,
@@ -146,7 +234,23 @@ async function main() {
   }
 
   try {
-    await waitForHealth();
+    let backendHealthy = false;
+    try {
+      const health = await request(`${BACKEND_URL}/health`);
+      backendHealthy = health.status === 200;
+    } catch {
+      backendHealthy = false;
+    }
+    if (!backendHealthy) {
+      server = spawn("node", ["dist/index.js"], {
+        cwd: process.cwd(),
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      server.stdout.on("data", (chunk) => process.stdout.write(`[backend] ${String(chunk)}`));
+      server.stderr.on("data", (chunk) => process.stderr.write(`[backend] ${String(chunk)}`));
+      await waitForHealth();
+    }
+
     await db.connect();
     dbConnected = true;
 
@@ -163,11 +267,20 @@ async function main() {
     assert(t.journeys === "journeys", "Missing coaching tables. Apply backend/sql/006_sprint4_coaching_ai_core.sql.");
     assert(t.channels === "channels", "Missing communication tables. Apply backend/sql/005_sprint3_communication_core.sql.");
 
-    ids.coachUserId = await createAuthUser(emails.coach, PASSWORD);
-    ids.leaderUserId = await createAuthUser(emails.leader, PASSWORD);
-    ids.memberUserId = await createAuthUser(emails.member, PASSWORD);
-    ids.soloUserId = await createAuthUser(emails.solo, PASSWORD);
-    ids.sponsorUserId = await createAuthUser(emails.sponsor, PASSWORD);
+    if (!skipReset) {
+      await resetSeedData(db, seedTag);
+    }
+    if (resetOnly) {
+      console.log(JSON.stringify({ seed_tag: seedTag, reset_only: true, reset_completed: true }, null, 2));
+      console.log("Coaching sample content reset completed.");
+      return;
+    }
+
+    ids.coachUserId = await ensureAuthUser(emails.coach, PASSWORD);
+    ids.leaderUserId = await ensureAuthUser(emails.leader, PASSWORD);
+    ids.memberUserId = await ensureAuthUser(emails.member, PASSWORD);
+    ids.soloUserId = await ensureAuthUser(emails.solo, PASSWORD);
+    ids.sponsorUserId = await ensureAuthUser(emails.sponsor, PASSWORD);
 
     const tokens = {
       coach: await signIn(emails.coach, PASSWORD),
@@ -203,7 +316,7 @@ async function main() {
         "content-type": "application/json",
         authorization: `Bearer ${tokens.leader}`,
       },
-      body: JSON.stringify({ name: `${LABEL_PREFIX} Team ${stamp}` }),
+      body: JSON.stringify({ name: `${LABEL_PREFIX} Team (${seedTag})` }),
     });
     assert(teamOut.status === 201, `team create failed: ${teamOut.status}`);
     ids.teamId = teamOut.data.team.id;
@@ -278,7 +391,8 @@ async function main() {
     }
 
     // Member progress: explicit examples of all three states.
-    const now = new Date();
+    const now = new Date(FIXED_NOW_ISO);
+    const oneHourEarlierIso = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
     await db.query(
       `insert into public.lesson_progress (lesson_id, user_id, status, completed_at, updated_at)
        values
@@ -294,7 +408,7 @@ async function main() {
         lessonRows[1].id,
         lessonRows[2].id,
         ids.memberUserId,
-        new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
+        oneHourEarlierIso,
         now.toISOString(),
       ]
     );
@@ -306,6 +420,61 @@ async function main() {
        on conflict (lesson_id, user_id) do update
        set status = excluded.status, completed_at = excluded.completed_at, updated_at = excluded.updated_at`,
       [lessonRows[3].id, ids.leaderUserId, now.toISOString()]
+    );
+
+    // Additional coach-owned team journey to guarantee "multiple journeys per coach" realism.
+    const coachTeamJourneyInsert = await db.query(
+      `insert into public.journeys (title, description, team_id, created_by, is_active)
+       values ($1, $2, $3, $4, true)
+       returning id, title`,
+      [
+        `${LABEL_PREFIX}: Coach Intervention Cadence (${seedTag})`,
+        "Coach-owned team journey with milestone-level interventions and mixed completion states.",
+        ids.teamId,
+        ids.coachUserId,
+      ]
+    );
+    const coachTeamJourney = { id: coachTeamJourneyInsert.rows[0].id, title: coachTeamJourneyInsert.rows[0].title };
+    ids.journeys.push(coachTeamJourney);
+
+    const coachTeamMilestone = await db.query(
+      `insert into public.milestones (journey_id, title, sort_order)
+       values ($1, $2, 1)
+       returning id`,
+      [coachTeamJourney.id, "Coach Weekly Interventions"]
+    );
+    const coachTeamLessons = await db.query(
+      `insert into public.lessons (milestone_id, title, body, sort_order, is_active)
+       values
+         ($1, $2, $3, 1, true),
+         ($1, $4, $5, 2, true),
+         ($1, $6, $7, 3, true)
+       returning id, title`,
+      [
+        coachTeamMilestone.rows[0].id,
+        "Review Team Blockers",
+        "Coach reviews blockers and sets one next-best action per participant.",
+        "Assign Rep Follow-up Sprint",
+        "Coach assigns focused follow-up reps for low-conversion members.",
+        "Capture Friday Learnings",
+        "Coach requests cohort-style recap and improvements for next week.",
+      ]
+    );
+    await db.query(
+      `insert into public.lesson_progress (lesson_id, user_id, status, completed_at, updated_at)
+       values
+         ($1, $4, 'in_progress', null, $5),
+         ($2, $4, 'not_started', null, $5),
+         ($3, $4, 'completed', $5, $5)
+       on conflict (lesson_id, user_id) do update
+       set status = excluded.status, completed_at = excluded.completed_at, updated_at = excluded.updated_at`,
+      [
+        coachTeamLessons.rows[0].id,
+        coachTeamLessons.rows[1].id,
+        coachTeamLessons.rows[2].id,
+        ids.leaderUserId,
+        now.toISOString(),
+      ]
     );
 
     // Solo/global journey for solo persona baseline list/detail visibility.
@@ -340,6 +509,50 @@ async function main() {
        on conflict (lesson_id, user_id) do update
        set status = excluded.status, completed_at = excluded.completed_at, updated_at = excluded.updated_at`,
       [soloLesson.rows[0].id, ids.soloUserId, now.toISOString(), now.toISOString()]
+    );
+
+    // Sponsor-visible global journey with sponsor learner progress examples.
+    const sponsorJourneyInsert = await db.query(
+      `insert into public.journeys (title, description, team_id, created_by, is_active)
+       values ($1, $2, null, $3, true)
+       returning id, title`,
+      [
+        `${LABEL_PREFIX}: Sponsor Activation Brief (${seedTag})`,
+        "Global journey visible to sponsor persona for scoped coaching guidance realism.",
+        ids.coachUserId,
+      ]
+    );
+    const sponsorJourney = { id: sponsorJourneyInsert.rows[0].id, title: sponsorJourneyInsert.rows[0].title };
+    ids.journeys.push(sponsorJourney);
+
+    const sponsorMilestone = await db.query(
+      `insert into public.milestones (journey_id, title, sort_order)
+       values ($1, $2, 1)
+       returning id`,
+      [sponsorJourney.id, "Sponsor Participant Guidance"]
+    );
+    const sponsorLessons = await db.query(
+      `insert into public.lessons (milestone_id, title, body, sort_order, is_active)
+       values
+         ($1, $2, $3, 1, true),
+         ($1, $4, $5, 2, true)
+       returning id`,
+      [
+        sponsorMilestone.rows[0].id,
+        "Review Sponsor Challenge Commitments",
+        "Confirm sponsor-scoped communications and reward expectations for participants.",
+        "Publish Sponsor Welcome Note",
+        "Publish sponsor intro note into sponsor bulletin channel for participants.",
+      ]
+    );
+    await db.query(
+      `insert into public.lesson_progress (lesson_id, user_id, status, completed_at, updated_at)
+       values
+         ($1, $3, 'in_progress', null, $4),
+         ($2, $3, 'not_started', null, $4)
+       on conflict (lesson_id, user_id) do update
+       set status = excluded.status, completed_at = excluded.completed_at, updated_at = excluded.updated_at`,
+      [sponsorLessons.rows[0].id, sponsorLessons.rows[1].id, ids.sponsorUserId, now.toISOString()]
     );
 
     // Sponsor realism: one sponsor with free + teams sponsored challenge visibility examples.
@@ -447,30 +660,28 @@ async function main() {
       );
     }
 
-    await db.query(
-      `insert into public.channel_messages (channel_id, sender_user_id, body, message_type)
-       values
-         ($1, $2, $3, 'message'),
-         ($1, $4, $5, 'message'),
-         ($6, $7, $8, 'broadcast'),
-         ($6, $4, $9, 'message'),
-         ($10, $2, $11, 'message'),
-         ($10, $4, $12, 'message')`,
-      [
-        teamChannel.id,
-        ids.leaderUserId,
-        `${LABEL_PREFIX}: Welcome to the team coaching room. Use this thread for weekly wins + blockers.`,
-        ids.memberUserId,
-        `${LABEL_PREFIX}: I completed the first call block and logged notes for objection patterns.`,
-        sponsorChannel.id,
-        ids.sponsorUserId,
-        `${LABEL_PREFIX}: Sponsor spotlight coaching tip of the week is now available.`,
-        `${LABEL_PREFIX}: Thanks — reviewing the sponsor challenge prep guide tonight.`,
-        cohortChannel.id,
-        `${LABEL_PREFIX}: Cohort check-in prompt — share one conversion blocker for peer feedback.`,
-        `${LABEL_PREFIX}: I need objection-handling reps for price resistance conversations.`,
-      ]
-    );
+    const messageRows = [
+      [teamChannel.id, ids.leaderUserId, `${LABEL_PREFIX}: Welcome to the team coaching room. Use this thread for weekly wins + blockers.`, "message"],
+      [teamChannel.id, ids.memberUserId, `${LABEL_PREFIX}: I completed the first call block and logged notes for objection patterns.`, "message"],
+      [teamChannel.id, ids.leaderUserId, `${LABEL_PREFIX}: Great start. Next action is two follow-up attempts by tomorrow morning.`, "message"],
+      [teamChannel.id, ids.memberUserId, `${LABEL_PREFIX}: Acknowledged. I’ll post conversion notes after the follow-up block.`, "message"],
+      [teamChannel.id, ids.leaderUserId, `${LABEL_PREFIX}: Weekly coaching recap posted — check assigned lessons before Friday standup.`, "broadcast"],
+      [sponsorChannel.id, ids.sponsorUserId, `${LABEL_PREFIX}: Sponsor spotlight coaching tip of the week is now available.`, "broadcast"],
+      [sponsorChannel.id, ids.memberUserId, `${LABEL_PREFIX}: Thanks — reviewing the sponsor challenge prep guide tonight.`, "message"],
+      [sponsorChannel.id, ids.sponsorUserId, `${LABEL_PREFIX}: Sponsor office hours open Thursday; post KPI trend questions in-thread.`, "message"],
+      [sponsorChannel.id, ids.memberUserId, `${LABEL_PREFIX}: Can we get a quick FAQ on reward eligibility and completion proof?`, "message"],
+      [cohortChannel.id, ids.leaderUserId, `${LABEL_PREFIX}: Cohort check-in prompt — share one conversion blocker for peer feedback.`, "message"],
+      [cohortChannel.id, ids.memberUserId, `${LABEL_PREFIX}: I need objection-handling reps for price resistance conversations.`, "message"],
+      [cohortChannel.id, ids.leaderUserId, `${LABEL_PREFIX}: Try the 2-question discovery framework from Lesson 2 and report outcomes.`, "message"],
+      [cohortChannel.id, ids.memberUserId, `${LABEL_PREFIX}: Will test that in tomorrow’s outreach block and post before/after results.`, "message"],
+    ];
+    for (const [channelId, senderUserId, body, messageType] of messageRows) {
+      await db.query(
+        `insert into public.channel_messages (channel_id, sender_user_id, body, message_type)
+         values ($1, $2, $3, $4)`,
+        [channelId, senderUserId, body, messageType]
+      );
+    }
 
     // KPI visibility examples for dashboard loggable KPI checks (active vs inactive).
     const kpiRows = await db.query(
@@ -499,7 +710,9 @@ async function main() {
     assert(memberJourneys.status === 200, `/api/coaching/journeys failed: ${memberJourneys.status}`);
     assert(Array.isArray(memberJourneys.data.journeys), "journeys payload missing journeys[]");
     const teamJourneyListItem = memberJourneys.data.journeys.find((j) => j.id === teamJourney.id);
+    const coachTeamJourneyListItem = memberJourneys.data.journeys.find((j) => j.id === coachTeamJourney.id);
     assert(teamJourneyListItem, "member journeys list missing seeded team journey");
+    assert(coachTeamJourneyListItem, "member journeys list missing coach-owned team journey");
     assert(teamJourneyListItem.packaging_read_model, "journeys list missing packaging_read_model");
 
     const teamJourneyDetail = await request(`${BACKEND_URL}/api/coaching/journeys/${teamJourney.id}`, {
@@ -528,9 +741,12 @@ async function main() {
     assert(coachJourneys.status === 200, `/api/coaching/journeys failed (coach): ${coachJourneys.status}`);
     assert(
       coachJourneys.data.journeys.some((j) => j.id === teamJourney.id) &&
-      coachJourneys.data.journeys.some((j) => j.id === soloJourney.id),
-      "coach should see both team and solo journeys"
+      coachJourneys.data.journeys.some((j) => j.id === coachTeamJourney.id) &&
+      coachJourneys.data.journeys.some((j) => j.id === soloJourney.id) &&
+      coachJourneys.data.journeys.some((j) => j.id === sponsorJourney.id),
+      "coach should see all seeded journeys"
     );
+    assert(asArray(coachJourneys.data.journeys).length >= 4, "coach should see at least four seeded journeys");
 
     const leaderJourneys = await request(`${BACKEND_URL}/api/coaching/journeys`, {
       headers: { authorization: `Bearer ${tokens.leader}` },
@@ -538,8 +754,9 @@ async function main() {
     recordEndpoint("leader:/api/coaching/journeys", leaderJourneys);
     assert(leaderJourneys.status === 200, `/api/coaching/journeys failed (leader): ${leaderJourneys.status}`);
     assert(
-      leaderJourneys.data.journeys.some((j) => j.id === teamJourney.id),
-      "team leader should see team journey"
+      leaderJourneys.data.journeys.some((j) => j.id === teamJourney.id) &&
+      leaderJourneys.data.journeys.some((j) => j.id === coachTeamJourney.id),
+      "team leader should see both seeded team journeys"
     );
 
     const sponsorJourneys = await request(`${BACKEND_URL}/api/coaching/journeys`, {
@@ -552,8 +769,20 @@ async function main() {
       "challenge sponsor should not see team journey without team membership"
     );
     assert(
-      sponsorJourneys.data.journeys.some((j) => j.id === soloJourney.id),
-      "challenge sponsor should still see non-team scoped solo journey"
+      sponsorJourneys.data.journeys.some((j) => j.id === soloJourney.id) &&
+      sponsorJourneys.data.journeys.some((j) => j.id === sponsorJourney.id),
+      "challenge sponsor should still see non-team scoped journeys"
+    );
+
+    const soloJourneys = await request(`${BACKEND_URL}/api/coaching/journeys`, {
+      headers: { authorization: `Bearer ${tokens.solo}` },
+    });
+    recordEndpoint("solo:/api/coaching/journeys", soloJourneys);
+    assert(soloJourneys.status === 200, `/api/coaching/journeys failed (solo): ${soloJourneys.status}`);
+    assert(
+      soloJourneys.data.journeys.some((j) => j.id === soloJourney.id) &&
+      soloJourneys.data.journeys.some((j) => j.id === sponsorJourney.id),
+      "solo user should see seeded global journeys"
     );
 
     const memberChannels = await request(`${BACKEND_URL}/api/channels`, {
@@ -601,7 +830,7 @@ async function main() {
     recordEndpoint(`member:/api/channels/${teamChannel.id}/messages`, teamChannelMessages);
     assert(teamChannelMessages.status === 200, `/api/channels/:id/messages failed: ${teamChannelMessages.status}`);
     assert(Array.isArray(teamChannelMessages.data.messages), "channel messages payload missing messages[]");
-    assert(teamChannelMessages.data.messages.length >= 2, "seeded message thread should contain messages");
+    assert(teamChannelMessages.data.messages.length >= 5, "seeded team thread should contain message history");
 
     const cohortChannelMessages = await request(`${BACKEND_URL}/api/channels/${cohortChannel.id}/messages`, {
       headers: { authorization: `Bearer ${tokens.member}` },
@@ -609,7 +838,26 @@ async function main() {
     recordEndpoint(`member:/api/channels/${cohortChannel.id}/messages`, cohortChannelMessages);
     assert(cohortChannelMessages.status === 200, `/api/channels/:id/messages (cohort) failed: ${cohortChannelMessages.status}`);
     assert(Array.isArray(cohortChannelMessages.data.messages), "cohort channel messages payload missing messages[]");
-    assert(cohortChannelMessages.data.messages.length >= 2, "seeded cohort thread should contain messages");
+    assert(cohortChannelMessages.data.messages.length >= 4, "seeded cohort thread should contain message history");
+
+    const sponsorChannelMessages = await request(`${BACKEND_URL}/api/channels/${sponsorChannel.id}/messages`, {
+      headers: { authorization: `Bearer ${tokens.member}` },
+    });
+    recordEndpoint(`member:/api/channels/${sponsorChannel.id}/messages`, sponsorChannelMessages);
+    assert(sponsorChannelMessages.status === 200, `/api/channels/:id/messages (sponsor) failed: ${sponsorChannelMessages.status}`);
+    assert(Array.isArray(sponsorChannelMessages.data.messages), "sponsor channel messages payload missing messages[]");
+    assert(sponsorChannelMessages.data.messages.length >= 4, "seeded sponsor thread should contain message history");
+
+    const soloChannels = await request(`${BACKEND_URL}/api/channels`, {
+      headers: { authorization: `Bearer ${tokens.solo}` },
+    });
+    recordEndpoint("solo:/api/channels", soloChannels);
+    assert(soloChannels.status === 200, `/api/channels failed (solo): ${soloChannels.status}`);
+    assert(
+      soloChannels.data.channels.some((c) => c.id === cohortChannel.id) &&
+      !soloChannels.data.channels.some((c) => c.id === teamChannel.id),
+      "solo user should only see seeded cohort membership channel"
+    );
 
     const memberDashboard = await request(`${BACKEND_URL}/dashboard`, {
       headers: { authorization: `Bearer ${tokens.member}` },
@@ -787,8 +1035,33 @@ async function main() {
       { coach_snapshot: diagnostics.endpoint_snapshots["coach:/api/channels"] ?? null }
     );
 
+    const seededCounts = (
+      await db.query(
+        `select
+           (select count(*) from public.journeys where title ilike $1)::int as journeys,
+           (select count(*) from public.milestones where journey_id in (select id from public.journeys where title ilike $1))::int as milestones,
+           (select count(*) from public.lessons where milestone_id in (
+             select m.id from public.milestones m join public.journeys j on j.id = m.journey_id where j.title ilike $1
+           ))::int as lessons,
+           (select count(*) from public.lesson_progress where lesson_id in (
+             select l.id from public.lessons l
+             join public.milestones m on m.id = l.milestone_id
+             join public.journeys j on j.id = m.journey_id
+             where j.title ilike $1
+           ))::int as lesson_progress_rows,
+           (select count(*) from public.channels where name ilike $2)::int as channels,
+           (select count(*) from public.channel_messages where channel_id in (select id from public.channels where name ilike $2))::int as channel_messages,
+           (select count(*) from public.sponsors where name ilike $2)::int as sponsors,
+           (select count(*) from public.sponsored_challenges where name ilike $2)::int as sponsored_challenges,
+           (select count(*) from public.kpis where name ilike $2)::int as kpis`,
+        [`%(${seedTag})%`, `%${LABEL_PREFIX}%(${seedTag})%`]
+      )
+    ).rows[0];
+
     const summary = {
       seed_tag: seedTag,
+      deterministic_seed: true,
+      reset_before_seed: !skipReset,
       users: {
         coach: { email: emails.coach, id: ids.coachUserId },
         leader: { email: emails.leader, id: ids.leaderUserId },
@@ -803,6 +1076,7 @@ async function main() {
       channels: ids.channels,
       sponsored_challenges: ids.sponsoredChallenges,
       kpi_visibility_examples: ids.kpis,
+      dataset_counts: seededCounts,
       verified_endpoints: [
         "/api/coaching/journeys",
         `/api/coaching/journeys/${teamJourney.id}`,
@@ -811,6 +1085,7 @@ async function main() {
         "/dashboard",
         "/api/channels",
         `/api/channels/${teamChannel.id}/messages`,
+        `/api/channels/${sponsorChannel.id}/messages`,
         `/api/channels/${cohortChannel.id}/messages`,
         "/sponsored-challenges",
         `/sponsored-challenges/${freeSponsored.id}`,
@@ -820,13 +1095,19 @@ async function main() {
         in_progress_lesson: true,
         completed_lesson: true,
         message_thread_with_messages: true,
+        sponsor_thread_with_messages: true,
         cohort_thread_with_messages: true,
         sponsor_package_attribution_visible: true,
         sponsored_tier_gating_visible: true,
         member_kpi_visibility_examples: true,
         role_visibility_outcomes: true,
       },
-      cleanup_hint: `Delete rows with names/titles containing '${seedTag}' and auth users with emails starting '${seedTag}.'`,
+      run_commands: {
+        reset: "cd /Users/jon/compass-kpi/backend && npm run seed:coaching:realism:reset",
+        seed_and_smoke: "cd /Users/jon/compass-kpi/backend && npm run seed:coaching:realism",
+        smoke_only: "cd /Users/jon/compass-kpi/backend && npm run seed:coaching:realism:smoke",
+      },
+      cleanup_hint: `Run 'npm run seed:coaching:realism:reset' (or delete rows with names/titles containing '${seedTag}' and auth users with emails starting '${seedTag}.')`,
     };
 
     console.log(JSON.stringify(summary, null, 2));
@@ -840,7 +1121,7 @@ async function main() {
     throw err;
   } finally {
     if (dbConnected) await db.end();
-    server.kill("SIGTERM");
+    if (server) server.kill("SIGTERM");
   }
 }
 

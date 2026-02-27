@@ -17,6 +17,9 @@ Guidance for future agents: Prefer markdown chunks; full master spec lives in `a
 - `04_api_contracts.md`: endpoint surface, request/response patterns
 - `05_acceptance_tests.md`: scenario-driven acceptance criteria
 
+## Appendix Runbooks
+- `appendix/M6_REALISM_DATA_PACK_UI_EVALUATION.md`: deterministic coaching seed/run/smoke runbook for `/coach/*` + mobile UI realism evaluation
+
 ## Working Rules
 - Keep sections concise and plain English.
 - Capture non-negotiables explicitly where relevant.
