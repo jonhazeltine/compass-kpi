@@ -238,6 +238,19 @@ W7/W8 checklist alignment:
   - sticky route header/action bar stays visible while content scrolls
   - avoid nested vertical scroll regions by default; exception only for builder canvas zones with pointer+keyboard parity
 
+### W12 interaction primitives lock (admin surfaces)
+- `Primary Buttons`: commit actions only (`Create`, `Save`, `Approve`, `Reject`, `Confirm`).
+- `Tabs/Segmented Controls`: view switching only (admin section pivots, queue/status filters, detail tabs).
+- `Row Selection + Table Sorting`:
+  - row click/select opens detail or marks batch-selection state
+  - table-header sort toggles are the canonical sort control for tabular lists
+  - row-level commit buttons perform direct action and do not also trigger row-open behavior
+- `Menus`: secondary actions only (overflow options such as duplicate, export, archive, remove).
+- `Scroll Behavior`:
+  - one primary scroll container per admin route
+  - sticky list/table headers and top action bars remain visible while content scrolls
+  - nested scroll regions are limited to explicitly bounded panes and must preserve keyboard + pointer operability
+
 ## Authoring -> Runtime Publishing Handoff Rules (Planning Boundary)
 
 - Runtime coaching surfaces (`coaching_journeys*`, challenge overlays, team modules, `inbox*`) consume published assignments and content metadata only.

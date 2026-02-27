@@ -310,6 +310,19 @@ Challenge Sponsor is a distinct persona for sponsored challenge funding/campaign
   - Sticky header/action bars remain visible while content lists/canvases scroll.
   - Nested scroll containers are avoided unless required for builder canvas; when present, they must preserve pointer and keyboard usability.
 
+#### W12 interaction primitives lock (admin surfaces)
+- Primary buttons are for commit actions only (create/save/publish/approve/reject/confirm).
+- Tabs/segmented controls are for view switching only (for example: `users/reports`, queue/status slices, detail subviews).
+- Row-selection/table behavior:
+  - row selection opens detail context or enables batch-selection state
+  - table-header sorting is the canonical list-sort interaction (asc/desc toggles on sortable columns)
+  - row-level commit buttons execute explicit actions and must not also trigger row-open navigation
+- Menus are for secondary actions only (overflow actions such as duplicate, export, archive, soft-remove).
+- Scroll behavior requirements:
+  - admin pages should use one primary scroll container per route
+  - sticky table headers/action bars remain visible during vertical scroll where supported
+  - nested scroll regions are avoided unless the child pane is explicitly bounded (for example audit detail pane), with keyboard/pointer access preserved.
+
 ## Shared Runtime Router Map (Current Implementation Anchor)
 Use this to map intended screens to current code constraints.
 
