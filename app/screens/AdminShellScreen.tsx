@@ -2646,6 +2646,13 @@ const COACH_PORTAL_NAV_ITEMS: Array<{ key: CoachingPortalSurfaceKey; label: stri
   { key: 'coachingChannels', label: 'Channels' },
   { key: 'coachingUploads', label: 'Uploads' },
 ];
+const COACH_PORTAL_ROUTE_BLURBS: Record<CoachingPortalSurfaceKey, string> = {
+  coachingLibrary: 'Manage reusable lesson packs and campaign assets.',
+  coachingJourneys: 'Shape step-by-step learning journeys and release pacing.',
+  coachingCohorts: 'Group participants for targeted journey delivery.',
+  coachingChannels: 'Run communication streams for cohorts and programs.',
+  coachingUploads: 'Bring in new source content for review and publishing.',
+};
 
 function AdminCoachingPortalFoundationPanel({
   routeKey,
@@ -2783,7 +2790,7 @@ function AdminCoachingPortalFoundationPanel({
           <Text style={styles.panelTitle}>Coach Portal • {surface.title}</Text>
         </View>
         <View style={[styles.stagePill, { backgroundColor: '#E8FFF3', borderColor: '#B6E6CB' }]}>
-          <Text style={[styles.stagePillText, { color: '#146C43' }]}>Customer-facing W10</Text>
+          <Text style={[styles.stagePillText, { color: '#146C43' }]}>Standalone W11</Text>
         </View>
       </View>
       <Text style={styles.panelBody}>{surface.summary}</Text>
@@ -2885,7 +2892,7 @@ function AdminCoachingPortalFoundationPanel({
             </>
           ) : null}
           <Text style={styles.fieldHelpText}>
-            Sponsor access remains sponsor-scoped, Team Leader upload access remains team-scoped, and KPI logging actions are intentionally excluded.
+            Sponsor access remains sponsor-scoped, Team Leader upload access remains team-scoped, and KPI logging actions remain excluded for sponsors.
           </Text>
           <Text style={styles.fieldHelpText}>
             Legacy `/admin/coaching/*` routes remain compatibility redirects to canonical `/coach/*` paths.
@@ -4536,32 +4543,40 @@ export default function AdminShellScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.backgroundOrbOne} />
-      <View style={styles.backgroundOrbTwo} />
+      <View style={[styles.backgroundOrbOne, showCoachPortalExperience && styles.backgroundOrbOneCoach]} />
+      <View style={[styles.backgroundOrbTwo, showCoachPortalExperience && styles.backgroundOrbTwoCoach]} />
       <View style={[styles.shell, isCompact && styles.shellCompact]}>
-        <View style={[styles.sidebar, isCompact && styles.sidebarCompact]}>
-          <View style={styles.brandCard}>
+        <View style={[styles.sidebar, isCompact && styles.sidebarCompact, showCoachPortalExperience && styles.sidebarCoach]}>
+          <View style={[styles.brandCard, showCoachPortalExperience && styles.brandCardCoach]}>
             <View style={styles.brandRow}>
-              <View style={styles.brandLogoWrap}>
+              <View style={[styles.brandLogoWrap, showCoachPortalExperience && styles.brandLogoWrapCoach]}>
                 <CompassMark width={42} height={42} />
               </View>
               <View style={styles.brandCopy}>
-                <Text style={styles.brandTag}>{showCoachPortalExperience ? 'W9' : 'A1'}</Text>
-                <Text style={styles.brandTitle}>{showCoachPortalExperience ? 'Coach Portal' : 'Admin Shell'}</Text>
-                <Text style={styles.brandSubtitle}>
+                <Text style={[styles.brandTag, showCoachPortalExperience && styles.brandTagCoach]}>
+                  {showCoachPortalExperience ? 'COACH' : 'A1'}
+                </Text>
+                <Text style={[styles.brandTitle, showCoachPortalExperience && styles.brandTitleCoach]}>
+                  {showCoachPortalExperience ? 'Compass Coach Portal' : 'Admin Shell'}
+                </Text>
+                <Text style={[styles.brandSubtitle, showCoachPortalExperience && styles.brandSubtitleCoach]}>
                   {showCoachPortalExperience
-                    ? 'Dedicated coach workspace on /coach/* routes with legacy /admin/coaching/* compatibility redirects'
+                    ? 'Coach product workspace for publishing content, managing journeys, running cohorts, and channel communication.'
                     : 'User Ops, Catalog, and Reporting tools'}
                 </Text>
               </View>
             </View>
             <View style={styles.brandMetricsRow}>
-              <View style={styles.brandMetricCard}>
-                <Text style={styles.brandMetricLabel}>{showCoachPortalExperience ? 'Coach routes' : 'A1 routes'}</Text>
+              <View style={[styles.brandMetricCard, showCoachPortalExperience && styles.brandMetricCardCoach]}>
+                <Text style={[styles.brandMetricLabel, showCoachPortalExperience && styles.brandMetricLabelCoach]}>
+                  {showCoachPortalExperience ? 'Sections' : 'A1 routes'}
+                </Text>
                 <Text style={styles.brandMetricValue}>{showCoachPortalExperience ? coachingTransitionRoutes.length : a1Routes}</Text>
               </View>
-              <View style={styles.brandMetricCard}>
-                <Text style={styles.brandMetricLabel}>{showCoachPortalExperience ? 'Role scope' : 'Blocked now'}</Text>
+              <View style={[styles.brandMetricCard, showCoachPortalExperience && styles.brandMetricCardCoach]}>
+                <Text style={[styles.brandMetricLabel, showCoachPortalExperience && styles.brandMetricLabelCoach]}>
+                  {showCoachPortalExperience ? 'Current scope' : 'Blocked now'}
+                </Text>
                 <Text style={styles.brandMetricValue}>
                   {showCoachPortalExperience
                     ? hasCoachRole
@@ -4575,9 +4590,9 @@ export default function AdminShellScreen() {
                 </Text>
               </View>
             </View>
-            <Text style={styles.brandFootnote}>
+            <Text style={[styles.brandFootnote, showCoachPortalExperience && styles.brandFootnoteCoach]}>
               {showCoachPortalExperience
-                ? 'Coach-facing navigation is role-scoped and intentionally excludes admin-heavy maintenance views.'
+                ? 'Admin compatibility routes remain active, while coach views keep workflow language and actions customer-facing.'
                 : 'Styled from Compass export palette (navy + blue gradient) while keeping A1 scope to shell/authz only.'}
             </Text>
           </View>
@@ -4601,6 +4616,8 @@ export default function AdminShellScreen() {
                     selected && styles.navItemSelected,
                     !allowed && styles.navItemDisabled,
                     isCompact && styles.navItemCompact,
+                    showCoachPortalExperience && styles.navItemCoach,
+                    showCoachPortalExperience && selected && styles.navItemCoachSelected,
                   ]}
                   onPress={() => {
                     setUnknownAdminPath(null);
@@ -4618,22 +4635,28 @@ export default function AdminShellScreen() {
                 >
                   <View style={styles.navTopRow}>
                     <Text style={[styles.navLabel, selected && styles.navLabelSelected]}>{route.label}</Text>
-                    <View style={[styles.navStagePill, { backgroundColor: tone.bg, borderColor: tone.border }]}>
-                      <Text style={[styles.navStageText, { color: tone.text }]}>{stage.replace(' later', '')}</Text>
-                    </View>
+                    {!showCoachPortalExperience ? (
+                      <View style={[styles.navStagePill, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+                        <Text style={[styles.navStageText, { color: tone.text }]}>{stage.replace(' later', '')}</Text>
+                      </View>
+                    ) : null}
                   </View>
-                  <Text style={styles.navPath}>{route.path}</Text>
+                  <Text style={styles.navPath}>
+                    {showCoachPortalExperience
+                      ? COACH_PORTAL_ROUTE_BLURBS[route.key as CoachingPortalSurfaceKey] ?? route.path
+                      : route.path}
+                  </Text>
                 </Pressable>
               );
             })}
           </ScrollView>
-          <View style={styles.navFooterCard}>
+          <View style={[styles.navFooterCard, showCoachPortalExperience && styles.navFooterCardCoach]}>
             <View style={styles.navFooterRow}>
               <View style={styles.navFooterCopy}>
-                <Text style={styles.navFooterTitle}>Admin workspace routes</Text>
-                <Text style={styles.navFooterText}>
+                <Text style={styles.navFooterTitle}>{showCoachPortalExperience ? 'Coach workspace routing' : 'Admin workspace routes'}</Text>
+                <Text style={[styles.navFooterText, showCoachPortalExperience && styles.navFooterTextCoach]}>
                   {showCoachPortalExperience
-                    ? 'Coach portal navigation shows only role-allowed /coach/* routes. Legacy /admin/coaching/* URLs redirect for compatibility.'
+                    ? 'Only role-allowed coach routes are visible here. Legacy /admin/coaching/* URLs stay live as compatibility redirects to /coach/*.'
                     : 'Use the left navigation to move between available admin tools. Routes that are not available yet are labeled in the list.'}
                 </Text>
               </View>
@@ -4647,24 +4670,24 @@ export default function AdminShellScreen() {
             contentContainerStyle={styles.contentScrollInner}
             showsVerticalScrollIndicator
           >
-            <View style={styles.header}>
+            <View style={[styles.header, showCoachPortalExperience && styles.headerCoach]}>
               <View>
                 <Text style={styles.headerTitle}>{showCoachPortalExperience ? 'Compass KPI Coach Portal' : 'Compass KPI Admin'}</Text>
                 <Text style={styles.headerSubtitle}>
                   {showCoachPortalExperience
-                    ? 'Coach-focused customer-facing experience for uploads, library, cohorts, and channels'
+                    ? 'Plan content, launch learning journeys, organize cohorts, and guide channel conversations from one coach product surface.'
                     : 'Operator tools for user access, KPI catalog, templates, and reporting checks'}
                 </Text>
               </View>
               <View style={styles.headerActions}>
-                <View style={styles.roleBadge}>
+                <View style={[styles.roleBadge, showCoachPortalExperience && styles.roleBadgeCoach]}>
                   {backendRoleLoading ? <ActivityIndicator size="small" color="#1F4EBF" /> : null}
                   <Text style={styles.roleBadgeText}>
                     {backendRole ? `Backend role: ${backendRole}` : 'Role source: session metadata'}
                   </Text>
                 </View>
                 <TouchableOpacity
-                  style={styles.signOutButton}
+                  style={[styles.signOutButton, showCoachPortalExperience && styles.signOutButtonCoach]}
                   onPress={() => {
                     void signOut();
                   }}
@@ -4676,10 +4699,10 @@ export default function AdminShellScreen() {
               </View>
             </View>
             {showCoachPortalExperience ? (
-              <View style={styles.coachTopNavCard}>
+              <View style={[styles.coachTopNavCard, styles.coachTopNavCardStandalone]}>
                 <View style={styles.formHeaderRow}>
-                  <Text style={styles.summaryLabel}>Coach Portal Navigation</Text>
-                  <Text style={styles.metaRow}>Canonical routes: /coach/*</Text>
+                  <Text style={styles.summaryLabel}>Coach Product Navigation</Text>
+                  <Text style={styles.metaRow}>Canonical coach routes: /coach/*</Text>
                 </View>
                 <View style={styles.sectionNavRow}>
                   {COACH_PORTAL_NAV_ITEMS.map((item) => {
@@ -5020,6 +5043,9 @@ const styles = StyleSheet.create({
     right: -40,
     opacity: 0.7,
   },
+  backgroundOrbOneCoach: {
+    backgroundColor: '#CFEBDD',
+  },
   backgroundOrbTwo: {
     position: 'absolute',
     width: 220,
@@ -5029,6 +5055,9 @@ const styles = StyleSheet.create({
     bottom: 40,
     left: -60,
     opacity: 0.75,
+  },
+  backgroundOrbTwoCoach: {
+    backgroundColor: '#E4F4D8',
   },
   shell: {
     flex: 1,
@@ -5044,6 +5073,9 @@ const styles = StyleSheet.create({
     width: 320,
     gap: 12,
   },
+  sidebarCoach: {
+    width: 300,
+  },
   sidebarCompact: {
     width: '100%',
   },
@@ -5053,6 +5085,10 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#20365F',
+  },
+  brandCardCoach: {
+    backgroundColor: '#163328',
+    borderColor: '#2B5A48',
   },
   brandRow: {
     flexDirection: 'row',
@@ -5069,6 +5105,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2D4478',
   },
+  brandLogoWrapCoach: {
+    backgroundColor: '#10251D',
+    borderColor: '#3B705D',
+  },
   brandCopy: {
     flex: 1,
   },
@@ -5079,17 +5119,26 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
+  brandTagCoach: {
+    color: '#B6EACD',
+  },
   brandTitle: {
     color: '#ffffff',
     fontSize: 18,
     fontWeight: '700',
     marginTop: 2,
   },
+  brandTitleCoach: {
+    color: '#F3FFF9',
+  },
   brandSubtitle: {
     color: '#c5d0e6',
     fontSize: 13,
     marginTop: 6,
     lineHeight: 18,
+  },
+  brandSubtitleCoach: {
+    color: '#D0E8DC',
   },
   brandMetricsRow: {
     marginTop: 14,
@@ -5105,12 +5154,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  brandMetricCardCoach: {
+    backgroundColor: '#214337',
+    borderColor: '#406E5B',
+  },
   brandMetricLabel: {
     color: '#B9C7E4',
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.7,
     fontWeight: '700',
+  },
+  brandMetricLabelCoach: {
+    color: '#CBE8D9',
   },
   brandMetricValue: {
     color: '#FFFFFF',
@@ -5123,6 +5179,9 @@ const styles = StyleSheet.create({
     color: '#B6C2DB',
     fontSize: 12,
     lineHeight: 17,
+  },
+  brandFootnoteCoach: {
+    color: '#CAE6D7',
   },
   navScroll: {
     flexGrow: 0,
@@ -5143,12 +5202,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+  navItemCoach: {
+    backgroundColor: '#F6FCF8',
+    borderColor: '#D3E9DB',
+  },
   navItemCompact: {
     width: 220,
   },
   navItemSelected: {
     borderColor: '#2f67e8',
     backgroundColor: '#edf3ff',
+  },
+  navItemCoachSelected: {
+    borderColor: '#2D8A62',
+    backgroundColor: '#EAF8F0',
   },
   navItemDisabled: {
     opacity: 0.65,
@@ -5192,6 +5259,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  navFooterCardCoach: {
+    backgroundColor: '#F3FBF6',
+    borderColor: '#D6EBDC',
+  },
   navFooterRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -5210,6 +5281,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     marginTop: 3,
+  },
+  navFooterTextCoach: {
+    color: '#4A6D5D',
   },
   contentColumn: {
     flex: 1,
@@ -5234,6 +5308,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     flexWrap: 'wrap',
+  },
+  headerCoach: {
+    backgroundColor: 'rgba(245,252,247,0.96)',
+    borderColor: '#D4EBDD',
   },
   headerActions: {
     flexDirection: 'row',
@@ -5260,6 +5338,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  signOutButtonCoach: {
+    backgroundColor: '#F5FAF7',
+    borderColor: '#D4E7DA',
+  },
   signOutButtonText: {
     color: '#293548',
     fontWeight: '600',
@@ -5276,6 +5358,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
     maxWidth: 320,
+  },
+  roleBadgeCoach: {
+    backgroundColor: '#ECF8F1',
+    borderColor: '#CAE8D8',
   },
   roleBadgeText: {
     color: '#2B4C9A',
@@ -5879,6 +5965,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FBFF',
     padding: 12,
     gap: 8,
+  },
+  coachTopNavCardStandalone: {
+    borderColor: '#D3E9DB',
+    backgroundColor: '#F4FBF7',
   },
   filterBar: {
     borderWidth: 1,
