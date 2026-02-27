@@ -24,12 +24,12 @@ import {
 } from '../lib/adminAuthz';
 
 type CoachRouteKey = 'coachingLibrary' | 'coachingJourneys' | 'coachingCohorts' | 'coachingChannels';
+type CoachWorkspaceMode = 'journeys' | 'people';
 type SaveState = 'idle' | 'pending' | 'saved' | 'error';
 type ChannelSegment = 'all' | 'top_producers' | 'new_agents' | 'sponsor_leads';
 
 type CoachSurface = {
-  key: CoachRouteKey;
-  path: string;
+  key: CoachWorkspaceMode;
   label: string;
   headline: string;
   summary: string;
@@ -89,35 +89,26 @@ type DragPayload =
 
 const COACH_ROUTE_KEYS: CoachRouteKey[] = ['coachingLibrary', 'coachingJourneys', 'coachingCohorts', 'coachingChannels'];
 
-const COACH_SURFACES: Record<CoachRouteKey, CoachSurface> = {
-  coachingLibrary: {
-    key: 'coachingLibrary',
-    path: '/coach/library',
-    label: 'Library',
-    headline: 'Library workspace: Assets and Collections',
-    summary: 'Library is the canonical content workspace. Organize assets into collections, then assign them into journeys.',
-  },
-  coachingJourneys: {
-    key: 'coachingJourneys',
-    path: '/coach/journeys',
+const COACH_WORKSPACES: Record<CoachWorkspaceMode, CoachSurface> = {
+  journeys: {
+    key: 'journeys',
     label: 'Journeys',
-    headline: 'Journey builder',
-    summary: 'Create a new journey, drag assets or collection items into milestones, then save draft changes.',
+    headline: 'Journeys workspace',
+    summary:
+      'Manage the Library folder tree and Journey Builder together. Drag assets from collections into lesson and task milestones.',
   },
-  coachingCohorts: {
-    key: 'coachingCohorts',
-    path: '/coach/cohorts',
-    label: 'Cohorts',
-    headline: 'Group participants for targeted coaching delivery',
-    summary: 'Manage cohort membership and align each cohort to the right journeys and communication channels.',
+  people: {
+    key: 'people',
+    label: 'People',
+    headline: 'People workspace',
+    summary:
+      'Manage people, cohort membership, and channel operations together in one split view for assignment and communication planning.',
   },
-  coachingChannels: {
-    key: 'coachingChannels',
-    path: '/coach/channels',
-    label: 'Channels',
-    headline: 'Run communication channels with scoped audiences',
-    summary: 'Coordinate channel plans for journeys and cohorts while keeping sponsor interactions compliant.',
-  },
+};
+
+const WORKSPACE_ROUTE_KEYS: Record<CoachWorkspaceMode, CoachRouteKey[]> = {
+  journeys: ['coachingJourneys', 'coachingLibrary'],
+  people: ['coachingCohorts', 'coachingChannels'],
 };
 
 const INITIAL_COHORTS: CohortDraft[] = [
@@ -159,6 +150,11 @@ function getCoachRouteKeyFromPath(pathname: string | undefined): CoachRouteKey |
   return normalizeCoachKey(route?.key);
 }
 
+function getWorkspaceModeForRoute(routeKey: CoachRouteKey): CoachWorkspaceMode {
+  if (routeKey === 'coachingLibrary' || routeKey === 'coachingJourneys') return 'journeys';
+  return 'people';
+}
+
 function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) {
     return items;
@@ -198,6 +194,7 @@ export default function CoachPortalScreen() {
   ]);
   const [libraryQuery, setLibraryQuery] = useState('');
   const [selectedCollectionId, setSelectedCollectionId] = useState<string>('col-1');
+  const [expandedCollectionIds, setExpandedCollectionIds] = useState<string[]>(['col-1']);
 
   const [journeys, setJourneys] = useState<JourneyDraft[]>([
     { id: 'jr-1', name: '30-Day Listing Accelerator', audience: 'New agents', milestones: cloneMilestones() },
@@ -246,7 +243,19 @@ export default function CoachPortalScreen() {
         ? 'Sponsor access: sponsor-scoped visibility only. No KPI logging actions are available.'
         : 'Access is limited to currently authorized coach portal sections.';
 
-  const activeSurface = COACH_SURFACES[activeKey];
+  const activeWorkspace = getWorkspaceModeForRoute(activeKey);
+  const activeSurface = COACH_WORKSPACES[activeWorkspace];
+  const activeRoutePath = getAdminRouteByKey(activeKey).path;
+  const visibleWorkspaceModes = useMemo(() => {
+    const modes: CoachWorkspaceMode[] = [];
+    (Object.keys(WORKSPACE_ROUTE_KEYS) as CoachWorkspaceMode[]).forEach((mode) => {
+      const hasRoute = WORKSPACE_ROUTE_KEYS[mode].some((key) =>
+        canAccessAdminRoute(effectiveRoles, getAdminRouteByKey(key))
+      );
+      if (hasRoute) modes.push(mode);
+    });
+    return modes;
+  }, [effectiveRoles]);
 
   const filteredAssets = useMemo(() => {
     const q = libraryQuery.trim().toLowerCase();
@@ -266,15 +275,12 @@ export default function CoachPortalScreen() {
     return map;
   }, [assets]);
 
+  const filteredAssetIds = useMemo(() => new Set(filteredAssets.map((asset) => asset.id)), [filteredAssets]);
+
   const selectedCollection = useMemo(
     () => collections.find((collection) => collection.id === selectedCollectionId) ?? collections[0] ?? null,
     [collections, selectedCollectionId]
   );
-
-  const selectedCollectionAssets = useMemo(() => {
-    if (!selectedCollection) return [] as LibraryAsset[];
-    return selectedCollection.assetIds.map((assetId) => assetsById.get(assetId)).filter((row): row is LibraryAsset => Boolean(row));
-  }, [selectedCollection, assetsById]);
 
   const selectedJourney = useMemo(
     () => journeys.find((journey) => journey.id === selectedJourneyId) ?? journeys[0] ?? null,
@@ -304,6 +310,11 @@ export default function CoachPortalScreen() {
       setSelectedCollectionId(collections[0].id);
     }
   }, [collections, selectedCollection]);
+
+  useEffect(() => {
+    const validIds = new Set(collections.map((collection) => collection.id));
+    setExpandedCollectionIds((prev) => prev.filter((id) => validIds.has(id)));
+  }, [collections]);
 
   useEffect(() => {
     setActiveBlockMenu(null);
@@ -376,6 +387,21 @@ export default function CoachPortalScreen() {
       window.history.pushState({}, '', nextRoute.path);
       window.dispatchEvent(new Event('codex:pathchange'));
     }
+  };
+
+  const navigateWorkspace = (mode: CoachWorkspaceMode) => {
+    const currentInMode = WORKSPACE_ROUTE_KEYS[mode].includes(activeKey);
+    if (currentInMode) return;
+    const nextKey =
+      WORKSPACE_ROUTE_KEYS[mode].find((key) => canAccessAdminRoute(effectiveRoles, getAdminRouteByKey(key))) ?? null;
+    if (!nextKey) return;
+    navigate(nextKey);
+  };
+
+  const toggleCollectionExpanded = (collectionId: string) => {
+    setExpandedCollectionIds((prev) =>
+      prev.includes(collectionId) ? prev.filter((id) => id !== collectionId) : [...prev, collectionId]
+    );
   };
 
   const markDraftChanged = (hint: string) => {
@@ -668,7 +694,7 @@ export default function CoachPortalScreen() {
               <View style={styles.heroCopy}>
                 <Text style={styles.eyebrow}>Compass Coach</Text>
                 <Text style={styles.heroTitle}>Coach Portal</Text>
-                <Text style={styles.heroSubtitle}>Authoring-focused workspace for Library, Journeys, Cohorts, and Channels.</Text>
+                <Text style={styles.heroSubtitle}>Two workspace modes only: Journeys and People.</Text>
               </View>
             </View>
             <View style={styles.heroActions}>
@@ -688,13 +714,15 @@ export default function CoachPortalScreen() {
         </View>
 
         <View style={[styles.navCard, isCompact && styles.navCardCompact]}>
-          {visibleRoutes.map((route) => {
-            const key = route.key as CoachRouteKey;
-            const selected = key === activeKey;
+          {visibleWorkspaceModes.map((mode) => {
+            const selected = mode === activeWorkspace;
+            const routeOptions = WORKSPACE_ROUTE_KEYS[mode]
+              .map((key) => getAdminRouteByKey(key).path)
+              .join(' + ');
             return (
-              <Pressable key={route.key} style={[styles.navPill, selected && styles.navPillSelected]} onPress={() => navigate(key)}>
-                <Text style={[styles.navPillLabel, selected && styles.navPillLabelSelected]}>{COACH_SURFACES[key].label}</Text>
-                <Text style={styles.navPillPath}>{COACH_SURFACES[key].path}</Text>
+              <Pressable key={mode} style={[styles.navPill, selected && styles.navPillSelected]} onPress={() => navigateWorkspace(mode)}>
+                <Text style={[styles.navPillLabel, selected && styles.navPillLabelSelected]}>{COACH_WORKSPACES[mode].label}</Text>
+                <Text style={styles.navPillPath}>{routeOptions}</Text>
               </Pressable>
             );
           })}
@@ -703,146 +731,79 @@ export default function CoachPortalScreen() {
         <View style={styles.contentCard}>
           <Text style={styles.sectionTitle}>{activeSurface.headline}</Text>
           <Text style={styles.sectionBody}>{activeSurface.summary}</Text>
+          <Text style={styles.routeMetaText}>
+            Active route: {activeRoutePath} ({activeWorkspace === 'journeys' ? 'Journeys mode' : 'People mode'})
+          </Text>
 
-          {activeKey === 'coachingLibrary' ? (
+          {activeWorkspace === 'journeys' ? (
             <View style={[styles.builderWrap, isCompact && styles.builderWrapCompact]}>
               <View style={styles.libraryRail}>
-                <Text style={styles.panelTitle}>Collections (folders)</Text>
-                <Text style={styles.panelHint}>Select a folder to load files in the main pane. Drop an asset on a folder to move it.</Text>
+                <Text style={styles.panelTitle}>Library (Collections + Assets)</Text>
+                <Text style={styles.panelHint}>
+                  Expand folders to browse nested assets. Drag files to a different folder or into journey milestones.
+                </Text>
                 <TextInput
                   value={libraryQuery}
                   onChangeText={setLibraryQuery}
-                  placeholder="Search assets"
+                  placeholder="Search folders or files"
                   placeholderTextColor="#7A9085"
                   style={styles.searchInput}
                 />
                 <View style={styles.collectionList}>
                   {collections.map((collection) => {
-                    const isSelected = selectedCollection?.id === collection.id;
-
+                    const selected = collection.id === selectedCollectionId;
+                    const expanded = expandedCollectionIds.includes(collection.id);
+                    const nestedAssets = collection.assetIds
+                      .map((assetId) => assetsById.get(assetId))
+                      .filter((asset): asset is LibraryAsset => Boolean(asset))
+                      .filter((asset) => !libraryQuery.trim() || filteredAssetIds.has(asset.id));
                     return (
-                      <Pressable
-                        key={collection.id}
-                        onPress={() => {
-                          const dropped = handleClickDropToCollection(collection.id);
-                          if (!dropped) setSelectedCollectionId(collection.id);
-                        }}
-                        style={[styles.collectionCard, isSelected && styles.collectionCardSelected]}
-                        {...({
-                          onDragOver: handleDragOver,
-                          onDrop: (event: any) => handleDropToCollection(event, collection.id),
-                        } as any)}
-                      >
-                        <Text style={styles.collectionTitle}>📁 {collection.name}</Text>
-                        <Text style={styles.collectionMeta}>{collection.assetIds.length} files</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-
-              <View style={styles.collectionRail}>
-                <Text style={styles.panelTitle}>{selectedCollection?.name ?? 'Collection'} files</Text>
-                <Text style={styles.panelHint}>Drag files between folders here, then open Journeys to assign them to milestones.</Text>
-                <View style={styles.collectionItemsList}>
-                  {selectedCollectionAssets.length ? (
-                    selectedCollectionAssets
-                      .filter(
-                        (asset) =>
-                          !libraryQuery.trim() ||
-                          asset.title.toLowerCase().includes(libraryQuery.trim().toLowerCase()) ||
-                          asset.category.toLowerCase().includes(libraryQuery.trim().toLowerCase())
-                      )
-                      .map((asset) => (
+                      <View key={`journey-folder-${collection.id}`} style={styles.treeFolderGroup}>
                         <Pressable
-                          key={`collection-item-${asset.id}`}
-                          style={styles.collectionItemChip}
+                          style={[styles.collectionCard, selected && styles.collectionCardSelected]}
                           onPress={() => {
-                            setSelectedRowId(asset.id);
-                            startAssetDrag(asset.id, selectedCollection?.id ?? null);
+                            const dropped = handleClickDropToCollection(collection.id);
+                            if (dropped) return;
+                            setSelectedCollectionId(collection.id);
+                            toggleCollectionExpanded(collection.id);
                           }}
                           {...({
-                            draggable: canComposeDraft,
-                            onMouseDown: () => startAssetDrag(asset.id, selectedCollection?.id ?? null),
-                            onDragStart: (event: any) => {
-                              startAssetDrag(asset.id, selectedCollection?.id ?? null);
-                              event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${selectedCollection?.id ?? 'none'}`);
-                            },
+                            onDragOver: handleDragOver,
+                            onDrop: (event: any) => handleDropToCollection(event, collection.id),
                           } as any)}
                         >
-                          <Text style={styles.collectionItemText}>{asset.title}</Text>
-                          <Text style={styles.libraryCardMeta}>{asset.category} • {asset.scope}</Text>
+                          <Text style={styles.collectionTitle}>{expanded ? '📂' : '📁'} {collection.name}</Text>
+                          <Text style={styles.collectionMeta}>{collection.assetIds.length} files</Text>
                         </Pressable>
-                      ))
-                  ) : (
-                    <Text style={styles.panelHint}>No files in this folder yet.</Text>
-                  )}
-                </View>
-                <Pressable onPress={() => navigate('coachingJourneys')}>
-                  <Text style={styles.inlineNavLink}>Open Journey Builder</Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : activeKey === 'coachingJourneys' ? (
-            <View style={[styles.builderWrap, isCompact && styles.builderWrapCompact]}>
-              <View style={styles.libraryRail}>
-                <Text style={styles.panelTitle}>Library Source</Text>
-                <Text style={styles.panelHint}>Use folder rows to change source context. Drag files to folders or to journey milestones.</Text>
-                <TextInput
-                  value={libraryQuery}
-                  onChangeText={setLibraryQuery}
-                  placeholder="Search source files"
-                  placeholderTextColor="#7A9085"
-                  style={styles.searchInput}
-                />
-                <View style={styles.collectionList}>
-                  {collections.map((collection) => {
-                    const selected = collection.id === selectedCollection?.id;
-                    return (
-                      <Pressable
-                        key={`journey-folder-${collection.id}`}
-                        style={[styles.collectionCard, selected && styles.collectionCardSelected]}
-                        onPress={() => {
-                          const dropped = handleClickDropToCollection(collection.id);
-                          if (!dropped) setSelectedCollectionId(collection.id);
-                        }}
-                        {...({
-                          onDragOver: handleDragOver,
-                          onDrop: (event: any) => handleDropToCollection(event, collection.id),
-                        } as any)}
-                      >
-                        <Text style={styles.collectionTitle}>📁 {collection.name}</Text>
-                        <Text style={styles.collectionMeta}>{collection.assetIds.length} files</Text>
-                      </Pressable>
+                        {expanded ? (
+                          <View style={styles.treeAssetsList}>
+                            {nestedAssets.length ? (
+                              nestedAssets.map((asset) => (
+                                <Pressable
+                                  key={`journey-asset-${collection.id}-${asset.id}`}
+                                  style={styles.folderAssetRow}
+                                  onPress={() => startAssetDrag(asset.id, collection.id)}
+                                  {...({
+                                    draggable: canComposeDraft,
+                                    onMouseDown: () => startAssetDrag(asset.id, collection.id),
+                                    onDragStart: (event: any) => {
+                                      startAssetDrag(asset.id, collection.id);
+                                      event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${collection.id}`);
+                                    },
+                                  } as any)}
+                                >
+                                  <Text style={styles.collectionItemText}>• {asset.title}</Text>
+                                  <Text style={styles.libraryCardMeta}>{asset.category} • {asset.duration}</Text>
+                                </Pressable>
+                              ))
+                            ) : (
+                              <Text style={styles.panelHint}>No files match the current search.</Text>
+                            )}
+                          </View>
+                        ) : null}
+                      </View>
                     );
                   })}
-                </View>
-                <View style={styles.folderAssetsList}>
-                  {selectedCollectionAssets
-                    .filter(
-                      (asset) =>
-                        !libraryQuery.trim() ||
-                        asset.title.toLowerCase().includes(libraryQuery.trim().toLowerCase()) ||
-                        asset.category.toLowerCase().includes(libraryQuery.trim().toLowerCase())
-                    )
-                    .map((asset) => (
-                      <Pressable
-                        key={`journey-asset-${asset.id}`}
-                        style={styles.folderAssetRow}
-                        onPress={() => startAssetDrag(asset.id, selectedCollection?.id ?? null)}
-                        {...({
-                          draggable: canComposeDraft,
-                          onMouseDown: () => startAssetDrag(asset.id, selectedCollection?.id ?? null),
-                          onDragStart: (event: any) => {
-                            startAssetDrag(asset.id, selectedCollection?.id ?? null);
-                            event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${selectedCollection?.id ?? 'none'}`);
-                          },
-                        } as any)}
-                      >
-                        <Text style={styles.collectionItemText}>• {asset.title}</Text>
-                        <Text style={styles.libraryCardMeta}>{asset.category} • {asset.duration}</Text>
-                      </Pressable>
-                    ))}
                 </View>
               </View>
 
@@ -1002,11 +963,11 @@ export default function CoachPortalScreen() {
                 ))}
               </View>
             </View>
-          ) : activeKey === 'coachingCohorts' ? (
+          ) : (
             <View style={[styles.builderWrap, isCompact && styles.builderWrapCompact]}>
               <View style={styles.libraryRail}>
-                <Text style={styles.panelTitle}>People</Text>
-                <Text style={styles.panelHint}>Drag people into a cohort, or check names and click Add selected.</Text>
+                <Text style={styles.panelTitle}>People Directory</Text>
+                <Text style={styles.panelHint}>Use row checkboxes or drag a person into a cohort on the right.</Text>
                 <View style={styles.libraryList}>
                   {COHORT_PEOPLE.map((person) => {
                     const checked = checkedPeopleIds.includes(person.id);
@@ -1043,110 +1004,120 @@ export default function CoachPortalScreen() {
               </View>
 
               <View style={styles.collectionRail}>
-                <View style={styles.builderActionBar}>
-                  <TextInput
-                    value={newCohortName}
-                    onChangeText={setNewCohortName}
-                    placeholder="Create new cohort"
-                    placeholderTextColor="#72887C"
-                    style={styles.createJourneyInput}
-                  />
-                  <TouchableOpacity style={styles.secondaryButton} onPress={createCohort}>
-                    <Text style={styles.secondaryButtonText}>Create New</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.primaryButton}
-                    onPress={() => {
-                      if (!selectedCohort) return;
-                      addPeopleToCohort(selectedCohort.id, checkedPeopleIds);
-                      setCheckedPeopleIds([]);
-                    }}
-                  >
-                    <Text style={styles.primaryButtonText}>Add Selected</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.collectionList}>
-                  {cohorts.map((cohort) => (
-                    <Pressable
-                      key={cohort.id}
-                      style={[styles.collectionCard, selectedCohort?.id === cohort.id && styles.collectionCardSelected]}
-                      onPress={() => setSelectedCohortId(cohort.id)}
-                      {...({
-                        onDragOver: handleDragOver,
-                        onDrop: (event: any) => {
-                          const payload = parseDragPayload(event);
-                          if (payload?.type === 'person') addPeopleToCohort(cohort.id, [payload.personId]);
-                          setDragPayload(null);
-                        },
-                      } as any)}
+                <View style={styles.detailCard}>
+                  <Text style={styles.detailTitle}>Cohorts</Text>
+                  <Text style={styles.detailMeta}>Select a cohort row to load members. Drag/drop from People for quick assignment.</Text>
+                  <View style={styles.builderActionBar}>
+                    <TextInput
+                      value={newCohortName}
+                      onChangeText={setNewCohortName}
+                      placeholder="Create new cohort"
+                      placeholderTextColor="#72887C"
+                      style={styles.createJourneyInput}
+                    />
+                    <TouchableOpacity style={styles.secondaryButton} onPress={createCohort}>
+                      <Text style={styles.secondaryButtonText}>Create New</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.primaryButton}
+                      onPress={() => {
+                        if (!selectedCohort) return;
+                        addPeopleToCohort(selectedCohort.id, checkedPeopleIds);
+                        setCheckedPeopleIds([]);
+                      }}
                     >
-                      <Text style={styles.collectionTitle}>{cohort.name}</Text>
-                      <Text style={styles.collectionMeta}>{cohort.memberIds.length} members</Text>
-                    </Pressable>
-                  ))}
+                      <Text style={styles.primaryButtonText}>Add Selected</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.collectionList}>
+                    {cohorts.map((cohort) => (
+                      <Pressable
+                        key={cohort.id}
+                        style={[styles.collectionCard, selectedCohort?.id === cohort.id && styles.collectionCardSelected]}
+                        onPress={() => setSelectedCohortId(cohort.id)}
+                        {...({
+                          onDragOver: handleDragOver,
+                          onDrop: (event: any) => {
+                            const payload = parseDragPayload(event);
+                            if (payload?.type === 'person') addPeopleToCohort(cohort.id, [payload.personId]);
+                            setDragPayload(null);
+                          },
+                        } as any)}
+                      >
+                        <Text style={styles.collectionTitle}>{cohort.name}</Text>
+                        <Text style={styles.collectionMeta}>{cohort.memberIds.length} members</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+
+                  <View style={styles.detailCard}>
+                    <Text style={styles.detailTitle}>{selectedCohort?.name ?? 'Cohort'}</Text>
+                    <Text style={styles.detailMeta}>{selectedCohort?.program ?? ''}</Text>
+                    {(selectedCohort?.memberIds ?? []).map((memberId) => {
+                      const person = COHORT_PEOPLE.find((p) => p.id === memberId);
+                      return <Text key={memberId} style={styles.detailMeta}>• {person?.name ?? memberId}</Text>;
+                    })}
+                  </View>
                 </View>
 
                 <View style={styles.detailCard}>
-                  <Text style={styles.detailTitle}>{selectedCohort?.name ?? 'Cohort'}</Text>
-                  <Text style={styles.detailMeta}>{selectedCohort?.program ?? ''}</Text>
-                  {(selectedCohort?.memberIds ?? []).map((memberId) => {
-                    const person = COHORT_PEOPLE.find((p) => p.id === memberId);
-                    return <Text key={memberId} style={styles.detailMeta}>• {person?.name ?? memberId}</Text>;
+                  <Text style={styles.detailTitle}>Channels</Text>
+                  <Text style={styles.detailMeta}>Secondary communication controls stay in People mode for cohort handoff context.</Text>
+                  <View style={styles.segmentedTabs}>
+                    <Pressable style={[styles.segmentTab, channelSegment === 'all' && styles.segmentTabSelected]} onPress={() => setChannelSegment('all')}>
+                      <Text style={[styles.segmentTabText, channelSegment === 'all' && styles.segmentTabTextSelected]}>All</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.segmentTab, channelSegment === 'top_producers' && styles.segmentTabSelected]}
+                      onPress={() => setChannelSegment('top_producers')}
+                    >
+                      <Text style={[styles.segmentTabText, channelSegment === 'top_producers' && styles.segmentTabTextSelected]}>
+                        Top Producers
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.segmentTab, channelSegment === 'new_agents' && styles.segmentTabSelected]}
+                      onPress={() => setChannelSegment('new_agents')}
+                    >
+                      <Text style={[styles.segmentTabText, channelSegment === 'new_agents' && styles.segmentTabTextSelected]}>New Agents</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.segmentTab, channelSegment === 'sponsor_leads' && styles.segmentTabSelected]}
+                      onPress={() => setChannelSegment('sponsor_leads')}
+                    >
+                      <Text style={[styles.segmentTabText, channelSegment === 'sponsor_leads' && styles.segmentTabTextSelected]}>
+                        Sponsor Leads
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <View style={styles.tableHeader}>
+                    <Text style={[styles.colLabel, styles.colWide]}>Channel</Text>
+                    <Text style={[styles.colLabel, styles.colWide]}>Scope</Text>
+                    <Text style={[styles.colLabel, styles.colWide]}>Members</Text>
+                    <Text style={[styles.colLabel, styles.colNarrow]}>Activity</Text>
+                  </View>
+                  {filteredChannels.map((row) => {
+                    const selected = selectedGenericRow?.id === row.id;
+                    return (
+                      <Pressable key={row.id} style={[styles.tableRow, selected && styles.tableRowSelected]} onPress={() => setSelectedRowId(row.id)}>
+                        <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c1}</Text>
+                        <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c2}</Text>
+                        <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c3}</Text>
+                        <Text style={[styles.colValue, styles.colNarrow]} numberOfLines={1}>{row.c4}</Text>
+                      </Pressable>
+                    );
                   })}
+
+                  <View style={styles.detailCard}>
+                    <Text style={styles.detailTitle}>{selectedGenericRow?.c1 ?? 'Selection'}</Text>
+                    <Text style={styles.detailMeta}>{selectedGenericRow?.c2 ?? ''}</Text>
+                    <Text style={styles.detailMeta}>{selectedGenericRow?.c3 ?? ''}</Text>
+                    <Text style={styles.detailMeta}>{selectedGenericRow?.c4 ?? ''}</Text>
+                  </View>
                 </View>
               </View>
             </View>
-          ) : (
-            <>
-              <View style={styles.segmentedTabs}>
-                <Pressable style={[styles.segmentTab, channelSegment === 'all' && styles.segmentTabSelected]} onPress={() => setChannelSegment('all')}>
-                  <Text style={[styles.segmentTabText, channelSegment === 'all' && styles.segmentTabTextSelected]}>All</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.segmentTab, channelSegment === 'top_producers' && styles.segmentTabSelected]}
-                  onPress={() => setChannelSegment('top_producers')}
-                >
-                  <Text style={[styles.segmentTabText, channelSegment === 'top_producers' && styles.segmentTabTextSelected]}>Top Producers</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.segmentTab, channelSegment === 'new_agents' && styles.segmentTabSelected]}
-                  onPress={() => setChannelSegment('new_agents')}
-                >
-                  <Text style={[styles.segmentTabText, channelSegment === 'new_agents' && styles.segmentTabTextSelected]}>New Agents</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.segmentTab, channelSegment === 'sponsor_leads' && styles.segmentTabSelected]}
-                  onPress={() => setChannelSegment('sponsor_leads')}
-                >
-                  <Text style={[styles.segmentTabText, channelSegment === 'sponsor_leads' && styles.segmentTabTextSelected]}>Sponsor Leads</Text>
-                </Pressable>
-              </View>
-              <View style={styles.tableHeader}>
-                <Text style={[styles.colLabel, styles.colWide]}>Channel</Text>
-                <Text style={[styles.colLabel, styles.colWide]}>Scope</Text>
-                <Text style={[styles.colLabel, styles.colWide]}>Members</Text>
-                <Text style={[styles.colLabel, styles.colNarrow]}>Activity</Text>
-              </View>
-              {filteredChannels.map((row) => {
-                const selected = selectedGenericRow?.id === row.id;
-                return (
-                  <Pressable key={row.id} style={[styles.tableRow, selected && styles.tableRowSelected]} onPress={() => setSelectedRowId(row.id)}>
-                    <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c1}</Text>
-                    <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c2}</Text>
-                    <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c3}</Text>
-                    <Text style={[styles.colValue, styles.colNarrow]} numberOfLines={1}>{row.c4}</Text>
-                  </Pressable>
-                );
-              })}
-
-              <View style={styles.detailCard}>
-                <Text style={styles.detailTitle}>{selectedGenericRow?.c1 ?? 'Selection'}</Text>
-                <Text style={styles.detailMeta}>{selectedGenericRow?.c2 ?? ''}</Text>
-                <Text style={styles.detailMeta}>{selectedGenericRow?.c3 ?? ''}</Text>
-                <Text style={styles.detailMeta}>{selectedGenericRow?.c4 ?? ''}</Text>
-              </View>
-            </>
           )}
         </View>
       </ScrollView>
@@ -1344,6 +1315,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  routeMetaText: {
+    color: '#5C756A',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   builderWrap: {
     flexDirection: 'row',
     gap: 10,
@@ -1442,6 +1418,13 @@ const styles = StyleSheet.create({
   },
   collectionList: {
     gap: 8,
+  },
+  treeFolderGroup: {
+    gap: 6,
+  },
+  treeAssetsList: {
+    paddingLeft: 10,
+    gap: 6,
   },
   collectionCard: {
     borderWidth: 1,
