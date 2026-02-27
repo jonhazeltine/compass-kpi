@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -24,6 +25,8 @@ import {
 
 type CoachRouteKey = 'coachingLibrary' | 'coachingJourneys' | 'coachingCohorts' | 'coachingChannels';
 type SaveState = 'idle' | 'pending' | 'saved' | 'error';
+type SectionTab = 'assets' | 'collections';
+type SourceTab = 'assets' | 'collectionItems';
 
 type CoachSurface = {
   key: CoachRouteKey;
@@ -172,6 +175,7 @@ export default function CoachPortalScreen() {
   ]);
   const [libraryQuery, setLibraryQuery] = useState('');
   const [selectedCollectionId, setSelectedCollectionId] = useState<string>('col-1');
+  const [librarySectionTab, setLibrarySectionTab] = useState<SectionTab>('assets');
 
   const [journeys, setJourneys] = useState<JourneyDraft[]>([
     { id: 'jr-1', name: '30-Day Listing Accelerator', audience: 'New agents', milestones: cloneMilestones() },
@@ -179,6 +183,8 @@ export default function CoachPortalScreen() {
   ]);
   const [selectedJourneyId, setSelectedJourneyId] = useState('jr-1');
   const [newJourneyName, setNewJourneyName] = useState('');
+  const [journeySourceTab, setJourneySourceTab] = useState<SourceTab>('assets');
+  const [activeBlockMenu, setActiveBlockMenu] = useState<{ milestoneId: string; blockId: string } | null>(null);
 
   const [dragPayload, setDragPayload] = useState<DragPayload>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -276,6 +282,10 @@ export default function CoachPortalScreen() {
       setSelectedCollectionId(collections[0].id);
     }
   }, [collections, selectedCollection]);
+
+  useEffect(() => {
+    setActiveBlockMenu(null);
+  }, [selectedJourneyId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -470,6 +480,7 @@ export default function CoachPortalScreen() {
         return { ...journey, milestones };
       })
     );
+    setActiveBlockMenu(null);
     markDraftChanged('Journey step order updated.');
   };
 
@@ -486,6 +497,7 @@ export default function CoachPortalScreen() {
         return { ...journey, milestones };
       })
     );
+    setActiveBlockMenu(null);
     markDraftChanged('Journey step removed.');
   };
 
@@ -571,7 +583,7 @@ export default function CoachPortalScreen() {
     <SafeAreaView style={styles.screen}>
       <View style={styles.bgOrbOne} />
       <View style={styles.bgOrbTwo} />
-      <View style={styles.shell}>
+      <ScrollView style={styles.shellScroll} contentContainerStyle={styles.shell} showsVerticalScrollIndicator>
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroBrandWrap}>
@@ -618,77 +630,176 @@ export default function CoachPortalScreen() {
           <Text style={styles.sectionBody}>{activeSurface.summary}</Text>
 
           {activeKey === 'coachingLibrary' ? (
-            <View style={styles.builderWrap}>
+            <View style={[styles.builderWrap, isCompact && styles.builderWrapCompact]}>
+              <View style={styles.segmentedTabs}>
+                <Pressable
+                  style={[styles.segmentTab, librarySectionTab === 'assets' && styles.segmentTabSelected]}
+                  onPress={() => setLibrarySectionTab('assets')}
+                >
+                  <Text style={[styles.segmentTabText, librarySectionTab === 'assets' && styles.segmentTabTextSelected]}>Assets</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.segmentTab, librarySectionTab === 'collections' && styles.segmentTabSelected]}
+                  onPress={() => setLibrarySectionTab('collections')}
+                >
+                  <Text style={[styles.segmentTabText, librarySectionTab === 'collections' && styles.segmentTabTextSelected]}>
+                    Collections
+                  </Text>
+                </Pressable>
+              </View>
+
+              {(!isCompact || librarySectionTab === 'assets') && (
+                <View style={styles.libraryRail}>
+                  <Text style={styles.panelTitle}>Assets</Text>
+                  <Text style={styles.panelHint}>Row-select an asset, then drag to collection or journey milestones.</Text>
+                  <TextInput
+                    value={libraryQuery}
+                    onChangeText={setLibraryQuery}
+                    placeholder="Search assets"
+                    placeholderTextColor="#7A9085"
+                    style={styles.searchInput}
+                  />
+                  <View style={styles.libraryList}>
+                    {filteredAssets.map((asset) => {
+                      const selected = selectedRowId === asset.id;
+                      return (
+                        <Pressable
+                          key={asset.id}
+                          onPress={() => setSelectedRowId(asset.id)}
+                          style={[styles.libraryCard, selected && styles.libraryCardSelected]}
+                          {...({
+                            draggable: canComposeDraft,
+                            onMouseDown: () => canComposeDraft && setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: null }),
+                            onDragStart: (event: any) => {
+                              setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: null });
+                              event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:none`);
+                              setDropHint('Asset in hand. Drop onto a collection or journey milestone.');
+                            },
+                            onDragEnd: () => setDragPayload(null),
+                          } as any)}
+                        >
+                          <Text style={styles.libraryCardTitle}>{asset.title}</Text>
+                          <Text style={styles.libraryCardMeta}>{asset.category}</Text>
+                          <Text style={styles.libraryCardMeta}>{asset.scope}</Text>
+                          <Text style={styles.libraryCardMeta}>{asset.duration}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
+              {(!isCompact || librarySectionTab === 'collections') && (
+                <View style={styles.collectionRail}>
+                  <Text style={styles.panelTitle}>Collections</Text>
+                  <Text style={styles.panelHint}>Collections are the organizational container for assets.</Text>
+                  <View style={styles.collectionList}>
+                    {collections.map((collection) => {
+                      const isSelected = selectedCollection?.id === collection.id;
+                      return (
+                        <Pressable
+                          key={collection.id}
+                          onPress={() => setSelectedCollectionId(collection.id)}
+                          style={[styles.collectionCard, isSelected && styles.collectionCardSelected]}
+                          {...({
+                            onDragOver: handleDragOver,
+                            onDrop: (event: any) => handleDropToCollection(event, collection.id),
+                            onMouseUp: (event: any) => handleDropToCollection(event, collection.id),
+                          } as any)}
+                        >
+                          <Text style={styles.collectionTitle}>{collection.name}</Text>
+                          <Text style={styles.collectionMeta}>{collection.assetIds.length} assets</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  <View style={styles.collectionDetailCard}>
+                    <Text style={styles.detailTitle}>{selectedCollection?.name ?? 'Collection'}</Text>
+                    <Text style={styles.detailMeta}>Selected collection items are draggable into journey milestones.</Text>
+                    <View style={styles.collectionItemsList}>
+                      {selectedCollectionAssets.map((asset) => (
+                        <Pressable
+                          key={`collection-item-${asset.id}`}
+                          style={styles.collectionItemChip}
+                          {...({
+                            draggable: canComposeDraft,
+                            onMouseDown: () =>
+                              canComposeDraft &&
+                              setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null }),
+                            onDragStart: (event: any) => {
+                              setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null });
+                              event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${selectedCollection?.id ?? 'none'}`);
+                              setDropHint('Collection item in hand. Drop into journey milestone to assign.');
+                            },
+                            onDragEnd: () => setDragPayload(null),
+                          } as any)}
+                        >
+                          <Text style={styles.collectionItemText}>{asset.title}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <Pressable onPress={() => navigate('coachingJourneys')}>
+                      <Text style={styles.inlineNavLink}>Open Journey Builder</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+            </View>
+          ) : activeKey === 'coachingJourneys' ? (
+            <View style={[styles.builderWrap, isCompact && styles.builderWrapCompact]}>
               <View style={styles.libraryRail}>
-                <Text style={styles.panelTitle}>Assets</Text>
-                <Text style={styles.panelHint}>Drag assets into collections or journey milestones.</Text>
-                <TextInput
-                  value={libraryQuery}
-                  onChangeText={setLibraryQuery}
-                  placeholder="Search assets"
-                  placeholderTextColor="#7A9085"
-                  style={styles.searchInput}
-                />
-                <View style={styles.libraryList}>
-                  {filteredAssets.map((asset) => {
-                    const selected = selectedRowId === asset.id;
-                    return (
+                <Text style={styles.panelTitle}>Source Assets</Text>
+                <Text style={styles.panelHint}>Use segmented source tabs and row selection before dragging to milestones.</Text>
+                <View style={styles.segmentedTabs}>
+                  <Pressable
+                    style={[styles.segmentTab, journeySourceTab === 'assets' && styles.segmentTabSelected]}
+                    onPress={() => setJourneySourceTab('assets')}
+                  >
+                    <Text style={[styles.segmentTabText, journeySourceTab === 'assets' && styles.segmentTabTextSelected]}>Assets</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.segmentTab, journeySourceTab === 'collectionItems' && styles.segmentTabSelected]}
+                    onPress={() => setJourneySourceTab('collectionItems')}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentTabText,
+                        journeySourceTab === 'collectionItems' && styles.segmentTabTextSelected,
+                      ]}
+                    >
+                      Collection Items
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {journeySourceTab === 'assets' ? (
+                  <View style={styles.libraryList}>
+                    {filteredAssets.map((asset) => (
                       <Pressable
-                        key={asset.id}
-                        onPress={() => setSelectedRowId(asset.id)}
-                        style={[styles.libraryCard, selected && styles.libraryCardSelected]}
+                        key={`journey-asset-${asset.id}`}
+                        style={styles.libraryCard}
                         {...({
                           draggable: canComposeDraft,
                           onMouseDown: () => canComposeDraft && setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: null }),
                           onDragStart: (event: any) => {
                             setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: null });
                             event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:none`);
-                            setDropHint('Asset in hand. Drop onto a collection or journey milestone.');
                           },
                           onDragEnd: () => setDragPayload(null),
                         } as any)}
                       >
                         <Text style={styles.libraryCardTitle}>{asset.title}</Text>
                         <Text style={styles.libraryCardMeta}>{asset.category}</Text>
-                        <Text style={styles.libraryCardMeta}>{asset.scope}</Text>
-                        <Text style={styles.libraryCardMeta}>{asset.duration}</Text>
                       </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-
-              <View style={styles.collectionRail}>
-                <Text style={styles.panelTitle}>Collections</Text>
-                <Text style={styles.panelHint}>Collections are the organizational container for assets.</Text>
-                <View style={styles.collectionList}>
-                  {collections.map((collection) => {
-                    const isSelected = selectedCollection?.id === collection.id;
-                    return (
-                      <Pressable
-                        key={collection.id}
-                        onPress={() => setSelectedCollectionId(collection.id)}
-                        style={[styles.collectionCard, isSelected && styles.collectionCardSelected]}
-                        {...({
-                          onDragOver: handleDragOver,
-                          onDrop: (event: any) => handleDropToCollection(event, collection.id),
-                          onMouseUp: (event: any) => handleDropToCollection(event, collection.id),
-                        } as any)}
-                      >
-                        <Text style={styles.collectionTitle}>{collection.name}</Text>
-                        <Text style={styles.collectionMeta}>{collection.assetIds.length} assets</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <View style={styles.collectionDetailCard}>
-                  <Text style={styles.detailTitle}>{selectedCollection?.name ?? 'Collection'}</Text>
-                  <Text style={styles.detailMeta}>Drag from Assets to organize this collection.</Text>
-                  <View style={styles.collectionItemsList}>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.sourceCollectionsBox}>
+                    <Text style={styles.sourceCollectionsTitle}>Selected Collection Items</Text>
                     {selectedCollectionAssets.map((asset) => (
                       <Pressable
-                        key={`collection-item-${asset.id}`}
+                        key={`journey-col-asset-${asset.id}`}
                         style={styles.collectionItemChip}
                         {...({
                           draggable: canComposeDraft,
@@ -697,11 +808,7 @@ export default function CoachPortalScreen() {
                             setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null }),
                           onDragStart: (event: any) => {
                             setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null });
-                            event?.dataTransfer?.setData?.(
-                              'text/plain',
-                              `asset:${asset.id}:${selectedCollection?.id ?? 'none'}`
-                            );
-                            setDropHint('Collection item in hand. Drop into journey milestone to assign.');
+                            event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${selectedCollection?.id ?? 'none'}`);
                           },
                           onDragEnd: () => setDragPayload(null),
                         } as any)}
@@ -710,77 +817,25 @@ export default function CoachPortalScreen() {
                       </Pressable>
                     ))}
                   </View>
-                  <View style={styles.actionRow}>
-                    <TouchableOpacity style={styles.primaryButton} onPress={() => navigate('coachingJourneys')}>
-                      <Text style={styles.primaryButtonText}>Open Journey Builder</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            </View>
-          ) : activeKey === 'coachingJourneys' ? (
-            <View style={styles.builderWrap}>
-              <View style={styles.libraryRail}>
-                <Text style={styles.panelTitle}>Source Assets</Text>
-                <Text style={styles.panelHint}>Drag assets or collection items into milestones.</Text>
-                <View style={styles.libraryList}>
-                  {filteredAssets.map((asset) => (
-                    <Pressable
-                      key={`journey-asset-${asset.id}`}
-                      style={styles.libraryCard}
-                      {...({
-                        draggable: canComposeDraft,
-                        onMouseDown: () => canComposeDraft && setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: null }),
-                        onDragStart: (event: any) => {
-                          setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: null });
-                          event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:none`);
-                        },
-                        onDragEnd: () => setDragPayload(null),
-                      } as any)}
-                    >
-                      <Text style={styles.libraryCardTitle}>{asset.title}</Text>
-                      <Text style={styles.libraryCardMeta}>{asset.category}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-
-                <View style={styles.sourceCollectionsBox}>
-                  <Text style={styles.sourceCollectionsTitle}>Collection Items</Text>
-                  {selectedCollectionAssets.map((asset) => (
-                    <Pressable
-                      key={`journey-col-asset-${asset.id}`}
-                      style={styles.collectionItemChip}
-                      {...({
-                        draggable: canComposeDraft,
-                        onMouseDown: () =>
-                          canComposeDraft &&
-                          setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null }),
-                        onDragStart: (event: any) => {
-                          setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null });
-                          event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${selectedCollection?.id ?? 'none'}`);
-                        },
-                        onDragEnd: () => setDragPayload(null),
-                      } as any)}
-                    >
-                      <Text style={styles.collectionItemText}>{asset.title}</Text>
-                    </Pressable>
-                  ))}
-                </View>
+                )}
               </View>
 
               <View style={styles.journeyCanvas}>
                 <View style={styles.canvasHeaderRow}>
-                  <View style={styles.journeyListWrap}>
+                  <View style={styles.journeyListRows}>
                     {journeys.map((journey) => {
                       const selected = journey.id === selectedJourney?.id;
                       return (
                         <Pressable
                           key={journey.id}
-                          style={[styles.journeySelectPill, selected && styles.journeySelectPillSelected]}
+                          style={[styles.journeySelectRow, selected && styles.journeySelectRowSelected]}
                           onPress={() => setSelectedJourneyId(journey.id)}
                         >
-                          <Text style={[styles.journeySelectLabel, selected && styles.journeySelectLabelSelected]}>{journey.name}</Text>
-                          <Text style={styles.journeySelectMeta}>{journey.audience}</Text>
+                          <View style={styles.journeySelectCopy}>
+                            <Text style={[styles.journeySelectLabel, selected && styles.journeySelectLabelSelected]}>{journey.name}</Text>
+                            <Text style={styles.journeySelectMeta}>{journey.audience}</Text>
+                          </View>
+                          <Text style={styles.journeySelectHint}>{selected ? 'Selected' : 'Select'}</Text>
                         </Pressable>
                       );
                     })}
@@ -877,27 +932,31 @@ export default function CoachPortalScreen() {
                                 <Text style={styles.journeyBlockMeta}>Step {index + 1} • {asset?.category ?? 'Asset'}</Text>
                               </View>
                               <View style={styles.blockActions}>
-                                <TouchableOpacity
-                                  style={styles.inlineActionButton}
-                                  onPress={() => reorderBlock(milestone.id, block.id, -1)}
-                                  disabled={!canComposeDraft}
+                                <Pressable
+                                  style={styles.menuTrigger}
+                                  onPress={() =>
+                                    setActiveBlockMenu((prev) =>
+                                      prev?.blockId === block.id && prev?.milestoneId === milestone.id
+                                        ? null
+                                        : { milestoneId: milestone.id, blockId: block.id }
+                                    )
+                                  }
                                 >
-                                  <Text style={styles.inlineActionText}>Up</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.inlineActionButton}
-                                  onPress={() => reorderBlock(milestone.id, block.id, 1)}
-                                  disabled={!canComposeDraft}
-                                >
-                                  <Text style={styles.inlineActionText}>Down</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.inlineActionButtonDanger}
-                                  onPress={() => removeBlock(milestone.id, block.id)}
-                                  disabled={!canComposeDraft}
-                                >
-                                  <Text style={styles.inlineActionTextDanger}>Remove</Text>
-                                </TouchableOpacity>
+                                  <Text style={styles.menuTriggerText}>Actions ▾</Text>
+                                </Pressable>
+                                {activeBlockMenu?.blockId === block.id && activeBlockMenu?.milestoneId === milestone.id ? (
+                                  <View style={styles.blockMenu}>
+                                    <Pressable style={styles.blockMenuItem} onPress={() => reorderBlock(milestone.id, block.id, -1)}>
+                                      <Text style={styles.blockMenuItemText}>Move Up</Text>
+                                    </Pressable>
+                                    <Pressable style={styles.blockMenuItem} onPress={() => reorderBlock(milestone.id, block.id, 1)}>
+                                      <Text style={styles.blockMenuItemText}>Move Down</Text>
+                                    </Pressable>
+                                    <Pressable style={styles.blockMenuItemDanger} onPress={() => removeBlock(milestone.id, block.id)}>
+                                      <Text style={styles.blockMenuItemDangerText}>Delete Step</Text>
+                                    </Pressable>
+                                  </View>
+                                ) : null}
                               </View>
                             </View>
                           );
@@ -937,7 +996,7 @@ export default function CoachPortalScreen() {
             </>
           )}
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -967,10 +1026,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#DCEFD2',
     opacity: 0.8,
   },
-  shell: {
+  shellScroll: {
     flex: 1,
+  },
+  shell: {
     padding: 16,
     gap: 12,
+    paddingBottom: 28,
   },
   heroCard: {
     backgroundColor: '#FFFFFF',
@@ -1111,13 +1173,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   contentCard: {
-    flex: 1,
     borderWidth: 1,
     borderColor: '#D4E6DB',
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
     padding: 14,
     gap: 10,
+    minHeight: 440,
   },
   sectionTitle: {
     color: '#1F3329',
@@ -1130,9 +1192,38 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   builderWrap: {
-    flex: 1,
     flexDirection: 'row',
     gap: 10,
+    alignItems: 'flex-start',
+  },
+  builderWrapCompact: {
+    flexDirection: 'column',
+  },
+  segmentedTabs: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 6,
+    flexWrap: 'wrap',
+  },
+  segmentTab: {
+    borderWidth: 1,
+    borderColor: '#D4E6DB',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#F7FCF9',
+  },
+  segmentTabSelected: {
+    borderColor: '#2F845E',
+    backgroundColor: '#EAF8F1',
+  },
+  segmentTabText: {
+    color: '#335246',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  segmentTabTextSelected: {
+    color: '#1D6C49',
   },
   libraryRail: {
     width: 330,
@@ -1262,23 +1353,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  journeyListWrap: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
+  journeyListRows: {
+    width: '100%',
+    gap: 7,
   },
-  journeySelectPill: {
+  journeySelectRow: {
     borderWidth: 1,
     borderColor: '#D4E6DC',
     borderRadius: 10,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    minWidth: 170,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  journeySelectPillSelected: {
+  journeySelectRowSelected: {
     borderColor: '#2F845E',
     backgroundColor: '#ECF8F1',
+  },
+  journeySelectCopy: {
+    flex: 1,
   },
   journeySelectLabel: {
     color: '#2A473A',
@@ -1291,6 +1387,11 @@ const styles = StyleSheet.create({
   journeySelectMeta: {
     color: '#647E73',
     fontSize: 11,
+  },
+  journeySelectHint: {
+    color: '#688378',
+    fontSize: 11,
+    fontWeight: '700',
   },
   builderActionBar: {
     flexDirection: 'row',
@@ -1434,22 +1535,61 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   blockActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    position: 'relative',
+    alignItems: 'flex-end',
   },
-  inlineActionButton: {
+  menuTrigger: {
     borderWidth: 1,
     borderColor: '#CEE2D8',
     borderRadius: 6,
-    paddingHorizontal: 8,
+    paddingHorizontal: 9,
     paddingVertical: 5,
     backgroundColor: '#FFFFFF',
   },
-  inlineActionText: {
+  menuTriggerText: {
     color: '#2C4A3B',
     fontSize: 11,
     fontWeight: '700',
+  },
+  blockMenu: {
+    position: 'absolute',
+    top: 34,
+    right: 0,
+    borderWidth: 1,
+    borderColor: '#D2E6DB',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    minWidth: 130,
+    overflow: 'hidden',
+    zIndex: 5,
+  },
+  blockMenuItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E7F0EB',
+  },
+  blockMenuItemText: {
+    color: '#2B473B',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  blockMenuItemDanger: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: '#FFF3F3',
+  },
+  blockMenuItemDangerText: {
+    color: '#974444',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  inlineNavLink: {
+    marginTop: 6,
+    color: '#1D6C49',
+    fontSize: 12,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   inlineActionButtonDanger: {
     borderWidth: 1,
