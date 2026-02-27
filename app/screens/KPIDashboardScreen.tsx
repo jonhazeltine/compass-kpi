@@ -2118,6 +2118,15 @@ const bottomTabIconStyleByKey: Record<BottomTab, any> = {
   comms: { transform: [{ translateY: -3 }] },
 };
 
+const bottomTabOrder: BottomTab[] = ['challenge', 'newkpi', 'home', 'team', 'comms'];
+const bottomTabAccessibilityLabel: Record<BottomTab, string> = {
+  challenge: 'Challenges',
+  newkpi: 'KPI entries',
+  home: 'LOG',
+  team: 'Team',
+  comms: 'Comms',
+};
+
 type Props = {
   onOpenProfile?: () => void;
 };
@@ -10337,21 +10346,23 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       ))}
 
       <View style={[styles.bottomNav, { paddingTop: bottomNavPadTop, paddingBottom: bottomNavPadBottom }]}>
-        {([
-          { key: 'home' },
-          { key: 'challenge' },
-          { key: 'newkpi' },
-          { key: 'team' },
-          { key: 'comms' },
-        ] as const).map((tab) => (
+        {bottomTabOrder.map((tab) => (
           <TouchableOpacity
-            key={tab.key}
-            style={[styles.bottomItem, activeTab === tab.key && styles.bottomItemActivePill]}
-            onPress={() => onBottomTabPress(tab.key)}
+            key={tab}
+            accessibilityRole="button"
+            accessibilityLabel={bottomTabAccessibilityLabel[tab]}
+            accessibilityState={{ selected: activeTab === tab }}
+            style={[
+              styles.bottomItem,
+              tab === 'home' ? styles.bottomItemLogCta : null,
+              activeTab === tab && styles.bottomItemActivePill,
+              tab === 'home' && activeTab === tab ? styles.bottomItemLogCtaActive : null,
+            ]}
+            onPress={() => onBottomTabPress(tab)}
           >
             <Animated.View
               style={
-                activeTab === tab.key
+                activeTab === tab
                   ? {
                       transform: [
                         {
@@ -10363,23 +10374,35 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               }
             >
               {(() => {
-                const TabIcon = bottomTabIconSvgByKey[tab.key];
-                const isActive = activeTab === tab.key;
-                const iconColor = isActive ? bottomTabTheme.activeFg : bottomTabTheme.inactiveFg;
+                const TabIcon = bottomTabIconSvgByKey[tab];
+                const isActive = activeTab === tab;
+                const iconColor = tab === 'home' ? '#f7fff8' : isActive ? bottomTabTheme.activeFg : bottomTabTheme.inactiveFg;
                 return (
                   <View
                     style={[
                       styles.bottomIconSvgWrap,
-                      isActive && { backgroundColor: bottomTabTheme.activeBg },
+                      tab === 'home' ? styles.bottomIconSvgWrapLog : null,
+                      tab === 'home' ? null : isActive && { backgroundColor: bottomTabTheme.activeBg },
                       isActive ? styles.bottomIconImageActive : styles.bottomIconImageInactive,
                     ]}
                   >
+                    {tab === 'home' ? (
+                      <>
+                        <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleOne]} />
+                        <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleTwo]} />
+                      </>
+                    ) : null}
                     <TabIcon
                       width="100%"
                       height="100%"
                       color={iconColor}
-                      style={[styles.bottomIconSvg, bottomTabIconStyleByKey[tab.key]]}
+                      style={[
+                        styles.bottomIconSvg,
+                        tab === 'home' ? styles.bottomIconSvgLog : null,
+                        bottomTabIconStyleByKey[tab],
+                      ]}
                     />
+                    {tab === 'home' ? <Text style={styles.bottomLogLabel}>LOG</Text> : null}
                   </View>
                 );
               })()}
@@ -16381,6 +16404,18 @@ const styles = StyleSheet.create({
   bottomItemActivePill: {
     backgroundColor: '#eef4ff',
   },
+  bottomItemLogCta: {
+    minWidth: 86,
+    minHeight: 84,
+    marginTop: -8,
+    paddingTop: 0,
+    paddingHorizontal: 0,
+    borderRadius: 28,
+    backgroundColor: 'transparent',
+  },
+  bottomItemLogCtaActive: {
+    backgroundColor: 'transparent',
+  },
   fxProjectile: {
     position: 'absolute',
     width: 28,
@@ -16460,6 +16495,52 @@ const styles = StyleSheet.create({
   bottomIconSvg: {
     width: 62,
     height: 62,
+  },
+  bottomIconSvgWrapLog: {
+    width: 76,
+    height: 76,
+    borderRadius: 24,
+    backgroundColor: '#2cae54',
+    borderWidth: 1,
+    borderColor: '#218944',
+    shadowColor: '#2cae54',
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+    marginBottom: 2,
+  },
+  bottomIconSvgLog: {
+    width: 58,
+    height: 58,
+  },
+  bottomLogSparkle: {
+    position: 'absolute',
+    width: 7,
+    height: 7,
+    borderRadius: 99,
+    backgroundColor: '#e7ffe6',
+    borderWidth: 1,
+    borderColor: '#ffffff',
+  },
+  bottomLogSparkleOne: {
+    top: 10,
+    right: 12,
+  },
+  bottomLogSparkleTwo: {
+    top: 16,
+    left: 11,
+    width: 5,
+    height: 5,
+  },
+  bottomLogLabel: {
+    position: 'absolute',
+    bottom: 6,
+    color: '#f7fff8',
+    fontSize: 11,
+    lineHeight: 12,
+    fontWeight: '900',
+    letterSpacing: 0.6,
   },
   bottomIconImageInactive: {
     opacity: 0.88,

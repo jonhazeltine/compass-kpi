@@ -273,13 +273,6 @@ Update the mobile bottom nav in `KPIDashboardScreen.tsx` to emphasize logging as
 - Validation + screenshot paths
 - Commit hash
 
-#### Report-Back Requirements
-- Update this assignment row/block status first
-- Datasets added (entities/counts)
-- Seed/reset/smoke commands
-- Files/docs changed
-- Commit hash
-
 ### `COACHING-W12-FOURTHREASON-CHAT-PARITY-MAP-A`
 
 #### Snapshot
