@@ -8667,17 +8667,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 },
                 coaching_journeys: {
                   title: 'Coaching Journeys',
-                  sub: 'Track journey progress and open a lesson.',
+                  sub: 'Tap a journey to open milestones and lessons.',
                   badge: 'coaching_content',
-                  primary: [{ label: 'Open Journey Detail', to: 'coaching_journey_detail' }],
                 },
                 coaching_journey_detail: {
                   title: 'Coaching Journey Detail',
                   sub: selectedJourneyTitle
-                    ? `Milestones and lessons for ${selectedJourneyTitle}.`
+                    ? `Tap a lesson in ${selectedJourneyTitle} to open lesson detail.`
                     : 'Select a journey to view milestones.',
                   badge: 'coaching_content',
-                  primary: [{ label: 'Open Lesson Detail', to: 'coaching_lesson_detail' }],
                 },
                 coaching_lesson_detail: {
                   title: 'Coaching Lesson Detail',
@@ -9335,6 +9333,23 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 {String(coachingJourneyDetail?.journey?.description ?? 'Milestones and lessons loaded from coaching endpoints.')}
                               </Text>
                             </View>
+                            <View style={styles.coachingLessonActionRow}>
+                              <TouchableOpacity
+                                style={styles.coachingLessonActionBtn}
+                                onPress={() =>
+                                  openCoachingShell('coaching_journeys', {
+                                    source: coachingShellContext.source,
+                                    selectedJourneyId: selectedJourneyId ?? null,
+                                    selectedJourneyTitle:
+                                      coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
+                                    selectedLessonId: null,
+                                    selectedLessonTitle: null,
+                                  })
+                                }
+                              >
+                                <Text style={styles.coachingLessonActionBtnText}>Back to Journeys</Text>
+                              </TouchableOpacity>
+                            </View>
                             {shellPackageGateBlocksActions ? (
                               renderKnownLimitedDataChip('journey detail actions')
                             ) : (
@@ -9484,6 +9499,23 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         ) : (
                           <View style={styles.coachingJourneyListCard}>
                             <View style={styles.coachingLessonDetailHeader}>
+                              <View style={styles.coachingLessonActionRow}>
+                                <TouchableOpacity
+                                  style={styles.coachingLessonActionBtn}
+                                  onPress={() =>
+                                    openCoachingShell('coaching_journey_detail', {
+                                      source: coachingShellContext.source,
+                                      selectedJourneyId: selectedJourneyId ?? null,
+                                      selectedJourneyTitle:
+                                        coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
+                                      selectedLessonId: String(selectedLesson.id),
+                                      selectedLessonTitle: selectedLesson.title,
+                                    })
+                                  }
+                                >
+                                  <Text style={styles.coachingLessonActionBtnText}>Back to Journey</Text>
+                                </TouchableOpacity>
+                              </View>
                               <Text style={styles.coachingLessonDetailTitle}>
                                 {coachingShellContext.selectedLessonTitle ?? selectedLesson.title}
                               </Text>
