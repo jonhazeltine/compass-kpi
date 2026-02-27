@@ -198,7 +198,6 @@ export default function CoachPortalScreen() {
   ]);
   const [libraryQuery, setLibraryQuery] = useState('');
   const [selectedCollectionId, setSelectedCollectionId] = useState<string>('col-1');
-  const [expandedCollectionIds, setExpandedCollectionIds] = useState<string[]>(['col-1']);
 
   const [journeys, setJourneys] = useState<JourneyDraft[]>([
     { id: 'jr-1', name: '30-Day Listing Accelerator', audience: 'New agents', milestones: cloneMilestones() },
@@ -293,13 +292,6 @@ export default function CoachPortalScreen() {
     },
     []
   );
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const clearDrag = () => setDragPayload(null);
-    window.addEventListener('mouseup', clearDrag);
-    return () => window.removeEventListener('mouseup', clearDrag);
-  }, []);
 
   useEffect(() => {
     if (!selectedJourney && journeys.length > 0) {
@@ -419,6 +411,12 @@ export default function CoachPortalScreen() {
     }
   };
 
+  const startAssetDrag = (assetId: string, sourceCollectionId: string | null) => {
+    if (!canComposeDraft) return;
+    setDragPayload({ type: 'asset', assetId, sourceCollectionId });
+    setDropHint('Asset in hand. Drop on a folder or journey milestone.');
+  };
+
   const assignAssetToCollection = (collectionId: string, payload: DragPayload) => {
     if (!canComposeDraft || !payload || payload.type !== 'asset') return;
     const targetExists = collections.some((collection) => collection.id === collectionId);
@@ -506,15 +504,20 @@ export default function CoachPortalScreen() {
     setDragPayload(null);
   };
 
-  const toggleCollectionExpanded = (collectionId: string) => {
-    setExpandedCollectionIds((prev) =>
-      prev.includes(collectionId) ? prev.filter((id) => id !== collectionId) : [...prev, collectionId]
-    );
+  const handleClickDropToCollection = (collectionId: string) => {
+    if (!canComposeDraft) return false;
+    if (!dragPayload || dragPayload.type !== 'asset') return false;
+    assignAssetToCollection(collectionId, dragPayload);
+    setDragPayload(null);
+    return true;
   };
 
-  const addAssetToSelectedMilestone = (assetId: string) => {
-    if (!selectedJourney || !selectedMilestoneId) return;
-    addAssetToMilestone({ type: 'asset', assetId, sourceCollectionId: selectedCollection?.id ?? null }, selectedMilestoneId, 999);
+  const handleClickDropToMilestone = (milestoneId: string, blockCount: number) => {
+    if (!canComposeDraft) return false;
+    if (!dragPayload || (dragPayload.type !== 'asset' && dragPayload.type !== 'journey_block')) return false;
+    addAssetToMilestone(dragPayload, milestoneId, blockCount);
+    setDragPayload(null);
+    return true;
   };
 
   const addPeopleToCohort = (cohortId: string, personIds: string[]) => {
@@ -705,7 +708,7 @@ export default function CoachPortalScreen() {
             <View style={[styles.builderWrap, isCompact && styles.builderWrapCompact]}>
               <View style={styles.libraryRail}>
                 <Text style={styles.panelTitle}>Collections (folders)</Text>
-                <Text style={styles.panelHint}>Open a collection to see assets (files) inside it.</Text>
+                <Text style={styles.panelHint}>Select a folder to load files in the main pane. Drop an asset on a folder to move it.</Text>
                 <TextInput
                   value={libraryQuery}
                   onChangeText={setLibraryQuery}
@@ -715,81 +718,65 @@ export default function CoachPortalScreen() {
                 />
                 <View style={styles.collectionList}>
                   {collections.map((collection) => {
-                    const expanded = expandedCollectionIds.includes(collection.id);
                     const isSelected = selectedCollection?.id === collection.id;
-                    const collectionAssets = collection.assetIds
-                      .map((assetId) => assetsById.get(assetId))
-                      .filter((row): row is LibraryAsset => Boolean(row))
-                      .filter(
-                        (asset) =>
-                          !libraryQuery.trim() || asset.title.toLowerCase().includes(libraryQuery.trim().toLowerCase())
-                      );
 
                     return (
-                      <View key={collection.id}>
-                        <Pressable
-                          onPress={() => {
-                            setSelectedCollectionId(collection.id);
-                            toggleCollectionExpanded(collection.id);
-                          }}
-                          style={[styles.collectionCard, isSelected && styles.collectionCardSelected]}
-                          {...({
-                            onDragOver: handleDragOver,
-                            onDrop: (event: any) => handleDropToCollection(event, collection.id),
-                          } as any)}
-                        >
-                          <Text style={styles.collectionTitle}>{expanded ? '▾' : '▸'} {collection.name}</Text>
-                          <Text style={styles.collectionMeta}>{collection.assetIds.length} assets</Text>
-                        </Pressable>
-                        {expanded ? (
-                          <View style={styles.folderAssetsList}>
-                            {collectionAssets.map((asset) => (
-                              <Pressable
-                                key={`lib-folder-asset-${asset.id}`}
-                                style={styles.folderAssetRow}
-                                onPress={() => setSelectedRowId(asset.id)}
-                                {...({
-                                  draggable: canComposeDraft,
-                                  onDragStart: (event: any) => {
-                                    setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: collection.id });
-                                    event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${collection.id}`);
-                                    setDropHint('Asset in hand. Drop on a journey milestone.');
-                                  },
-                                  onDragEnd: () => setDragPayload(null),
-                                } as any)}
-                              >
-                                <Text style={styles.collectionItemText}>• {asset.title}</Text>
-                              </Pressable>
-                            ))}
-                          </View>
-                        ) : null}
-                      </View>
+                      <Pressable
+                        key={collection.id}
+                        onPress={() => {
+                          const dropped = handleClickDropToCollection(collection.id);
+                          if (!dropped) setSelectedCollectionId(collection.id);
+                        }}
+                        style={[styles.collectionCard, isSelected && styles.collectionCardSelected]}
+                        {...({
+                          onDragOver: handleDragOver,
+                          onDrop: (event: any) => handleDropToCollection(event, collection.id),
+                        } as any)}
+                      >
+                        <Text style={styles.collectionTitle}>📁 {collection.name}</Text>
+                        <Text style={styles.collectionMeta}>{collection.assetIds.length} files</Text>
+                      </Pressable>
                     );
                   })}
                 </View>
               </View>
 
               <View style={styles.collectionRail}>
-                <Text style={styles.panelTitle}>{selectedCollection?.name ?? 'Collection'} assets</Text>
-                <Text style={styles.panelHint}>Folder/file model: open collection, then drag files into journeys.</Text>
+                <Text style={styles.panelTitle}>{selectedCollection?.name ?? 'Collection'} files</Text>
+                <Text style={styles.panelHint}>Drag files between folders here, then open Journeys to assign them to milestones.</Text>
                 <View style={styles.collectionItemsList}>
-                  {selectedCollectionAssets.map((asset) => (
-                    <Pressable
-                      key={`collection-item-${asset.id}`}
-                      style={styles.collectionItemChip}
-                      {...({
-                        draggable: canComposeDraft,
-                        onDragStart: (event: any) => {
-                          setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null });
-                          event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${selectedCollection?.id ?? 'none'}`);
-                        },
-                        onDragEnd: () => setDragPayload(null),
-                      } as any)}
-                    >
-                      <Text style={styles.collectionItemText}>{asset.title}</Text>
-                      <Text style={styles.libraryCardMeta}>{asset.category}</Text>
-                    </Pressable>
-                  ))}
+                  {selectedCollectionAssets.length ? (
+                    selectedCollectionAssets
+                      .filter(
+                        (asset) =>
+                          !libraryQuery.trim() ||
+                          asset.title.toLowerCase().includes(libraryQuery.trim().toLowerCase()) ||
+                          asset.category.toLowerCase().includes(libraryQuery.trim().toLowerCase())
+                      )
+                      .map((asset) => (
+                        <Pressable
+                          key={`collection-item-${asset.id}`}
+                          style={styles.collectionItemChip}
+                          onPress={() => {
+                            setSelectedRowId(asset.id);
+                            startAssetDrag(asset.id, selectedCollection?.id ?? null);
+                          }}
+                          {...({
+                            draggable: canComposeDraft,
+                            onMouseDown: () => startAssetDrag(asset.id, selectedCollection?.id ?? null),
+                            onDragStart: (event: any) => {
+                              startAssetDrag(asset.id, selectedCollection?.id ?? null);
+                              event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${selectedCollection?.id ?? 'none'}`);
+                            },
+                          } as any)}
+                        >
+                          <Text style={styles.collectionItemText}>{asset.title}</Text>
+                          <Text style={styles.libraryCardMeta}>{asset.category} • {asset.scope}</Text>
+                        </Pressable>
+                      ))
+                  ) : (
+                    <Text style={styles.panelHint}>No files in this folder yet.</Text>
+                  )}
                 </View>
                 <Pressable onPress={() => navigate('coachingJourneys')}>
                   <Text style={styles.inlineNavLink}>Open Journey Builder</Text>
@@ -799,69 +786,63 @@ export default function CoachPortalScreen() {
           ) : activeKey === 'coachingJourneys' ? (
             <View style={[styles.builderWrap, isCompact && styles.builderWrapCompact]}>
               <View style={styles.libraryRail}>
-                <Text style={styles.panelTitle}>Collections (folders)</Text>
-                <Text style={styles.panelHint}>Select a collection to load its assets.</Text>
+                <Text style={styles.panelTitle}>Library Source</Text>
+                <Text style={styles.panelHint}>Use folder rows to change source context. Drag files to folders or to journey milestones.</Text>
+                <TextInput
+                  value={libraryQuery}
+                  onChangeText={setLibraryQuery}
+                  placeholder="Search source files"
+                  placeholderTextColor="#7A9085"
+                  style={styles.searchInput}
+                />
                 <View style={styles.collectionList}>
                   {collections.map((collection) => {
-                    const expanded = expandedCollectionIds.includes(collection.id);
+                    const selected = collection.id === selectedCollection?.id;
                     return (
-                      <View key={`journey-folder-${collection.id}`}>
-                        <Pressable
-                          style={styles.collectionCard}
-                          onPress={() => {
-                            setSelectedCollectionId(collection.id);
-                            toggleCollectionExpanded(collection.id);
-                          }}
-                        >
-                          <Text style={styles.collectionTitle}>{expanded ? '▾' : '▸'} {collection.name}</Text>
-                          <Text style={styles.collectionMeta}>{collection.assetIds.length} assets</Text>
-                        </Pressable>
-                      </View>
+                      <Pressable
+                        key={`journey-folder-${collection.id}`}
+                        style={[styles.collectionCard, selected && styles.collectionCardSelected]}
+                        onPress={() => {
+                          const dropped = handleClickDropToCollection(collection.id);
+                          if (!dropped) setSelectedCollectionId(collection.id);
+                        }}
+                        {...({
+                          onDragOver: handleDragOver,
+                          onDrop: (event: any) => handleDropToCollection(event, collection.id),
+                        } as any)}
+                      >
+                        <Text style={styles.collectionTitle}>📁 {collection.name}</Text>
+                        <Text style={styles.collectionMeta}>{collection.assetIds.length} files</Text>
+                      </Pressable>
                     );
                   })}
                 </View>
-              </View>
-
-              <View style={styles.collectionRail}>
-                <Text style={styles.panelTitle}>Assets (files)</Text>
-                <View style={styles.breadcrumbRow}>
-                  <Text style={styles.breadcrumbText}>Collections / {selectedCollection?.name ?? 'Select collection'}</Text>
-                  <Pressable
-                    onPress={() => {
-                      if (!selectedCollection?.id) return;
-                      setExpandedCollectionIds((prev) => prev.filter((id) => id !== selectedCollection.id));
-                    }}
-                  >
-                    <Text style={styles.inlineNavLink}>Back</Text>
-                  </Pressable>
-                </View>
-                <Text style={styles.panelHint}>Drag an asset to a milestone, or click Add to selected milestone.</Text>
                 <View style={styles.folderAssetsList}>
-                  {selectedCollectionAssets.map((asset) => (
-                    <View key={`journey-asset-${asset.id}`} style={styles.folderAssetActionRow}>
+                  {selectedCollectionAssets
+                    .filter(
+                      (asset) =>
+                        !libraryQuery.trim() ||
+                        asset.title.toLowerCase().includes(libraryQuery.trim().toLowerCase()) ||
+                        asset.category.toLowerCase().includes(libraryQuery.trim().toLowerCase())
+                    )
+                    .map((asset) => (
                       <Pressable
-                        style={[styles.folderAssetRow, { flex: 1 }]}
+                        key={`journey-asset-${asset.id}`}
+                        style={styles.folderAssetRow}
+                        onPress={() => startAssetDrag(asset.id, selectedCollection?.id ?? null)}
                         {...({
                           draggable: canComposeDraft,
+                          onMouseDown: () => startAssetDrag(asset.id, selectedCollection?.id ?? null),
                           onDragStart: (event: any) => {
-                            setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null });
+                            startAssetDrag(asset.id, selectedCollection?.id ?? null);
                             event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${selectedCollection?.id ?? 'none'}`);
                           },
-                          onDragEnd: () => setDragPayload(null),
                         } as any)}
                       >
                         <Text style={styles.collectionItemText}>• {asset.title}</Text>
-                        <Text style={styles.libraryCardMeta}>{asset.category}</Text>
+                        <Text style={styles.libraryCardMeta}>{asset.category} • {asset.duration}</Text>
                       </Pressable>
-                      <Pressable
-                        style={styles.inlineAddButton}
-                        onPress={() => addAssetToSelectedMilestone(asset.id)}
-                        disabled={!canComposeDraft}
-                      >
-                        <Text style={styles.inlineAddButtonText}>Add</Text>
-                      </Pressable>
-                    </View>
-                  ))}
+                    ))}
                 </View>
               </View>
 
@@ -927,11 +908,17 @@ export default function CoachPortalScreen() {
                   <Pressable
                     key={milestone.id}
                     style={[styles.milestoneCard, selectedMilestoneId === milestone.id && styles.milestoneCardSelected]}
-                    onPress={() => setSelectedMilestoneId(milestone.id)}
+                    onPress={() => {
+                      const dropped = handleClickDropToMilestone(milestone.id, milestone.blocks.length);
+                      if (!dropped) setSelectedMilestoneId(milestone.id);
+                    }}
                   >
                     <Text style={styles.milestoneTitle}>{milestone.title}</Text>
-                    <View
+                    <Pressable
                       style={styles.dropZone}
+                      onPress={() => {
+                        handleClickDropToMilestone(milestone.id, milestone.blocks.length);
+                      }}
                       {...({
                         onDragOver: handleDragOver,
                         onDrop: (event: any) => handleDropToMilestone(event, milestone.id, milestone.blocks.length),
@@ -1010,7 +997,7 @@ export default function CoachPortalScreen() {
                           );
                         })
                       )}
-                    </View>
+                    </Pressable>
                   </Pressable>
                 ))}
               </View>
