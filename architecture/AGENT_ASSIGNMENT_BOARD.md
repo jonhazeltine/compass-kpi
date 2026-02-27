@@ -111,6 +111,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W9-COACH-PORTAL-EXPERIENCE-PLANNING-A` | `committed` | `W9 coach portal experience planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (host foundation only during transition) | `coach portal IA/UX` (`dedicated experience + migration path + production sequencing`) | dedicated coach portal IA/UX direction (outside admin-shell presentation), migration from `/admin/coaching/*` foundation routes, persona visibility model, production-experience sequencing | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W7/W8 acceptance pack | Committed W10 route-decoupling swath: dedicated `/coach/*` uploads/library/cohorts/channels routes + customer-facing shell/nav landed, coach-facing navigation migrated to `/coach/*`, and `/admin/coaching/*` retained as temporary compatibility redirect-only paths (no backend/schema/API changes). |
 | `COACHING-W7-SUPERADMIN-AI-TROUBLESHOOTING-AUDIT-A` | `queued` | `W7 optional hardening (super-admin AI troubleshooting only)` | `Super Admin` (primary), `Admin operator` (limited) | `AI troubleshooting / audit` (`exception-only`) | optional trimmed `/admin/coaching/audit` super-admin troubleshooting views | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package + explicit owner approval gate | Optional exception-only follow-on to repurpose or trim `/admin/coaching/audit` into super-admin AI troubleshooting/audit; not a coach notification or coach primary workflow surface. |
 | `COACHING-W12-MOBILE-NAV-LOG-CTA-CENTER-A` | `review` | `M6 / W12 mobile IA polish` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Sponsor` | `mobile IA` (`bottom tab LOG center CTA emphasis`) | `KPIDashboardScreen` bottom tab bar only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (IA/interaction polish; no Figma lock specified in assignment) | Review-ready IA lock: profile bottom-tab entry removed (avatar opens profile/settings), logs tab reframed as Logs/Reports shared surface with default Logs history subview and secondary Reports subview, and center LOG CTA emphasis retained without route-family changes. |
+| `M6-W12-TEAM-SCREEN-PERSONA-SPLIT-A` | `review` | `M6 / W12 (persona split hardening)` | `Team Member` (simple view), `Team Leader` (ops-heavy view) | `team surface runtime split` (`member simplicity`, `leader operational controls`) | `KPIDashboardScreen` Team surface only | `Mobile-1` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | team runtime parity task (no new Figma node lock for this swath) | Review-ready: Team screen now renders member-vs-leader runtime modules via existing role/session logic; member view is simplified (challenge card, lightweight KPI list, team chat handoff), leader view adds operational filters + expandable KPI rows + escrow/projected totals + concern flags panel; Team->Challenge/Comms continuity preserved with no Home/Priority or shared logging write changes. |
 
 ## Blocked Assignments
 
@@ -275,6 +276,57 @@ Update the mobile bottom nav in `KPIDashboardScreen.tsx` to emphasize logging as
 - Files + line refs
 - Validation + screenshot paths
 - Commit hash
+
+### `M6-W12-TEAM-SCREEN-PERSONA-SPLIT-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 / W12 (persona split hardening)`
+- `Persona:` `Team Member` (simple view), `Team Leader` (ops-heavy view)
+- `Flow:` `team surface runtime split` (`member simplicity`, `leader operational controls`)
+- `Owner:` `Mobile-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (mobile app worktree preferred)
+- `Figma refs:` `N/A` (assignment-driven runtime split; no new frame lock in launch text)
+- `Execution note (2026-02-27):` Board updated first. Executing Team-only persona split in `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` behind existing role/session logic.
+- `Current blocker status (2026-02-27 start):` `none` for scoped mobile runtime UI pass.
+- `Completion note (2026-02-27):` Implemented Team-only persona split in `KPIDashboardScreen.tsx`. Member mode now presents a simplified stack (member list, active challenge card, lightweight KPI rows, Team Chat handoff). Leader mode now presents an ops-heavy stack (member/status/type/concern filters, expandable member KPI rows, totals cards for escrow + projected revenue, and concern flags panel) while keeping Team route sub-screens and logging section intact.
+- `Validation note (2026-02-27):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed. Simulator screenshots captured under `/Users/jon/compass-kpi/app/test-results/w12-team-persona-split/` (`runtime-current-1.png`, `runtime-current-2.png`).
+- `Current blocker status (2026-02-27 completion):` `none` for code/typecheck scope. Persona-switch screenshot automation remains environment-dependent on the currently signed-in session role.
+
+#### Primary Objective
+Split Team runtime UX into clear persona modes while keeping current route contracts and logging boundaries intact:
+- Team Member: simple dashboard with member list, active challenge card, lightweight KPI list, and Comms handoff.
+- Team Leader: operations-heavy dashboard with expandable member KPI rows, filters, totals, and concern flags.
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
+- Team surface only (`activeTab === 'team'`)
+
+#### Scope Out
+- Home/Priority behavior changes
+- shared KPI logging write-mechanic changes
+- Challenge layout rewrites
+- backend/API/schema changes
+
+#### Constraints (Hard)
+- Keep Team/Challenge/Comms route continuity.
+- Preserve Team Leader/Team Member challenge participation flows.
+- Preserve sponsor no-KPI-logging boundary.
+- Use existing read-model payloads and placeholder-safe math where contract gaps exist.
+
+#### Required Validation
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime checks for both personas (leader + member)
+- Screenshots folder:
+  - `/Users/jon/compass-kpi/app/test-results/w12-team-persona-split/`
+
+#### Report-Back Requirements
+- exact leader/member deltas
+- route links touched
+- contract gaps deferred
+- files + line refs
+- tsc result
+- commit hash
 
 ### `COACHING-W12-FOURTHREASON-CHAT-PARITY-MAP-A`
 

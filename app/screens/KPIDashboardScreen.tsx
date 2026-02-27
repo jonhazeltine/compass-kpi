@@ -162,6 +162,9 @@ type TeamKpiGroups = {
   GP: DashboardPayload['loggable_kpis'];
   VP: DashboardPayload['loggable_kpis'];
 };
+type TeamLeaderKpiTypeFilter = 'all' | 'PC' | 'GP' | 'VP';
+type TeamLeaderKpiStatusFilter = 'all' | 'on_track' | 'watch' | 'at_risk';
+type TeamLeaderConcernFilter = 'all' | 'flagged' | 'critical';
 type ChallengeApiLeaderboardRow = {
   user_id: string;
   activity_count: number;
@@ -2161,6 +2164,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [challengeMemberCreateModalVisible, setChallengeMemberCreateModalVisible] = useState(false);
   const [challengeMemberCreateMode, setChallengeMemberCreateMode] = useState<'public' | 'team'>('team');
   const [teamFlowScreen, setTeamFlowScreen] = useState<TeamFlowScreen>('dashboard');
+  const [teamLeaderMemberFilter, setTeamLeaderMemberFilter] = useState<string>('all');
+  const [teamLeaderKpiTypeFilter, setTeamLeaderKpiTypeFilter] = useState<TeamLeaderKpiTypeFilter>('all');
+  const [teamLeaderKpiStatusFilter, setTeamLeaderKpiStatusFilter] = useState<TeamLeaderKpiStatusFilter>('all');
+  const [teamLeaderConcernFilter, setTeamLeaderConcernFilter] = useState<TeamLeaderConcernFilter>('all');
+  const [teamLeaderExpandedMemberId, setTeamLeaderExpandedMemberId] = useState<string | null>(null);
   const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox');
   const [commsHubPrimaryTab, setCommsHubPrimaryTab] = useState<CommsHubPrimaryTab>('all');
   const [commsHubScopeFilter, setCommsHubScopeFilter] = useState<CommsHubScopeFilter>('all');
@@ -7866,10 +7874,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 { name: 'James Mateo', metric: '90%', sub: 'sarah@company.com' },
               ] as const;
 
-              const teamActivity = [
-                { icon: '🎧', title: 'Sarah logged 10 calls', time: '2 hours ago' },
-                { icon: '✓', title: "Mark completed today's goal", time: '2 hours ago' },
-              ] as const;
               const teamInviteHistory = [
                 { name: 'Sarah Johnson', status: 'Pending', statusTone: 'pending', action: 'send' },
                 { name: 'Philip Antony', status: 'Joined', statusTone: 'joined', action: 'check' },
@@ -7907,6 +7911,62 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 setChallengeFlowScreen(mode);
                 setActiveTab('challenge');
               };
+              const openTeamCommsHandoff = (source: CoachingShellEntrySource) => {
+                openCoachingShell('inbox_channels', {
+                  source,
+                  preferredChannelScope: 'team',
+                  preferredChannelLabel: 'Team Updates',
+                  threadTitle: 'Team Updates',
+                  threadSub: 'Team updates thread.',
+                  broadcastAudienceLabel: source === 'team_leader_dashboard' ? 'The Elite Group' : null,
+                  broadcastRoleAllowed: source === 'team_leader_dashboard',
+                });
+              };
+              const teamPrimaryChallenge =
+                challengeListItems.find((item) => item.challengeModeLabel === 'Team') ?? challengeListItems[0] ?? null;
+              const teamLightKpis = teamSurfaceKpis.slice(0, 3);
+              const parsePercent = (value: string) => {
+                const normalized = Number(String(value).replace('%', '').trim());
+                return Number.isFinite(normalized) ? normalized : 0;
+              };
+              const teamLeaderRows = teamMembers.map((member, idx) => {
+                const basePct = parsePercent(member.metric);
+                const kpis = {
+                  PC: Math.max(0, Math.min(100, basePct - (idx === 2 ? 12 : 4))),
+                  GP: Math.max(0, Math.min(100, basePct - (idx === 1 ? 10 : 6))),
+                  VP: Math.max(0, Math.min(100, basePct - (idx === 0 ? 8 : 14))),
+                };
+                const average = Math.round((kpis.PC + kpis.GP + kpis.VP) / 3);
+                const status: TeamLeaderKpiStatusFilter =
+                  average >= 86 ? 'on_track' : average >= 72 ? 'watch' : 'at_risk';
+                const concerns: string[] = [];
+                if (kpis.PC < 75) concerns.push('Projection confidence trending low');
+                if (kpis.GP < 72) concerns.push('Growth KPIs under target cadence');
+                if (kpis.VP < 70) concerns.push('Vitality activity missing this cycle');
+                return {
+                  id: member.name.toLowerCase().replace(/\s+/g, '-'),
+                  name: member.name,
+                  sub: member.sub,
+                  metric: member.metric,
+                  kpis,
+                  average,
+                  status,
+                  concerns,
+                };
+              });
+              const teamLeaderEscrowDeals = teamPipelineRows.reduce((sum, row) => sum + Math.max(0, Number(row.pending ?? 0)), 0);
+              const teamLeaderProjectedRevenue = Math.round(Math.max(0, Number(cardMetrics.projectedNext90 ?? 0)));
+              const teamLeaderConcernRows = teamLeaderRows
+                .flatMap((row) => row.concerns.map((concern) => ({ member: row.name, concern, critical: row.status === 'at_risk' })))
+                .slice(0, 6);
+              const teamLeaderRowsFiltered = teamLeaderRows.filter((row) => {
+                if (teamLeaderMemberFilter !== 'all' && row.id !== teamLeaderMemberFilter) return false;
+                if (teamLeaderKpiStatusFilter !== 'all' && row.status !== teamLeaderKpiStatusFilter) return false;
+                if (teamLeaderConcernFilter === 'flagged' && row.concerns.length === 0) return false;
+                if (teamLeaderConcernFilter === 'critical' && row.status !== 'at_risk') return false;
+                if (teamLeaderKpiTypeFilter !== 'all' && row.kpis[teamLeaderKpiTypeFilter] >= 75) return false;
+                return true;
+              });
 
               const teamLoggingBlock = (
                 <View style={styles.challengeSectionsWrap}>
@@ -8263,88 +8323,34 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </TouchableOpacity>
                       </View>
 
-                      <TouchableOpacity
-                        style={styles.teamMemberPerformanceCard}
-                        activeOpacity={0.92}
-                        onPress={() => setTeamFlowScreen('pipeline')}
-                      >
-                        <View style={styles.teamMemberPerformanceIcon}>
-                          <Text style={styles.teamMemberPerformanceIconText}>⚙️</Text>
+                      <TouchableOpacity style={styles.teamMemberChallengeCard} activeOpacity={0.92} onPress={() => openChallengeFlowFromTeam('details')}>
+                        <View style={styles.teamMemberChallengeTopRow}>
+                          <Text style={styles.teamMemberChallengeLabel}>Active Challenge</Text>
+                          <Text style={styles.teamMemberChallengeLink}>Open</Text>
                         </View>
-                        <View style={styles.teamMemberPerformanceCopy}>
-                          <Text style={styles.teamMemberPerformanceTitle}>Performance on Top</Text>
-                          <Text style={styles.teamMemberPerformanceSub}>Check Team Perfomance</Text>
-                        </View>
-                        <Text style={styles.teamMemberPerformanceValue}>80%</Text>
+                        <Text style={styles.teamMemberChallengeTitle}>{teamPrimaryChallenge?.title ?? 'Team Challenge'}</Text>
+                        <Text style={styles.teamMemberChallengeSub}>
+                          {teamPrimaryChallenge?.daysLabel ?? 'Open team challenge details and leaderboard.'}
+                        </Text>
                       </TouchableOpacity>
 
-                      <View style={styles.coachingEntryCard}>
-                        <View style={styles.coachingEntryHeaderRow}>
-                          <Text style={styles.coachingEntryTitle}>My Coaching Progress</Text>
-                          <Text style={styles.coachingEntryBadge}>W2 comms</Text>
+                      <View style={styles.teamMemberLightKpiCard}>
+                        <View style={styles.teamMemberLightKpiHeader}>
+                          <Text style={styles.teamMemberSectionLabel}>Team KPIs</Text>
+                          {renderKnownLimitedDataChip('team KPI relevance')}
                         </View>
-                        <Text style={styles.coachingEntrySub}>
-                          Coaching progress and team updates.
-                        </Text>
-                        {renderRuntimeStateBanner(teamRuntimeStateModel, { compact: true })}
-                        {renderCoachingPackageGateBanner('Team member coaching module', null, { compact: true })}
-                        {renderCoachingNotificationSurface(
-                          'Team coaching notifications',
-                          teamNotificationRows,
-                          summarizeNotificationRows(teamNotificationRows, { sourceLabel: 'team_member_module' }),
-                          { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No team coaching notifications yet.' }
+                        {teamLightKpis.length === 0 ? (
+                          <Text style={styles.teamMemberLightKpiEmpty}>No team KPI rows yet.</Text>
+                        ) : (
+                          teamLightKpis.map((kpi) => (
+                            <View key={`team-member-kpi-${kpi.id}`} style={styles.teamMemberLightKpiRow}>
+                              <Text style={styles.teamMemberLightKpiName}>{kpi.name}</Text>
+                              <Text style={styles.teamMemberLightKpiValue}>
+                                {fmtNum(Number(kpi.vp_value ?? kpi.gp_value ?? kpi.pc_weight ?? 0))}
+                              </Text>
+                            </View>
+                          ))
                         )}
-                        <View style={styles.coachingEntryButtonRow}>
-                          <TouchableOpacity
-                            style={styles.coachingEntryPrimaryBtn}
-                            onPress={() =>
-                              openCoachingShell('coaching_journeys', {
-                                source: 'team_member_dashboard',
-                                selectedJourneyId: null,
-                                selectedJourneyTitle: null,
-                                selectedLessonId: null,
-                                selectedLessonTitle: null,
-                              })
-                            }
-                          >
-                            <Text style={styles.coachingEntryPrimaryBtnText}>Open Journeys</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.coachingEntrySecondaryBtn}
-                            onPress={() =>
-                              openCoachingShell('inbox_channels', {
-                                source: 'team_member_dashboard',
-                                preferredChannelScope: 'team',
-                                preferredChannelLabel: 'Team Updates',
-                                threadTitle: 'Team Updates',
-                                threadSub: 'Team updates thread.',
-                                broadcastAudienceLabel: null,
-                                broadcastRoleAllowed: false,
-                              })
-                            }
-                          >
-                            <Text style={styles.coachingEntrySecondaryBtnText}>Team Updates</Text>
-                          </TouchableOpacity>
-                        </View>
-                        <TouchableOpacity
-                          style={styles.coachingEntryDarkBtn}
-                          onPress={() =>
-                            openAiAssistShell(
-                              {
-                                host: 'team_member_coaching_module',
-                                title: 'AI Assist (Approval-First)',
-                                sub: 'Team member coaching helper draft shell. Advisory only; no KPI writes, no auto-send.',
-                                targetLabel: 'Team member coaching module',
-                                approvedInsertOnly: true,
-                              },
-                              {
-                                prompt: 'Draft a short coaching check-in message I can review before posting or using.',
-                              }
-                            )
-                          }
-                        >
-                          <Text style={styles.coachingEntryDarkBtnText}>AI Assist Draft (Review)</Text>
-                        </TouchableOpacity>
                       </View>
 
                       <Text style={styles.teamMemberSectionLabel}>Team Members</Text>
@@ -8369,7 +8375,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               <Text style={styles.teamMemberRowName}>{member.name}</Text>
                               <Text style={styles.teamMemberRowSub}>{member.role}</Text>
                             </View>
-                            <Text style={styles.teamMemberRowMenu}>⋮</Text>
+                            <Text style={styles.teamMemberRowMenu}>›</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -8377,15 +8383,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <View style={styles.teamMemberFooterButtonsRow}>
                         <TouchableOpacity
                           style={[styles.teamMemberFooterBtn, styles.teamMemberFooterBtnPrimary]}
-                          onPress={() => setTeamFlowScreen('pending_invitations')}
+                          onPress={() => openTeamCommsHandoff('team_member_dashboard')}
                         >
-                          <Text style={styles.teamMemberFooterBtnTextPrimary}>Pending Invites</Text>
+                          <Text style={styles.teamMemberFooterBtnTextPrimary}>Team Chat</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={[styles.teamMemberFooterBtn, styles.teamMemberFooterBtnDark]}
-                          onPress={() => setTeamFlowScreen('kpi_settings')}
+                          onPress={() => openChallengeFlowFromTeam('details')}
                         >
-                          <Text style={styles.teamMemberFooterBtnTextDark}>Team KPI Setting</Text>
+                          <Text style={styles.teamMemberFooterBtnTextDark}>Challenge Details</Text>
                         </TouchableOpacity>
                       </View>
                       <TouchableOpacity style={styles.teamMemberViewChallengesBtn} onPress={() => setTeamFlowScreen('team_challenges')}>
@@ -8393,239 +8399,171 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </TouchableOpacity>
                     </View>
                   ) : (
-                  <View style={styles.teamParityDashboardWrap}>
-                    <View style={styles.teamParityNavRow}>
-                      <TouchableOpacity style={styles.teamParityBackBtn}>
-                        <Text style={styles.teamParityBackBtnText}>‹</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.teamParityNavTitle}>Team Dashboard</Text>
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.teamParityGroupCard}
-                      activeOpacity={0.92}
-                      onPress={() => setTeamFlowScreen('invite_member')}
-                    >
-                      <View style={styles.teamParityGroupIcon}>
-                        <Text style={styles.teamParityGroupIconText}>👥</Text>
+                    <View style={styles.teamLeaderOpsWrap}>
+                      <View style={styles.teamLeaderOpsHeader}>
+                        <Text style={styles.teamParityNavTitle}>Team Leader Ops</Text>
+                        {renderKnownLimitedDataChip('member KPI contracts')}
                       </View>
-                      <View style={styles.teamParityGroupCopy}>
-                        <Text style={styles.teamParityGroupName}>The Elite Group</Text>
-                        <Text style={styles.teamParityGroupSub}>Updated 2 hours ago</Text>
-                      </View>
-                    </TouchableOpacity>
 
-                    <Text style={styles.teamParitySectionLabel}>Performance Summary</Text>
-                    <View style={styles.teamParityPerfCard}>
-                      <View style={styles.teamParityGaugeWrap}>
-                        <View style={styles.teamParityGaugeArcBase} />
-                        <View style={[styles.teamParityGaugeArcSegment, styles.teamParityGaugeArcRed]} />
-                        <View style={[styles.teamParityGaugeArcSegment, styles.teamParityGaugeArcOrange]} />
-                        <View style={[styles.teamParityGaugeArcSegment, styles.teamParityGaugeArcGreen]} />
-                        <View style={styles.teamParityGaugeCenter}>
-                          <Text style={styles.teamParityGaugeValue}>80%</Text>
+                      <View style={styles.teamLeaderTotalsRow}>
+                        <TouchableOpacity style={[styles.teamParityStatCard, styles.teamParityStatCardGreen]} onPress={() => setTeamFlowScreen('pipeline')}>
+                          <Text style={styles.teamParityStatTitle}>Deals in Escrow</Text>
+                          <Text style={styles.teamParityStatValue}>{teamLeaderEscrowDeals}</Text>
+                          <Text style={styles.teamParityStatFoot}>Open pipeline deals</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.teamParityStatCard, styles.teamParityStatCardPurple]} onPress={() => openChallengeFlowFromTeam('details')}>
+                          <Text style={styles.teamParityStatTitle}>Projected Revenue</Text>
+                          <Text style={styles.teamParityStatValue}>{fmtUsd(teamLeaderProjectedRevenue)}</Text>
+                          <Text style={styles.teamParityStatFoot}>Next 90 days</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={styles.teamLeaderFiltersCard}>
+                        <View style={styles.teamLeaderFilterRow}>
+                          {([{ key: 'all', label: 'All' }, ...teamLeaderRows.map((row) => ({ key: row.id, label: row.name.split(' ')[0] }))] as const).map((filter) => (
+                            <TouchableOpacity
+                              key={`team-leader-member-${filter.key}`}
+                              style={[styles.teamLeaderFilterChip, teamLeaderMemberFilter === filter.key ? styles.teamLeaderFilterChipActive : null]}
+                              onPress={() => setTeamLeaderMemberFilter(filter.key)}
+                            >
+                              <Text style={[styles.teamLeaderFilterChipText, teamLeaderMemberFilter === filter.key ? styles.teamLeaderFilterChipTextActive : null]}>
+                                {filter.label}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                        <View style={styles.teamLeaderFilterRow}>
+                          {([
+                            { key: 'all', label: 'All KPI' },
+                            { key: 'PC', label: 'PC' },
+                            { key: 'GP', label: 'GP' },
+                            { key: 'VP', label: 'VP' },
+                          ] as const).map((filter) => (
+                            <TouchableOpacity
+                              key={`team-leader-type-${filter.key}`}
+                              style={[styles.teamLeaderFilterChip, teamLeaderKpiTypeFilter === filter.key ? styles.teamLeaderFilterChipActive : null]}
+                              onPress={() => setTeamLeaderKpiTypeFilter(filter.key)}
+                            >
+                              <Text style={[styles.teamLeaderFilterChipText, teamLeaderKpiTypeFilter === filter.key ? styles.teamLeaderFilterChipTextActive : null]}>
+                                {filter.label}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                        <View style={styles.teamLeaderFilterRow}>
+                          {([
+                            { key: 'all', label: 'All Status' },
+                            { key: 'on_track', label: 'On Track' },
+                            { key: 'watch', label: 'Watch' },
+                            { key: 'at_risk', label: 'At Risk' },
+                          ] as const).map((filter) => (
+                            <TouchableOpacity
+                              key={`team-leader-status-${filter.key}`}
+                              style={[styles.teamLeaderFilterChip, teamLeaderKpiStatusFilter === filter.key ? styles.teamLeaderFilterChipActive : null]}
+                              onPress={() => setTeamLeaderKpiStatusFilter(filter.key)}
+                            >
+                              <Text style={[styles.teamLeaderFilterChipText, teamLeaderKpiStatusFilter === filter.key ? styles.teamLeaderFilterChipTextActive : null]}>
+                                {filter.label}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                        <View style={styles.teamLeaderFilterRow}>
+                          {([
+                            { key: 'all', label: 'All Flags' },
+                            { key: 'flagged', label: 'Flagged' },
+                            { key: 'critical', label: 'Critical' },
+                          ] as const).map((filter) => (
+                            <TouchableOpacity
+                              key={`team-leader-concern-${filter.key}`}
+                              style={[styles.teamLeaderFilterChip, teamLeaderConcernFilter === filter.key ? styles.teamLeaderFilterChipActive : null]}
+                              onPress={() => setTeamLeaderConcernFilter(filter.key)}
+                            >
+                              <Text style={[styles.teamLeaderFilterChipText, teamLeaderConcernFilter === filter.key ? styles.teamLeaderFilterChipTextActive : null]}>
+                                {filter.label}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
                         </View>
                       </View>
-                      <View style={styles.teamParityPerformancePill}>
-                        <Text style={styles.teamParityPerformancePillText}>Performance on Top</Text>
-                      </View>
-                      <Text style={styles.teamParityPerfRatio}>890 / 1200</Text>
-                      <Text style={styles.teamParityPerfCaption}>Team Sphere Calls Achieved</Text>
 
-                      <View style={styles.teamParityStatRow}>
-                        <TouchableOpacity
-                          style={[styles.teamParityStatCard, styles.teamParityStatCardGreen]}
-                          activeOpacity={0.92}
-                          onPress={() => setTeamFlowScreen('pipeline')}
-                        >
-                          <Text style={styles.teamParityStatTitle}>Team Performance</Text>
-                          <Text style={styles.teamParityStatValue}>85%</Text>
-                          <Text style={styles.teamParityStatFoot}>Goals achieved</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.teamParityStatCard, styles.teamParityStatCardPurple]}
-                          activeOpacity={0.92}
-                          onPress={() => setTeamFlowScreen('team_challenges')}
-                        >
-                          <Text style={styles.teamParityStatTitle}>Active Challenges</Text>
-                          <Text style={styles.teamParityStatValue}>02</Text>
-                          <Text style={styles.teamParityStatFoot}>Ongoing</Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      <TouchableOpacity
-                        style={styles.teamParityConfidenceRow}
-                        activeOpacity={0.92}
-                        onPress={() => setTeamFlowScreen('kpi_settings')}
-                      >
-                        <View style={styles.teamParityConfidenceIcon}>
-                          <Text style={styles.teamParityConfidenceIconText}>⚡</Text>
-                        </View>
-                        <View style={styles.teamParityConfidenceCopy}>
-                          <Text style={styles.teamParityConfidenceTitle}>Team Confidence</Text>
-                          <Text style={styles.teamParityConfidenceSub}>Overall Team Confidents</Text>
-                        </View>
-                        <Text style={styles.teamParityConfidenceValue}>78%</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.teamParitySectionRow}>
-                      <Text style={styles.teamParitySectionLabel}>Members Performance</Text>
-                      <TouchableOpacity onPress={() => setTeamFlowScreen('pending_invitations')}>
-                        <Text style={styles.teamParitySectionLink}>Pending</Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.teamParityListCard}>
-                      {teamMembers.map((member, idx) => (
-                        <TouchableOpacity
-                          key={member.name}
-                          style={[styles.teamParityMemberRow, idx > 0 && styles.teamParityDividerTop]}
-                          activeOpacity={0.92}
-                          onPress={() => setTeamFlowScreen('team_challenges')}
-                        >
-                          <View style={styles.teamParityMemberAvatar}>
-                            <Text style={styles.teamParityMemberAvatarText}>
-                              {member.name
-                                .split(' ')
-                                .map((part) => part[0])
-                                .join('')
-                                .slice(0, 2)
-                                .toUpperCase()}
-                            </Text>
+                      <View style={styles.teamLeaderExpandableList}>
+                        {teamLeaderRowsFiltered.length === 0 ? (
+                          <View style={styles.teamLeaderEmptyState}>
+                            <Text style={styles.teamLeaderEmptyTitle}>No members match active filters</Text>
+                            <Text style={styles.teamLeaderEmptySub}>Try broader KPI type or concern filters.</Text>
                           </View>
-                          <View style={styles.teamParityMemberCopy}>
-                            <Text style={styles.teamParityMemberName}>{member.name}</Text>
-                            <Text style={styles.teamParityMemberSub}>{member.sub}</Text>
-                          </View>
-                          <Text style={styles.teamParityMemberMetric}>{member.metric}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-
-                    <View style={styles.teamParitySectionRow}>
-                      <Text style={styles.teamParitySectionLabel}>Team Activity</Text>
-                      <TouchableOpacity onPress={() => setTeamFlowScreen('invite_member')}>
-                        <Text style={styles.teamParitySectionLink}>Invite</Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.teamParityListCard}>
-                      {teamActivity.map((activity, idx) => (
-                        <TouchableOpacity
-                          key={activity.title}
-                          style={[styles.teamParityActivityRow, idx > 0 && styles.teamParityDividerTop]}
-                          activeOpacity={0.92}
-                          onPress={() =>
-                            setTeamFlowScreen(idx === 0 ? 'pipeline' : 'pending_invitations')
-                          }
-                        >
-                          <View style={styles.teamParityActivityIcon}>
-                            <Text style={styles.teamParityActivityIconText}>{activity.icon}</Text>
-                          </View>
-                          <View style={styles.teamParityActivityCopy}>
-                            <Text style={styles.teamParityActivityTitle}>{activity.title}</Text>
-                            <Text style={styles.teamParityActivityTime}>{activity.time}</Text>
-                          </View>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-
-                      <View style={styles.coachingEntryCard}>
-                      <View style={styles.coachingEntryHeaderRow}>
-                        <Text style={styles.coachingEntryTitle}>Team Coaching Summary</Text>
-                        <Text style={styles.coachingEntryBadge}>W2 comms</Text>
-                      </View>
-                      <Text style={styles.coachingEntrySub}>
-                        Team coaching summary, updates, and broadcast entry.
-                      </Text>
-                      {renderRuntimeStateBanner(teamRuntimeStateModel, { compact: true })}
-                      {renderCoachingPackageGateBanner('Team leader coaching module', null, { compact: true })}
-                      {renderCoachingNotificationSurface(
-                        'Team coaching notifications',
-                        teamNotificationRows,
-                        summarizeNotificationRows(teamNotificationRows, { sourceLabel: 'team_leader_module' }),
-                        { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No team coaching notifications yet.' }
-                      )}
-                      <View style={styles.coachingEntryButtonRow}>
-                        <TouchableOpacity
-                          style={styles.coachingEntryPrimaryBtn}
-                          onPress={() =>
-                            openCoachingShell('coaching_journeys', {
-                              source: 'team_leader_dashboard',
-                              selectedJourneyId: null,
-                              selectedJourneyTitle: null,
-                              selectedLessonId: null,
-                              selectedLessonTitle: null,
-                            })
-                          }
-                        >
-                          <Text style={styles.coachingEntryPrimaryBtnText}>Coaching Journeys</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.coachingEntrySecondaryBtn}
-                          onPress={() =>
-                            openCoachingShell('inbox_channels', {
-                              source: 'team_leader_dashboard',
-                              preferredChannelScope: 'team',
-                              preferredChannelLabel: 'Team Updates',
-                              threadTitle: 'Team Updates',
-                                threadSub: 'Team updates thread.',
-                              broadcastAudienceLabel: 'The Elite Group',
-                              broadcastRoleAllowed: true,
-                            })
-                          }
-                        >
-                          <Text style={styles.coachingEntrySecondaryBtnText}>Team Updates</Text>
-                        </TouchableOpacity>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.coachingEntryDarkBtn}
-                        onPress={() =>
-                          openCoachingShell('coach_broadcast_compose', {
-                            source: 'team_leader_dashboard',
-                            preferredChannelScope: 'team',
-                            preferredChannelLabel: 'Team Updates',
-                            threadTitle: 'Team Broadcast Thread',
-                            threadSub: 'Team broadcast thread.',
-                            broadcastAudienceLabel: 'The Elite Group',
-                            broadcastRoleAllowed: true,
+                        ) : (
+                          teamLeaderRowsFiltered.map((row) => {
+                            const isExpanded = teamLeaderExpandedMemberId === row.id;
+                            const activeType = teamLeaderKpiTypeFilter === 'all' ? 'PC' : teamLeaderKpiTypeFilter;
+                            return (
+                              <View key={row.id} style={styles.teamLeaderMemberCard}>
+                                <TouchableOpacity
+                                  style={styles.teamLeaderMemberHeader}
+                                  onPress={() => setTeamLeaderExpandedMemberId(isExpanded ? null : row.id)}
+                                >
+                                  <View style={styles.teamParityMemberAvatar}>
+                                    <Text style={styles.teamParityMemberAvatarText}>
+                                      {row.name
+                                        .split(' ')
+                                        .map((part) => part[0])
+                                        .join('')
+                                        .slice(0, 2)
+                                        .toUpperCase()}
+                                    </Text>
+                                  </View>
+                                  <View style={styles.teamParityMemberCopy}>
+                                    <Text style={styles.teamParityMemberName}>{row.name}</Text>
+                                    <Text style={styles.teamParityMemberSub}>{row.sub}</Text>
+                                  </View>
+                                  <Text style={styles.teamLeaderMemberStatus}>{row.status.replace('_', ' ')}</Text>
+                                </TouchableOpacity>
+                                {isExpanded ? (
+                                  <View style={styles.teamLeaderMemberExpandedBody}>
+                                    <Text style={styles.teamLeaderExpandedKpiRow}>
+                                      {activeType} KPI: {row.kpis[activeType]}% ({row.average}% avg)
+                                    </Text>
+                                    <Text style={styles.teamLeaderExpandedKpiRow}>PC {row.kpis.PC}% • GP {row.kpis.GP}% • VP {row.kpis.VP}%</Text>
+                                    {row.concerns.length === 0 ? (
+                                      <Text style={styles.teamLeaderExpandedKpiRow}>No concern flags.</Text>
+                                    ) : (
+                                      row.concerns.map((concern) => (
+                                        <Text key={`${row.id}-${concern}`} style={styles.teamLeaderConcernBullet}>• {concern}</Text>
+                                      ))
+                                    )}
+                                    <View style={styles.teamLeaderExpandedActionsRow}>
+                                      <TouchableOpacity style={styles.teamRouteSmallPrimaryBtn} onPress={() => openChallengeFlowFromTeam('details')}>
+                                        <Text style={styles.teamRouteSmallPrimaryBtnText}>Challenge</Text>
+                                      </TouchableOpacity>
+                                      <TouchableOpacity style={styles.teamRouteSmallSecondaryBtn} onPress={() => openTeamCommsHandoff('team_leader_dashboard')}>
+                                        <Text style={styles.teamRouteSmallSecondaryBtnText}>Comms</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  </View>
+                                ) : null}
+                              </View>
+                            );
                           })
-                        }
-                      >
-                        <Text style={styles.coachingEntryDarkBtnText}>Broadcast Composer (Role-Gated)</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.coachingEntryDarkBtn}
-                        onPress={() =>
-                          openAiAssistShell(
-                            {
-                              host: 'team_leader_coaching_module',
-                              title: 'AI Assist (Approval-First)',
-                              sub: 'Draft only. Human review required.',
-                              targetLabel: 'Team leader coaching module',
-                              approvedInsertOnly: true,
-                            },
-                            {
-                              prompt: 'Draft a team coaching update summary with clear next steps. Do not send automatically.',
-                            }
-                          )
-                        }
-                      >
-                        <Text style={styles.coachingEntryDarkBtnText}>AI Assist Draft (Review)</Text>
-                      </TouchableOpacity>
-                    </View>
+                        )}
+                      </View>
 
-                    <View style={styles.teamParityRouteChipsRow}>
-                      <TouchableOpacity style={styles.teamParityRouteChip} onPress={() => setTeamFlowScreen('invite_member')}>
-                        <Text style={styles.teamParityRouteChipText}>Invite Member</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.teamParityRouteChip} onPress={() => setTeamFlowScreen('pending_invitations')}>
-                        <Text style={styles.teamParityRouteChipText}>Pending Invitations</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.teamParityRouteChip} onPress={() => setTeamFlowScreen('kpi_settings')}>
-                        <Text style={styles.teamParityRouteChipText}>KPI Settings</Text>
-                      </TouchableOpacity>
+                      <View style={styles.teamLeaderConcernCard}>
+                        <View style={styles.teamMemberChallengeTopRow}>
+                          <Text style={styles.teamMemberChallengeLabel}>KPI Concern Flags</Text>
+                          <Text style={styles.teamMemberChallengeLink}>{teamLeaderConcernRows.length}</Text>
+                        </View>
+                        {teamLeaderConcernRows.length === 0 ? (
+                          <Text style={styles.teamMemberChallengeSub}>No flagged indicators in the current filter set.</Text>
+                        ) : (
+                          teamLeaderConcernRows.slice(0, 3).map((row) => (
+                            <Text key={`${row.member}-${row.concern}`} style={styles.teamLeaderConcernBullet}>
+                              • {row.member}: {row.concern}
+                            </Text>
+                          ))
+                        )}
+                      </View>
                     </View>
-                  </View>
                   )}
 
                   {teamLoggingBlock}
@@ -12762,6 +12700,192 @@ const styles = StyleSheet.create({
     color: '#404958',
     fontSize: 12,
     fontWeight: '700',
+  },
+  teamMemberChallengeCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dde7f4',
+    backgroundColor: '#f8fbff',
+    padding: 10,
+    gap: 4,
+  },
+  teamMemberChallengeTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  teamMemberChallengeLabel: {
+    color: '#50607a',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  teamMemberChallengeLink: {
+    color: '#2b5fdd',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  teamMemberChallengeTitle: {
+    color: '#2f3a4a',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  teamMemberChallengeSub: {
+    color: '#768399',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  teamMemberLightKpiCard: {
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e1e8f3',
+    padding: 10,
+    gap: 7,
+  },
+  teamMemberLightKpiHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  teamMemberLightKpiEmpty: {
+    color: '#7b8798',
+    fontSize: 11,
+  },
+  teamMemberLightKpiRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  teamMemberLightKpiName: {
+    color: '#465267',
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  teamMemberLightKpiValue: {
+    color: '#2f3b4b',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  teamLeaderOpsWrap: {
+    gap: 12,
+  },
+  teamLeaderOpsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  teamLeaderTotalsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  teamLeaderFiltersCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e7f3',
+    backgroundColor: '#f9fbff',
+    padding: 10,
+    gap: 8,
+  },
+  teamLeaderFilterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  teamLeaderFilterChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d7e0ef',
+    backgroundColor: '#fff',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  teamLeaderFilterChipActive: {
+    borderColor: '#2f63dd',
+    backgroundColor: '#eaf0ff',
+  },
+  teamLeaderFilterChipText: {
+    color: '#5a6a82',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  teamLeaderFilterChipTextActive: {
+    color: '#2047a9',
+  },
+  teamLeaderExpandableList: {
+    gap: 8,
+  },
+  teamLeaderEmptyState: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e1e7f2',
+    backgroundColor: '#f7f9fc',
+    padding: 10,
+    gap: 4,
+  },
+  teamLeaderEmptyTitle: {
+    color: '#425168',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamLeaderEmptySub: {
+    color: '#7f8ca0',
+    fontSize: 11,
+  },
+  teamLeaderMemberCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f4',
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+  teamLeaderMemberHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  teamLeaderMemberStatus: {
+    color: '#4b5d79',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  teamLeaderMemberExpandedBody: {
+    borderTopWidth: 1,
+    borderTopColor: '#e7ecf5',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 5,
+  },
+  teamLeaderExpandedKpiRow: {
+    color: '#516179',
+    fontSize: 11,
+  },
+  teamLeaderExpandedActionsRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  teamLeaderConcernCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ead8d8',
+    backgroundColor: '#fff7f7',
+    padding: 10,
+    gap: 6,
+  },
+  teamLeaderConcernBullet: {
+    color: '#6d4b4b',
+    fontSize: 11,
+    lineHeight: 15,
   },
   teamParityNavRow: {
     flexDirection: 'row',
