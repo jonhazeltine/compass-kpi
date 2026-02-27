@@ -79,17 +79,19 @@ async function main() {
   const seedTag = `seed-${stamp}`;
 
   const emails = {
-    admin: `${seedTag}.coachadmin@example.com`,
+    coach: `${seedTag}.coach@example.com`,
     leader: `${seedTag}.coachleader@example.com`,
     member: `${seedTag}.coachmember@example.com`,
     solo: `${seedTag}.coachsolo@example.com`,
+    sponsor: `${seedTag}.challengesponsor@example.com`,
   };
 
   const ids = {
-    adminUserId: null,
+    coachUserId: null,
     leaderUserId: null,
     memberUserId: null,
     soloUserId: null,
+    sponsorUserId: null,
     teamId: null,
     challengeId: null,
     sponsorId: null,
@@ -130,23 +132,25 @@ async function main() {
     assert(t.journeys === "journeys", "Missing coaching tables. Apply backend/sql/006_sprint4_coaching_ai_core.sql.");
     assert(t.channels === "channels", "Missing communication tables. Apply backend/sql/005_sprint3_communication_core.sql.");
 
-    ids.adminUserId = await createAuthUser(emails.admin, PASSWORD);
+    ids.coachUserId = await createAuthUser(emails.coach, PASSWORD);
     ids.leaderUserId = await createAuthUser(emails.leader, PASSWORD);
     ids.memberUserId = await createAuthUser(emails.member, PASSWORD);
     ids.soloUserId = await createAuthUser(emails.solo, PASSWORD);
+    ids.sponsorUserId = await createAuthUser(emails.sponsor, PASSWORD);
 
     const tokens = {
-      admin: await signIn(emails.admin, PASSWORD),
+      coach: await signIn(emails.coach, PASSWORD),
       leader: await signIn(emails.leader, PASSWORD),
       member: await signIn(emails.member, PASSWORD),
       solo: await signIn(emails.solo, PASSWORD),
+      sponsor: await signIn(emails.sponsor, PASSWORD),
     };
 
     await db.query(
       `insert into public.users (id, role)
-       values ($1,'admin'), ($2,'agent'), ($3,'agent'), ($4,'agent')
+       values ($1,'admin'), ($2,'agent'), ($3,'agent'), ($4,'agent'), ($5,'agent')
        on conflict (id) do update set role = excluded.role`,
-      [ids.adminUserId, ids.leaderUserId, ids.memberUserId, ids.soloUserId]
+      [ids.coachUserId, ids.leaderUserId, ids.memberUserId, ids.soloUserId, ids.sponsorUserId]
     );
     await db.query(
       `update public.users
@@ -155,10 +159,11 @@ async function main() {
          when id = $2 then 'teams'
          when id = $3 then 'free'
          when id = $4 then 'teams'
+         when id = $5 then 'enterprise'
          else tier
        end
-       where id in ($1, $2, $3, $4)`,
-      [ids.adminUserId, ids.leaderUserId, ids.memberUserId, ids.soloUserId]
+       where id in ($1, $2, $3, $4, $5)`,
+      [ids.coachUserId, ids.leaderUserId, ids.memberUserId, ids.soloUserId, ids.sponsorUserId]
     );
 
     const teamOut = await request(`${BACKEND_URL}/teams`, {
@@ -280,7 +285,7 @@ async function main() {
       [
         `${LABEL_PREFIX}: Solo Momentum Builder (${seedTag})`,
         "Seeded solo coaching journey for non-team scoped visibility checks.",
-        ids.adminUserId,
+        ids.coachUserId,
       ]
     );
     const soloJourney = { id: soloJourneyInsert.rows[0].id, title: soloJourneyInsert.rows[0].title };
@@ -360,7 +365,7 @@ async function main() {
         name: `${LABEL_PREFIX} Sponsor Coaching Bulletin (${seedTag})`,
         teamId: ids.teamId,
         contextId: ids.sponsoredChallenges.find((row) => row.required_tier === "free")?.id ?? ids.challengeId,
-        createdBy: ids.adminUserId,
+        createdBy: ids.sponsorUserId,
       },
       {
         type: "cohort",
@@ -391,7 +396,7 @@ async function main() {
       [teamChannel.id, ids.leaderUserId, "admin"],
       [teamChannel.id, ids.memberUserId, "member"],
       [sponsorChannel.id, ids.memberUserId, "member"],
-      [sponsorChannel.id, ids.adminUserId, "admin"],
+      [sponsorChannel.id, ids.sponsorUserId, "admin"],
       [cohortChannel.id, ids.leaderUserId, "admin"],
       [cohortChannel.id, ids.memberUserId, "member"],
       [cohortChannel.id, ids.soloUserId, "member"],
@@ -427,7 +432,7 @@ async function main() {
         ids.memberUserId,
         `${LABEL_PREFIX}: I completed the first call block and logged notes for objection patterns.`,
         sponsorChannel.id,
-        ids.adminUserId,
+        ids.sponsorUserId,
         `${LABEL_PREFIX}: Sponsor spotlight coaching tip of the week is now available.`,
         `${LABEL_PREFIX}: Thanks — reviewing the sponsor challenge prep guide tonight.`,
         cohortChannel.id,
@@ -482,6 +487,38 @@ async function main() {
     assert(Number(memberProgress.data.status_counts.completed) >= 1, "progress summary missing completed count");
     assert(Number(memberProgress.data.status_counts.not_started) >= 1, "progress summary missing not_started count");
 
+    const coachJourneys = await request(`${BACKEND_URL}/api/coaching/journeys`, {
+      headers: { authorization: `Bearer ${tokens.coach}` },
+    });
+    assert(coachJourneys.status === 200, `/api/coaching/journeys failed (coach): ${coachJourneys.status}`);
+    assert(
+      coachJourneys.data.journeys.some((j) => j.id === teamJourney.id) &&
+      coachJourneys.data.journeys.some((j) => j.id === soloJourney.id),
+      "coach should see both team and solo journeys"
+    );
+
+    const leaderJourneys = await request(`${BACKEND_URL}/api/coaching/journeys`, {
+      headers: { authorization: `Bearer ${tokens.leader}` },
+    });
+    assert(leaderJourneys.status === 200, `/api/coaching/journeys failed (leader): ${leaderJourneys.status}`);
+    assert(
+      leaderJourneys.data.journeys.some((j) => j.id === teamJourney.id),
+      "team leader should see team journey"
+    );
+
+    const sponsorJourneys = await request(`${BACKEND_URL}/api/coaching/journeys`, {
+      headers: { authorization: `Bearer ${tokens.sponsor}` },
+    });
+    assert(sponsorJourneys.status === 200, `/api/coaching/journeys failed (challenge sponsor): ${sponsorJourneys.status}`);
+    assert(
+      !sponsorJourneys.data.journeys.some((j) => j.id === teamJourney.id),
+      "challenge sponsor should not see team journey without team membership"
+    );
+    assert(
+      sponsorJourneys.data.journeys.some((j) => j.id === soloJourney.id),
+      "challenge sponsor should still see non-team scoped solo journey"
+    );
+
     const memberChannels = await request(`${BACKEND_URL}/api/channels`, {
       headers: { authorization: `Bearer ${tokens.member}` },
     });
@@ -498,6 +535,19 @@ async function main() {
     assert(
       String(cohortChannelListItem.packaging_read_model?.package_type ?? "") === "",
       "cohort channel should remain package_type null in baseline read model"
+    );
+
+    const sponsorChannels = await request(`${BACKEND_URL}/api/channels`, {
+      headers: { authorization: `Bearer ${tokens.sponsor}` },
+    });
+    assert(sponsorChannels.status === 200, `/api/channels failed (challenge sponsor): ${sponsorChannels.status}`);
+    assert(
+      sponsorChannels.data.channels.some((c) => c.id === sponsorChannel.id),
+      "challenge sponsor should see sponsor channel membership"
+    );
+    assert(
+      !sponsorChannels.data.channels.some((c) => c.id === teamChannel.id),
+      "challenge sponsor should not see team channel without membership"
     );
 
     const teamChannelMessages = await request(`${BACKEND_URL}/api/channels/${teamChannel.id}/messages`, {
@@ -556,6 +606,16 @@ async function main() {
       "teams-tier user should see both free and teams sponsored challenges"
     );
 
+    const sponsorSponsoredList = await request(`${BACKEND_URL}/sponsored-challenges`, {
+      headers: { authorization: `Bearer ${tokens.sponsor}` },
+    });
+    assert(sponsorSponsoredList.status === 200, `/sponsored-challenges failed (challenge sponsor): ${sponsorSponsoredList.status}`);
+    assert(
+      sponsorSponsoredList.data.sponsored_challenges.some((row) => row.id === freeSponsored.id) &&
+      sponsorSponsoredList.data.sponsored_challenges.some((row) => row.id === teamsSponsored.id),
+      "challenge sponsor should see both free and teams sponsored challenges"
+    );
+
     const sponsorDetail = await request(`${BACKEND_URL}/sponsored-challenges/${freeSponsored.id}`, {
       headers: { authorization: `Bearer ${tokens.member}` },
     });
@@ -565,13 +625,69 @@ async function main() {
       "sponsored challenge detail should carry sponsor attribution requirement"
     );
 
+    const memberTeamBroadcast = await request(`${BACKEND_URL}/api/coaching/broadcast`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${tokens.member}`,
+      },
+      body: JSON.stringify({
+        scope_type: "team",
+        scope_id: ids.teamId,
+        message_body: `${LABEL_PREFIX}: member team broadcast should be blocked`,
+      }),
+    });
+    assert(memberTeamBroadcast.status === 403, `member team broadcast should be forbidden, got ${memberTeamBroadcast.status}`);
+
+    const leaderTeamBroadcast = await request(`${BACKEND_URL}/api/coaching/broadcast`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${tokens.leader}`,
+      },
+      body: JSON.stringify({
+        scope_type: "team",
+        scope_id: ids.teamId,
+        message_body: `${LABEL_PREFIX}: leader team broadcast allowed`,
+      }),
+    });
+    assert(leaderTeamBroadcast.status === 201, `leader team broadcast should succeed, got ${leaderTeamBroadcast.status}`);
+
+    const sponsorTeamBroadcast = await request(`${BACKEND_URL}/api/coaching/broadcast`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${tokens.sponsor}`,
+      },
+      body: JSON.stringify({
+        scope_type: "team",
+        scope_id: ids.teamId,
+        message_body: `${LABEL_PREFIX}: challenge sponsor team broadcast should be blocked`,
+      }),
+    });
+    assert(sponsorTeamBroadcast.status === 403, `challenge sponsor team broadcast should be forbidden, got ${sponsorTeamBroadcast.status}`);
+
+    const coachGlobalBroadcast = await request(`${BACKEND_URL}/api/coaching/broadcast`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${tokens.coach}`,
+      },
+      body: JSON.stringify({
+        scope_type: "global",
+        message_body: `${LABEL_PREFIX}: coach global broadcast visibility check`,
+      }),
+    });
+    assert(coachGlobalBroadcast.status === 201, `coach global broadcast should succeed, got ${coachGlobalBroadcast.status}`);
+
     const summary = {
       seed_tag: seedTag,
       users: {
-        admin: { email: emails.admin, id: ids.adminUserId },
+        coach: { email: emails.coach, id: ids.coachUserId },
         leader: { email: emails.leader, id: ids.leaderUserId },
         member: { email: emails.member, id: ids.memberUserId },
         solo: { email: emails.solo, id: ids.soloUserId },
+        challenge_sponsor: { email: emails.sponsor, id: ids.sponsorUserId },
       },
       team: { id: ids.teamId },
       challenge: { id: ids.challengeId },
@@ -584,6 +700,7 @@ async function main() {
         "/api/coaching/journeys",
         `/api/coaching/journeys/${teamJourney.id}`,
         "/api/coaching/progress",
+        "/api/coaching/broadcast",
         "/dashboard",
         "/api/channels",
         `/api/channels/${teamChannel.id}/messages`,
@@ -600,6 +717,7 @@ async function main() {
         sponsor_package_attribution_visible: true,
         sponsored_tier_gating_visible: true,
         member_kpi_visibility_examples: true,
+        role_visibility_outcomes: true,
       },
       cleanup_hint: `Delete rows with names/titles containing '${seedTag}' and auth users with emails starting '${seedTag}.'`,
     };
