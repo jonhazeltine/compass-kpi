@@ -26,6 +26,21 @@ Coaching is implemented as a mix of:
 
 This keeps the app coherent and avoids fragmenting the user experience.
 
+## Runtime Implementation Sync (W12-B)
+
+Docs are synchronized to current landed runtime baselines:
+
+- Member comms runtime in `KPIDashboardScreen.tsx` is API-backed for:
+  - `inbox_channels` list/read context,
+  - `channel_thread` read/send flows,
+  - `coach_broadcast_compose` role-gated broadcast path.
+- Coach portal comms hub baseline is present in `CoachPortalScreen.tsx`:
+  - canonical `/coach/channels` hub route,
+  - top-tab navigation alignment with `library`, `journeys`, `cohorts`, `channels`,
+  - compatibility alias behavior from `/admin/coaching/channels`.
+
+This sync does not introduce backend/schema/API changes and does not change role boundaries.
+
 ## New/Expanded Destinations (Intended)
 
 ### Authoring / ops surfaces (admin-web extension or hybrid portal; manual-spec-driven)
@@ -202,6 +217,7 @@ This addendum does not approve new endpoint families or schemas; it defines the 
 - Channel/inbox/thread wiring
 - Team/challenge/sponsor channel context linkage
 - Broadcast entry points for leader/admin roles
+- Implementation sync note: this phase baseline is now landed for member runtime in `KPIDashboardScreen.tsx` (API-backed channel list/thread send/mark-seen + role-gated broadcast flow).
 
 ### W2 recommended first functional entry points
 
