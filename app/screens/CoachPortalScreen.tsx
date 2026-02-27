@@ -23,7 +23,6 @@ import {
 } from '../lib/adminAuthz';
 
 type CoachRouteKey =
-  | 'coachingUploads'
   | 'coachingLibrary'
   | 'coachingJourneys'
   | 'coachingCohorts'
@@ -36,7 +35,6 @@ type CoachSurface = {
   headline: string;
   summary: string;
   primaryAction: string;
-  secondaryAction: string;
   columns: [string, string, string, string];
   rows: Array<{ id: string; c1: string; c2: string; c3: string; c4: string }>;
 };
@@ -46,33 +44,17 @@ const COACH_ROUTE_KEYS: CoachRouteKey[] = [
   'coachingJourneys',
   'coachingCohorts',
   'coachingChannels',
-  'coachingUploads',
 ];
 
 const COACH_SURFACES: Record<CoachRouteKey, CoachSurface> = {
-  coachingUploads: {
-    key: 'coachingUploads',
-    path: '/coach/uploads',
-    label: 'Uploads',
-    headline: 'Bring new coaching content into the portal',
-    summary: 'Upload source files, review metadata quality, and route approved assets into Library collections.',
-    primaryAction: 'Start Upload',
-    secondaryAction: 'Open Library',
-    columns: ['Batch', 'Owner', 'Scope', 'Status'],
-    rows: [
-      { id: 'up-1', c1: 'Listing Scripts Q2', c2: 'Coach Avery', c3: 'Coach shared', c4: 'Ready' },
-      { id: 'up-2', c1: 'Team Objection Cards', c2: 'TL Jamie', c3: 'Team scoped', c4: 'Review' },
-      { id: 'up-3', c1: 'Sponsor Promo Copy', c2: 'Sponsor North', c3: 'Sponsor scoped', c4: 'Ready' },
-    ],
-  },
   coachingLibrary: {
     key: 'coachingLibrary',
     path: '/coach/library',
     label: 'Library',
     headline: 'Curate your coaching content library',
-    summary: 'Organize lesson assets by audience and outcome so journeys and channels stay consistent.',
+    summary:
+      'Upload, organize, and tag coaching assets in one workspace so journeys and channels stay aligned.',
     primaryAction: 'Create Collection',
-    secondaryAction: 'Open Journeys',
     columns: ['Asset', 'Category', 'Audience', 'Updated'],
     rows: [
       { id: 'lib-1', c1: 'Buyer Follow-Up Kit', c2: 'Lesson Pack', c3: 'All teams', c4: 'Today' },
@@ -87,7 +69,6 @@ const COACH_SURFACES: Record<CoachRouteKey, CoachSurface> = {
     headline: 'Design learning journeys with clear progression',
     summary: 'Build module sequences, define release pacing, and target the right cohort or channel audience.',
     primaryAction: 'Create Journey',
-    secondaryAction: 'Open Cohorts',
     columns: ['Journey', 'Audience', 'Modules', 'State'],
     rows: [
       { id: 'jr-1', c1: '30-Day Listing Accelerator', c2: 'New agents', c3: '8', c4: 'Live' },
@@ -102,7 +83,6 @@ const COACH_SURFACES: Record<CoachRouteKey, CoachSurface> = {
     headline: 'Group participants for targeted coaching delivery',
     summary: 'Manage cohort membership and align each cohort to the right journeys and communication channels.',
     primaryAction: 'Create Cohort',
-    secondaryAction: 'Open Channels',
     columns: ['Cohort', 'Owner', 'Members', 'Program'],
     rows: [
       { id: 'co-1', c1: 'Q1 Rising Agents', c2: 'Coach Avery', c3: '24', c4: 'Listing Accelerator' },
@@ -117,7 +97,6 @@ const COACH_SURFACES: Record<CoachRouteKey, CoachSurface> = {
     headline: 'Run communication channels with the right audience scope',
     summary: 'Coordinate messages for journeys and cohorts while keeping sponsor interactions scoped and compliant.',
     primaryAction: 'Create Channel',
-    secondaryAction: 'Open Library',
     columns: ['Channel', 'Scope', 'Members', 'Activity'],
     rows: [
       { id: 'ch-1', c1: 'Listing Accelerator Hub', c2: 'Coach', c3: '42', c4: '2h ago' },
@@ -129,6 +108,7 @@ const COACH_SURFACES: Record<CoachRouteKey, CoachSurface> = {
 
 function normalizeCoachKey(routeKey: AdminRouteKey | null | undefined): CoachRouteKey | null {
   if (!routeKey) return null;
+  if (routeKey === 'coachingUploads') return 'coachingLibrary';
   if (!COACH_ROUTE_KEYS.includes(routeKey as CoachRouteKey)) return null;
   return routeKey as CoachRouteKey;
 }
@@ -161,7 +141,7 @@ export default function CoachPortalScreen() {
   const scopeSummary = effectiveRoles.includes('coach')
     ? 'Coach access: full coach portal sections enabled.'
     : effectiveRoles.includes('team_leader')
-      ? 'Team Leader access: uploads remain team-scoped.'
+      ? 'Team Leader access: library upload actions remain team-scoped.'
       : effectiveRoles.includes('challenge_sponsor')
         ? 'Sponsor access: sponsor-scoped sections only. KPI logging actions are unavailable.'
         : 'Access is limited to currently authorized coach portal sections.';
@@ -170,7 +150,9 @@ export default function CoachPortalScreen() {
     if (typeof window === 'undefined') return;
     const sync = () => {
       const pathname = window.location.pathname;
-      const routeKey = getCoachRouteKeyFromPath(pathname);
+      const sourceRoute = getAdminRouteByPath(pathname);
+      const sourceRouteKey = sourceRoute?.key ?? null;
+      const routeKey = normalizeCoachKey(sourceRouteKey);
       const isCoachPath = pathname.startsWith('/coach') || pathname.startsWith('/admin/coaching');
       if (!isCoachPath) {
         setNotFoundPath(null);
@@ -181,6 +163,13 @@ export default function CoachPortalScreen() {
         return;
       }
       setNotFoundPath(null);
+      if (sourceRouteKey === 'coachingUploads') {
+        if (pathname !== '/coach/library') {
+          window.history.replaceState({}, '', '/coach/library');
+        }
+        setActiveKey('coachingLibrary');
+        return;
+      }
       const route = getAdminRouteByKey(routeKey);
       const legacyPath = LEGACY_ADMIN_COACHING_PATH_BY_ROUTE_KEY[routeKey];
       if (legacyPath && pathname === legacyPath && route.path !== pathname) {
@@ -331,18 +320,6 @@ export default function CoachPortalScreen() {
             <View style={styles.actionRow}>
               <TouchableOpacity style={styles.primaryButton}>
                 <Text style={styles.primaryButtonText}>{activeSurface.primaryAction}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => {
-                  if (activeKey === 'coachingUploads') navigate('coachingLibrary');
-                  else if (activeKey === 'coachingLibrary') navigate('coachingJourneys');
-                  else if (activeKey === 'coachingJourneys') navigate('coachingCohorts');
-                  else if (activeKey === 'coachingCohorts') navigate('coachingChannels');
-                  else navigate('coachingLibrary');
-                }}
-              >
-                <Text style={styles.secondaryButtonText}>{activeSurface.secondaryAction}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -614,19 +591,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: '#CFE4D9',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    backgroundColor: '#FFFFFF',
-  },
-  secondaryButtonText: {
-    color: '#2F5B47',
-    fontSize: 13,
-    fontWeight: '600',
   },
   centerCard: {
     margin: 20,

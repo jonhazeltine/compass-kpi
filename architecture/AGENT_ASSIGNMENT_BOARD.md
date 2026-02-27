@@ -3020,13 +3020,16 @@ Make `/coach/*` feel like a distinct coach product area, not an admin surface wi
 ### `COACHING-W12-COACH-PORTAL-IA-SIMPLIFY-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `M6 W12 coach portal IA simplify pass`
 - `Persona:` `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools)
 - `Flow:` `coach portal IA/UX` (`merge uploads into library`, `simplify nav`, `remove redundant progression actions`)
 - `Owner:` `Admin-1`
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred)
 - `Worker note (2026-02-27, Admin-1, start):` Board updated first. Starting W12 IA simplification pass to merge Uploads into Library, remove top-level `/coach/uploads` nav, preserve compatibility redirects, and remove per-page next-tab progression actions.
+- `Completion note (2026-02-27, Admin-1):` Uploads were merged into Library ownership/copy and removed from coach top-level nav; canonical sections now focus on Library/Journeys/Cohorts/Channels. Compatibility paths `/coach/uploads` and `/admin/coaching/uploads` now resolve into `/coach/library`, and per-page next-tab progression controls were removed from detail actions.
+- `Validation note (2026-02-27, Admin-1):` `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz` passed; `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed; route checks captured for canonical coach routes and compatibility redirects (`/coach/uploads`, `/admin/coaching/library`, `/admin/coaching/uploads`).
+- `Current blocker status (2026-02-27, Admin-1):` `none`.
 
 #### Primary Objective
 Simplify coach portal top-level IA and action model while preserving existing host split, role gates, and compatibility route behavior.
