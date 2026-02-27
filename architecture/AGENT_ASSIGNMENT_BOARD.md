@@ -93,6 +93,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W12-COMMS-HUB-DOCS-SYNC-A` | `committed` | `M6/W12 coach portal communications IA sync (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance) | `coach portal communication` (`channels as comms hub`, `top-tab nav only`, `runtime handoff clarity`) | `/coach/channels` + supporting `/coach/library`, `/coach/journeys`, `/coach/cohorts` docs surfaces | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W12 parity/IA package | Committed docs-sync: `/coach/channels` now documented as the primary coach communications hub with top-tab-only navigation and consistent runtime handoff language across screenmap/wiring/parity docs, preserving existing boundaries. |
 | `COACHING-W12-COMMS-HUB-DOCS-IMPLEMENTATION-SYNC-B` | `committed` | `M6/W12 communications hub implementation docs sync (control-plane)` | `Coach` (primary), `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`, `Admin operator` | `communication runtime + portal hub` (`post-implementation docs alignment`) | `inbox*`, `channel_thread`, `coach_broadcast_compose`, `/coach/channels` + screenmap/wiring/addendum docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + landed Mobile-1 runtime behaviors | Committed docs implementation-sync: screenmap/wiring/addendum now reflect landed member comms runtime and `/coach/channels` comms-hub baseline, with compatibility alias behavior and unchanged role/API boundaries. |
 | `COACHING-W12-COMMS-HUB-IA-FOURTHREASON-DOCS-SYNC-A` | `committed` | `M6/W12 comms hub IA parity docs sync (Fourth Reason aligned)` | `Coach` (primary), `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`, `Admin operator` | `communication IA docs sync` (`All/Channels/DMs/Broadcast tabs`, `scope filters`, `broadcast role gates`, `route mapping`) | `/coach/channels` + mobile `inbox*`/`channel_thread`/`coach_broadcast_compose` references in screenmap/wiring/addendum docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + landed Mobile-1 comms runtime + W12 parity direction | Committed docs sync: screenmap/wiring/addendum now lock the implemented Comms Hub IA (`All/Channels/DMs/Broadcast`), server-scoped filters (`Team/Cohort/Segment/Global`), role-gated broadcast visibility/targets, and route mapping across member and `/coach/channels` surfaces without endpoint-family expansion. |
+| `COACHING-W12-PORTAL-FOLDER-IA-DOCS-SYNC-D` | `committed` | `M6/W12 coach portal folder/file IA docs sync (post Admin-1 correction)` | `Coach` (primary), `Team Leader` (team-scoped), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance) | `coach portal authoring IA docs sync` (`Collections -> Assets`, `no duplicate assets tabs`, `2-column Journeys`, `mandatory drag/drop runtime`) | `/coach/library`, `/coach/journeys` + W12 drag/drop implementation spec + shared screenmap/wiring docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + landed Admin-1 folder IA correction | Committed docs sync: screenmap/wiring/dragdrop spec now align on folder/files IA (`Collections -> Assets`), no duplicate Assets tab model, two-column Journey authoring layout (`source pane + journey builder`), and mandatory drag/drop runtime behavior set (`asset<->collection`, `asset->journey`, `reorder/remove`). |
 | `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A` | `review` | `M6 W11 coach portal standalone UX pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`standalone look`, `de-admin chrome`, `coach-first content workflows`) | canonical `/coach/*` routes with standalone shell treatment and minimized admin framing | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W10 route baseline | Review-ready hard-correction+polish pass completed: canonical `/coach/*` now mounts dedicated `CoachPortalScreen` host (not `AdminShellScreen` chrome), `/admin/coaching/*` foundation paths stay compatibility redirects, DEC-0047 logged, and refreshed screenshot set captured under `app/test-results/w11-coach-portal-standalone-hard-correction/`. |
 | `COACHING-W12-COACH-PORTAL-IA-SIMPLIFY-A` | `committed` | `M6 W12 coach portal IA simplify pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`simplify top-level IA`, `merge uploads into library`, `remove redundant progression actions`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ compatibility `/coach/uploads` redirect to `/coach/library`) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W11 host split baseline | Committed: Uploads merged into Library IA/copy, `/coach/uploads` removed from top tabs, `/coach/uploads` and `/admin/coaching/*` compatibility redirects preserved, and per-page next-tab progression actions removed in favor of top-tab navigation only. |
 | `COACHING-W12-DRAGDROP-LIBRARY-TO-JOURNEY-MVP-A` | `committed` | `M6 W12 coach portal journey authoring MVP` | `Coach` (primary), `Team Leader` (team-scoped only), `Challenge Sponsor` (sponsor-scoped read context only) | `coach portal authoring UX` (`library -> journey drag/drop`, `reorder/remove/save states`) | `/coach/library`, `/coach/journeys` (coach portal web only) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | committed W12 drag/drop spec (`COACHING_W12_DRAGDROP_LIBRARY_TO_JOURNEY_SPEC.md`) | Committed MVP: added client-side drag/drop assignment from Library to Journey milestones with move/reorder/remove controls, draft save-state feedback (`idle/pending/success/error`), and role-gated lock messaging (sponsor scoped/no KPI logging). No backend/schema/API changes required. |
@@ -448,6 +449,56 @@ Sync comms-hub docs to the implemented IA so the tab model, channel-scope filter
 
 #### Report-Back Requirements
 - Update assignment row/block status first (`committed`/`blocked`)
+- Exact docs changed
+- `DECISIONS_LOG` update status (`needed`/`not needed`)
+- Commit hash
+
+### `COACHING-W12-PORTAL-FOLDER-IA-DOCS-SYNC-D`
+
+#### Snapshot
+- `Status:` `committed`
+- `Program status:` `M6/W12 coach portal folder/file IA docs sync (post Admin-1 correction)`
+- `Persona:` `Coach` (primary), `Team Leader` (team-scoped), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance)
+- `Flow:` `coach portal authoring IA docs sync` (`Collections -> Assets`, `no duplicate assets tabs`, `2-column Journeys`, `mandatory drag/drop runtime`)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred)
+- `Execution note (2026-02-27):` Board updated first and assignment activated before doc edits.
+- `Current blocker status (2026-02-27 start):` `none`.
+- `Completion note (2026-02-27):` Updated `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`, `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`, and `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_W12_DRAGDROP_LIBRARY_TO_JOURNEY_SPEC.md` to reflect corrected IA: Library folder/files model (`Collections -> Assets`), removal of duplicate Assets tab framing, Journey Builder two-column authoring layout (`source pane + journey builder`), and mandatory drag/drop runtime behaviors (`asset<->collection`, `asset->journey`, `reorder/remove`).
+- `Validation note (2026-02-27):` Cross-doc terminology and behavior consistency verified across screenmap/wiring/dragdrop spec for folder/files IA, two-column builder layout, and mandatory drag/drop behavior set.
+- `Decision note (2026-02-27):` `not needed` — no structural boundary change in this docs-sync pass.
+- `Current blocker status (2026-02-27 completion):` `none`.
+
+#### Primary Objective
+Sync docs to corrected coach-portal authoring IA: Library as folder/files (`Collections -> Assets`) and Journey Builder as a two-column authoring layout with mandatory runtime drag/drop behaviors.
+
+#### Hard Constraints
+- Docs-only scope.
+- No net-new endpoint family or schema changes.
+- Preserve role boundaries and sponsor no-KPI-logging rule.
+- Keep `/admin/coaching/audit` secondary-only governance/troubleshooting.
+- Update `DECISIONS_LOG.md` only if this pass introduces structural boundary changes.
+
+#### Required Work
+1. Update `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`:
+   - Library = folder/files model (`Collections -> Assets`).
+   - No duplicate Assets tab model.
+   - Journeys = two-column authoring layout (`source pane + journey builder`).
+   - Mandatory drag/drop runtime behaviors (`asset<->collection`, `asset->journey`, `reorder/remove`).
+2. Update `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md` with matching IA/layout/interaction language.
+3. Update `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_W12_DRAGDROP_LIBRARY_TO_JOURNEY_SPEC.md` to align UX baseline/flow/build notes with corrected folder/files + two-column model.
+4. Update `DECISIONS_LOG.md` only if structural boundary changes are introduced (expected: not needed for docs sync).
+
+#### Required Validation
+- Cross-doc wording consistency for:
+  - `Collections -> Assets` folder/files model
+  - no duplicate assets tab framing
+  - two-column Journey authoring layout
+  - mandatory drag/drop behavior set (`asset<->collection`, `asset->journey`, `reorder/remove`)
+- Confirm no backend/API/schema changes introduced.
+
+#### Report-Back Requirements
+- Update assignment status/blocker/completion notes first (`committed`/`blocked`)
 - Exact docs changed
 - `DECISIONS_LOG` update status (`needed`/`not needed`)
 - Commit hash
@@ -3575,6 +3626,64 @@ Enforce file-manager IA in coach authoring: collections as folders, assets as fi
 - Validation summary
 - Screenshot paths
 - Commit hash
+
+### `COACHING-W12-PORTAL-FOLDER-IA-CORRECTION-D`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 W12 coach portal folder/files IA correction pass`
+- `Persona:` `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only)
+- `Flow:` `coach portal authoring UX` (`true folder/files manager behavior`, `2-column journeys source->builder`, `runtime drag/drop reliability`)
+- `Owner:` `Admin-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred)
+- `Worker note (2026-02-27, Admin-1, start):` Board updated first. Starting D correction pass to remove duplicate source panes/tabs and enforce canonical folder/files behavior in Library + 2-column Journey Builder IA.
+- `Current blocker status (2026-02-27, Admin-1, start):` `none`.
+
+#### Primary Objective
+Apply owner-required folder/files IA correction so `/coach/library` behaves as a normal folder manager and `/coach/journeys` is a strict 2-column source/builder authoring surface.
+
+#### Hard Constraints
+- No backend/schema/API changes unless blocked.
+- Preserve role gates and sponsor no-KPI-logging boundaries.
+- Preserve `/coach/uploads` and `/admin/coaching/*` compatibility redirects.
+
+#### Required Work
+1. Library:
+   - left pane is collections tree/list only
+   - main pane shows files/assets for selected collection
+   - remove duplicated assets-tab style rendering and extra columns
+   - keep runtime drag/drop asset -> collection functional
+2. Journeys:
+   - enforce exactly 2 columns:
+     - column A: single navigable Library source pane (collections + selected collection assets)
+     - column B: Journey Builder (journey list + milestones/steps)
+   - remove extra source columns/tabs
+3. Interaction simplification:
+   - remove button-heavy section switching where row/tree interaction should drive navigation
+   - keep `Create New Journey` and `Save Draft` in builder action bar
+   - keep save state explicit (`idle/pending/saved/error`)
+4. Drag/drop reliability:
+   - asset -> collection
+   - asset -> journey milestone
+   - reorder/remove in milestone
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz`
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime checks:
+  - `/coach/library`
+  - `/coach/journeys`
+- Screenshot proof:
+  - folder/files library view
+  - 2-column journeys builder
+  - drag/drop behavior evidence
+
+#### Report-Back
+- update board status first
+- files + line refs
+- before/after IA map
+- drag/drop behavior checklist (`pass/fail`)
+- commit hash
 
 ### `COACHING-W12-PORTAL-AUTHORING-CORRECTION-DOCS-B`
 

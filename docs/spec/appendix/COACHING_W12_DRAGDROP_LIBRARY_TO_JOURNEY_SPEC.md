@@ -27,11 +27,12 @@ Provide an implementation-ready spec for coach-portal authoring where content fr
 
 ## UX Baseline (Intuitive/High-Signal)
 - Direct manipulation first: drag cards, visible drop zones, insertion indicator, immediate visual confirmation.
-- Low-friction hierarchy: library on left, journey canvas center, item inspector right.
+- Folder/files first: Library is `Collections -> Assets` (folder -> files) with no duplicate Assets tab model.
+- Low-friction layout: two-column Journey authoring (`source pane` + `journey builder`), not multi-pane duplication.
 - Progressive disclosure: advanced controls hidden until item is selected.
 - Fast confidence loops: builder action-bar `Save Draft` with explicit status chip (`idle`/`pending`/`saved`/`error`), undo affordance, and publish-readiness badge always visible.
 - Clean boundaries: role-denied controls are visible but locked with clear reason text.
-- Mandatory behavior: drag/drop assignment and reorder/remove interactions are required runtime behavior, not placeholder states.
+- Mandatory behavior: drag/drop interactions are required runtime behavior (asset<->collection, asset->journey, reorder/remove), not placeholder states.
 
 ## Interaction Primitives Lock (Coach Portal)
 - Buttons are for primary actions only (`Create New Journey`, `Save Draft`, `Publish`).
@@ -51,12 +52,12 @@ Provide an implementation-ready spec for coach-portal authoring where content fr
 ```mermaid
 flowchart LR
   A["Open /coach/journeys"] --> B["Select Journey Draft"]
-  B --> C["Open Builder Canvas or Create New Journey"]
+  B --> C["Open 2-Column Builder or Create New Journey"]
   C --> D["Name Journey Draft"]
-  D --> E["Browse /coach/library Assets + Collections"]
+  D --> E["Browse Source Pane: Collections -> Assets"]
   E --> F["Drag Asset or Collection Item"]
   F --> G{"Valid Drop Zone?"}
-  G -->|Yes| H["Drop into Milestone"]
+  G -->|Yes| H["Drop into Milestone or Collection"]
   G -->|No| I["Reject Drop + Reason Chip"]
   H --> J["Reorder / Move / Remove"]
   J --> K["Save Draft from Builder Action Bar"]
@@ -74,7 +75,8 @@ flowchart LR
 | `drag_start` | pick up card | ghost card + origin highlight | none | cancel returns to `drag_idle` |
 | `drag_hover_valid` | dragged item over compatible zone | drop zone glow + insertion line | none | n/a |
 | `drag_hover_invalid` | dragged item over incompatible zone | red outline + reason chip | none | drop blocked |
-| `drop_commit` | release on valid zone | card inserted; canvas animates to new order | staged draft op queued | failure moves to `save_error` |
+| `drop_commit_collection` | release asset on collection target | asset assigned/moved in collection file list | staged draft op queued | failure moves to `save_error` |
+| `drop_commit_journey` | release asset on milestone target | card inserted; builder animates to new order | staged draft op queued | failure moves to `save_error` |
 | `reorder` | move within milestone or across milestones | positional swap animation + index badge update | staged draft op queued | conflict fallback to `draft_conflict` |
 | `remove` | remove action on placed card | card fades out + undo toast | staged draft op queued | restore via undo if available |
 | `save_pending` | action-bar `Save Draft` starts | status chip `Saving...` in builder action bar | sends draft ops batch | timeout -> `save_error` |
@@ -193,9 +195,10 @@ export interface ActionCapabilities {
 ## Phased Build Plan
 
 ### Phase 1: MVP (functional drag/drop authoring)
-- Builder shell on `/coach/journeys` with drag source from `/coach/library`.
+- Builder shell on `/coach/journeys` with two-column layout (`source pane` + `journey builder`).
+- Source pane follows folder/files IA (`Collections -> Assets`) with no duplicate Assets tab model.
 - `Create New Journey` (blank + name) available in Journey Builder.
-- Add/move/reorder/remove interactions.
+- Add/move/reorder/remove interactions plus asset<->collection drag behavior.
 - Action-bar `Save Draft` control with status model (`idle`, `pending`, `saved`, `error`) and retry path.
 - Basic role-gated denied states.
 - In-family contract slices: G1, G2, G3.
@@ -214,8 +217,10 @@ export interface ActionCapabilities {
 
 ## Build Steps (Implementation Checklist)
 1. Add builder information architecture contract for `/coach/library` + `/coach/journeys`.
+   - Lock `Collections -> Assets` folder/files model.
+   - Remove duplicate Assets tab framing from source model.
 2. Implement frontend draft model and op queue (`JourneyDraft`, `JourneyDraftOp`).
-3. Wire mandatory drag lifecycle (drag/hover/drop/reorder/remove) to queued draft ops and save states.
+3. Wire mandatory drag lifecycle (asset<->collection, asset->journey, drag/hover/drop/reorder/remove) to queued draft ops and save states.
 4. Enforce role/scope gates from `action_capabilities` (or temporary conservative client deny until available).
 5. Add publish-readiness and publish action wiring.
 6. Validate runtime result consistency on `coaching_journeys*` surfaces.
