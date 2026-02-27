@@ -404,6 +404,37 @@ This section advances the W7 portal foundation package using accepted W6/W7 resc
 4. Execute cross-lane acceptance checklist run (Admin + Backend + Mobile) and resolve any boundary violations before widening capabilities.
 5. Keep `/admin/coaching/audit` secondary-only through W8 unless owner policy explicitly promotes it.
 
+## W8 Final Implementation Acceptance Pack (Control-Plane Closeout)
+
+This section is the final lane-by-lane acceptance gate for the coach portal + runtime handoff package.
+
+### Lane acceptance criteria matrix
+
+| Lane | Done criteria (must all be true) | Blocked criteria (any one blocks lane acceptance) | Rollback criteria (trigger rollback/hold) |
+|---|---|---|---|
+| Admin Web | 1) Role gates enforced on all portal surfaces (`content_upload`, `content_library`, `journeys`, `cohorts`, `channels`, publishing/packages). 2) Team Leader upload is team-scoped only. 3) Sponsor scope is limited to sponsor/challenge contexts. 4) `/admin/coaching/audit` remains secondary-only surface. 5) Boundary copy + denied states are present for out-of-scope actions. | 1) Team Leader can access org-wide authoring/package controls. 2) Sponsor can access KPI logging/edit actions. 3) Audit surface is required as primary workflow entry. 4) Missing role-gate denied states on critical actions. | 1) Any role-gate regression allowing unauthorized authoring/publishing. 2) Any sponsor KPI logging affordance in portal UX. 3) Primary workflow dependency on `/admin/coaching/audit`. |
+| Mobile Runtime | 1) Runtime surfaces consume handoff/read-model fields without exposing portal authoring/governance actions. 2) Coach runtime operator channel participation remains intact. 3) Team Leader creator-participant semantics remain intact. 4) Sponsor runtime scope stays comms/visibility only. 5) Blocked/out-of-scope states map to server outcomes. | 1) Runtime exposes portal authoring/package governance actions. 2) Team Leader upload boundary is bypassed through runtime actions. 3) Sponsor sees KPI logging/edit controls. 4) Runtime routing requires audit as primary workflow surface. | 1) Runtime action path allows unauthorized write scope (team/org/sponsor boundary break). 2) Sponsor KPI logging/edit path appears. 3) Challenge participation ownership seam is violated by coaching flow. |
+| Backend | 1) Authz/scope checks enforce Coach/Admin/Team Leader/Sponsor boundaries for all relevant portal/runtime companion endpoints. 2) Team Leader uploads are validated as own-team scope only. 3) Sponsor KPI visibility outputs are read-only. 4) Read-model/handoff fields required by runtime are present and documented. 5) No net-new endpoint families without explicit approval. | 1) Team Leader can write outside own-team scope. 2) Sponsor write paths can mutate KPI logs. 3) Missing scope labels/visibility outcomes for runtime companion reads. 4) Unapproved endpoint family expansion. | 1) Authz regression in role/scope enforcement. 2) Sponsor KPI write/mutation capability present. 3) Contract mismatch causing runtime to infer policy from missing server fields. |
+
+### Global guardrails (must hold across all lanes)
+
+1. Team Leader `content_upload` remains team-scoped only.
+2. Team Leader never gains org-wide authoring ownership or sponsor-scoped package authority.
+3. Challenge Sponsor never receives KPI logging/edit affordances.
+4. Sponsor KPI visibility is read-only and policy-scoped.
+5. `/admin/coaching/audit` remains secondary governance/troubleshooting only.
+
+### Owner checkpoint checklist (release-gate sign-off)
+
+1. `Admin lane accepted`: done criteria met and no blocked criteria present.
+2. `Mobile lane accepted`: done criteria met and no blocked criteria present.
+3. `Backend lane accepted`: done criteria met and no blocked criteria present.
+4. `Guardrails confirmed`: Team Leader team-scope + sponsor no-KPI-logging rules validated across docs and implementation evidence.
+5. `Audit role confirmed`: `/admin/coaching/audit` remains secondary-only in workflows and navigation.
+6. `Rollback readiness confirmed`: each lane has clear rollback triggers and owner/operator response path.
+7. `Cross-lane contract sync confirmed`: no unresolved contract/read-model mismatch between admin/backend/mobile lanes.
+8. `Owner sign-off recorded`: explicit owner checkpoint approval before expanding scope beyond W8 pack.
+
 ## Coach Ops Touchpoint Workflow Sequences (Authoring -> Publishing -> Runtime)
 
 ### `coach_content_library`

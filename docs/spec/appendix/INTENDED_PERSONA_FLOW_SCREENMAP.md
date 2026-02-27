@@ -286,6 +286,7 @@ Challenge Sponsor is a distinct persona for sponsored challenge funding/campaign
 #### W7/W8 implementation checklist alignment (required)
 - Admin Web, Mobile Runtime, and Backend implementation-ready acceptance checklists for this portal package are defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
 - W8 package/flow sequencing for portal + runtime handoff is defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
+- Final W8 implementation acceptance pack (lane done/blocked/rollback criteria + owner checkpoint checklist) is defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
 - Team Leader access in this package is limited to team-scoped `content_upload`; no org-wide authoring ownership and no sponsor-scoped package authority.
 - `/admin/coaching/audit` remains secondary governance/troubleshooting only and is not part of primary coach/sponsor workflow routing.
 

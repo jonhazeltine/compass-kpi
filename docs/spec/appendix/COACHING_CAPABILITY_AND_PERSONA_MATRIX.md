@@ -136,6 +136,7 @@ No-sponsor-KPI-logging enforcement note (W7/W8):
 Implementation checklist anchor:
 - Admin, Mobile, and Backend lane implementation-ready checklists are defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` under `W7/W8 implementation-ready checklists`.
 - W8 package/flow sequencing for portal + runtime handoff is defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` under `W8 package/flow sequencing for portal + runtime handoff (control-plane)`.
+- Final W8 implementation acceptance pack (lane done/blocked/rollback criteria + owner checkpoint checklist) is defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` under `W8 Final Implementation Acceptance Pack (Control-Plane Closeout)`.
 
 ## Authoring vs Delivery Ownership Model (Canonical Planning Boundary)
 
