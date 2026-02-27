@@ -1077,8 +1077,8 @@ function deriveRuntimeSurfaceStateModel(params: {
       state: 'permission_denied',
       title: `${params.surfaceLabel}: Permission denied`,
       detail:
-        'Access is restricted by role/package policy. Display remains informational; no logging or send actions are escalated.',
-      transitionHint: 'Transitions to ready when entitlement/policy outcome changes.',
+        'Access is restricted by role/package policy. Keep using visible routes; unavailable modules remain read-only/hidden and no logging or send actions are escalated.',
+      transitionHint: 'Transitions to ready when entitlement/policy outcomes refresh.',
     };
   }
   if (errorText) {
@@ -1094,8 +1094,8 @@ function deriveRuntimeSurfaceStateModel(params: {
       state: 'partial_read_model',
       title: `${params.surfaceLabel}: Partial read-model`,
       detail:
-        'Runtime is using inferred/partial visibility outputs. Route targets stay scoped and conservative.',
-      transitionHint: 'Transitions to ready when full read-model outputs become available.',
+        'Runtime is using inferred/partial visibility outputs. Route targets stay scoped/conservative until complete data is available.',
+      transitionHint: 'Transitions to ready when full read-model outputs resolve.',
     };
   }
   if (!hasRows) {
