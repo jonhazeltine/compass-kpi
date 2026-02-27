@@ -113,6 +113,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W12-MOBILE-NAV-LOG-CTA-CENTER-A` | `review` | `M6 / W12 mobile IA polish` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Sponsor` | `mobile IA` (`bottom tab LOG center CTA emphasis`) | `KPIDashboardScreen` bottom tab bar only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (IA/interaction polish; no Figma lock specified in assignment) | Review-ready IA lock: profile bottom-tab entry removed (avatar opens profile/settings), logs tab reframed as Logs/Reports shared surface with default Logs history subview and secondary Reports subview, and center LOG CTA emphasis retained without route-family changes. |
 | `M6-W12-TEAM-LEADER-ROW-EXPANSION-AND-LOG-WIRING-A` | `review` | `M6 / W12` | `Team Leader` (primary), `Team Member` (no-regression) | `team leader ops` (`row expansion UI`, `team KPI -> log context wiring`) | `KPIDashboardScreen` Team Leader surface + handoff to Log interface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (interaction model + wiring fix) | Review-ready lock-follow-on: expanded member rows now render only active tracked KPIs via `Team Focus` (mandated) + `Personal` (user-selected minus mandated), preserve PC/GP/VP grouping/sort per block, render overlap once in Team Focus with `also personal`, and keep team-context log handoff badge/icon behavior. |
 | `M6-W12-TEAM-SCREEN-PERSONA-SPLIT-A` | `review` | `M6 / W12 (persona split hardening)` | `Team Member` (simple view), `Team Leader` (ops-heavy view) | `team surface runtime split` (`member simplicity`, `leader operational controls`) | `KPIDashboardScreen` Team surface only | `Mobile-1` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | team runtime parity task (no new Figma node lock for this swath) | Review-ready requirement-lock follow-on: Team default now shows only selected Team Focus KPIs; full KPI catalog is rendered only in leader-only “Select Team Focus KPIs” editor; member view remains read-only selected set and leader ops panel remains intact. |
+| `M6-W12-TEAM-PERSON-PROFILE-CARD-AND-FOCUS-EDITOR-A` | `review` | `M6 / W12 (team leader ops + person profile UX)` | `Team Leader` (primary), `Team Member` (limited profile-only behavior) | `team interaction refinement` (`focus editor usability`, `avatar/profile split`, `leader KPI detail`, `DM handoff`) | `KPIDashboardScreen` Team surface + person profile card surface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + persona-gated card UX) | Review-ready: Team Leader now has explicit `Edit Team Focus KPIs` editor flow; member-row interactions are split by avatar/body behavior; new person profile card is persona-gated and routes DM CTA into Comms thread entry; Team Member remains profile-only on member rows. |
 
 ## Blocked Assignments
 
@@ -433,6 +434,78 @@ Replace chip-heavy Team Leader filters with expandable member rows and ensure se
 - exact team KPI -> log badge wiring fix
 - files + line refs
 - runtime proof steps + screenshot paths
+- commit hash
+
+### `M6-W12-TEAM-PERSON-PROFILE-CARD-AND-FOCUS-EDITOR-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 / W12 (team leader ops + person profile UX)`
+- `Persona:` `Team Leader` (primary), `Team Member` (limited profile-only behavior)
+- `Flow:` `team interaction refinement` (`focus editor`, `avatar/profile split`, `leader KPI detail`, `DM handoff`)
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (mobile app worktree preferred)
+- `Figma refs:` `N/A` (Fourth Reason style direction only; no locked node in launch)
+- `Execution note (2026-02-27):` Assignment created and set to `active` before coding.
+- `Completion note (2026-02-27):` Added explicit Team Leader `Edit Team Focus KPIs` entry with select/deselect interaction and local selection persistence behavior aligned to Team focus rendering.
+- `Completion note (2026-02-27):` Member-row interaction split implemented: avatar tap opens Person Profile Card for both personas; row-body tap opens KPI performance detail for Team Leader and profile card only for Team Member.
+- `Completion note (2026-02-27):` Added Person Profile Card surface with contact info, DM CTA, coaching goals, KPI goals, and persona-gated enrollments (cohorts/journeys visible to Team Leader).
+- `Validation note (2026-02-27):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed. Runtime screenshots captured under `/Users/jon/compass-kpi/app/test-results/w12-team-person-profile-card/` (`team-person-profile-1.png`, `team-person-profile-2.png`, `team-person-profile-3.png`).
+
+#### Primary Objective
+Fix Team Leader focus-editor usability and split member-row interactions into explicit avatar/profile and row-body behavior, while adding a usable person profile card surface with persona-gated sections.
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
+- Team surface and person profile card surface in same file
+
+#### Scope Out
+- backend/API/schema changes
+- Home/Priority rewrite
+- Challenge rewrite
+
+#### Constraints (Hard)
+- No backend/API/schema changes.
+- Keep Team Member screen simple.
+- Remove dead/ambiguous controls.
+- Preserve Team/Challenge/Comms continuity and existing log write mechanics.
+
+#### Required Implementation
+1. Team Focus KPI editor:
+   - explicit `Edit Team Focus KPIs` entry
+   - working select/deselect interaction
+   - local/session persistence behavior consistent with Team screen
+2. Member row interaction split:
+   - avatar tap => Person Profile Card
+   - row-body tap:
+     - Team Leader => KPI performance detail
+     - Team Member => Person Profile Card only
+3. Person Profile Card:
+   - contact info
+   - DM CTA
+   - coaching goals
+   - KPI goals
+   - enrollments (cohorts + journeys)
+   - persona visibility gates (leader > member)
+4. Placeholder-safe contract handling where needed.
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime checks:
+  - Team Leader opens Team Focus editor and updates selections
+  - avatar tap opens profile card
+  - row-body tap opens KPI performance detail (leader only)
+  - Team Member gets profile card only
+  - DM button routes to comms thread entry
+- Screenshots:
+  - `app/test-results/w12-team-person-profile-card/`
+
+#### Report-Back Requirements
+- interaction map before/after
+- Team Focus KPI editor fix details
+- profile card fields + visibility matrix by persona
+- files + line refs
+- tsc result
 - commit hash
 
 ### `COACHING-W12-DRAGDROP-LIBRARY-TO-JOURNEY-SPEC-A`

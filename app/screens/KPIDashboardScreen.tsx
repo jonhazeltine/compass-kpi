@@ -2168,6 +2168,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [teamLeaderExpandedMemberId, setTeamLeaderExpandedMemberId] = useState<string | null>(null);
   const [teamLeaderKpiSortOrder, setTeamLeaderKpiSortOrder] = useState<TeamLeaderKpiSortOrder>('pc_gp_vp');
   const [teamFocusSelectedKpiIds, setTeamFocusSelectedKpiIds] = useState<string[]>([]);
+  const [teamFocusEditorOpen, setTeamFocusEditorOpen] = useState(false);
+  const [teamProfileMemberId, setTeamProfileMemberId] = useState<string | null>(null);
+  const [teamLeaderKpiDetailMemberId, setTeamLeaderKpiDetailMemberId] = useState<string | null>(null);
   const [teamLogContextKpiId, setTeamLogContextKpiId] = useState<string | null>(null);
   const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox');
   const [commsHubPrimaryTab, setCommsHubPrimaryTab] = useState<CommsHubPrimaryTab>('all');
@@ -7815,9 +7818,48 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               };
 
               const teamMembers = [
-                { name: 'Sarah Johnson', metric: '98%', sub: '8 KPIs logged' },
-                { name: 'Alex Rodriguez', metric: '92%', sub: '8 KPIs logged' },
-                { name: 'James Mateo', metric: '90%', sub: 'sarah@company.com' },
+                {
+                  id: 'member-sarah-johnson',
+                  name: 'Sarah Johnson',
+                  metric: '98%',
+                  sub: '8 KPIs logged',
+                  roleLabel: 'Team Lead',
+                  avatarTone: '#e8dfcc',
+                  email: 'sarah@company.com',
+                  phone: '(616) 555-0139',
+                  coachingGoals: ['Lead weekly role-play session', 'Coach 2 listing scripts this week'],
+                  kpiGoals: ['PC: 12 appointments', 'GP: 8 nurture touches', 'VP: 5 follow-up reviews'],
+                  cohorts: ['Q1 Acceleration Cohort'],
+                  journeys: ['Listing Mastery Sprint'],
+                },
+                {
+                  id: 'member-alex-rodriguez',
+                  name: 'Alex Rodriguez',
+                  metric: '92%',
+                  sub: '8 KPIs logged',
+                  roleLabel: 'Member',
+                  avatarTone: '#f1cb66',
+                  email: 'alex@company.com',
+                  phone: '(616) 555-0144',
+                  coachingGoals: ['Finish objection handling lesson', 'Post 3 accountability updates'],
+                  kpiGoals: ['PC: 9 appointments', 'GP: 12 prospecting calls', 'VP: 4 open house follow-ups'],
+                  cohorts: ['Q1 Acceleration Cohort'],
+                  journeys: ['Prospecting Fundamentals'],
+                },
+                {
+                  id: 'member-james-mateo',
+                  name: 'James Mateo',
+                  metric: '90%',
+                  sub: 'sarah@company.com',
+                  roleLabel: 'Team Lead',
+                  avatarTone: '#dfc2a4',
+                  email: 'james@company.com',
+                  phone: '(616) 555-0191',
+                  coachingGoals: ['Run pipeline checkpoint', 'Complete sponsor channel recap'],
+                  kpiGoals: ['PC: 7 closings', 'GP: 10 nurture touches', 'VP: 6 reactivation outreaches'],
+                  cohorts: ['Listing Ops Cohort'],
+                  journeys: ['Pipeline Confidence Builder'],
+                },
               ] as const;
 
               const teamInviteHistory = [
@@ -7912,7 +7954,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         .filter((id, itemIdx, arr) => arr.indexOf(id) === itemIdx)
                     : [];
                 return {
-                  id: member.name.toLowerCase().replace(/\s+/g, '-'),
+                  id: member.id,
                   name: member.name,
                   sub: member.sub,
                   metric: member.metric,
@@ -7923,6 +7965,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   memberSelectedCandidateIds,
                 };
               });
+              const selectedTeamProfile = teamMembers.find((row) => row.id === teamProfileMemberId) ?? null;
+              const selectedTeamLeaderDetail = teamLeaderRows.find((row) => row.id === teamLeaderKpiDetailMemberId) ?? null;
+              const openTeamDirectThread = (member: (typeof teamMembers)[number], source: CoachingShellEntrySource) => {
+                openCoachingShell('channel_thread', {
+                  source,
+                  preferredChannelScope: 'team',
+                  preferredChannelLabel: 'Team Updates',
+                  threadTitle: `${member.name} DM`,
+                  threadSub: `Direct team coaching thread with ${member.name}.`,
+                  broadcastAudienceLabel: null,
+                  broadcastRoleAllowed: false,
+                });
+              };
               const teamLeaderEscrowDeals = teamPipelineRows.reduce((sum, row) => sum + Math.max(0, Number(row.pending ?? 0)), 0);
               const teamLeaderProjectedRevenue = Math.round(Math.max(0, Number(cardMetrics.projectedNext90 ?? 0)));
               const teamLeaderConcernRows = teamLeaderRows
@@ -8341,30 +8396,56 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
                       <Text style={styles.teamMemberSectionLabel}>Team Members</Text>
                       <View style={styles.teamMemberRowsCard}>
-                        {[
-                          { name: 'Sarah Johnson', role: 'Team Lead', tone: '#e8dfcc' },
-                          { name: 'Alex Rodriguez', role: 'Member', tone: '#f1cb66' },
-                          { name: 'James Matew', role: 'Team Lead', tone: '#dfc2a4' },
-                        ].map((member, idx) => (
-                          <TouchableOpacity
-                            key={member.name}
-                            style={[styles.teamMemberRow, idx > 0 && styles.teamParityDividerTop]}
-                            activeOpacity={0.92}
-                            onPress={() => setTeamFlowScreen('team_challenges')}
-                          >
-                            <View style={[styles.teamMemberRowAvatar, { backgroundColor: member.tone }]}>
+                        {teamMembers.map((member, idx) => (
+                          <View key={member.id} style={[styles.teamMemberRow, idx > 0 && styles.teamParityDividerTop]}>
+                            <TouchableOpacity
+                              style={[styles.teamMemberRowAvatar, { backgroundColor: member.avatarTone }]}
+                              activeOpacity={0.9}
+                              onPress={() => setTeamProfileMemberId(member.id)}
+                            >
                               <Text style={styles.teamMemberRowAvatarText}>
                                 {member.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}
                               </Text>
-                            </View>
-                            <View style={styles.teamMemberRowCopy}>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.teamMemberRowCopy}
+                              activeOpacity={0.92}
+                              onPress={() => setTeamProfileMemberId(member.id)}
+                            >
                               <Text style={styles.teamMemberRowName}>{member.name}</Text>
-                              <Text style={styles.teamMemberRowSub}>{member.role}</Text>
-                            </View>
-                            <Text style={styles.teamMemberRowMenu}>›</Text>
-                          </TouchableOpacity>
+                              <Text style={styles.teamMemberRowSub}>{member.roleLabel}</Text>
+                            </TouchableOpacity>
+                            <Text style={styles.teamMemberRowMenu}>Profile</Text>
+                          </View>
                         ))}
                       </View>
+                      {selectedTeamProfile ? (
+                        <View style={styles.teamPersonProfileCard}>
+                          <View style={styles.teamMemberChallengeTopRow}>
+                            <Text style={styles.teamMemberChallengeLabel}>Person Profile</Text>
+                            <TouchableOpacity onPress={() => setTeamProfileMemberId(null)}>
+                              <Text style={styles.teamMemberChallengeLink}>Close</Text>
+                            </TouchableOpacity>
+                          </View>
+                          <Text style={styles.teamPersonProfileName}>{selectedTeamProfile.name}</Text>
+                          <Text style={styles.teamPersonProfileRole}>{selectedTeamProfile.roleLabel}</Text>
+                          <Text style={styles.teamPersonProfileContact}>✉ {selectedTeamProfile.email} • ☎ {selectedTeamProfile.phone}</Text>
+                          <TouchableOpacity
+                            style={styles.teamPersonProfileDmBtn}
+                            onPress={() => openTeamDirectThread(selectedTeamProfile, 'team_member_dashboard')}
+                          >
+                            <Text style={styles.teamPersonProfileDmBtnText}>DM in Comms</Text>
+                          </TouchableOpacity>
+                          <Text style={styles.teamPersonProfileSection}>Coaching goals</Text>
+                          {selectedTeamProfile.coachingGoals.map((goal) => (
+                            <Text key={`${selectedTeamProfile.id}-member-goal-${goal}`} style={styles.teamPersonProfileBullet}>• {goal}</Text>
+                          ))}
+                          <Text style={styles.teamPersonProfileSection}>KPI goals</Text>
+                          {selectedTeamProfile.kpiGoals.map((goal) => (
+                            <Text key={`${selectedTeamProfile.id}-member-kpi-${goal}`} style={styles.teamPersonProfileBullet}>• {goal}</Text>
+                          ))}
+                        </View>
+                      ) : null}
 
                       <View style={styles.teamMemberFooterButtonsRow}>
                         <TouchableOpacity
@@ -8406,10 +8487,96 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
                       <View style={styles.teamLeaderSortRow}>
                         <Text style={styles.teamLeaderSortLabel}>Expanded KPI order</Text>
-                        <TouchableOpacity style={styles.teamLeaderSortToggleBtn} onPress={cycleTeamLeaderSortOrder}>
-                          <Text style={styles.teamLeaderSortToggleBtnText}>{teamLeaderSortOrderLabelMap[teamLeaderKpiSortOrder]}</Text>
-                        </TouchableOpacity>
+                        <View style={styles.teamLeaderSortActions}>
+                          <TouchableOpacity style={styles.teamLeaderSortToggleBtn} onPress={cycleTeamLeaderSortOrder}>
+                            <Text style={styles.teamLeaderSortToggleBtnText}>{teamLeaderSortOrderLabelMap[teamLeaderKpiSortOrder]}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.teamLeaderSortToggleBtn}
+                            onPress={() => setTeamFocusEditorOpen((prev) => !prev)}
+                          >
+                            <Text style={styles.teamLeaderSortToggleBtnText}>
+                              {teamFocusEditorOpen ? 'Close Focus Editor' : 'Edit Team Focus KPIs'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
+                      {teamFocusEditorOpen ? (
+                        <View style={styles.teamFocusEditorPanel}>
+                          <Text style={styles.teamFocusEditorTitle}>Edit Team Focus KPIs</Text>
+                          {teamSurfaceKpis
+                            .slice()
+                            .sort((a, b) => a.name.localeCompare(b.name))
+                            .map((kpi) => {
+                              const kpiId = String(kpi.id);
+                              const selected = teamFocusSelectedKpiIds.includes(kpiId);
+                              return (
+                                <TouchableOpacity
+                                  key={`team-focus-editor-${kpiId}`}
+                                  style={styles.teamFocusEditorRow}
+                                  onPress={() =>
+                                    setTeamFocusSelectedKpiIds((prev) =>
+                                      prev.includes(kpiId) ? prev.filter((id) => id !== kpiId) : [...prev, kpiId]
+                                    )
+                                  }
+                                >
+                                  <Text style={styles.teamFocusEditorRowName}>{kpi.name}</Text>
+                                  <Text style={selected ? styles.teamFocusEditorSelectedText : styles.teamFocusEditorUnselectedText}>
+                                    {selected ? 'Selected' : 'Select'}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                        </View>
+                      ) : null}
+                      {selectedTeamProfile ? (
+                        <View style={styles.teamPersonProfileCard}>
+                          <View style={styles.teamMemberChallengeTopRow}>
+                            <Text style={styles.teamMemberChallengeLabel}>Person Profile</Text>
+                            <TouchableOpacity onPress={() => setTeamProfileMemberId(null)}>
+                              <Text style={styles.teamMemberChallengeLink}>Close</Text>
+                            </TouchableOpacity>
+                          </View>
+                          <Text style={styles.teamPersonProfileName}>{selectedTeamProfile.name}</Text>
+                          <Text style={styles.teamPersonProfileRole}>{selectedTeamProfile.roleLabel}</Text>
+                          <Text style={styles.teamPersonProfileContact}>✉ {selectedTeamProfile.email} • ☎ {selectedTeamProfile.phone}</Text>
+                          <TouchableOpacity
+                            style={styles.teamPersonProfileDmBtn}
+                            onPress={() => openTeamDirectThread(selectedTeamProfile, 'team_leader_dashboard')}
+                          >
+                            <Text style={styles.teamPersonProfileDmBtnText}>DM in Comms</Text>
+                          </TouchableOpacity>
+                          <Text style={styles.teamPersonProfileSection}>Coaching goals</Text>
+                          {selectedTeamProfile.coachingGoals.map((goal) => (
+                            <Text key={`${selectedTeamProfile.id}-goal-${goal}`} style={styles.teamPersonProfileBullet}>• {goal}</Text>
+                          ))}
+                          <Text style={styles.teamPersonProfileSection}>KPI goals</Text>
+                          {selectedTeamProfile.kpiGoals.map((goal) => (
+                            <Text key={`${selectedTeamProfile.id}-kpi-${goal}`} style={styles.teamPersonProfileBullet}>• {goal}</Text>
+                          ))}
+                          {teamPersonaVariant === 'leader' ? (
+                            <>
+                              <Text style={styles.teamPersonProfileSection}>Enrollments</Text>
+                              <Text style={styles.teamPersonProfileBullet}>Cohorts: {selectedTeamProfile.cohorts.join(', ')}</Text>
+                              <Text style={styles.teamPersonProfileBullet}>Journeys: {selectedTeamProfile.journeys.join(', ')}</Text>
+                            </>
+                          ) : null}
+                        </View>
+                      ) : null}
+                      {selectedTeamLeaderDetail ? (
+                        <View style={styles.teamLeaderKpiDetailCard}>
+                          <View style={styles.teamMemberChallengeTopRow}>
+                            <Text style={styles.teamMemberChallengeLabel}>KPI Performance Detail</Text>
+                            <TouchableOpacity onPress={() => setTeamLeaderKpiDetailMemberId(null)}>
+                              <Text style={styles.teamMemberChallengeLink}>Close</Text>
+                            </TouchableOpacity>
+                          </View>
+                          <Text style={styles.teamPersonProfileName}>{selectedTeamLeaderDetail.name}</Text>
+                          <Text style={styles.teamLeaderExpandedKpiRow}>
+                            Current: PC {selectedTeamLeaderDetail.kpis.PC}% • GP {selectedTeamLeaderDetail.kpis.GP}% • VP {selectedTeamLeaderDetail.kpis.VP}%
+                          </Text>
+                        </View>
+                      ) : null}
 
                       <View style={styles.teamLeaderExpandableList}>
                         {teamLeaderRows.map((row) => {
@@ -8417,11 +8584,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           const orderedKpiTypes = teamLeaderSortOrderMap[teamLeaderKpiSortOrder];
                           return (
                             <View key={row.id} style={styles.teamLeaderMemberCard}>
-                              <TouchableOpacity
-                                style={styles.teamLeaderMemberHeader}
-                                onPress={() => setTeamLeaderExpandedMemberId(isExpanded ? null : row.id)}
-                              >
-                                <View style={styles.teamParityMemberAvatar}>
+                              <View style={styles.teamLeaderMemberHeader}>
+                                <TouchableOpacity
+                                  style={styles.teamParityMemberAvatar}
+                                  onPress={() => setTeamProfileMemberId(row.id)}
+                                >
                                   <Text style={styles.teamParityMemberAvatarText}>
                                     {row.name
                                       .split(' ')
@@ -8430,13 +8597,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                       .slice(0, 2)
                                       .toUpperCase()}
                                   </Text>
-                                </View>
-                                <View style={styles.teamParityMemberCopy}>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.teamParityMemberCopy}
+                                  onPress={() => setTeamLeaderKpiDetailMemberId(row.id)}
+                                >
                                   <Text style={styles.teamParityMemberName}>{row.name}</Text>
                                   <Text style={styles.teamParityMemberSub}>{row.sub}</Text>
-                                </View>
+                                </TouchableOpacity>
                                 <Text style={styles.teamLeaderMemberStatus}>{row.status.replace('_', ' ')}</Text>
-                              </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.teamLeaderRowExpandBtn}
+                                  onPress={() => setTeamLeaderExpandedMemberId(isExpanded ? null : row.id)}
+                                >
+                                  <Text style={styles.teamLeaderRowExpandBtnText}>{isExpanded ? '−' : '+'}</Text>
+                                </TouchableOpacity>
+                              </View>
                               {isExpanded ? (
                                 <View style={styles.teamLeaderMemberExpandedBody}>
                                   <Text style={styles.teamLeaderExpandedKpiRow}>
@@ -12826,6 +13002,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  teamLeaderSortActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   teamLeaderSortToggleBtn: {
     borderRadius: 999,
     borderWidth: 1,
@@ -12905,6 +13086,23 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 10,
     paddingVertical: 9,
+  },
+  teamLeaderRowExpandBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d8e2f2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f7faff',
+  },
+  teamLeaderRowExpandBtnText: {
+    color: '#415570',
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 16,
+    marginTop: -1,
   },
   teamLeaderMemberStatus: {
     color: '#4b5d79',
@@ -13021,6 +13219,64 @@ const styles = StyleSheet.create({
   },
   teamLeaderConcernBullet: {
     color: '#6d4b4b',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  teamLeaderKpiDetailCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d7e2f2',
+    backgroundColor: '#f8fbff',
+    padding: 10,
+    gap: 6,
+  },
+  teamPersonProfileCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dce5f4',
+    backgroundColor: '#fcfdff',
+    padding: 10,
+    gap: 5,
+  },
+  teamPersonProfileName: {
+    color: '#33445e',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  teamPersonProfileRole: {
+    color: '#62728c',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamPersonProfileContact: {
+    color: '#5d6d86',
+    fontSize: 11,
+  },
+  teamPersonProfileDmBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cfe0f8',
+    backgroundColor: '#eef5ff',
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  teamPersonProfileDmBtnText: {
+    color: '#2c5db5',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  teamPersonProfileSection: {
+    color: '#455875',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+    marginTop: 2,
+  },
+  teamPersonProfileBullet: {
+    color: '#5d6f89',
     fontSize: 11,
     lineHeight: 15,
   },
