@@ -83,11 +83,11 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W10-MOBILE-UI-EVALUATION-READINESS-A` | `committed` | `M6 W10 mobile UI evaluation readiness` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching / team / challenge evaluability` (`CTA integrity`, `connected screens`, `compact state UI`) | `KPIDashboardScreen` surfaces: `Team`, `Team Challenges`, `Challenge Details`, `Leaderboard/Results`, `coaching_journeys*`, `coaching_journey_detail`, `coaching_lesson_detail`, `inbox*`, `channel_thread` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred) | manual-spec-driven + accepted W6/W7/W8 runtime stack | Committed: large-swatch W10 evaluation-readiness pass in mobile runtime surface completed. Misleading/dead CTAs were removed/re-labeled, diagnostic wall text was condensed into concise state cards/chips, and team/challenge/coaching paths remain connected end-to-end without backend/schema/API changes. |
 | `COACHING-W10-COACH-PORTAL-CUSTOMER-SHELL-A` | `committed` | `M6 W10 coach portal customer-facing shell` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`customer-facing shell`, `route connectivity`, `copy cleanup`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ existing detail drill-ins where scaffolded) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W9/W10 direction | Committed: upgraded `/coach/*` to a coach-product-facing shell baseline with connected route flow, customer-facing copy, actionable Library/Journeys/Cohorts/Channels surfaces, and preserved `/admin/coaching/*` compatibility redirects for transition. |
 | `COACHING-W10-REALISM-DATA-PACK-A` | `committed` | `M6 W10 realism data for UI evaluation` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `coaching content realism` (`journeys`, `lessons`, `cohorts`, `channels`, `messages`) | Seeded runtime data feeding `coaching_journeys*`, `coaching_lesson_detail`, `inbox*`, team/challenge coaching modules, and `/coach/*` list/detail surfaces | `Coach-1` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (seed/data/docs swath) | Committed: deterministic realism seed/reset/smoke pack + docs discoverability landed for owner UI evaluation (`9c617f7`). |
-| `COACHING-W12-COMMS-HUB-CLEANUP-LEGACY-CONTROLS-F` | `review` | `M6 W12 mobile comms hub cleanup` | `Coach`, `Team Leader`, `Challenge Sponsor`, `Team Member`, `Solo User` | `coaching / communication hub` (`messaging-only comms`, `remove duplicated thread controls`, `reduce channels noise`) | `KPIDashboardScreen` mobile runtime surfaces: Comms hub (`inbox*`, `channel_thread`, `coach_broadcast_compose`) + journey deep-link behavior in `All` feed | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + accepted W12 comms IA alignment baseline | Review-ready: removed legacy journey/thread button clutter from Comms hub controls, kept single row-tap thread entry pattern in Channels, and suppressed empty channel-notification section noise while preserving role gates and route families. |
-| `COACHING-W12-COMMS-HUB-IA-FOURTHREASON-ALIGN-A` | `review` | `M6 W12 mobile comms hub IA alignment` | `Coach`, `Team Leader`, `Challenge Sponsor`, `Team Member`, `Solo User` | `coaching / communication hub` (`All/Channels/DMs/Broadcast tabs`, `scope filters`, `role-gated broadcast targets`) | `KPIDashboardScreen` mobile runtime surfaces: Comms hub (`inbox*`, `channel_thread`, `coach_broadcast_compose`, `coaching_journeys*`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + W12 comms hub direction | Review-ready: implemented tabbed Comms Hub IA (All/Channels/DMs/Broadcast), role-gated broadcast visibility/targets, channel scope filters + tab/filter-aware search placeholder, scope/type activity chips on channel cards, DM direct-thread open rows, and preserved endpoint families/role+sponsor guardrails. |
-| `COACHING-W12-COMMS-HUB-REORG-A` | `review` | `M6 W12 mobile comms hub IA reorg` | `Coach`, `Team Leader`, `Challenge Sponsor`, `Team Member`, `Solo User` | `coaching / communication hub` (`bottom tab rename`, `single comms hub entry`, `persona-specific in-hub layouts`) | `KPIDashboardScreen` mobile runtime surfaces: bottom nav + `inbox*`, `channel_thread`, `coach_broadcast_compose`, `coaching_journeys*` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + accepted W12 journeys hierarchy baseline | Review-ready: bottom tab now uses Comms semantics, in-hub layout is persona-aware (coach/team-leader/sponsor/member/solo), Journeys remains first-class in the hub, and existing endpoint families/role guardrails are unchanged. |
-| `COACHING-W12-JOURNEY-LESSON-HIERARCHY-UX-A` | `review` | `M6 W12 mobile hierarchy UX pass` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching journeys UX` (`tap hierarchy`, `explicit back path`, `remove misleading detail-open buttons`) | `KPIDashboardScreen` surfaces: `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + accepted W11 route/data baseline | Review-ready: removed button-led journey/lesson deep-link actions, kept list/lesson tap hierarchy, and added explicit back controls (`Journey Detail -> Journeys`, `Lesson Detail -> Journey`) with no backend/schema/API changes. |
-| `COACHING-W11-MOBILE-PRODUCT-CLARITY-PASS-A` | `review` | `M6 W11 mobile product-clarity pass` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching / challenge / team UX clarity` (`replace diagnostic text walls`, `tight CTA intent copy`, `owner-evaluable screens`) | `KPIDashboardScreen` surfaces: `coaching_journeys*`, `coaching_journey_detail`, `coaching_lesson_detail`, `inbox*`, `channel_thread`, `Team Challenges`, `Challenge Details`, `Leaderboard/Results` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + accepted W10 route/data baseline | Review-ready: readability-first copy/state pass completed on in-scope mobile surfaces with stacked diagnostic/legalistic cards removed, concise state messaging, and clearer CTA intent hierarchy while preserving route continuity and sponsor/logging guardrails. |
+| `COACHING-W12-COMMS-HUB-CLEANUP-LEGACY-CONTROLS-F` | `committed+pushed` | `M6 W12 mobile comms hub cleanup` | `Coach`, `Team Leader`, `Challenge Sponsor`, `Team Member`, `Solo User` | `coaching / communication hub` (`messaging-only comms`, `remove duplicated thread controls`, `reduce channels noise`) | `KPIDashboardScreen` mobile runtime surfaces: Comms hub (`inbox*`, `channel_thread`, `coach_broadcast_compose`) + journey deep-link behavior in `All` feed | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + accepted W12 comms IA alignment baseline | Review-ready: removed legacy journey/thread button clutter from Comms hub controls, kept single row-tap thread entry pattern in Channels, and suppressed empty channel-notification section noise while preserving role gates and route families. |
+| `COACHING-W12-COMMS-HUB-IA-FOURTHREASON-ALIGN-A` | `committed+pushed` | `M6 W12 mobile comms hub IA alignment` | `Coach`, `Team Leader`, `Challenge Sponsor`, `Team Member`, `Solo User` | `coaching / communication hub` (`All/Channels/DMs/Broadcast tabs`, `scope filters`, `role-gated broadcast targets`) | `KPIDashboardScreen` mobile runtime surfaces: Comms hub (`inbox*`, `channel_thread`, `coach_broadcast_compose`, `coaching_journeys*`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + W12 comms hub direction | Review-ready: implemented tabbed Comms Hub IA (All/Channels/DMs/Broadcast), role-gated broadcast visibility/targets, channel scope filters + tab/filter-aware search placeholder, scope/type activity chips on channel cards, DM direct-thread open rows, and preserved endpoint families/role+sponsor guardrails. |
+| `COACHING-W12-COMMS-HUB-REORG-A` | `committed+pushed` | `M6 W12 mobile comms hub IA reorg` | `Coach`, `Team Leader`, `Challenge Sponsor`, `Team Member`, `Solo User` | `coaching / communication hub` (`bottom tab rename`, `single comms hub entry`, `persona-specific in-hub layouts`) | `KPIDashboardScreen` mobile runtime surfaces: bottom nav + `inbox*`, `channel_thread`, `coach_broadcast_compose`, `coaching_journeys*` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + accepted W12 journeys hierarchy baseline | Review-ready: bottom tab now uses Comms semantics, in-hub layout is persona-aware (coach/team-leader/sponsor/member/solo), Journeys remains first-class in the hub, and existing endpoint families/role guardrails are unchanged. |
+| `COACHING-W12-JOURNEY-LESSON-HIERARCHY-UX-A` | `committed+pushed` | `M6 W12 mobile hierarchy UX pass` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching journeys UX` (`tap hierarchy`, `explicit back path`, `remove misleading detail-open buttons`) | `KPIDashboardScreen` surfaces: `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + accepted W11 route/data baseline | Review-ready: removed button-led journey/lesson deep-link actions, kept list/lesson tap hierarchy, and added explicit back controls (`Journey Detail -> Journeys`, `Lesson Detail -> Journey`) with no backend/schema/API changes. |
+| `COACHING-W11-MOBILE-PRODUCT-CLARITY-PASS-A` | `committed+pushed` | `M6 W11 mobile product-clarity pass` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching / challenge / team UX clarity` (`replace diagnostic text walls`, `tight CTA intent copy`, `owner-evaluable screens`) | `KPIDashboardScreen` surfaces: `coaching_journeys*`, `coaching_journey_detail`, `coaching_lesson_detail`, `inbox*`, `channel_thread`, `Team Challenges`, `Challenge Details`, `Leaderboard/Results` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + accepted W10 route/data baseline | Review-ready: readability-first copy/state pass completed on in-scope mobile surfaces with stacked diagnostic/legalistic cards removed, concise state messaging, and clearer CTA intent hierarchy while preserving route continuity and sponsor/logging guardrails. |
 | `COACHING-W12-FOURTHREASON-CHAT-PARITY-MAP-A` | `committed` | `M6/W12 coaching parity planning (docs/control-plane)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `coaching / communication parity` (`Fourth Reason chat+journies UX pattern mapping`) | mobile runtime coaching/comms shells (`inbox*`, `channel_thread`, `coach_broadcast_compose`, `coaching_journeys*`) + `/coach/*` portal surfaces (`/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels`, `/coach/uploads`) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + Fourth Reason reference repo | Committed: W12 parity mapping package landed with implementation-ready mobile + `/coach/*` screen/flow specs mapped to existing Compass contract families (no new endpoint families). |
 | `COACHING-W12-DRAGDROP-LIBRARY-TO-JOURNEY-SPEC-A` | `committed` | `M6/W12 coach portal authoring parity planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance) | `coach portal content authoring` (`library -> journey drag/drop build map`) | `/coach/library`, `/coach/journeys`, `/coach/uploads` + runtime verification touchpoints `coaching_journeys*` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + Fourth Reason references + existing API contracts | Committed refinement pass: spec now includes full UX flow map, drag/hover/drop/reorder/remove/save interaction-state matrix, required frontend data model, existing API mapping, explicit in-family contract gaps, and phased MVP->polish build plan. |
 | `COACHING-W12-IA-SIMPLIFY-DOCS-SYNC-A` | `committed` | `M6/W12 coach portal IA simplification (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance) | `coach portal IA` (`library subsumes uploads`, `top-tab only`, `drag library->journey primary`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` + wiring/screenmap/parity docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W12 parity/dragdrop package | Committed docs-sync: Library now subsumes upload intake, Uploads removed as first-class coach tab, top-tab-only IA declared, and drag Library -> Journey is documented as primary authoring target across screenmap/wiring/parity docs. |
@@ -96,7 +96,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W12-COMMS-HUB-IA-FOURTHREASON-DOCS-SYNC-A` | `committed` | `M6/W12 comms hub IA parity docs sync (Fourth Reason aligned)` | `Coach` (primary), `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`, `Admin operator` | `communication IA docs sync` (`All/Channels/DMs/Broadcast tabs`, `scope filters`, `broadcast role gates`, `route mapping`) | `/coach/channels` + mobile `inbox*`/`channel_thread`/`coach_broadcast_compose` references in screenmap/wiring/addendum docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + landed Mobile-1 comms runtime + W12 parity direction | Committed docs sync: screenmap/wiring/addendum now lock the implemented Comms Hub IA (`All/Channels/DMs/Broadcast`), server-scoped filters (`Team/Cohort/Segment/Global`), role-gated broadcast visibility/targets, and route mapping across member and `/coach/channels` surfaces without endpoint-family expansion. |
 | `COACHING-W12-PORTAL-FOLDER-IA-DOCS-SYNC-D` | `committed` | `M6/W12 coach portal folder/file IA docs sync (post Admin-1 correction)` | `Coach` (primary), `Team Leader` (team-scoped), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance) | `coach portal authoring IA docs sync` (`Collections -> Assets`, `no duplicate assets tabs`, `2-column Journeys`, `mandatory drag/drop runtime`) | `/coach/library`, `/coach/journeys` + W12 drag/drop implementation spec + shared screenmap/wiring docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + landed Admin-1 folder IA correction | Committed docs sync: screenmap/wiring/dragdrop spec now align on folder/files IA (`Collections -> Assets`), no duplicate Assets tab model, two-column Journey authoring layout (`source pane + journey builder`), and mandatory drag/drop runtime behavior set (`asset<->collection`, `asset->journey`, `reorder/remove`). |
 | `COACHING-W12-COACH-PORTAL-WORKSPACE-IA-DOCS-E` | `committed` | `M6/W12 coach portal workspace IA canonicalization (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance) | `coach portal workspace IA docs sync` (`Journeys + People top-level modes`, `folder/files rules`, `asset->lesson/task drag/drop mapping`) | coach portal IA docs + dragdrop spec (`/coach/journeys`, People workspace cohorts/channels surfaces) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | owner direction (post Admin-1 landing) | Committed docs sync: canonical coach IA now documents two top-level modes (`Journeys`, `People`), split workspace definitions (`Journeys: Library tree + Builder`, `People: People list + Cohorts/Channels`), folder/files multi-expand rules, and mandatory asset->lesson/task drag/drop mapping; decision log updated for boundary reclassification. |
-| `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A` | `review` | `M6 W11 coach portal standalone UX pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`standalone look`, `de-admin chrome`, `coach-first content workflows`) | canonical `/coach/*` routes with standalone shell treatment and minimized admin framing | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W10 route baseline | Review-ready hard-correction+polish pass completed: canonical `/coach/*` now mounts dedicated `CoachPortalScreen` host (not `AdminShellScreen` chrome), `/admin/coaching/*` foundation paths stay compatibility redirects, DEC-0047 logged, and refreshed screenshot set captured under `app/test-results/w11-coach-portal-standalone-hard-correction/`. |
+| `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A` | `committed+pushed` | `M6 W11 coach portal standalone UX pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`standalone look`, `de-admin chrome`, `coach-first content workflows`) | canonical `/coach/*` routes with standalone shell treatment and minimized admin framing | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W10 route baseline | Review-ready hard-correction+polish pass completed: canonical `/coach/*` now mounts dedicated `CoachPortalScreen` host (not `AdminShellScreen` chrome), `/admin/coaching/*` foundation paths stay compatibility redirects, DEC-0047 logged, and refreshed screenshot set captured under `app/test-results/w11-coach-portal-standalone-hard-correction/`. |
 | `COACHING-W12-COACH-PORTAL-IA-SIMPLIFY-A` | `committed` | `M6 W12 coach portal IA simplify pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`simplify top-level IA`, `merge uploads into library`, `remove redundant progression actions`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ compatibility `/coach/uploads` redirect to `/coach/library`) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W11 host split baseline | Committed: Uploads merged into Library IA/copy, `/coach/uploads` removed from top tabs, `/coach/uploads` and `/admin/coaching/*` compatibility redirects preserved, and per-page next-tab progression actions removed in favor of top-tab navigation only. |
 | `COACHING-W12-DRAGDROP-LIBRARY-TO-JOURNEY-MVP-A` | `committed` | `M6 W12 coach portal journey authoring MVP` | `Coach` (primary), `Team Leader` (team-scoped only), `Challenge Sponsor` (sponsor-scoped read context only) | `coach portal authoring UX` (`library -> journey drag/drop`, `reorder/remove/save states`) | `/coach/library`, `/coach/journeys` (coach portal web only) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | committed W12 drag/drop spec (`COACHING_W12_DRAGDROP_LIBRARY_TO_JOURNEY_SPEC.md`) | Committed MVP: added client-side drag/drop assignment from Library to Journey milestones with move/reorder/remove controls, draft save-state feedback (`idle/pending/success/error`), and role-gated lock messaging (sponsor scoped/no KPI logging). No backend/schema/API changes required. |
 | `COACHING-W12-PORTAL-AUTHORING-CORRECTION-B` | `committed` | `M6 W12 coach portal authoring correction pass` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal authoring UX` (`library assets+collections`, `journey creation`, `functional drag/drop`, `save draft action-bar`) | `/coach/library`, `/coach/journeys` (+ `/coach/uploads` and `/admin/coaching/*` compatibility checks) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | owner correction pass (W12) | Committed correction: Library IA now presents Assets + Collections with collection-container semantics, Journey Builder includes blank Create New Journey naming flow, web drag/drop works for asset->collection and asset/collection-item->milestone with reorder/remove maintained, and Save Draft is anchored in builder action bar with clear idle/pending/saved/error feedback. |
@@ -115,6 +115,10 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-W12-TEAM-SCREEN-PERSONA-SPLIT-A` | `committed+pushed` | `M6 / W12 (persona split hardening)` | `Team Member` (simple view), `Team Leader` (ops-heavy view) | `team surface runtime split` (`member simplicity`, `leader operational controls`) | `KPIDashboardScreen` Team surface only | `Mobile-1` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | team runtime parity task (no new Figma node lock for this swath) | Review-ready requirement-lock follow-on: Team default now shows only selected Team Focus KPIs; full KPI catalog is rendered only in leader-only “Select Team Focus KPIs” editor; member view remains read-only selected set and leader ops panel remains intact. |
 | `M6-W12-TEAM-PERSON-PROFILE-CARD-AND-FOCUS-EDITOR-A` | `committed+pushed` | `M6 / W12 (team leader ops + person profile UX)` | `Team Leader` (primary), `Team Member` (limited profile-only behavior) | `team interaction refinement` (`focus editor usability`, `avatar/profile split`, `leader KPI detail`, `DM handoff`) | `KPIDashboardScreen` Team surface + person profile card surface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + persona-gated card UX) | Review-ready follow-on lock: Team Leader member KPI-detail taps now hand off to Log with route context (`member_id`, `kpi_id`, `source=team_leader_member_detail`), and Log renders member+KPI+period plus onboarding->profile goal-priority progress meter with last-7-days fallback summary when goal context is missing. |
 | `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A` | `committed+pushed` | `M6 / W12` | `Team Leader`, `Team Member`, `Solo User` | `challenge surface` (`team-pattern interaction alignment`) | `KPIDashboardScreen` Challenge surface only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + wiring pass) | Review-ready: challenge landing now uses Active/Upcoming/History switching with active-default selection, Team-pattern summary/participant blocks, and clean details/leaderboard routing (`8348fad`). |
+| `M8-MOBILE-RUNTIME-REGRESSION-MATRIX-A` | `active` | `M8 mobile hardening` | `Team Leader`, `Team Member`, `Solo User`, `Coach`, `Challenge Sponsor` | `mobile runtime QA` (`critical-route regression matrix + screenshot proof`) | `Home`, `Team`, `Challenge`, `Comms`, `Journeys/Lessons`, `Log` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | N/A (runtime validation swath) | Execute mobile hardening pass with deterministic persona-by-persona runtime matrix and screenshot evidence; no route-family/API/schema changes allowed in this assignment. |
+| `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `active` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Execute browser/runtime spotcheck and capture failures with path+persona granularity; code changes allowed only for scoped regressions discovered during this pass. |
+| `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `active` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Close FE-00 pending checkpoint by locking frontend harness mapping and explicit pass/fail gate criteria in docs with no product runtime code edits. |
+| `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `active` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Re-run deterministic seed/smoke flow and verify sample-content assumptions still hold for current mobile/admin runtime expectations. |
 
 ## Blocked Assignments
 
@@ -226,7 +230,7 @@ Provide realistic, repeatable seeded data so mobile + `/coach/*` evaluate as pro
 ### `COACHING-W12-MOBILE-NAV-LOG-CTA-CENTER-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 / W12 mobile IA polish`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Sponsor`
 - `Flow:` `mobile IA` (`bottom tab LOG center CTA emphasis`)
@@ -283,7 +287,7 @@ Update the mobile bottom nav in `KPIDashboardScreen.tsx` to emphasize logging as
 ### `M6-W12-TEAM-SCREEN-PERSONA-SPLIT-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 / W12 (persona split hardening)`
 - `Persona:` `Team Member` (simple view), `Team Leader` (ops-heavy view)
 - `Flow:` `team surface runtime split` (`member simplicity`, `leader operational controls`)
@@ -377,7 +381,7 @@ Produce a reusable parity map that translates Fourth Reason chat/journey UX patt
 ### `M6-W12-TEAM-LEADER-ROW-EXPANSION-AND-LOG-WIRING-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 / W12`
 - `Persona:` `Team Leader` (primary), `Team Member` (no-regression)
 - `Flow:` `team leader ops` (`row expansion`, `team KPI selection`, `log handoff wiring`)
@@ -440,7 +444,7 @@ Replace chip-heavy Team Leader filters with expandable member rows and ensure se
 ### `M6-W12-TEAM-PERSON-PROFILE-CARD-AND-FOCUS-EDITOR-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 / W12 (team leader ops + person profile UX)`
 - `Persona:` `Team Leader` (primary), `Team Member` (limited profile-only behavior)
 - `Flow:` `team interaction refinement` (`focus editor`, `avatar/profile split`, `leader KPI detail`, `DM handoff`)
@@ -917,7 +921,7 @@ If screen availability/wiring/status changes, update BOTH in the same change set
 ### `COACHING-INTEGRATION-A`
 
 #### Snapshot
-- `Status:` `committed+pushed` (`post-W2 planning continuation accepted`)
+- `Status:` `committed` (`post-W2 planning continuation accepted`)
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (docs-only)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (manual-spec-driven integration planning)
@@ -1019,7 +1023,7 @@ Produce the first implementation-ready coaching integration planning package (ma
 ### `COACHING-UI-W1-ALLOCATION-SHELLS`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W1 allocation + route shells`)
@@ -1092,7 +1096,7 @@ Create `W1` coaching allocation + shell placeholders in the mobile member app wi
 ### `COACHING-UI-W2-COMMS-ENTRYPOINTS`
 
 #### Snapshot
-- `Status:` `committed`
+- `Status:` `committed+pushed`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (communication-first coaching integration)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W2 communication entry points`)
@@ -1260,7 +1264,7 @@ Implement the first functional coaching content layer on the accepted W1/W2 shel
 ### `COACHING-UI-W4-COMMS-API-INTEGRATION`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven comms API integration)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W4 comms API-backed inbox/thread/broadcast`)
@@ -1345,7 +1349,7 @@ Upgrade accepted W2 comms entry routing from shell/context-only to API-backed be
 ### `COACHING-ARCH-COACH-PERSONA-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 coaching slice (planning/architecture)`
 - `Persona:` `Coach`, `Admin operator` (authoring/ops), plus downstream `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching content operations / publishing`
@@ -2360,7 +2364,7 @@ Implement coach/admin AI approval queue and audit detail ops surfaces (admin ext
 ### `COACHING-SAMPLE-CONTENT-SEED-A`
 
 #### Snapshot
-- `Status:` `committed`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 coaching slice (runtime realism / validation data)`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching content delivery` (`journeys`, `lessons`, `assignments`, sample progress/messages`)
@@ -2836,7 +2840,7 @@ Implement additive notification summary/item read-model shaping inside existing 
 ### `COACHING-W6-PREFS-OPS-NOTIFICATION-VISIBILITY-A`
 
 #### Snapshot
-- `Status:` `queued`
+- `Status:` `blocked`
 - `Program status:` `M6 broader scope (W6 notification prefs + ops visibility surfaces)`
 - `Persona:` `Admin operator`, `Coach`, `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `notifications / coaching` (`prefs UI + ops queue visibility`)
@@ -2900,7 +2904,7 @@ Implement coaching notification preferences UI shell(s) and admin/ops notificati
 ### `COACHING-OPS-SURFACE-BOUNDARY-CLARITY-SPEC-A`
 
 #### Snapshot
-- `Status:` `committed+pushed`
+- `Status:` `review`
 - `Program status:` `M6 broader scope (docs-only follow-up: admin coaching ops surface purpose + boundary split)`
 - `Persona:` `Admin operator`, `Coach`, downstream `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / notifications / admin ops` (`surface purpose + boundary clarification`)
@@ -3264,7 +3268,7 @@ Prepare/advance an implementation-guiding W7 docs-first foundation package for c
 ### `COACHING-W7-RUNTIME-COACH-SPONSOR-VISIBILITY-A`
 
 #### Snapshot
-- `Status:` `committed+pushed`
+- `Status:` `committed`
 - `Program status:` `W7 runtime coaching visibility swath (mobile)`
 - `Persona:` `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / notifications / participation visibility`
@@ -3313,7 +3317,7 @@ Prepare/advance an implementation-guiding W7 docs-first foundation package for c
 ### `COACHING-W10-MOBILE-UI-EVALUATION-READINESS-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `M6 W10 mobile UI evaluation readiness`
 - `Persona:` `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / team / challenge evaluability`
@@ -3332,7 +3336,7 @@ Prepare/advance an implementation-guiding W7 docs-first foundation package for c
 ### `COACHING-W11-MOBILE-PRODUCT-CLARITY-PASS-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 W11 mobile product-clarity pass`
 - `Persona:` `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / challenge / team UX clarity`
@@ -3394,7 +3398,7 @@ Ship a readability-first mobile pass so owner can evaluate flow quality without 
 ### `COACHING-W12-JOURNEY-LESSON-HIERARCHY-UX-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 W12 mobile hierarchy UX pass`
 - `Persona:` `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching journeys` (`hierarchical tap flow`, `explicit back path`)
@@ -3452,7 +3456,7 @@ Make journey/lesson navigation evaluable and intuitive by removing redundant dee
 ### `COACHING-W12-COMMS-HUB-REORG-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 W12 mobile comms hub IA reorg`
 - `Persona:` `Coach`, `Team Leader`, `Challenge Sponsor`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication hub` (`bottom-tab comms semantics`, `single hub entry`, `persona-specific in-hub layout`)
@@ -3502,7 +3506,7 @@ Make communication access intuitive via a single Comms hub entry with role-aware
 ### `COACHING-W12-COMMS-HUB-IA-FOURTHREASON-ALIGN-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 W12 mobile comms hub IA alignment`
 - `Persona:` `Coach`, `Team Leader`, `Challenge Sponsor`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication hub` (`All/Channels/DMs/Broadcast`, `scope filters`, `role-gated broadcast targets`)
@@ -3539,7 +3543,7 @@ Align mobile Comms Hub runtime IA to Fourth Reason-style structure while preserv
 ### `COACHING-W12-COMMS-HUB-CLEANUP-LEGACY-CONTROLS-F`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 W12 mobile comms hub cleanup`
 - `Persona:` `Coach`, `Team Leader`, `Challenge Sponsor`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication hub` (`messaging-only comms`, `legacy-control cleanup`)
@@ -3574,7 +3578,7 @@ Reduce Comms hub clutter so Channels has one thread-entry pattern and messaging-
 ### `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 W11 coach portal standalone UX pass`
 - `Persona:` `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools)
 - `Flow:` `coach portal IA/UX` (`standalone feel`, `de-admin framing`, `coach-first clarity`)
@@ -3633,7 +3637,7 @@ Make `/coach/*` feel like a distinct coach product area, not an admin surface wi
 ### `COACHING-W12-COACH-PORTAL-IA-SIMPLIFY-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `M6 W12 coach portal IA simplify pass`
 - `Persona:` `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools)
 - `Flow:` `coach portal IA/UX` (`merge uploads into library`, `simplify nav`, `remove redundant progression actions`)
@@ -4203,7 +4207,7 @@ Lock a shared admin interaction-primitives standard so admin implementation lane
 ### `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 / W12`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `challenge surface` (`team-pattern interaction alignment`)
@@ -4243,3 +4247,167 @@ Redesign the Challenge surface to mirror Team interaction patterns while preserv
   - no broken CTA/link states
 - Screenshots:
   - `app/test-results/w12-challenge-team-pattern-align/`
+
+### `M8-MOBILE-RUNTIME-REGRESSION-MATRIX-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M8 mobile hardening`
+- `Persona:` `Team Leader`, `Team Member`, `Solo User`, `Coach`, `Challenge Sponsor`
+- `Flow:` `mobile runtime QA` (`critical-route regression matrix + screenshot proof`)
+- `Owner:` `Mobile-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required)
+- `Execution note (2026-02-27, Controller):` Assignment launched to convert recent W10-W12 mobile swaths into a deterministic regression matrix with pass/fail artifacts before additional feature work.
+- `Current blocker status (2026-02-27, launch):` `none`.
+
+#### Primary Objective
+Run a mobile regression sweep across critical routes and personas, capture pass/fail evidence, and isolate any blocking regressions introduced by recent W10-W12 merges.
+
+#### Scope In
+- Runtime checks for `Home`, `Team`, `Challenge`, `Comms`, `Journeys/Lessons`, and `Log`.
+- Persona checks for coach/team leader/team member/solo/sponsor role gates.
+- Screenshot capture for each critical route and each failed state.
+
+#### Scope Out
+- Net-new feature work
+- Backend/schema/API changes
+
+#### Hard Constraints
+- No endpoint-family changes.
+- No schema/folder structural changes.
+- If code fixes are required, keep them strictly to blocking regressions discovered in this pass.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime matrix output with `pass/fail` by persona x route.
+- Screenshot folder: `app/test-results/m8-mobile-regression-matrix-a/`.
+
+#### Report-Back
+- Update board status first (`active` -> `review`/`blocked`).
+- Matrix summary (`pass/fail` counts + blocker list).
+- Files changed (if any) + line refs.
+- Screenshot paths.
+- Commit hash (if code/docs changed).
+
+### `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `A3/W12 admin+coach hardening`
+- `Persona:` `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor`
+- `Flow:` `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`)
+- `Owner:` `Admin-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated admin worktree required)
+- `Execution note (2026-02-27, Controller):` Assignment launched for deterministic browser/runtime verification of admin and coach portal surfaces after standalone host + IA simplification merges.
+- `Current blocker status (2026-02-27, launch):` `none`.
+
+#### Primary Objective
+Validate admin + coach route/runtime integrity and role gating after recent W11/W12 merges, then fix only scoped regressions.
+
+#### Scope In
+- `/admin/users`, `/admin/reports`
+- Canonical `/coach/*` routes
+- Compatibility redirects `/admin/coaching/*` -> `/coach/*`
+- Role-gated shell consistency and nav visibility checks
+
+#### Scope Out
+- Net-new IA redesign
+- Backend/schema/API changes
+
+#### Hard Constraints
+- Preserve `/coach/*` as canonical host.
+- Keep `/admin/coaching/*` as compatibility/redirect paths only.
+- No structural boundary changes.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz`
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime capture folder: `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/`.
+
+#### Report-Back
+- Update board status first (`active` -> `review`/`blocked`).
+- Route-by-route pass/fail summary.
+- Role-gate mismatches (if any).
+- Files changed + line refs.
+- Screenshot paths.
+- Commit hash.
+
+### `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `FE-00 gate closeout`
+- `Persona:` `Owner-facing program governance`
+- `Flow:` `frontend acceptance harness docs` (`traceability lock + harness mapping`)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred)
+- `Execution note (2026-02-27, Controller):` Assignment launched to close the FE-00 pending acceptance-harness checkpoint in current sprint docs.
+- `Current blocker status (2026-02-27, launch):` `none`.
+
+#### Primary Objective
+Close the FE-00 frontend acceptance-harness gap by locking sprint-to-harness traceability and explicit pass/fail criteria in docs.
+
+#### Scope In
+- `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md`
+- `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md` FE-00 completion checkpoint alignment
+- Any directly linked traceability doc needed for consistency
+
+#### Scope Out
+- App/backend runtime code changes
+- New endpoint/schema design
+
+#### Hard Constraints
+- Keep CURRENT_SPRINT as sprint gate source of truth.
+- Preserve non-negotiables in harness wording.
+- If structural boundaries are changed (not expected), update `DECISIONS_LOG.md` in same change set.
+
+#### Validation
+- Cross-doc consistency check between sprint traceability rows and acceptance harness section.
+- Explicit FE-00 checkpoint status update from `pending` to concrete post-change state.
+
+#### Report-Back
+- Update board status first (`active` -> `review`/`blocked`).
+- Files changed + exact sections updated.
+- FE-00 checkpoint delta summary.
+- Commit hash.
+
+### `M8-SEED-DATA-SMOKE-VERIFICATION-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M8 backend/data hardening`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`
+- `Flow:` `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`)
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (backend/data worktree preferred)
+- `Execution note (2026-02-27, Controller):` Assignment launched to re-validate seeded data realism/runbook determinism against latest runtime expectations.
+- `Current blocker status (2026-02-27, launch):` `none`.
+
+#### Primary Objective
+Re-run deterministic seed and smoke flows, verify expected dataset outcomes, and document runbook drift or failures.
+
+#### Scope In
+- backend seed/reset/smoke commands tied to coaching sample content
+- runbook command validity and output expectation checks
+- docs updates only if command/output drift is found
+
+#### Scope Out
+- Net-new data model design
+- Endpoint-family changes
+
+#### Hard Constraints
+- Keep seed behavior deterministic and repeatable.
+- No destructive overwrites of historical prod data paths.
+- No schema/API-family changes in this assignment.
+
+#### Validation
+- Execute documented seed/reset/smoke sequence end-to-end.
+- Verify expected counts/states per persona context.
+- Capture logs and summary under `app/test-results/m8-seed-data-smoke-verification-a/` (or equivalent runbook-referenced evidence path).
+
+#### Report-Back
+- Update board status first (`active` -> `review`/`blocked`).
+- Command sequence + pass/fail results.
+- Drift list (commands/docs mismatches).
+- Files changed (if runbook/docs adjusted).
+- Commit hash.
