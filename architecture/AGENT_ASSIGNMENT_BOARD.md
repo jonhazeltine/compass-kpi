@@ -657,7 +657,7 @@ Upgrade accepted W2 comms entry routing from shell/context-only to API-backed be
 ### `COACHING-ARCH-COACH-PERSONA-A`
 
 #### Snapshot
-- `Status:` `committed+pushed`
+- `Status:` `review`
 - `Program status:` `M6 coaching slice (planning/architecture)`
 - `Persona:` `Coach`, `Admin operator` (authoring/ops), plus downstream `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching content operations / publishing`
@@ -1687,6 +1687,8 @@ Implement coach/admin AI approval queue and audit detail ops surfaces (admin ext
 - `Completion note (2026-02-26 follow-up):` Expanded `backend/scripts/coaching_sample_content_seed.js` to seed sponsor-linked challenge fixtures (free + teams tier), sponsor + cohort channels with messages, team-scoped and solo coaching journeys, and active/inactive KPI visibility examples; smoke checks now verify `/api/coaching/*`, `/api/channels*`, `/dashboard`, and `/sponsored-challenges*` with tier gating and sponsor attribution assertions.
 - `Execution note (2026-02-26 visibility follow-up):` Additional backend/data swath started to extend sponsor/cohort realism depth and add repeatable role-visibility checks for coach, team-leader, challenge-sponsor, and member outcomes without introducing new endpoint families.
 - `Completion note (2026-02-26 visibility follow-up):` Extended `backend/scripts/coaching_sample_content_seed.js` persona coverage to include explicit `coach`, `team_leader`, `challenge_sponsor`, and `member` visibility outcomes. Added role-scoped assertions for coaching journey visibility, channel visibility/membership, sponsored challenge tier gating, dashboard KPI visibility (active/inactive), and coaching broadcast permission outcomes (allowed/blocked) using existing endpoint families only.
+- `Execution note (2026-02-26 W8 validation swath):` Started deterministic backend validation expansion focused on seeded persona visibility outcomes and contract mismatch diagnostics for existing coaching/channel/sponsor endpoint families.
+- `Completion note (2026-02-26 W8 validation swath):` Enhanced `backend/scripts/coaching_sample_content_seed.js` with structured endpoint snapshots + check logs and failure diagnostics output for contract mismatches; added deterministic visibility assertions for coach/team-leader/challenge-sponsor/member outcomes including cohort channels and sponsor-scoped KPI visibility on `/dashboard`.
 
 #### Primary Objective
 Seed realistic coaching content and assignment/progress data (using existing schema and endpoint families only) so M6 coaching runtime UI reviews are materially useful:

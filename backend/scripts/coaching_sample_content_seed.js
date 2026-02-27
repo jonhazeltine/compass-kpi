@@ -12,6 +12,14 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function topLevelKeys(data) {
+  return data && typeof data === "object" && !Array.isArray(data) ? Object.keys(data).sort() : [];
+}
+
 async function request(url, options = {}) {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -113,6 +121,29 @@ async function main() {
     ssl: { rejectUnauthorized: false },
   });
   let dbConnected = false;
+  const diagnostics = {
+    seed_tag: seedTag,
+    endpoint_snapshots: {},
+    checks: [],
+  };
+  function recordEndpoint(endpoint, out) {
+    diagnostics.endpoint_snapshots[endpoint] = {
+      status: out.status,
+      top_level_keys: topLevelKeys(out.data),
+      journeys_count: asArray(out.data?.journeys).length,
+      channels_count: asArray(out.data?.channels).length,
+      sponsored_challenges_count: asArray(out.data?.sponsored_challenges).length,
+      loggable_kpis_count: asArray(out.data?.loggable_kpis).length,
+    };
+  }
+  function check(id, condition, message, details = {}) {
+    diagnostics.checks.push({ id, ok: Boolean(condition), details });
+    if (!condition) {
+      const err = new Error(message);
+      err.details = { id, ...details };
+      throw err;
+    }
+  }
 
   try {
     await waitForHealth();
@@ -464,6 +495,7 @@ async function main() {
     const memberJourneys = await request(`${BACKEND_URL}/api/coaching/journeys`, {
       headers: { authorization: `Bearer ${tokens.member}` },
     });
+    recordEndpoint("member:/api/coaching/journeys", memberJourneys);
     assert(memberJourneys.status === 200, `/api/coaching/journeys failed: ${memberJourneys.status}`);
     assert(Array.isArray(memberJourneys.data.journeys), "journeys payload missing journeys[]");
     const teamJourneyListItem = memberJourneys.data.journeys.find((j) => j.id === teamJourney.id);
@@ -473,6 +505,7 @@ async function main() {
     const teamJourneyDetail = await request(`${BACKEND_URL}/api/coaching/journeys/${teamJourney.id}`, {
       headers: { authorization: `Bearer ${tokens.member}` },
     });
+    recordEndpoint(`member:/api/coaching/journeys/${teamJourney.id}`, teamJourneyDetail);
     assert(teamJourneyDetail.status === 200, `/api/coaching/journeys/:id failed: ${teamJourneyDetail.status}`);
     assert(Array.isArray(teamJourneyDetail.data.milestones) && teamJourneyDetail.data.milestones.length >= 2, "journey detail missing seeded milestones");
     const detailLessons = teamJourneyDetail.data.milestones.flatMap((m) => m.lessons || []);
@@ -482,6 +515,7 @@ async function main() {
     const memberProgress = await request(`${BACKEND_URL}/api/coaching/progress`, {
       headers: { authorization: `Bearer ${tokens.member}` },
     });
+    recordEndpoint("member:/api/coaching/progress", memberProgress);
     assert(memberProgress.status === 200, `/api/coaching/progress failed: ${memberProgress.status}`);
     assert(Number(memberProgress.data.status_counts.in_progress) >= 1, "progress summary missing in_progress count");
     assert(Number(memberProgress.data.status_counts.completed) >= 1, "progress summary missing completed count");
@@ -490,6 +524,7 @@ async function main() {
     const coachJourneys = await request(`${BACKEND_URL}/api/coaching/journeys`, {
       headers: { authorization: `Bearer ${tokens.coach}` },
     });
+    recordEndpoint("coach:/api/coaching/journeys", coachJourneys);
     assert(coachJourneys.status === 200, `/api/coaching/journeys failed (coach): ${coachJourneys.status}`);
     assert(
       coachJourneys.data.journeys.some((j) => j.id === teamJourney.id) &&
@@ -500,6 +535,7 @@ async function main() {
     const leaderJourneys = await request(`${BACKEND_URL}/api/coaching/journeys`, {
       headers: { authorization: `Bearer ${tokens.leader}` },
     });
+    recordEndpoint("leader:/api/coaching/journeys", leaderJourneys);
     assert(leaderJourneys.status === 200, `/api/coaching/journeys failed (leader): ${leaderJourneys.status}`);
     assert(
       leaderJourneys.data.journeys.some((j) => j.id === teamJourney.id),
@@ -509,6 +545,7 @@ async function main() {
     const sponsorJourneys = await request(`${BACKEND_URL}/api/coaching/journeys`, {
       headers: { authorization: `Bearer ${tokens.sponsor}` },
     });
+    recordEndpoint("challenge_sponsor:/api/coaching/journeys", sponsorJourneys);
     assert(sponsorJourneys.status === 200, `/api/coaching/journeys failed (challenge sponsor): ${sponsorJourneys.status}`);
     assert(
       !sponsorJourneys.data.journeys.some((j) => j.id === teamJourney.id),
@@ -522,6 +559,7 @@ async function main() {
     const memberChannels = await request(`${BACKEND_URL}/api/channels`, {
       headers: { authorization: `Bearer ${tokens.member}` },
     });
+    recordEndpoint("member:/api/channels", memberChannels);
     assert(memberChannels.status === 200, `/api/channels failed: ${memberChannels.status}`);
     assert(Array.isArray(memberChannels.data.channels), "channels payload missing channels[]");
     const sponsorChannelListItem = memberChannels.data.channels.find((c) => c.id === sponsorChannel.id);
@@ -540,6 +578,7 @@ async function main() {
     const sponsorChannels = await request(`${BACKEND_URL}/api/channels`, {
       headers: { authorization: `Bearer ${tokens.sponsor}` },
     });
+    recordEndpoint("challenge_sponsor:/api/channels", sponsorChannels);
     assert(sponsorChannels.status === 200, `/api/channels failed (challenge sponsor): ${sponsorChannels.status}`);
     assert(
       sponsorChannels.data.channels.some((c) => c.id === sponsorChannel.id),
@@ -550,9 +589,16 @@ async function main() {
       "challenge sponsor should not see team channel without membership"
     );
 
+    const coachChannels = await request(`${BACKEND_URL}/api/channels`, {
+      headers: { authorization: `Bearer ${tokens.coach}` },
+    });
+    recordEndpoint("coach:/api/channels", coachChannels);
+    assert(coachChannels.status === 200, `/api/channels failed (coach): ${coachChannels.status}`);
+
     const teamChannelMessages = await request(`${BACKEND_URL}/api/channels/${teamChannel.id}/messages`, {
       headers: { authorization: `Bearer ${tokens.member}` },
     });
+    recordEndpoint(`member:/api/channels/${teamChannel.id}/messages`, teamChannelMessages);
     assert(teamChannelMessages.status === 200, `/api/channels/:id/messages failed: ${teamChannelMessages.status}`);
     assert(Array.isArray(teamChannelMessages.data.messages), "channel messages payload missing messages[]");
     assert(teamChannelMessages.data.messages.length >= 2, "seeded message thread should contain messages");
@@ -560,6 +606,7 @@ async function main() {
     const cohortChannelMessages = await request(`${BACKEND_URL}/api/channels/${cohortChannel.id}/messages`, {
       headers: { authorization: `Bearer ${tokens.member}` },
     });
+    recordEndpoint(`member:/api/channels/${cohortChannel.id}/messages`, cohortChannelMessages);
     assert(cohortChannelMessages.status === 200, `/api/channels/:id/messages (cohort) failed: ${cohortChannelMessages.status}`);
     assert(Array.isArray(cohortChannelMessages.data.messages), "cohort channel messages payload missing messages[]");
     assert(cohortChannelMessages.data.messages.length >= 2, "seeded cohort thread should contain messages");
@@ -567,6 +614,7 @@ async function main() {
     const memberDashboard = await request(`${BACKEND_URL}/dashboard`, {
       headers: { authorization: `Bearer ${tokens.member}` },
     });
+    recordEndpoint("member:/dashboard", memberDashboard);
     assert(memberDashboard.status === 200, `/dashboard failed: ${memberDashboard.status}`);
     assert(Array.isArray(memberDashboard.data.loggable_kpis), "dashboard payload missing loggable_kpis[]");
     assert(
@@ -578,9 +626,25 @@ async function main() {
       "dashboard loggable_kpis should not include inactive seeded KPI"
     );
 
+    const sponsorDashboard = await request(`${BACKEND_URL}/dashboard`, {
+      headers: { authorization: `Bearer ${tokens.sponsor}` },
+    });
+    recordEndpoint("challenge_sponsor:/dashboard", sponsorDashboard);
+    assert(sponsorDashboard.status === 200, `/dashboard failed (challenge sponsor): ${sponsorDashboard.status}`);
+    assert(Array.isArray(sponsorDashboard.data.loggable_kpis), "challenge sponsor dashboard missing loggable_kpis[]");
+    assert(
+      sponsorDashboard.data.loggable_kpis.some((kpi) => kpi.id === ids.kpis.activeCustomId),
+      "challenge sponsor dashboard should include active seeded KPI"
+    );
+    assert(
+      !sponsorDashboard.data.loggable_kpis.some((kpi) => kpi.id === ids.kpis.inactiveCustomId),
+      "challenge sponsor dashboard should not include inactive seeded KPI"
+    );
+
     const memberSponsoredList = await request(`${BACKEND_URL}/sponsored-challenges`, {
       headers: { authorization: `Bearer ${tokens.member}` },
     });
+    recordEndpoint("member:/sponsored-challenges", memberSponsoredList);
     assert(memberSponsoredList.status === 200, `/sponsored-challenges failed (member): ${memberSponsoredList.status}`);
     assert(Array.isArray(memberSponsoredList.data.sponsored_challenges), "sponsored challenges payload missing sponsored_challenges[]");
     const freeSponsored = ids.sponsoredChallenges.find((row) => row.required_tier === "free");
@@ -599,6 +663,7 @@ async function main() {
     const soloSponsoredList = await request(`${BACKEND_URL}/sponsored-challenges`, {
       headers: { authorization: `Bearer ${tokens.solo}` },
     });
+    recordEndpoint("leader_like:/sponsored-challenges", soloSponsoredList);
     assert(soloSponsoredList.status === 200, `/sponsored-challenges failed (teams user): ${soloSponsoredList.status}`);
     assert(
       soloSponsoredList.data.sponsored_challenges.some((row) => row.id === freeSponsored.id) &&
@@ -609,6 +674,7 @@ async function main() {
     const sponsorSponsoredList = await request(`${BACKEND_URL}/sponsored-challenges`, {
       headers: { authorization: `Bearer ${tokens.sponsor}` },
     });
+    recordEndpoint("challenge_sponsor:/sponsored-challenges", sponsorSponsoredList);
     assert(sponsorSponsoredList.status === 200, `/sponsored-challenges failed (challenge sponsor): ${sponsorSponsoredList.status}`);
     assert(
       sponsorSponsoredList.data.sponsored_challenges.some((row) => row.id === freeSponsored.id) &&
@@ -619,6 +685,7 @@ async function main() {
     const sponsorDetail = await request(`${BACKEND_URL}/sponsored-challenges/${freeSponsored.id}`, {
       headers: { authorization: `Bearer ${tokens.member}` },
     });
+    recordEndpoint(`member:/sponsored-challenges/${freeSponsored.id}`, sponsorDetail);
     assert(sponsorDetail.status === 200, `/sponsored-challenges/:id failed: ${sponsorDetail.status}`);
     assert(
       sponsorDetail.data.sponsored_challenge?.packaging_read_model?.display_requirements?.sponsor_attribution_required === true,
@@ -680,6 +747,46 @@ async function main() {
     });
     assert(coachGlobalBroadcast.status === 201, `coach global broadcast should succeed, got ${coachGlobalBroadcast.status}`);
 
+    check(
+      "contract.member.channels.shape",
+      topLevelKeys(memberChannels.data).includes("channels"),
+      "Contract mismatch: /api/channels missing channels key for member",
+      { keys: topLevelKeys(memberChannels.data) }
+    );
+    check(
+      "contract.member.sponsored.shape",
+      topLevelKeys(memberSponsoredList.data).includes("sponsored_challenges"),
+      "Contract mismatch: /sponsored-challenges missing sponsored_challenges key for member",
+      { keys: topLevelKeys(memberSponsoredList.data) }
+    );
+    check(
+      "contract.member.dashboard.shape",
+      topLevelKeys(memberDashboard.data).includes("loggable_kpis"),
+      "Contract mismatch: /dashboard missing loggable_kpis for member",
+      { keys: topLevelKeys(memberDashboard.data) }
+    );
+    check(
+      "visibility.member.channels.count",
+      asArray(memberChannels.data.channels).length >= 3,
+      "Member should see seeded team+sponsor+cohort channels",
+      { count: asArray(memberChannels.data.channels).length }
+    );
+    check(
+      "visibility.challenge_sponsor.channels.count",
+      asArray(sponsorChannels.data.channels).length === 1,
+      "Challenge sponsor should only see sponsor channel membership in seeded baseline",
+      { count: asArray(sponsorChannels.data.channels).length }
+    );
+    check(
+      "visibility.coach.channels.count",
+      (() => {
+        const coachChannels = diagnostics.endpoint_snapshots["coach:/api/channels"];
+        return Boolean(coachChannels) && coachChannels.channels_count === 0;
+      })(),
+      "Coach (admin) should not implicitly inherit team/sponsor channel memberships in seeded baseline",
+      { coach_snapshot: diagnostics.endpoint_snapshots["coach:/api/channels"] ?? null }
+    );
+
     const summary = {
       seed_tag: seedTag,
       users: {
@@ -724,6 +831,13 @@ async function main() {
 
     console.log(JSON.stringify(summary, null, 2));
     console.log("Coaching sample content seed + endpoint smoke checks passed.");
+  } catch (err) {
+    console.error("Coaching seed validation diagnostics:");
+    console.error(JSON.stringify(diagnostics, null, 2));
+    if (err && typeof err === "object" && "details" in err) {
+      console.error(`Failure details: ${JSON.stringify(err.details)}`);
+    }
+    throw err;
   } finally {
     if (dbConnected) await db.end();
     server.kill("SIGTERM");
