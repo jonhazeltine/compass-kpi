@@ -106,10 +106,11 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W12-INTERACTION-PRIMITIVES-DOCS-C` | `committed` | `M6 W12 coach portal interaction primitives docs lock` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal interaction model` (`primary actions`, `section switching`, `secondary action menus`, `list row selection`, `scroll requirements`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ compatibility alias notes) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + post Admin-1 landing sync | Committed docs lock: interaction primitives are now explicit across W12 coach-portal docs (primary-action buttons, section-switching tabs/segments, secondary-action menus, list/row selection behavior, and page scroll requirements). No structural boundary changes. |
 | `COACHING-W12-PORTAL-AUTHORING-CORRECTION-B2` | `committed` | `M6 W12 coach portal authoring correction pass (file-manager IA)` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal authoring UX` (`folder/file IA`, `drag/drop to milestones`, `cohort assignment`, `channel segments`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ `/coach/uploads` and `/admin/coaching/*` compatibility checks) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | owner correction pass (W12 B2) | Committed correction B2: Journey Builder now uses file-manager IA (left collections tree, middle selected-collection assets, right milestone drop targets) with breadcrumb/back cue, retained create/save/reorder/remove controls, and aligned Cohorts/Channels with assignment/segment patterns. |
 | `COACHING-W12-PORTAL-FOLDER-IA-CORRECTION-D` | `committed` | `M6 W12 coach portal folder/files IA correction pass` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal authoring UX` (`true folder/files manager behavior`, `2-column journeys source->builder`, `runtime drag/drop reliability`) | `/coach/library`, `/coach/journeys` (+ `/coach/uploads` and `/admin/coaching/*` compatibility checks) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | owner correction pass (W12 D) | Committed correction D: Library now uses strict left-folders + main-files manager behavior without duplicated source columns/tabs, Journeys now uses strict 2-column source->builder IA, and runtime interactions verify asset->collection, asset->milestone, and milestone action-menu reorder/remove flows while preserving role gates and compatibility redirects. |
-| `COACHING-W12-COACH-PORTAL-WORKSPACE-IA-E` | `committed` | `M6 W12 coach portal workspace IA replacement` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal IA` (`two-mode workspace shell`, `Journeys split view`, `People split view`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ `/coach/uploads` and `/admin/coaching/*` compatibility checks) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | owner hard IA replacement (W12 E) | Committed (2026-02-27, Admin-1): replaced multi-tab coach IA with two top-level workspace modes only (`Journeys`, `People`); `Journeys` now keeps folder-tree Library (multi-expand nested assets under owning collection) + Journey Builder together, `People` now keeps directory + Cohorts/Channels panels together, compatibility redirects stay active (`/coach/uploads`, `/admin/coaching/*`), and role-gate/sponsor no-KPI-logging boundaries remain. Validation passed (`adminAuthz`, `tsc`, runtime route checks + screenshots under `app/test-results/w12-coach-portal-workspace-ia-e/`). Blocker: none. |
+| `COACHING-W12-COACH-PORTAL-WORKSPACE-IA-E` | `review` | `M6 W12 coach portal workspace IA replacement` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal IA` (`two-mode workspace shell`, `Journeys split view`, `People split view`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ `/coach/uploads` and `/admin/coaching/*` compatibility checks) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | owner hard IA replacement (W12 E) | Review-ready extension pass (2026-02-27, Admin-1): `/coach/journeys` now enforces single active-journey editing with row-select context swap, explicit `Add Lesson`/`Add Task` controls, pointer/drag reorder for lessons/tasks, and visible drag lifecycle states for Library -> Journey drop targets (picked/hover/success), while preserving sponsor view-only gate and compatibility redirects. Validation passed (`tsc`, runtime checks + screenshots under `app/test-results/w12-journey-single-editor/`). |
 | `ADMIN-W12-INTERACTION-PRIMITIVES-DOCS-SYNC-C` | `committed` | `A3/W12 admin interaction primitives docs sync` | `Admin operator` (primary), `Coach` (admin-hosted companion routes) | `admin interaction model` (`commit buttons`, `view switching controls`, `row-selection/sorting`, `secondary-action menus`, `scroll requirements`) | admin-hosted surfaces (`/admin/users`, `/admin/reports`, `/admin/kpis`, `/admin/challenge-templates`, `/admin/coaching/*` compatibility routes) + shared screenmap/wiring docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + post Admin-1 landing sync | Committed docs sync: admin interaction-primitives standard is now explicit in screenmap/wiring docs (primary commit buttons, tabs/segmented view switching, row selection + table-header sorting patterns, secondary-action menus, and page scroll requirements). No structural boundary changes. |
 | `COACHING-W9-COACH-PORTAL-EXPERIENCE-PLANNING-A` | `committed` | `W9 coach portal experience planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (host foundation only during transition) | `coach portal IA/UX` (`dedicated experience + migration path + production sequencing`) | dedicated coach portal IA/UX direction (outside admin-shell presentation), migration from `/admin/coaching/*` foundation routes, persona visibility model, production-experience sequencing | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W7/W8 acceptance pack | Committed W10 route-decoupling swath: dedicated `/coach/*` uploads/library/cohorts/channels routes + customer-facing shell/nav landed, coach-facing navigation migrated to `/coach/*`, and `/admin/coaching/*` retained as temporary compatibility redirect-only paths (no backend/schema/API changes). |
 | `COACHING-W7-SUPERADMIN-AI-TROUBLESHOOTING-AUDIT-A` | `queued` | `W7 optional hardening (super-admin AI troubleshooting only)` | `Super Admin` (primary), `Admin operator` (limited) | `AI troubleshooting / audit` (`exception-only`) | optional trimmed `/admin/coaching/audit` super-admin troubleshooting views | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package + explicit owner approval gate | Optional exception-only follow-on to repurpose or trim `/admin/coaching/audit` into super-admin AI troubleshooting/audit; not a coach notification or coach primary workflow surface. |
+| `COACHING-W12-MOBILE-NAV-LOG-CTA-CENTER-A` | `review` | `M6 / W12 mobile IA polish` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Sponsor` | `mobile IA` (`bottom tab LOG center CTA emphasis`) | `KPIDashboardScreen` bottom tab bar only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (IA/interaction polish; no Figma lock specified in assignment) | Review-ready: bottom tab order now centers Dashboard as `LOG` with larger green sparkle CTA treatment, preserved tab key destinations, and mobile typecheck pass plus simulator screenshot artifact captured. |
 
 ## Blocked Assignments
 
@@ -217,6 +218,60 @@ Provide realistic, repeatable seeded data so mobile + `/coach/*` evaluate as pro
 - Seed/reset command sequence runs successfully.
 - Smoke-check command verifies expected records per persona context.
 - Docs updated with seed scenario discoverability and run commands.
+
+### `COACHING-W12-MOBILE-NAV-LOG-CTA-CENTER-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 / W12 mobile IA polish`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Sponsor`
+- `Flow:` `mobile IA` (`bottom tab LOG center CTA emphasis`)
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (mobile app worktree preferred)
+- `Figma refs:` `N/A` (assignment-driven IA polish; no locked frame/node in launch)
+- `Execution note (2026-02-27):` Assignment added and activated before coding per controller instruction.
+- `Completion note (2026-02-27):` Updated `/app/screens/KPIDashboardScreen.tsx` bottom-tab ordering so Dashboard is centered and relabeled as `LOG` with explicit CTA-emphasis styling (larger green button with subtle sparkle accents), while preserving existing tab key routing behavior.
+- `Validation note (2026-02-27):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed; simulator artifact captured at `/Users/jon/compass-kpi/app/test-results/w12-mobile-log-tab-center/log-tab-center-home.png`; route handling remains key-driven via existing `onBottomTabPress` destinations.
+
+#### Primary Objective
+Update the mobile bottom nav in `KPIDashboardScreen.tsx` to emphasize logging as the first action:
+- move Dashboard tab to center position
+- rename Dashboard tab label to `LOG`
+- make LOG the primary CTA with larger green sparkly treatment
+- preserve existing tab destinations/wiring and accessibility behavior
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
+- bottom tab bar UI/order/treatment plus directly required local styles/helpers
+
+#### Scope Out
+- backend/API/schema changes
+- route destination rewiring beyond tab order
+- unrelated screen/layout refactors
+
+#### Constraints (Hard)
+- No backend/API/schema changes.
+- Do not break Team/Challenge/Comms/Profile route wiring.
+- Keep existing tab destinations intact; only reorder + LOG emphasis treatment.
+- Preserve accessibility (tap target size, contrast, reduced-motion fallback).
+- No unrelated refactors.
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime tab behavior checks:
+  - all tab taps still route correctly
+  - LOG opens current dashboard/logging cockpit
+  - center LOG remains stable across personas
+- Screenshots:
+  - `app/test-results/w12-mobile-log-tab-center/`
+
+#### Report-Back Requirements
+- Program/persona/screens changed
+- Tab order before/after
+- Exact LOG visual treatment implemented
+- Files + line refs
+- Validation + screenshot paths
+- Commit hash
 
 #### Report-Back Requirements
 - Update this assignment row/block status first

@@ -27,6 +27,7 @@ type CoachRouteKey = 'coachingLibrary' | 'coachingJourneys' | 'coachingCohorts' 
 type CoachWorkspaceMode = 'journeys' | 'people';
 type SaveState = 'idle' | 'pending' | 'saved' | 'error';
 type ChannelSegment = 'all' | 'top_producers' | 'new_agents' | 'sponsor_leads';
+type PeoplePanelTab = 'cohorts' | 'channels';
 
 type CoachSurface = {
   key: CoachWorkspaceMode;
@@ -57,6 +58,7 @@ type JourneyBlock = {
 type JourneyMilestone = {
   id: string;
   title: string;
+  kind: 'lesson' | 'task';
   blocks: JourneyBlock[];
 };
 
@@ -84,6 +86,7 @@ type CohortDraft = {
 type DragPayload =
   | { type: 'asset'; assetId: string; sourceCollectionId: string | null }
   | { type: 'journey_block'; sourceJourneyId: string; sourceMilestoneId: string; blockId: string; assetId: string }
+  | { type: 'journey_milestone'; sourceJourneyId: string; milestoneId: string }
   | { type: 'person'; personId: string }
   | null;
 
@@ -133,9 +136,9 @@ const CHANNEL_ROWS = [
 ];
 
 const DEFAULT_MILESTONES: JourneyMilestone[] = [
-  { id: 'ms-kickoff', title: 'Kickoff', blocks: [] },
-  { id: 'ms-practice', title: 'Practice', blocks: [] },
-  { id: 'ms-application', title: 'Live Application', blocks: [] },
+  { id: 'ms-kickoff', title: 'Lesson 1: Kickoff', kind: 'lesson', blocks: [] },
+  { id: 'ms-practice', title: 'Task 1: Practice', kind: 'task', blocks: [] },
+  { id: 'ms-application', title: 'Lesson 2: Live Application', kind: 'lesson', blocks: [] },
 ];
 
 function normalizeCoachKey(routeKey: AdminRouteKey | null | undefined): CoachRouteKey | null {
@@ -209,8 +212,12 @@ export default function CoachPortalScreen() {
   const [newCohortName, setNewCohortName] = useState('');
   const [checkedPeopleIds, setCheckedPeopleIds] = useState<string[]>([]);
   const [channelSegment, setChannelSegment] = useState<ChannelSegment>('all');
+  const [peoplePanelTab, setPeoplePanelTab] = useState<PeoplePanelTab>('cohorts');
 
   const [dragPayload, setDragPayload] = useState<DragPayload>(null);
+  const [draggingAssetId, setDraggingAssetId] = useState<string | null>(null);
+  const [hoverMilestoneId, setHoverMilestoneId] = useState<string | null>(null);
+  const [dropSuccessMilestoneId, setDropSuccessMilestoneId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [dirty, setDirty] = useState(false);
   const [saveMessage, setSaveMessage] = useState('No unsaved changes.');
@@ -298,6 +305,12 @@ export default function CoachPortalScreen() {
     },
     []
   );
+
+  useEffect(() => {
+    if (!dropSuccessMilestoneId) return;
+    const timer = setTimeout(() => setDropSuccessMilestoneId(null), 1200);
+    return () => clearTimeout(timer);
+  }, [dropSuccessMilestoneId]);
 
   useEffect(() => {
     if (!selectedJourney && journeys.length > 0) {
@@ -423,6 +436,12 @@ export default function CoachPortalScreen() {
         return { type: 'journey_block', sourceJourneyId, sourceMilestoneId, blockId, assetId };
       }
     }
+    if (text.startsWith('journey-milestone:')) {
+      const [, sourceJourneyId, milestoneId] = text.split(':');
+      if (sourceJourneyId && milestoneId) {
+        return { type: 'journey_milestone', sourceJourneyId, milestoneId };
+      }
+    }
     if (text.startsWith('person:')) {
       const [, personId] = text.split(':');
       if (personId) return { type: 'person', personId };
@@ -440,6 +459,8 @@ export default function CoachPortalScreen() {
   const startAssetDrag = (assetId: string, sourceCollectionId: string | null) => {
     if (!canComposeDraft) return;
     setDragPayload({ type: 'asset', assetId, sourceCollectionId });
+    setDraggingAssetId(assetId);
+    setDropSuccessMilestoneId(null);
     setDropHint('Asset in hand. Drop on a folder or journey milestone.');
   };
 
@@ -519,6 +540,11 @@ export default function CoachPortalScreen() {
     if (!canComposeDraft) return;
     const payload = parseDragPayload(eventLike);
     addAssetToMilestone(payload, milestoneId, index);
+    if (payload?.type === 'asset' || payload?.type === 'journey_block') {
+      setDropSuccessMilestoneId(milestoneId);
+      setHoverMilestoneId(null);
+    }
+    setDraggingAssetId(null);
     setDragPayload(null);
   };
 
@@ -527,6 +553,7 @@ export default function CoachPortalScreen() {
     if (!canComposeDraft) return;
     const payload = parseDragPayload(eventLike);
     assignAssetToCollection(collectionId, payload);
+    setDraggingAssetId(null);
     setDragPayload(null);
   };
 
@@ -534,6 +561,7 @@ export default function CoachPortalScreen() {
     if (!canComposeDraft) return false;
     if (!dragPayload || dragPayload.type !== 'asset') return false;
     assignAssetToCollection(collectionId, dragPayload);
+    setDraggingAssetId(null);
     setDragPayload(null);
     return true;
   };
@@ -542,8 +570,58 @@ export default function CoachPortalScreen() {
     if (!canComposeDraft) return false;
     if (!dragPayload || (dragPayload.type !== 'asset' && dragPayload.type !== 'journey_block')) return false;
     addAssetToMilestone(dragPayload, milestoneId, blockCount);
+    setDropSuccessMilestoneId(milestoneId);
+    setHoverMilestoneId(null);
+    setDraggingAssetId(null);
     setDragPayload(null);
     return true;
+  };
+
+  const reorderMilestoneByDrop = (payload: DragPayload, targetMilestoneId: string) => {
+    if (!selectedJourney || payload?.type !== 'journey_milestone' || payload.sourceJourneyId !== selectedJourney.id) return false;
+    const fromIndex = selectedJourney.milestones.findIndex((row) => row.id === payload.milestoneId);
+    const toIndex = selectedJourney.milestones.findIndex((row) => row.id === targetMilestoneId);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return false;
+    setJourneys((prev) =>
+      prev.map((journey) =>
+        journey.id === selectedJourney.id ? { ...journey, milestones: moveItem(journey.milestones, fromIndex, toIndex) } : journey
+      )
+    );
+    markDraftChanged('Lesson/task order updated.');
+    return true;
+  };
+
+  const handleDropToMilestoneCard = (eventLike: any, milestoneId: string) => {
+    if (typeof eventLike?.preventDefault === 'function') eventLike.preventDefault();
+    if (!canComposeDraft) return;
+    const payload = parseDragPayload(eventLike);
+    if (payload?.type !== 'journey_milestone') return;
+    if (reorderMilestoneByDrop(payload, milestoneId)) {
+      setHoverMilestoneId(null);
+      setDragPayload(null);
+    }
+  };
+
+  const handlePointerDropToMilestone = (milestoneId: string) => {
+    if (!canComposeDraft || !dragPayload) return false;
+    if (dragPayload.type === 'journey_milestone') {
+      const reordered = reorderMilestoneByDrop(dragPayload, milestoneId);
+      if (reordered) {
+        setHoverMilestoneId(null);
+        setDragPayload(null);
+      }
+      return reordered;
+    }
+    if (dragPayload.type === 'asset' || dragPayload.type === 'journey_block') {
+      const blockCount = selectedJourney?.milestones.find((row) => row.id === milestoneId)?.blocks.length ?? 0;
+      addAssetToMilestone(dragPayload, milestoneId, blockCount);
+      setDropSuccessMilestoneId(milestoneId);
+      setHoverMilestoneId(null);
+      setDraggingAssetId(null);
+      setDragPayload(null);
+      return true;
+    }
+    return false;
   };
 
   const addPeopleToCohort = (cohortId: string, personIds: string[]) => {
@@ -555,6 +633,14 @@ export default function CoachPortalScreen() {
           : cohort
       )
     );
+  };
+
+  const handleClickAssignPersonToCohort = (cohortId: string) => {
+    if (!canComposeDraft) return false;
+    if (!dragPayload || dragPayload.type !== 'person') return false;
+    addPeopleToCohort(cohortId, [dragPayload.personId]);
+    setDragPayload(null);
+    return true;
   };
 
   const createCohort = () => {
@@ -600,6 +686,25 @@ export default function CoachPortalScreen() {
     );
     setActiveBlockMenu(null);
     markDraftChanged('Journey step removed.');
+  };
+
+  const addJourneyItem = (kind: 'lesson' | 'task') => {
+    if (!canComposeDraft || !selectedJourney) return;
+    const prefix = kind === 'lesson' ? 'Lesson' : 'Task';
+    const nextCount = selectedJourney.milestones.filter((row) => row.kind === kind).length + 1;
+    const nextItem: JourneyMilestone = {
+      id: `ms-${kind}-${Date.now()}`,
+      title: `${prefix} ${nextCount}`,
+      kind,
+      blocks: [],
+    };
+    setJourneys((prev) =>
+      prev.map((journey) =>
+        journey.id === selectedJourney.id ? { ...journey, milestones: [...journey.milestones, nextItem] } : journey
+      )
+    );
+    setSelectedMilestoneId(nextItem.id);
+    markDraftChanged(`${prefix} added to selected journey.`);
   };
 
   const createJourney = () => {
@@ -781,7 +886,7 @@ export default function CoachPortalScreen() {
                               nestedAssets.map((asset) => (
                                 <Pressable
                                   key={`journey-asset-${collection.id}-${asset.id}`}
-                                  style={styles.folderAssetRow}
+                                  style={[styles.folderAssetRow, draggingAssetId === asset.id && styles.folderAssetRowDragging]}
                                   onPress={() => startAssetDrag(asset.id, collection.id)}
                                   {...({
                                     draggable: canComposeDraft,
@@ -789,6 +894,11 @@ export default function CoachPortalScreen() {
                                     onDragStart: (event: any) => {
                                       startAssetDrag(asset.id, collection.id);
                                       event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${collection.id}`);
+                                    },
+                                    onDragEnd: () => {
+                                      setDraggingAssetId(null);
+                                      setHoverMilestoneId(null);
+                                      setDragPayload(null);
                                     },
                                   } as any)}
                                 >
@@ -808,7 +918,11 @@ export default function CoachPortalScreen() {
               </View>
 
               <View style={styles.journeyCanvas}>
-                <View style={styles.canvasHeaderRow}>
+                <View style={styles.journeySelectorSection}>
+                  <View style={styles.selectorHeaderRow}>
+                    <Text style={styles.detailTitle}>Journeys</Text>
+                    <Text style={styles.detailMeta}>{journeys.length} total</Text>
+                  </View>
                   <View style={styles.journeyListRows}>
                     {journeys.map((journey) => {
                       const selected = journey.id === selectedJourney?.id;
@@ -829,30 +943,42 @@ export default function CoachPortalScreen() {
                   </View>
                 </View>
 
-                <View style={styles.builderActionBar}>
-                  <TextInput
-                    value={newJourneyName}
-                    onChangeText={setNewJourneyName}
-                    placeholder="New journey name"
-                    placeholderTextColor="#72887C"
-                    style={styles.createJourneyInput}
-                  />
-                  <TouchableOpacity style={styles.secondaryButton} onPress={createJourney}>
-                    <Text style={styles.secondaryButtonText}>Create New Journey</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.primaryButton} onPress={saveDraft}>
-                    <Text style={styles.primaryButtonText}>Save Draft</Text>
-                  </TouchableOpacity>
-                  <Text
-                    style={[
-                      styles.saveStateChip,
-                      saveState === 'pending' && styles.saveStateChipPending,
-                      saveState === 'saved' && styles.saveStateChipSaved,
-                      saveState === 'error' && styles.saveStateChipError,
-                    ]}
-                  >
-                    {saveState === 'pending' ? 'PENDING' : saveState === 'saved' ? 'SAVED' : saveState === 'error' ? 'ERROR' : 'IDLE'}
-                  </Text>
+                <View style={styles.journeyBuilderSection}>
+                  <View style={styles.selectorHeaderRow}>
+                    <Text style={styles.detailTitle}>Builder</Text>
+                    <Text style={styles.detailMeta}>Selected: {selectedJourney?.name ?? 'None'}</Text>
+                  </View>
+                  <View style={styles.builderActionBar}>
+                    <TextInput
+                      value={newJourneyName}
+                      onChangeText={setNewJourneyName}
+                      placeholder="New journey name"
+                      placeholderTextColor="#72887C"
+                      style={styles.createJourneyInput}
+                    />
+                    <TouchableOpacity style={styles.secondaryButton} onPress={createJourney}>
+                      <Text style={styles.secondaryButtonText}>Create New Journey</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.secondaryButton} onPress={() => addJourneyItem('lesson')}>
+                      <Text style={styles.secondaryButtonText}>Add Lesson</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.secondaryButton} onPress={() => addJourneyItem('task')}>
+                      <Text style={styles.secondaryButtonText}>Add Task</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.primaryButton} onPress={saveDraft}>
+                      <Text style={styles.primaryButtonText}>Save Draft</Text>
+                    </TouchableOpacity>
+                    <Text
+                      style={[
+                        styles.saveStateChip,
+                        saveState === 'pending' && styles.saveStateChipPending,
+                        saveState === 'saved' && styles.saveStateChipSaved,
+                        saveState === 'error' && styles.saveStateChipError,
+                      ]}
+                    >
+                      {saveState === 'pending' ? 'PENDING' : saveState === 'saved' ? 'SAVED' : saveState === 'error' ? 'ERROR' : 'IDLE'}
+                    </Text>
+                  </View>
                 </View>
 
                 <Text style={styles.panelHint}>{dropHint} Selected milestone: {selectedMilestoneId}</Text>
@@ -868,20 +994,91 @@ export default function CoachPortalScreen() {
                 {selectedJourney?.milestones.map((milestone) => (
                   <Pressable
                     key={milestone.id}
-                    style={[styles.milestoneCard, selectedMilestoneId === milestone.id && styles.milestoneCardSelected]}
+                    style={[
+                      styles.milestoneCard,
+                      selectedMilestoneId === milestone.id && styles.milestoneCardSelected,
+                      hoverMilestoneId === milestone.id && styles.milestoneCardHover,
+                      dropSuccessMilestoneId === milestone.id && styles.milestoneCardSuccess,
+                    ]}
                     onPress={() => {
                       const dropped = handleClickDropToMilestone(milestone.id, milestone.blocks.length);
                       if (!dropped) setSelectedMilestoneId(milestone.id);
                     }}
+                    {...({
+                      draggable: canComposeDraft,
+                      onMouseDown: () => {
+                        if (!selectedJourney || !canComposeDraft) return;
+                        setDragPayload({ type: 'journey_milestone', sourceJourneyId: selectedJourney.id, milestoneId: milestone.id });
+                      },
+                      onDragStart: (event: any) => {
+                        if (!selectedJourney || !canComposeDraft) return;
+                        setDragPayload({ type: 'journey_milestone', sourceJourneyId: selectedJourney.id, milestoneId: milestone.id });
+                        event?.dataTransfer?.setData?.('text/plain', `journey-milestone:${selectedJourney.id}:${milestone.id}`);
+                      },
+                      onDragOver: (event: any) => {
+                        handleDragOver(event);
+                        const payload = parseDragPayload(event);
+                        if (payload?.type === 'journey_milestone' && payload.milestoneId !== milestone.id) {
+                          setHoverMilestoneId(milestone.id);
+                        }
+                      },
+                      onMouseEnter: () => {
+                        if (!dragPayload) return;
+                        if (dragPayload.type === 'journey_milestone' && dragPayload.milestoneId !== milestone.id) {
+                          setHoverMilestoneId(milestone.id);
+                        }
+                      },
+                      onMouseUp: () => {
+                        handlePointerDropToMilestone(milestone.id);
+                      },
+                      onDragLeave: () => {
+                        if (hoverMilestoneId === milestone.id) setHoverMilestoneId(null);
+                      },
+                      onMouseLeave: () => {
+                        if (hoverMilestoneId === milestone.id) setHoverMilestoneId(null);
+                      },
+                      onDrop: (event: any) => handleDropToMilestoneCard(event, milestone.id),
+                      onDragEnd: () => {
+                        setHoverMilestoneId(null);
+                        setDragPayload(null);
+                      },
+                    } as any)}
                   >
-                    <Text style={styles.milestoneTitle}>{milestone.title}</Text>
+                    <Text style={styles.milestoneTitle}>
+                      {milestone.kind === 'lesson' ? 'Lesson' : 'Task'} • {milestone.title}
+                    </Text>
                     <Pressable
-                      style={styles.dropZone}
+                      style={[
+                        styles.dropZone,
+                        hoverMilestoneId === milestone.id && styles.dropZoneHover,
+                        dropSuccessMilestoneId === milestone.id && styles.dropZoneSuccess,
+                      ]}
                       onPress={() => {
                         handleClickDropToMilestone(milestone.id, milestone.blocks.length);
                       }}
                       {...({
-                        onDragOver: handleDragOver,
+                        onDragOver: (event: any) => {
+                          handleDragOver(event);
+                          const payload = parseDragPayload(event);
+                          if (payload?.type === 'asset' || payload?.type === 'journey_block') {
+                            setHoverMilestoneId(milestone.id);
+                          }
+                        },
+                        onMouseEnter: () => {
+                          if (!dragPayload) return;
+                          if (dragPayload.type === 'asset' || dragPayload.type === 'journey_block') {
+                            setHoverMilestoneId(milestone.id);
+                          }
+                        },
+                        onMouseUp: () => {
+                          handlePointerDropToMilestone(milestone.id);
+                        },
+                        onDragLeave: () => {
+                          if (hoverMilestoneId === milestone.id) setHoverMilestoneId(null);
+                        },
+                        onMouseLeave: () => {
+                          if (hoverMilestoneId === milestone.id) setHoverMilestoneId(null);
+                        },
                         onDrop: (event: any) => handleDropToMilestone(event, milestone.id, milestone.blocks.length),
                       } as any)}
                     >
@@ -920,7 +1117,10 @@ export default function CoachPortalScreen() {
                                     `journey-block:${selectedJourney.id}:${milestone.id}:${block.id}:${block.assetId}`
                                   );
                                 },
-                                onDragEnd: () => setDragPayload(null),
+                                onDragEnd: () => {
+                                  setHoverMilestoneId(null);
+                                  setDragPayload(null);
+                                },
                               } as any)}
                             >
                               <View style={styles.journeyBlockCopy}>
@@ -985,8 +1185,10 @@ export default function CoachPortalScreen() {
                         </Pressable>
                         <Pressable
                           style={[styles.libraryCard, { flex: 1 }]}
+                          onPress={() => setDragPayload({ type: 'person', personId: person.id })}
                           {...({
                             draggable: true,
+                            onMouseDown: () => setDragPayload({ type: 'person', personId: person.id }),
                             onDragStart: (event: any) => {
                               setDragPayload({ type: 'person', personId: person.id });
                               event?.dataTransfer?.setData?.('text/plain', `person:${person.id}`);
@@ -1004,118 +1206,140 @@ export default function CoachPortalScreen() {
               </View>
 
               <View style={styles.collectionRail}>
-                <View style={styles.detailCard}>
-                  <Text style={styles.detailTitle}>Cohorts</Text>
-                  <Text style={styles.detailMeta}>Select a cohort row to load members. Drag/drop from People for quick assignment.</Text>
-                  <View style={styles.builderActionBar}>
-                    <TextInput
-                      value={newCohortName}
-                      onChangeText={setNewCohortName}
-                      placeholder="Create new cohort"
-                      placeholderTextColor="#72887C"
-                      style={styles.createJourneyInput}
-                    />
-                    <TouchableOpacity style={styles.secondaryButton} onPress={createCohort}>
-                      <Text style={styles.secondaryButtonText}>Create New</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.primaryButton}
-                      onPress={() => {
-                        if (!selectedCohort) return;
-                        addPeopleToCohort(selectedCohort.id, checkedPeopleIds);
-                        setCheckedPeopleIds([]);
-                      }}
-                    >
-                      <Text style={styles.primaryButtonText}>Add Selected</Text>
-                    </TouchableOpacity>
-                  </View>
+                <View style={styles.segmentedTabs}>
+                  <Pressable
+                    style={[styles.segmentTab, peoplePanelTab === 'cohorts' && styles.segmentTabSelected]}
+                    onPress={() => setPeoplePanelTab('cohorts')}
+                  >
+                    <Text style={[styles.segmentTabText, peoplePanelTab === 'cohorts' && styles.segmentTabTextSelected]}>Cohorts</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.segmentTab, peoplePanelTab === 'channels' && styles.segmentTabSelected]}
+                    onPress={() => setPeoplePanelTab('channels')}
+                  >
+                    <Text style={[styles.segmentTabText, peoplePanelTab === 'channels' && styles.segmentTabTextSelected]}>Channels</Text>
+                  </Pressable>
+                </View>
 
-                  <View style={styles.collectionList}>
-                    {cohorts.map((cohort) => (
-                      <Pressable
-                        key={cohort.id}
-                        style={[styles.collectionCard, selectedCohort?.id === cohort.id && styles.collectionCardSelected]}
-                        onPress={() => setSelectedCohortId(cohort.id)}
-                        {...({
-                          onDragOver: handleDragOver,
-                          onDrop: (event: any) => {
-                            const payload = parseDragPayload(event);
-                            if (payload?.type === 'person') addPeopleToCohort(cohort.id, [payload.personId]);
-                            setDragPayload(null);
-                          },
-                        } as any)}
+                {peoplePanelTab === 'cohorts' ? (
+                  <View style={styles.detailCard}>
+                    <Text style={styles.detailTitle}>Cohorts</Text>
+                    <Text style={styles.detailMeta}>Select a cohort row to load members. Drag/drop from People for quick assignment.</Text>
+                    <View style={styles.builderActionBar}>
+                      <TextInput
+                        value={newCohortName}
+                        onChangeText={setNewCohortName}
+                        placeholder="Create new cohort"
+                        placeholderTextColor="#72887C"
+                        style={styles.createJourneyInput}
+                      />
+                      <TouchableOpacity style={styles.secondaryButton} onPress={createCohort}>
+                        <Text style={styles.secondaryButtonText}>Create New</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.primaryButton}
+                        onPress={() => {
+                          if (!selectedCohort) return;
+                          addPeopleToCohort(selectedCohort.id, checkedPeopleIds);
+                          setCheckedPeopleIds([]);
+                        }}
                       >
-                        <Text style={styles.collectionTitle}>{cohort.name}</Text>
-                        <Text style={styles.collectionMeta}>{cohort.memberIds.length} members</Text>
-                      </Pressable>
-                    ))}
-                  </View>
+                        <Text style={styles.primaryButtonText}>Add Selected</Text>
+                      </TouchableOpacity>
+                    </View>
 
+                    <View style={styles.collectionList}>
+                      {cohorts.map((cohort) => (
+                        <Pressable
+                          key={cohort.id}
+                          style={[styles.collectionCard, selectedCohort?.id === cohort.id && styles.collectionCardSelected]}
+                          onPress={() => {
+                            const assigned = handleClickAssignPersonToCohort(cohort.id);
+                            if (assigned) return;
+                            setSelectedCohortId(cohort.id);
+                          }}
+                          {...({
+                            onDragOver: handleDragOver,
+                            onDrop: (event: any) => {
+                              if (typeof event?.preventDefault === 'function') event.preventDefault();
+                              const payload = parseDragPayload(event);
+                              if (payload?.type === 'person') addPeopleToCohort(cohort.id, [payload.personId]);
+                              setDragPayload(null);
+                            },
+                          } as any)}
+                        >
+                          <Text style={styles.collectionTitle}>{cohort.name}</Text>
+                          <Text style={styles.collectionMeta}>{cohort.memberIds.length} members</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+
+                    <View style={styles.detailCard}>
+                      <Text style={styles.detailTitle}>{selectedCohort?.name ?? 'Cohort'}</Text>
+                      <Text style={styles.detailMeta}>{selectedCohort?.program ?? ''}</Text>
+                      {(selectedCohort?.memberIds ?? []).map((memberId) => {
+                        const person = COHORT_PEOPLE.find((p) => p.id === memberId);
+                        return <Text key={memberId} style={styles.detailMeta}>• {person?.name ?? memberId}</Text>;
+                      })}
+                    </View>
+                  </View>
+                ) : (
                   <View style={styles.detailCard}>
-                    <Text style={styles.detailTitle}>{selectedCohort?.name ?? 'Cohort'}</Text>
-                    <Text style={styles.detailMeta}>{selectedCohort?.program ?? ''}</Text>
-                    {(selectedCohort?.memberIds ?? []).map((memberId) => {
-                      const person = COHORT_PEOPLE.find((p) => p.id === memberId);
-                      return <Text key={memberId} style={styles.detailMeta}>• {person?.name ?? memberId}</Text>;
+                    <Text style={styles.detailTitle}>Channels</Text>
+                    <Text style={styles.detailMeta}>Secondary communication controls stay in People mode for cohort handoff context.</Text>
+                    <View style={styles.segmentedTabs}>
+                      <Pressable style={[styles.segmentTab, channelSegment === 'all' && styles.segmentTabSelected]} onPress={() => setChannelSegment('all')}>
+                        <Text style={[styles.segmentTabText, channelSegment === 'all' && styles.segmentTabTextSelected]}>All</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.segmentTab, channelSegment === 'top_producers' && styles.segmentTabSelected]}
+                        onPress={() => setChannelSegment('top_producers')}
+                      >
+                        <Text style={[styles.segmentTabText, channelSegment === 'top_producers' && styles.segmentTabTextSelected]}>
+                          Top Producers
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.segmentTab, channelSegment === 'new_agents' && styles.segmentTabSelected]}
+                        onPress={() => setChannelSegment('new_agents')}
+                      >
+                        <Text style={[styles.segmentTabText, channelSegment === 'new_agents' && styles.segmentTabTextSelected]}>New Agents</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.segmentTab, channelSegment === 'sponsor_leads' && styles.segmentTabSelected]}
+                        onPress={() => setChannelSegment('sponsor_leads')}
+                      >
+                        <Text style={[styles.segmentTabText, channelSegment === 'sponsor_leads' && styles.segmentTabTextSelected]}>
+                          Sponsor Leads
+                        </Text>
+                      </Pressable>
+                    </View>
+                    <View style={styles.tableHeader}>
+                      <Text style={[styles.colLabel, styles.colWide]}>Channel</Text>
+                      <Text style={[styles.colLabel, styles.colWide]}>Scope</Text>
+                      <Text style={[styles.colLabel, styles.colWide]}>Members</Text>
+                      <Text style={[styles.colLabel, styles.colNarrow]}>Activity</Text>
+                    </View>
+                    {filteredChannels.map((row) => {
+                      const selected = selectedGenericRow?.id === row.id;
+                      return (
+                        <Pressable key={row.id} style={[styles.tableRow, selected && styles.tableRowSelected]} onPress={() => setSelectedRowId(row.id)}>
+                          <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c1}</Text>
+                          <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c2}</Text>
+                          <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c3}</Text>
+                          <Text style={[styles.colValue, styles.colNarrow]} numberOfLines={1}>{row.c4}</Text>
+                        </Pressable>
+                      );
                     })}
-                  </View>
-                </View>
 
-                <View style={styles.detailCard}>
-                  <Text style={styles.detailTitle}>Channels</Text>
-                  <Text style={styles.detailMeta}>Secondary communication controls stay in People mode for cohort handoff context.</Text>
-                  <View style={styles.segmentedTabs}>
-                    <Pressable style={[styles.segmentTab, channelSegment === 'all' && styles.segmentTabSelected]} onPress={() => setChannelSegment('all')}>
-                      <Text style={[styles.segmentTabText, channelSegment === 'all' && styles.segmentTabTextSelected]}>All</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.segmentTab, channelSegment === 'top_producers' && styles.segmentTabSelected]}
-                      onPress={() => setChannelSegment('top_producers')}
-                    >
-                      <Text style={[styles.segmentTabText, channelSegment === 'top_producers' && styles.segmentTabTextSelected]}>
-                        Top Producers
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.segmentTab, channelSegment === 'new_agents' && styles.segmentTabSelected]}
-                      onPress={() => setChannelSegment('new_agents')}
-                    >
-                      <Text style={[styles.segmentTabText, channelSegment === 'new_agents' && styles.segmentTabTextSelected]}>New Agents</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.segmentTab, channelSegment === 'sponsor_leads' && styles.segmentTabSelected]}
-                      onPress={() => setChannelSegment('sponsor_leads')}
-                    >
-                      <Text style={[styles.segmentTabText, channelSegment === 'sponsor_leads' && styles.segmentTabTextSelected]}>
-                        Sponsor Leads
-                      </Text>
-                    </Pressable>
+                    <View style={styles.detailCard}>
+                      <Text style={styles.detailTitle}>{selectedGenericRow?.c1 ?? 'Selection'}</Text>
+                      <Text style={styles.detailMeta}>{selectedGenericRow?.c2 ?? ''}</Text>
+                      <Text style={styles.detailMeta}>{selectedGenericRow?.c3 ?? ''}</Text>
+                      <Text style={styles.detailMeta}>{selectedGenericRow?.c4 ?? ''}</Text>
+                    </View>
                   </View>
-                  <View style={styles.tableHeader}>
-                    <Text style={[styles.colLabel, styles.colWide]}>Channel</Text>
-                    <Text style={[styles.colLabel, styles.colWide]}>Scope</Text>
-                    <Text style={[styles.colLabel, styles.colWide]}>Members</Text>
-                    <Text style={[styles.colLabel, styles.colNarrow]}>Activity</Text>
-                  </View>
-                  {filteredChannels.map((row) => {
-                    const selected = selectedGenericRow?.id === row.id;
-                    return (
-                      <Pressable key={row.id} style={[styles.tableRow, selected && styles.tableRowSelected]} onPress={() => setSelectedRowId(row.id)}>
-                        <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c1}</Text>
-                        <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c2}</Text>
-                        <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c3}</Text>
-                        <Text style={[styles.colValue, styles.colNarrow]} numberOfLines={1}>{row.c4}</Text>
-                      </Pressable>
-                    );
-                  })}
-
-                  <View style={styles.detailCard}>
-                    <Text style={styles.detailTitle}>{selectedGenericRow?.c1 ?? 'Selection'}</Text>
-                    <Text style={styles.detailMeta}>{selectedGenericRow?.c2 ?? ''}</Text>
-                    <Text style={styles.detailMeta}>{selectedGenericRow?.c3 ?? ''}</Text>
-                    <Text style={styles.detailMeta}>{selectedGenericRow?.c4 ?? ''}</Text>
-                  </View>
-                </View>
+                )}
               </View>
             </View>
           )}
@@ -1485,6 +1709,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     backgroundColor: '#FFFFFF',
   },
+  folderAssetRowDragging: {
+    borderColor: '#2F845E',
+    backgroundColor: '#EAF8F1',
+  },
   folderAssetActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1525,11 +1753,26 @@ const styles = StyleSheet.create({
     padding: 10,
     gap: 10,
   },
-  canvasHeaderRow: {
+  journeySelectorSection: {
+    borderWidth: 1,
+    borderColor: '#D7E9DF',
+    borderRadius: 10,
+    backgroundColor: '#F9FCFA',
+    padding: 8,
+    gap: 8,
+  },
+  journeyBuilderSection: {
+    borderWidth: 1,
+    borderColor: '#D7E9DF',
+    borderRadius: 10,
+    backgroundColor: '#F9FCFA',
+    padding: 8,
+    gap: 8,
+  },
+  selectorHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    alignItems: 'center',
   },
   journeyListRows: {
     width: '100%',
@@ -1673,6 +1916,14 @@ const styles = StyleSheet.create({
     borderColor: '#2F845E',
     backgroundColor: '#F2FBF6',
   },
+  milestoneCardHover: {
+    borderColor: '#2F845E',
+    borderStyle: 'dashed',
+  },
+  milestoneCardSuccess: {
+    borderColor: '#22724D',
+    backgroundColor: '#EAF8F1',
+  },
   milestoneTitle: {
     color: '#1F3A2D',
     fontSize: 14,
@@ -1691,6 +1942,14 @@ const styles = StyleSheet.create({
   dropZoneHint: {
     color: '#658073',
     fontSize: 12,
+  },
+  dropZoneHover: {
+    borderColor: '#2F845E',
+    backgroundColor: '#F1FBF6',
+  },
+  dropZoneSuccess: {
+    borderColor: '#1C6E49',
+    backgroundColor: '#E5F6ED',
   },
   journeyBlockCard: {
     borderWidth: 1,
