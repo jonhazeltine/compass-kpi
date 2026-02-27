@@ -1068,17 +1068,16 @@ function deriveRuntimeSurfaceStateModel(params: {
     return {
       state: 'loading',
       title: `${params.surfaceLabel}: Loading`,
-      detail: 'Fetching runtime coaching context and route-ready signals.',
-      transitionHint: 'Transitions to ready, partial-read-model, empty, or error after payload resolution.',
+      detail: 'Loading context.',
+      transitionHint: 'Updates when data returns.',
     };
   }
   if (permissionDenied) {
     return {
       state: 'permission_denied',
       title: `${params.surfaceLabel}: Permission denied`,
-      detail:
-        'Access is restricted by role/package policy. Keep using visible routes; unavailable modules remain read-only/hidden and no logging or send actions are escalated.',
-      transitionHint: 'Transitions to ready when entitlement/policy outcomes refresh.',
+      detail: 'Limited by current role/package.',
+      transitionHint: 'Updates when access changes.',
     };
   }
   if (errorText) {
@@ -1086,31 +1085,30 @@ function deriveRuntimeSurfaceStateModel(params: {
       state: 'error',
       title: `${params.surfaceLabel}: Load error`,
       detail: errorText,
-      transitionHint: 'Retry keeps the user on the same runtime surface until successful.',
+      transitionHint: 'Retry to refresh.',
     };
   }
   if (isPartialReadModelStatus(readModelStatus)) {
     return {
       state: 'partial_read_model',
       title: `${params.surfaceLabel}: Partial read-model`,
-      detail:
-        'Runtime is using inferred/partial visibility outputs. Route targets stay scoped/conservative until complete data is available.',
-      transitionHint: 'Transitions to ready when full read-model outputs resolve.',
+      detail: 'Some data is limited.',
+      transitionHint: 'Updates when full data is available.',
     };
   }
   if (!hasRows) {
     return {
       state: 'empty',
       title: `${params.surfaceLabel}: Empty`,
-      detail: 'No visible runtime rows for this context yet. This is not an error.',
-      transitionHint: 'Transitions to ready as notifications/channels/journeys become available.',
+      detail: 'Nothing to show yet.',
+      transitionHint: 'Updates when items appear.',
     };
   }
   return {
     state: 'ready',
     title: `${params.surfaceLabel}: Ready`,
-    detail: 'Runtime context is available and route-target actions are active within current policy boundaries.',
-    transitionHint: 'Transitions continuously as loading, read-model, and permission outcomes update.',
+    detail: 'Data is ready.',
+    transitionHint: 'Auto-updates with changes.',
   };
 }
 
@@ -6138,11 +6136,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     return (
       <View style={[styles.runtimeStateBanner, toneStyle, opts?.compact ? styles.runtimeStateBannerCompact : null]}>
         <View style={styles.runtimeStateBannerTopRow}>
-          <Text style={styles.runtimeStateBannerTitle}>{model.title}</Text>
+          <Text style={styles.runtimeStateBannerTitle}>{opts?.compact ? model.state.replace(/_/g, ' ') : model.title}</Text>
           <Text style={styles.runtimeStateBannerStateText}>{model.state.replace(/_/g, ' ')}</Text>
         </View>
         <Text style={styles.runtimeStateBannerDetail}>{model.detail}</Text>
-        <Text style={styles.runtimeStateBannerTransition}>{model.transitionHint}</Text>
+        {!opts?.compact ? <Text style={styles.runtimeStateBannerTransition}>{model.transitionHint}</Text> : null}
+      </View>
+    );
+  }, []);
+
+  const renderKnownLimitedDataChip = useCallback((label: string) => {
+    return (
+      <View style={styles.knownLimitedDataChip}>
+        <Text style={styles.knownLimitedDataChipText}>Limited data: {label}</Text>
       </View>
     );
   }, []);
@@ -6165,12 +6171,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       return (
         <View style={[styles.coachingGateBanner, toneStyle, opts?.compact ? styles.coachingGateBannerCompact : null]}>
           <View style={styles.coachingGateBannerTopRow}>
-            <Text style={styles.coachingGateBannerTitle}>{presentation.title}</Text>
+            <Text style={styles.coachingGateBannerTitle}>{opts?.compact ? presentation.tone : presentation.title}</Text>
             <Text style={styles.coachingGateBannerToneText}>{presentation.tone}</Text>
           </View>
           <Text style={styles.coachingGateBannerSummary}>{presentation.summary}</Text>
-          {presentation.detail ? <Text style={styles.coachingGateBannerDetail}>{presentation.detail}</Text> : null}
-          {presentation.policyNote ? <Text style={styles.coachingGateBannerPolicy}>{presentation.policyNote}</Text> : null}
+          {!opts?.compact && presentation.detail ? <Text style={styles.coachingGateBannerDetail}>{presentation.detail}</Text> : null}
+          {!opts?.compact && presentation.policyNote ? <Text style={styles.coachingGateBannerPolicy}>{presentation.policyNote}</Text> : null}
         </View>
       );
     },
@@ -6936,22 +6942,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 <View style={styles.challengeListShell}>
                   <View style={styles.challengeListHeaderRow}>
                     <Text style={styles.challengeListTitle}>Challenges</Text>
-                    <TouchableOpacity
-                      style={[
-                        styles.challengeListCreateBtn,
-                        challengeCreateAllowed ? undefined : styles.disabled,
-                      ]}
-                      disabled={!challengeCreateAllowed}
-                      onPress={() => {
-                        if (!challengeCreateAllowed) return;
-                        setChallengeMemberCreateMode('team');
-                        setChallengeMemberCreateModalVisible(true);
-                      }}
-                    >
-                      <Text style={styles.challengeListCreateBtnText}>
-                        {challengeCreateAllowed ? 'Create ⊕' : 'Create (Soon)'}
-                      </Text>
-                    </TouchableOpacity>
+                    {challengeCreateAllowed ? (
+                      <TouchableOpacity
+                        style={styles.challengeListCreateBtn}
+                        onPress={() => {
+                          setChallengeMemberCreateMode('team');
+                          setChallengeMemberCreateModalVisible(true);
+                        }}
+                      >
+                        <Text style={styles.challengeListCreateBtnText}>Create ⊕</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      renderKnownLimitedDataChip('challenge create')
+                    )}
                   </View>
                   <Text style={styles.challengeListSub}>
                     {teamPersonaVariant === 'member'
@@ -6990,15 +6993,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </View>
                     </>
                   ) : null}
-                  {challengeApiFetchError ? (
-                    <Text style={styles.challengeListFallbackHint}>
-                      Using placeholder challenge cards because `GET /challenges` failed. Pull to refresh to retry live challenge rows.
-                    </Text>
-                  ) : challengeListUsingPlaceholderRows ? (
-                    <Text style={styles.challengeListFallbackHint}>
-                      Showing placeholder challenge cards until live `GET /challenges` rows are available for this account.
-                    </Text>
-                  ) : null}
+                  {challengeApiFetchError
+                    ? renderKnownLimitedDataChip('live challenge list unavailable')
+                    : challengeListUsingPlaceholderRows
+                      ? renderKnownLimitedDataChip('preview rows only')
+                      : null}
 
                   {teamPersonaVariant !== 'member' ? (
                   <View style={styles.challengeListFilterRow}>
@@ -7022,11 +7021,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     })}
                   </View>
                   ) : null}
-                  {teamPersonaVariant !== 'member' && challengeListFilter === 'sponsored' && !challengeHasSponsorSignal ? (
-                    <Text style={styles.challengeListFallbackHint}>
-                      Sponsored filter is active. This payload does not yet expose sponsor flags, so only locally tagged sponsored rows can appear.
-                    </Text>
-                  ) : null}
+                  {teamPersonaVariant !== 'member' && challengeListFilter === 'sponsored' && !challengeHasSponsorSignal
+                    ? renderKnownLimitedDataChip('sponsor flag coverage')
+                    : null}
 
                   <View style={styles.challengeListCardStack}>
                     {teamPersonaVariant === 'member'
@@ -7303,8 +7300,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </View>
                       ))}
                     </View>
-                    <TouchableOpacity style={styles.challengeMemberUpgradePrimaryBtn}>
-                      <Text style={styles.challengeMemberUpgradePrimaryBtnText}>Upgrade to Pro</Text>
+                    <TouchableOpacity
+                      style={styles.challengeMemberUpgradePrimaryBtn}
+                      onPress={() =>
+                        Alert.alert(
+                          'Upgrade options',
+                          'Checkout is not wired in this build yet. This screen remains evaluable for package-gated challenge states.'
+                        )
+                      }
+                    >
+                      <Text style={styles.challengeMemberUpgradePrimaryBtnText}>View Upgrade Options</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.challengeMemberUpgradeSecondaryBtn}
@@ -7577,12 +7582,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <Text style={styles.coachingEntryBadge}>W2 comms</Text>
                     </View>
                     <Text style={styles.coachingEntrySub}>
-                      Manual-spec-driven comms entry wiring for challenge/sponsor updates plus coaching prompts. Challenge progress/results ownership stays on this screen.
+                      Challenge updates and coaching paths.
                     </Text>
                     {renderRuntimeStateBanner(challengeRuntimeStateModel, { compact: true })}
-                    {renderCoachingPackageGateBanner('Challenge coaching and updates', challengeCoachingPackageOutcome, {
-                      compact: true,
-                    })}
+                    {renderCoachingPackageGateBanner('Challenge coaching and updates', challengeCoachingPackageOutcome, { compact: true })}
                     {renderCoachingNotificationSurface(
                       'Challenge notifications',
                       challengeSurfaceNotificationRows,
@@ -7595,70 +7598,67 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       summarizeNotificationRows(challengeRuntimeVisibilityRows, { sourceLabel: 'challenge_runtime_visibility' }),
                       { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No runtime visibility updates for this challenge context.' }
                     )}
-                    <View style={styles.coachingEntryButtonRow}>
-                      <TouchableOpacity
-                        style={[styles.coachingEntryPrimaryBtn, challengeCoachingGateBlocksCtas ? styles.disabled : null]}
-                        disabled={challengeCoachingGateBlocksCtas}
-                        onPress={() =>
-                          openCoachingShell('channel_thread', {
-                            source: 'challenge_details',
-                            preferredChannelScope: challengeHasSponsorSignal ? 'sponsor' : 'challenge',
-                            preferredChannelLabel: challengeHasSponsorSignal ? 'Sponsor / Challenge Updates' : 'Challenge Updates',
-                            threadTitle: challengeHasSponsorSignal
-                              ? `${challengeSelected?.title ?? 'Challenge'} Sponsor Channel`
-                              : `${challengeSelected?.title ?? 'Challenge'} Channel`,
-                            threadSub: challengeHasSponsorSignal
-                              ? 'Scoped sponsor/challenge communication thread shell (W2 entry routing).'
-                              : 'Scoped challenge communication thread shell (W2 entry routing).',
-                            broadcastAudienceLabel: null,
-                            broadcastRoleAllowed: false,
-                          })
-                        }
-                      >
-                        <Text style={styles.coachingEntryPrimaryBtnText}>
-                          {challengeCoachingGateBlocksCtas ? 'Updates Gated' : 'Challenge Updates'}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.coachingEntrySecondaryBtn, challengeCoachingGateBlocksCtas ? styles.disabled : null]}
-                        disabled={challengeCoachingGateBlocksCtas}
-                        onPress={() =>
-                          openCoachingShell(challengeIsCompleted ? 'coaching_journeys' : 'coaching_journey_detail', {
-                            source: 'challenge_details',
-                            selectedJourneyId: null,
-                            selectedJourneyTitle: null,
-                            selectedLessonId: null,
-                            selectedLessonTitle: null,
-                          })
-                        }
-                      >
-                        <Text style={styles.coachingEntrySecondaryBtnText}>
-                          {challengeCoachingGateBlocksCtas ? 'Coaching Gated' : 'Coaching Prompt'}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                      <TouchableOpacity
-                        style={[styles.coachingEntryDarkBtn, challengeCoachingGateBlocksCtas ? styles.disabled : null]}
-                        disabled={challengeCoachingGateBlocksCtas}
-                        onPress={() =>
-                          openAiAssistShell(
-                          {
-                            host: 'challenge_coaching_module',
-                            title: 'AI Assist (Approval-First)',
-                            sub: 'Challenge coaching helper draft shell. Advisory only, no challenge state mutation and no auto-send.',
-                            targetLabel: challengeSelected?.title ?? 'Challenge coaching module',
-                            approvedInsertOnly: true,
-                          },
-                          {
-                              prompt: `Draft a short coaching/support note for ${challengeSelected?.title ?? 'this challenge'} without changing challenge results or participation state.`,
+                    {challengeCoachingGateBlocksCtas ? (
+                      renderKnownLimitedDataChip('challenge coaching access')
+                    ) : (
+                      <>
+                        <View style={styles.coachingEntryButtonRow}>
+                          <TouchableOpacity
+                            style={styles.coachingEntryPrimaryBtn}
+                            onPress={() =>
+                              openCoachingShell('channel_thread', {
+                                source: 'challenge_details',
+                                preferredChannelScope: challengeHasSponsorSignal ? 'sponsor' : 'challenge',
+                                preferredChannelLabel: challengeHasSponsorSignal ? 'Sponsor / Challenge Updates' : 'Challenge Updates',
+                                threadTitle: challengeHasSponsorSignal
+                                  ? `${challengeSelected?.title ?? 'Challenge'} Sponsor Channel`
+                                  : `${challengeSelected?.title ?? 'Challenge'} Channel`,
+                                threadSub: challengeHasSponsorSignal
+                                  ? 'Sponsor/challenge updates thread.'
+                                  : 'Challenge updates thread.',
+                                broadcastAudienceLabel: null,
+                                broadcastRoleAllowed: false,
+                              })
                             }
-                          )
-                        }
-                      >
-                      <Text style={styles.coachingEntryDarkBtnText}>
-                        {challengeCoachingGateBlocksCtas ? 'AI Assist Gated' : 'AI Assist Draft (Review)'}
-                      </Text>
-                    </TouchableOpacity>
+                          >
+                            <Text style={styles.coachingEntryPrimaryBtnText}>Challenge Updates</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.coachingEntrySecondaryBtn}
+                            onPress={() =>
+                              openCoachingShell(challengeIsCompleted ? 'coaching_journeys' : 'coaching_journey_detail', {
+                                source: 'challenge_details',
+                                selectedJourneyId: null,
+                                selectedJourneyTitle: null,
+                                selectedLessonId: null,
+                                selectedLessonTitle: null,
+                              })
+                            }
+                          >
+                            <Text style={styles.coachingEntrySecondaryBtnText}>Coaching Prompt</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.coachingEntryDarkBtn}
+                          onPress={() =>
+                            openAiAssistShell(
+                              {
+                                host: 'challenge_coaching_module',
+                                title: 'AI Assist (Approval-First)',
+                                sub: 'Draft only. Human review required.',
+                                targetLabel: challengeSelected?.title ?? 'Challenge coaching module',
+                                approvedInsertOnly: true,
+                              },
+                              {
+                                prompt: `Draft a short coaching/support note for ${challengeSelected?.title ?? 'this challenge'} without changing challenge results or participation state.`,
+                              }
+                            )
+                          }
+                        >
+                          <Text style={styles.coachingEntryDarkBtnText}>AI Assist Draft (Review)</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
                   </View>
 
                   <View style={styles.challengeDetailsCtaBlock}>
@@ -7712,19 +7712,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           >
                             <Text style={styles.challengeDetailsPrimaryCtaText}>{primaryActionLabel}</Text>
                           </TouchableOpacity>
-                          {!challengeMutationError ? (
-                            <Text style={styles.challengeListFallbackHint}>
-                              {challengeIsCompleted
-                                ? 'Challenge is complete. Membership changes are disabled.'
-                                : canLeaveJoinedActiveChallenge
-                                  ? 'You are joined. Leave only if you want to stop tracking participation for this challenge.'
-                                  : challengeIsPlaceholderOnly && !challengeSelected.joined
-                                    ? 'Placeholder cards are preview-only and cannot be joined.'
-                                    : !challengeSelected.joined
-                                      ? 'Join to track progress and show your activity on the leaderboard.'
-                                      : 'Open leaderboard to review standings and progress.'}
-                            </Text>
-                          ) : null}
+                          {!challengeMutationError && challengeIsPlaceholderOnly && !challengeSelected.joined
+                            ? renderKnownLimitedDataChip('join disabled on preview rows')
+                            : null}
                     {challengeMutationError ? (
                       <Text style={styles.challengeJoinErrorText}>{challengeMutationError}</Text>
                     ) : null}
@@ -8133,9 +8123,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           {teamPersonaVariant !== 'member' ? (
                             <TouchableOpacity
                               style={styles.teamChallengesCreateBtn}
-                              onPress={() => setTeamFlowScreen('invite_member')}
+                              onPress={() => openChallengeFlowFromTeam('list')}
                             >
-                              <Text style={styles.teamChallengesCreateBtnText}>Create ⊕</Text>
+                              <Text style={styles.teamChallengesCreateBtnText}>Open Challenges</Text>
                             </TouchableOpacity>
                           ) : null}
                         </View>
@@ -8244,7 +8234,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           <Text style={styles.coachingEntryBadge}>W2 comms</Text>
                         </View>
                         <Text style={styles.coachingEntrySub}>
-                          Team Member coaching progress shell plus team updates channel entry routing (W2 comms entry point pass).
+                          Coaching progress and team updates.
                         </Text>
                         {renderRuntimeStateBanner(teamRuntimeStateModel, { compact: true })}
                         {renderCoachingPackageGateBanner('Team member coaching module', null, { compact: true })}
@@ -8501,7 +8491,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         <Text style={styles.coachingEntryBadge}>W2 comms</Text>
                       </View>
                       <Text style={styles.coachingEntrySub}>
-                        Leader coaching summary with team updates channel entry and role-gated broadcast composer entry. Broadcast send/write remains deferred pending API wiring.
+                        Team coaching summary, updates, and broadcast entry.
                       </Text>
                       {renderRuntimeStateBanner(teamRuntimeStateModel, { compact: true })}
                       {renderCoachingPackageGateBanner('Team leader coaching module', null, { compact: true })}
@@ -8572,7 +8562,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             {
                               host: 'team_leader_coaching_module',
                               title: 'AI Assist (Approval-First)',
-                              sub: 'Leader coaching summary helper draft shell. Human review/edit required before any broadcast or message send.',
+                              sub: 'Draft only. Human review required.',
                               targetLabel: 'Team leader coaching module',
                               approvedInsertOnly: true,
                             },
@@ -8797,57 +8787,45 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </Text>
                       </View>
                     ) : null}
-                    <View style={styles.coachingShellActionRow}>
-                      <TouchableOpacity
-                        style={[styles.coachingShellActionBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
-                        disabled={shellPackageGateBlocksActions}
-                        onPress={() =>
-                          openCoachingShell('inbox', {
-                            source: 'user_tab',
-                            preferredChannelScope: null,
-                            preferredChannelLabel: null,
-                            threadTitle: null,
-                            threadSub: null,
-                            broadcastAudienceLabel: null,
-                            broadcastRoleAllowed: false,
-                          })
-                        }
-                      >
-                        <Text style={styles.coachingShellActionBtnText}>
-                          {shellPackageGateBlocksActions ? 'Package Gated' : 'Inbox'}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.coachingShellActionBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
-                        disabled={shellPackageGateBlocksActions}
-                        onPress={() => openCoachingShell('inbox_channels')}
-                      >
-                        <Text style={styles.coachingShellActionBtnText}>
-                          {shellPackageGateBlocksActions ? 'Package Gated' : 'Channels'}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.coachingShellActionBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
-                        disabled={shellPackageGateBlocksActions}
-                        onPress={() => openCoachingShell('coaching_journeys')}
-                      >
-                        <Text style={styles.coachingShellActionBtnText}>
-                          {shellPackageGateBlocksActions ? 'Package Gated' : 'Journeys'}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    {meta.primary?.map((action) => (
-                      <TouchableOpacity
-                        key={`${coachingShellScreen}-${action.to}`}
-                        style={[styles.coachingShellPrimaryBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
-                        disabled={shellPackageGateBlocksActions}
-                        onPress={() => openCoachingShell(action.to)}
-                      >
-                        <Text style={styles.coachingShellPrimaryBtnText}>
-                          {shellPackageGateBlocksActions ? 'Package Gated' : action.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                    {shellPackageGateBlocksActions ? (
+                      renderKnownLimitedDataChip('coaching package access')
+                    ) : (
+                      <>
+                        <View style={styles.coachingShellActionRow}>
+                          <TouchableOpacity
+                            style={styles.coachingShellActionBtn}
+                            onPress={() =>
+                              openCoachingShell('inbox', {
+                                source: 'user_tab',
+                                preferredChannelScope: null,
+                                preferredChannelLabel: null,
+                                threadTitle: null,
+                                threadSub: null,
+                                broadcastAudienceLabel: null,
+                                broadcastRoleAllowed: false,
+                              })
+                            }
+                          >
+                            <Text style={styles.coachingShellActionBtnText}>Inbox</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('inbox_channels')}>
+                            <Text style={styles.coachingShellActionBtnText}>Channels</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('coaching_journeys')}>
+                            <Text style={styles.coachingShellActionBtnText}>Journeys</Text>
+                          </TouchableOpacity>
+                        </View>
+                        {meta.primary?.map((action) => (
+                          <TouchableOpacity
+                            key={`${coachingShellScreen}-${action.to}`}
+                            style={styles.coachingShellPrimaryBtn}
+                            onPress={() => openCoachingShell(action.to)}
+                          >
+                            <Text style={styles.coachingShellPrimaryBtnText}>{action.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </>
+                    )}
                     {coachingShellScreen === 'inbox'
                       ? renderCoachingNotificationSurface(
                           'Coaching notifications inbox rows',
@@ -9016,32 +8994,30 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             emptyHint: 'No thread notification rows returned for this channel.',
                           }
                         )}
-                        <TouchableOpacity
-                          style={[
-                            styles.coachingAiAssistBtn,
-                            shellPackageGateBlocksActions ? styles.disabled : null,
-                          ]}
-                          disabled={shellPackageGateBlocksActions}
-                          onPress={() =>
-                            openAiAssistShell(
-                              {
-                                host: 'channel_thread',
-                                title: 'AI Reply Draft (Approval-First)',
-                                sub: 'AI assist can draft/rewrite text for this thread, but only a human can send the final message.',
-                                targetLabel: selectedChannelResolvedName ?? contextualThreadTitle,
-                                approvedInsertOnly: true,
-                              },
-                              {
-                                prompt: `Draft a reply for ${selectedChannelResolvedName ?? contextualThreadTitle} that is supportive and action-oriented.`,
-                                draft: channelMessageDraft,
-                              }
-                            )
-                          }
-                        >
-                          <Text style={styles.coachingAiAssistBtnText}>
-                            {shellPackageGateBlocksActions ? 'AI Assist Gated' : 'AI Assist Draft / Rewrite'}
-                          </Text>
-                        </TouchableOpacity>
+                        {shellPackageGateBlocksActions ? (
+                          renderKnownLimitedDataChip('thread actions')
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.coachingAiAssistBtn}
+                            onPress={() =>
+                              openAiAssistShell(
+                                {
+                                  host: 'channel_thread',
+                                  title: 'AI Reply Draft (Approval-First)',
+                                  sub: 'Draft only. Human send is required.',
+                                  targetLabel: selectedChannelResolvedName ?? contextualThreadTitle,
+                                  approvedInsertOnly: true,
+                                },
+                                {
+                                  prompt: `Draft a reply for ${selectedChannelResolvedName ?? contextualThreadTitle} that is supportive and action-oriented.`,
+                                  draft: channelMessageDraft,
+                                }
+                              )
+                            }
+                          >
+                            <Text style={styles.coachingAiAssistBtnText}>AI Assist Draft / Rewrite</Text>
+                          </TouchableOpacity>
+                        )}
                         {channelMessagesError ? (
                           <Text style={styles.coachingJourneyInlineError}>{channelMessagesError}</Text>
                         ) : null}
@@ -9124,7 +9100,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               }}
                             >
                               <Text style={[styles.coachingLessonActionBtnText, styles.coachingLessonActionBtnTextActive]}>
-                                {shellPackageGateBlocksActions ? 'Package Gated' : channelMessageSubmitting ? 'Sending…' : 'Send'}
+                                {channelMessageSubmitting ? 'Sending…' : 'Send'}
                               </Text>
                             </TouchableOpacity>
                           </View>
@@ -9139,35 +9115,33 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             ? `Leader-gated entry is wired. Audience context: ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'team/channel scope TBD'}.`
                             : 'Broadcast is hidden for non-leader flows; this shell is shown only as a blocked fallback if opened directly.'}
                         </Text>
-                        <TouchableOpacity
-                          style={[
-                            styles.coachingAiAssistBtn,
-                            (!roleCanOpenBroadcast || shellPackageGateBlocksActions) ? styles.disabled : null,
-                          ]}
-                          disabled={!roleCanOpenBroadcast || shellPackageGateBlocksActions}
-                          onPress={() =>
-                            openAiAssistShell(
-                              {
-                                host: 'coach_broadcast_compose',
-                                title: 'AI Broadcast Draft (Approval-First)',
-                                sub: 'AI assist may draft broadcast copy, but audience scope and send remain explicit human actions.',
-                                targetLabel:
-                                  coachingShellContext.broadcastAudienceLabel ??
-                                  selectedChannelResolvedName ??
-                                  'Broadcast audience',
-                                approvedInsertOnly: true,
-                              },
-                              {
-                                prompt: `Draft a team coaching broadcast for ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'this audience'} with a clear next action.`,
-                                draft: broadcastDraft,
-                              }
-                            )
-                          }
-                        >
-                          <Text style={styles.coachingAiAssistBtnText}>
-                            {!roleCanOpenBroadcast || shellPackageGateBlocksActions ? 'AI Assist Gated' : 'AI Assist Draft / Rewrite'}
-                          </Text>
-                        </TouchableOpacity>
+                        {!roleCanOpenBroadcast || shellPackageGateBlocksActions ? (
+                          renderKnownLimitedDataChip('broadcast compose access')
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.coachingAiAssistBtn}
+                            onPress={() =>
+                              openAiAssistShell(
+                                {
+                                  host: 'coach_broadcast_compose',
+                                  title: 'AI Broadcast Draft (Approval-First)',
+                                  sub: 'Draft only. Human send is required.',
+                                  targetLabel:
+                                    coachingShellContext.broadcastAudienceLabel ??
+                                    selectedChannelResolvedName ??
+                                    'Broadcast audience',
+                                  approvedInsertOnly: true,
+                                },
+                                {
+                                  prompt: `Draft a team coaching broadcast for ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'this audience'} with a clear next action.`,
+                                  draft: broadcastDraft,
+                                }
+                              )
+                            }
+                          >
+                            <Text style={styles.coachingAiAssistBtnText}>AI Assist Draft / Rewrite</Text>
+                          </TouchableOpacity>
+                        )}
                         <View style={styles.coachingShellInputGhost}>
                           <Text style={styles.coachingShellInputGhostText}>
                             {roleCanOpenBroadcast
@@ -9250,28 +9224,29 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             emptyHint: 'No runtime visibility updates for journeys.',
                           }
                         )}
-                        <TouchableOpacity
-                          style={[styles.coachingAiAssistBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
-                          disabled={shellPackageGateBlocksActions}
-                          onPress={() =>
-                            openAiAssistShell(
-                              {
-                                host: 'coaching_journeys',
-                                title: 'AI Coaching Suggestion (Approval-First)',
-                                sub: 'AI assist can draft a journey coaching suggestion. Human review is required before using it in any message or broadcast.',
-                                targetLabel: selectedJourneyTitle ?? 'Coaching Journeys',
-                                approvedInsertOnly: true,
-                              },
-                              {
-                                prompt: `Draft a coaching suggestion based on ${selectedJourneyTitle ?? 'the current journeys'} progress summary.`,
-                              }
-                            )
-                          }
-                        >
-                          <Text style={styles.coachingAiAssistBtnText}>
-                            {shellPackageGateBlocksActions ? 'AI Assist Gated' : 'AI Coaching Suggestion Draft'}
-                          </Text>
-                        </TouchableOpacity>
+                        {shellPackageGateBlocksActions ? (
+                          renderKnownLimitedDataChip('journey actions')
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.coachingAiAssistBtn}
+                            onPress={() =>
+                              openAiAssistShell(
+                                {
+                                  host: 'coaching_journeys',
+                                  title: 'AI Coaching Suggestion (Approval-First)',
+                                  sub: 'Draft only. Human review required.',
+                                  targetLabel: selectedJourneyTitle ?? 'Coaching Journeys',
+                                  approvedInsertOnly: true,
+                                },
+                                {
+                                  prompt: `Draft a coaching suggestion based on ${selectedJourneyTitle ?? 'the current journeys'} progress summary.`,
+                                }
+                              )
+                            }
+                          >
+                            <Text style={styles.coachingAiAssistBtnText}>AI Coaching Suggestion Draft</Text>
+                          </TouchableOpacity>
+                        )}
                         <View style={styles.coachingJourneySummaryRow}>
                           <View style={styles.coachingJourneySummaryCard}>
                             <Text style={styles.coachingJourneySummaryLabel}>Progress Rows</Text>
@@ -9307,7 +9282,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         ) : coachingJourneysError ? (
                           <View style={styles.coachingJourneyEmptyCard}>
                             <Text style={styles.coachingJourneyEmptyTitle}>Journeys failed to load</Text>
-                            <Text style={styles.coachingJourneyEmptySub}>{coachingJourneysError}</Text>
+                            <Text style={styles.coachingJourneyEmptySub}>Could not load journeys.</Text>
                             <TouchableOpacity
                               style={styles.coachingJourneyRetryBtn}
                               onPress={() => {
@@ -9321,9 +9296,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         ) : journeyListRows.length === 0 ? (
                           <View style={styles.coachingJourneyEmptyCard}>
                             <Text style={styles.coachingJourneyEmptyTitle}>No journeys available</Text>
-                            <Text style={styles.coachingJourneyEmptySub}>
-                              The current coaching payload returned no visible journeys for this account/team scope.
-                            </Text>
+                            <Text style={styles.coachingJourneyEmptySub}>No visible journeys in this scope.</Text>
                           </View>
                         ) : (
                           <View style={styles.coachingJourneyListCard}>
@@ -9402,9 +9375,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         {!selectedJourneyId ? (
                           <View style={styles.coachingJourneyEmptyCard}>
                             <Text style={styles.coachingJourneyEmptyTitle}>Choose a journey first</Text>
-                            <Text style={styles.coachingJourneyEmptySub}>
-                              Open `Coaching Journeys` to select a journey before viewing milestones and lessons.
-                            </Text>
+                            <Text style={styles.coachingJourneyEmptySub}>Open Coaching Journeys to continue.</Text>
                           </View>
                         ) : coachingJourneyDetailLoading ? (
                           <View style={styles.coachingJourneyEmptyCard}>
@@ -9414,7 +9385,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         ) : coachingJourneyDetailError ? (
                           <View style={styles.coachingJourneyEmptyCard}>
                             <Text style={styles.coachingJourneyEmptyTitle}>Journey detail failed to load</Text>
-                            <Text style={styles.coachingJourneyEmptySub}>{coachingJourneyDetailError}</Text>
+                            <Text style={styles.coachingJourneyEmptySub}>Could not load journey detail.</Text>
                             <TouchableOpacity
                               style={styles.coachingJourneyRetryBtn}
                               onPress={() => {
@@ -9434,35 +9405,34 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 {String(coachingJourneyDetail?.journey?.description ?? 'Milestones and lessons loaded from coaching endpoints.')}
                               </Text>
                             </View>
-                            <TouchableOpacity
-                              style={[styles.coachingAiAssistBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
-                              disabled={shellPackageGateBlocksActions}
-                              onPress={() =>
-                                openAiAssistShell(
-                                  {
-                                    host: 'coaching_journey_detail',
-                                    title: 'AI Journey Coaching Draft (Approval-First)',
-                                    sub: 'AI assist can draft guidance tied to this journey context. Human review/edit is required.',
-                                    targetLabel:
-                                      coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'Journey Detail',
-                                    approvedInsertOnly: true,
-                                  },
-                                  {
-                                    prompt: `Draft a coaching note for the journey ${coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'current journey'} using milestone progress context.`,
-                                  }
-                                )
-                              }
-                            >
-                              <Text style={styles.coachingAiAssistBtnText}>
-                                {shellPackageGateBlocksActions ? 'AI Assist Gated' : 'AI Journey Draft'}
-                              </Text>
-                            </TouchableOpacity>
+                            {shellPackageGateBlocksActions ? (
+                              renderKnownLimitedDataChip('journey detail actions')
+                            ) : (
+                              <TouchableOpacity
+                                style={styles.coachingAiAssistBtn}
+                                onPress={() =>
+                                  openAiAssistShell(
+                                    {
+                                      host: 'coaching_journey_detail',
+                                      title: 'AI Journey Coaching Draft (Approval-First)',
+                                      sub: 'Draft only. Human review required.',
+                                      targetLabel:
+                                        coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'Journey Detail',
+                                      approvedInsertOnly: true,
+                                    },
+                                    {
+                                      prompt: `Draft a coaching note for the journey ${coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'current journey'} using milestone progress context.`,
+                                    }
+                                  )
+                                }
+                              >
+                                <Text style={styles.coachingAiAssistBtnText}>AI Journey Draft</Text>
+                              </TouchableOpacity>
+                            )}
                             {milestoneRows.length === 0 ? (
                               <View style={styles.coachingJourneyEmptyCard}>
                                 <Text style={styles.coachingJourneyEmptyTitle}>No milestones found</Text>
-                                <Text style={styles.coachingJourneyEmptySub}>
-                                  This journey currently has no visible milestones/lessons in the API response.
-                                </Text>
+                                <Text style={styles.coachingJourneyEmptySub}>No milestones available.</Text>
                               </View>
                             ) : (
                               <View style={styles.coachingJourneyListCard}>
@@ -9592,9 +9562,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         {!selectedLesson ? (
                           <View style={styles.coachingJourneyEmptyCard}>
                             <Text style={styles.coachingJourneyEmptyTitle}>Choose a lesson first</Text>
-                            <Text style={styles.coachingJourneyEmptySub}>
-                              Open a lesson from `Coaching Journey Detail` before using progress actions.
-                            </Text>
+                            <Text style={styles.coachingJourneyEmptySub}>Open a lesson from Journey Detail.</Text>
                           </View>
                         ) : (
                           <View style={styles.coachingJourneyListCard}>
@@ -9609,28 +9577,29 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 {selectedLesson.body?.trim() || 'Lesson body is empty in the current payload. Progress actions are still available explicitly.'}
                               </Text>
                             </View>
-                            <TouchableOpacity
-                              style={[styles.coachingAiAssistBtn, shellPackageGateBlocksActions ? styles.disabled : null]}
-                              disabled={shellPackageGateBlocksActions}
-                              onPress={() =>
-                                openAiAssistShell(
-                                  {
-                                    host: 'coaching_lesson_detail',
-                                    title: 'AI Lesson Reflection Draft (Approval-First)',
-                                    sub: 'AI assist can draft a lesson-context reflection or coaching prompt. Advisory only; no lesson progress writes or KPI actions.',
-                                    targetLabel: selectedLesson.title,
-                                    approvedInsertOnly: true,
-                                  },
-                                  {
-                                    prompt: `Draft a short reflection prompt and next-step coaching note for the lesson "${selectedLesson.title}".`,
-                                  }
-                                )
-                              }
-                            >
-                              <Text style={styles.coachingAiAssistBtnText}>
-                                {shellPackageGateBlocksActions ? 'AI Assist Gated' : 'AI Lesson Draft'}
-                              </Text>
-                            </TouchableOpacity>
+                            {shellPackageGateBlocksActions ? (
+                              renderKnownLimitedDataChip('lesson actions')
+                            ) : (
+                              <TouchableOpacity
+                                style={styles.coachingAiAssistBtn}
+                                onPress={() =>
+                                  openAiAssistShell(
+                                    {
+                                      host: 'coaching_lesson_detail',
+                                      title: 'AI Lesson Reflection Draft (Approval-First)',
+                                      sub: 'Draft only. Human review required.',
+                                      targetLabel: selectedLesson.title,
+                                      approvedInsertOnly: true,
+                                    },
+                                    {
+                                      prompt: `Draft a short reflection prompt and next-step coaching note for the lesson "${selectedLesson.title}".`,
+                                    }
+                                  )
+                                }
+                              >
+                                <Text style={styles.coachingAiAssistBtnText}>AI Lesson Draft</Text>
+                              </TouchableOpacity>
+                            )}
                             <View style={styles.coachingLessonProgressCard}>
                               <Text style={styles.coachingLessonProgressTitle}>Lesson Progress</Text>
                               <Text style={styles.coachingLessonProgressStatus}>
@@ -9644,45 +9613,46 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               {coachingLessonProgressError ? (
                                 <Text style={styles.coachingJourneyInlineError}>{coachingLessonProgressError}</Text>
                               ) : null}
-                              <View style={styles.coachingLessonActionRow}>
-                                {(['not_started', 'in_progress', 'completed'] as const).map((status) => {
-                                  const isCurrent = selectedLessonStatus === status;
-                                  const isSubmitting =
-                                    coachingLessonProgressSubmittingId === String(selectedLesson.id);
-                                  return (
-                                    <TouchableOpacity
-                                      key={`lesson-progress-${status}`}
-                                      style={[
-                                        styles.coachingLessonActionBtn,
-                                        isCurrent ? styles.coachingLessonActionBtnActive : null,
-                                        isSubmitting || shellPackageGateBlocksActions ? styles.disabled : null,
-                                      ]}
-                                      disabled={isSubmitting || shellPackageGateBlocksActions}
-                                      onPress={() => {
-                                        if (shellPackageGateBlocksActions) return;
-                                        void submitCoachingLessonProgress(String(selectedLesson.id), status);
-                                      }}
-                                    >
-                                      <Text
+                              {shellPackageGateBlocksActions ? (
+                                renderKnownLimitedDataChip('lesson progress updates')
+                              ) : (
+                                <View style={styles.coachingLessonActionRow}>
+                                  {(['not_started', 'in_progress', 'completed'] as const).map((status) => {
+                                    const isCurrent = selectedLessonStatus === status;
+                                    const isSubmitting =
+                                      coachingLessonProgressSubmittingId === String(selectedLesson.id);
+                                    return (
+                                      <TouchableOpacity
+                                        key={`lesson-progress-${status}`}
                                         style={[
-                                          styles.coachingLessonActionBtnText,
-                                          isCurrent ? styles.coachingLessonActionBtnTextActive : null,
+                                          styles.coachingLessonActionBtn,
+                                          isCurrent ? styles.coachingLessonActionBtnActive : null,
+                                          isSubmitting ? styles.disabled : null,
                                         ]}
+                                        disabled={isSubmitting}
+                                        onPress={() => {
+                                          void submitCoachingLessonProgress(String(selectedLesson.id), status);
+                                        }}
                                       >
-                                        {shellPackageGateBlocksActions
-                                          ? 'Package Gated'
-                                          : isSubmitting && isCurrent
-                                          ? 'Saving…'
-                                          : status === 'not_started'
-                                            ? 'Reset'
-                                            : status === 'in_progress'
-                                              ? 'Start'
-                                              : 'Complete'}
-                                      </Text>
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </View>
+                                        <Text
+                                          style={[
+                                            styles.coachingLessonActionBtnText,
+                                            isCurrent ? styles.coachingLessonActionBtnTextActive : null,
+                                          ]}
+                                        >
+                                          {isSubmitting && isCurrent
+                                            ? 'Saving…'
+                                            : status === 'not_started'
+                                              ? 'Reset'
+                                              : status === 'in_progress'
+                                                ? 'Start'
+                                                : 'Complete'}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </View>
+                              )}
                             </View>
                           </View>
                         )}
@@ -9693,7 +9663,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   <View style={styles.coachingShellCard}>
                     <Text style={styles.coachingShellTitle}>Profile / Settings Coaching Allocation</Text>
                     <Text style={styles.coachingShellSub}>
-                      W1 placeholder entry points for coaching preferences and notifications (`manual-spec-driven`, no backend writes).
+                      Coaching preferences and notifications.
                     </Text>
                     {renderCoachingPackageGateBanner('Profile / Settings coaching allocation', null, { compact: true })}
                     <View style={styles.coachingEntryButtonRow}>
@@ -9792,31 +9762,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 <Text style={styles.coachingEntryBadge}>manual-spec-driven</Text>
               </View>
               <Text style={styles.coachingEntrySub}>
-                Placeholder Home / Priority coaching entry. KPI logging behavior remains unchanged; this only reserves CTA placement and route shell intent.
+                Coaching entry point. Home/Priority logging stays unchanged.
               </Text>
               {renderRuntimeStateBanner(homeRuntimeStateModel, { compact: true })}
-              {__DEV__ ? (
-                <View style={styles.coachingStateEvidenceCard}>
-                  <Text style={styles.coachingStateEvidenceTitle}>W8 Runtime State Evidence (Dev)</Text>
-                  {([
-                    deriveRuntimeSurfaceStateModel({ surfaceLabel: 'Evidence', loading: true }),
-                    deriveRuntimeSurfaceStateModel({ surfaceLabel: 'Evidence', hasRows: false }),
-                    deriveRuntimeSurfaceStateModel({
-                      surfaceLabel: 'Evidence',
-                      errorText: 'Synthetic fetch failure for evidence capture.',
-                    }),
-                    deriveRuntimeSurfaceStateModel({ surfaceLabel: 'Evidence', gateTone: 'blocked' }),
-                    deriveRuntimeSurfaceStateModel({
-                      surfaceLabel: 'Evidence',
-                      hasRows: true,
-                      readModelStatus: 'partial_inferred',
-                    }),
-                    deriveRuntimeSurfaceStateModel({ surfaceLabel: 'Evidence', hasRows: true }),
-                  ] as RuntimeSurfaceStateModel[]).map((model) => (
-                    <View key={`w8-evidence-${model.state}`}>{renderRuntimeStateBanner(model, { compact: true })}</View>
-                  ))}
-                </View>
-              ) : null}
               {renderCoachingPackageGateBanner('Home / Priority coaching nudge', null, { compact: true })}
               {renderCoachingNotificationSurface(
                 'Coaching notifications',
@@ -10145,19 +10093,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           </>
         )}
       </ScrollView>
-
-      {__DEV__ && activeTab === 'home' && viewMode === 'home' ? (
-        <View style={styles.runtimeStateEvidenceOverlay}>
-          <Text style={styles.runtimeStateEvidenceOverlayTitle}>W8 State Evidence</Text>
-          {(['loading', 'empty', 'error', 'permission_denied', 'partial_read_model', 'ready'] as RuntimeSurfaceState[]).map(
-            (state) => (
-              <Text key={`runtime-evidence-chip-${state}`} style={styles.runtimeStateEvidenceOverlayChip}>
-                {state.replace(/_/g, ' ')}
-              </Text>
-            )
-          )}
-        </View>
-      ) : null}
 
       {activeFlightFx.map((flightFx) => (
         <React.Fragment key={flightFx.key}>
@@ -13429,6 +13364,20 @@ const styles = StyleSheet.create({
     color: '#71829a',
     fontSize: 9,
     lineHeight: 12,
+  },
+  knownLimitedDataChip: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#e4d5a1',
+    backgroundColor: '#fff8e8',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  knownLimitedDataChipText: {
+    color: '#6f6030',
+    fontSize: 10,
+    fontWeight: '700',
   },
   runtimeStateEvidenceOverlay: {
     position: 'absolute',
