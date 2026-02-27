@@ -33,6 +33,19 @@ Provide an implementation-ready spec for coach-portal authoring where content fr
 - Clean boundaries: role-denied controls are visible but locked with clear reason text.
 - Mandatory behavior: drag/drop assignment and reorder/remove interactions are required runtime behavior, not placeholder states.
 
+## Interaction Primitives Lock (Coach Portal)
+- Buttons are for primary actions only (`Create New Journey`, `Save Draft`, `Publish`).
+- Tabs/segmented controls are for section switching only (top-tab route sections + local builder section pivots).
+- Menus are for secondary actions only (row/card overflow actions like rename, duplicate, archive, remove).
+- List/row selection rules:
+  - row/card selection opens detail context or marks selected state
+  - row/card primary buttons execute direct action and must not duplicate selection-open behavior
+  - bulk actions (if enabled later) are menu-driven from explicit multi-select state
+- Scroll behavior rules:
+  - one primary scroll container for each coach portal route
+  - builder action bar remains sticky/visible while content scrolls
+  - nested vertical scroll is avoided except constrained builder-canvas regions where drag and keyboard behavior must remain reliable
+
 ## UX Flow Map
 
 ```mermaid

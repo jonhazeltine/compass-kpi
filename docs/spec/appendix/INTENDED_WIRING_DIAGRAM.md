@@ -225,6 +225,19 @@ W7/W8 checklist alignment:
 - Journey Builder must expose `Create New Journey` and an action-bar `Save Draft` control with explicit status model (`idle`, `pending`, `saved`, `error`).
 - `/admin/coaching/audit` remains secondary governance/troubleshooting and is not modeled as primary workflow routing.
 
+### W12 interaction primitives lock (coach portal)
+- `Buttons`: primary actions only (`Create New Journey`, `Save Draft`, `Publish`, `Send`).
+- `Tabs/Segmented Controls`: section switching only (top-tab route sections and local section pivots).
+- `Menus`: secondary/overflow actions only (rename, duplicate, archive, remove, move).
+- `List/Row Selection`:
+  - row press/click sets selection or opens detail view
+  - row-level primary buttons execute explicit action and do not also open detail
+  - bulk operations (if present) are driven by explicit selection state + menu actions
+- `Scroll Behavior`:
+  - single primary scroll container per coach portal route
+  - sticky route header/action bar stays visible while content scrolls
+  - avoid nested vertical scroll regions by default; exception only for builder canvas zones with pointer+keyboard parity
+
 ## Authoring -> Runtime Publishing Handoff Rules (Planning Boundary)
 
 - Runtime coaching surfaces (`coaching_journeys*`, challenge overlays, team modules, `inbox*`) consume published assignments and content metadata only.

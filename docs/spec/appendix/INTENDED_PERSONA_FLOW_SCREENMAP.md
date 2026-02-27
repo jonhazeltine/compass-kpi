@@ -297,6 +297,19 @@ Challenge Sponsor is a distinct persona for sponsored challenge funding/campaign
 - Team Leader access in this package is limited to team-scoped upload actions inside `coach_content_library`; no org-wide authoring ownership and no sponsor-scoped package authority.
 - `/admin/coaching/audit` remains secondary governance/troubleshooting only and is not part of primary coach/sponsor workflow routing.
 
+#### W12 interaction primitives lock (coach portal)
+- Buttons are for primary actions only (for example: `Create New Journey`, `Save Draft`, `Publish`).
+- Tabs/segmented controls are for section switching only (`library`, `journeys`, `cohorts`, `channels` and in-page section toggles).
+- Menus are for secondary actions only (overflow/row-level options such as rename, duplicate, archive, remove).
+- List/row selection patterns:
+  - Row click/select opens detail context or marks selection state.
+  - Primary action buttons in rows trigger direct action only and must not duplicate row-open behavior.
+  - Multi-select (if enabled) uses explicit selection affordances and bulk-action menu, not overloaded primary buttons.
+- Scroll behavior requirements:
+  - Coach portal pages use a single primary page scroll container per route.
+  - Sticky header/action bars remain visible while content lists/canvases scroll.
+  - Nested scroll containers are avoided unless required for builder canvas; when present, they must preserve pointer and keyboard usability.
+
 ## Shared Runtime Router Map (Current Implementation Anchor)
 Use this to map intended screens to current code constraints.
 
