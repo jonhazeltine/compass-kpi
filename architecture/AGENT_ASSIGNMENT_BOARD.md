@@ -111,6 +111,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W9-COACH-PORTAL-EXPERIENCE-PLANNING-A` | `committed` | `W9 coach portal experience planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (host foundation only during transition) | `coach portal IA/UX` (`dedicated experience + migration path + production sequencing`) | dedicated coach portal IA/UX direction (outside admin-shell presentation), migration from `/admin/coaching/*` foundation routes, persona visibility model, production-experience sequencing | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W7/W8 acceptance pack | Committed W10 route-decoupling swath: dedicated `/coach/*` uploads/library/cohorts/channels routes + customer-facing shell/nav landed, coach-facing navigation migrated to `/coach/*`, and `/admin/coaching/*` retained as temporary compatibility redirect-only paths (no backend/schema/API changes). |
 | `COACHING-W7-SUPERADMIN-AI-TROUBLESHOOTING-AUDIT-A` | `queued` | `W7 optional hardening (super-admin AI troubleshooting only)` | `Super Admin` (primary), `Admin operator` (limited) | `AI troubleshooting / audit` (`exception-only`) | optional trimmed `/admin/coaching/audit` super-admin troubleshooting views | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package + explicit owner approval gate | Optional exception-only follow-on to repurpose or trim `/admin/coaching/audit` into super-admin AI troubleshooting/audit; not a coach notification or coach primary workflow surface. |
 | `COACHING-W12-MOBILE-NAV-LOG-CTA-CENTER-A` | `review` | `M6 / W12 mobile IA polish` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Sponsor` | `mobile IA` (`bottom tab LOG center CTA emphasis`) | `KPIDashboardScreen` bottom tab bar only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (IA/interaction polish; no Figma lock specified in assignment) | Review-ready IA lock: profile bottom-tab entry removed (avatar opens profile/settings), logs tab reframed as Logs/Reports shared surface with default Logs history subview and secondary Reports subview, and center LOG CTA emphasis retained without route-family changes. |
+| `M6-W12-TEAM-LEADER-ROW-EXPANSION-AND-LOG-WIRING-A` | `review` | `M6 / W12` | `Team Leader` (primary), `Team Member` (no-regression) | `team leader ops` (`row expansion UI`, `team KPI -> log context wiring`) | `KPIDashboardScreen` Team Leader surface + handoff to Log interface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (interaction model + wiring fix) | Review-ready: chip-matrix filters removed for Team Leader, member rows now expand/collapse with grouped KPI lists + in-row sort order toggle, and team KPI selection now hands off to Log (`logs` tab) with explicit team context marker/badge on target KPI tile and banner. |
 | `M6-W12-TEAM-SCREEN-PERSONA-SPLIT-A` | `review` | `M6 / W12 (persona split hardening)` | `Team Member` (simple view), `Team Leader` (ops-heavy view) | `team surface runtime split` (`member simplicity`, `leader operational controls`) | `KPIDashboardScreen` Team surface only | `Mobile-1` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | team runtime parity task (no new Figma node lock for this swath) | Review-ready requirement-lock follow-on: Team default now shows only selected Team Focus KPIs; full KPI catalog is rendered only in leader-only “Select Team Focus KPIs” editor; member view remains read-only selected set and leader ops panel remains intact. |
 
 ## Blocked Assignments
@@ -370,6 +371,66 @@ Produce a reusable parity map that translates Fourth Reason chat/journey UX patt
 - `No new endpoint family` confirmation
 - `Files/docs changed`
 - Commit hash
+
+### `M6-W12-TEAM-LEADER-ROW-EXPANSION-AND-LOG-WIRING-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 / W12`
+- `Persona:` `Team Leader` (primary), `Team Member` (no-regression)
+- `Flow:` `team leader ops` (`row expansion`, `team KPI selection`, `log handoff wiring`)
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (mobile app worktree preferred)
+- `Figma refs:` `N/A` (interaction/wiring correction request)
+- `Execution note (2026-02-27):` Assignment created and set to `active` before coding.
+- `Completion note (2026-02-27):` Team Leader interaction model now uses member row expansion instead of multi-row chip filters; each expanded member shows grouped active KPI rows (Projection/Growth/Vitality) with in-row sort-order toggle and tap-to-focus behavior.
+- `Completion note (2026-02-27, wiring):` Team KPI selection now triggers direct handoff to `logs` tab (`viewMode=log`, `logsReportsSubview=logs`, segment aligned to KPI type), promotes selected KPI into managed log targets, and marks the target with explicit team context banner + tile badge/icon.
+- `Validation note (2026-02-27):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed. Runtime screenshot artifacts captured under `/Users/jon/compass-kpi/app/test-results/w12-team-leader-row-expansion/`.
+
+#### Primary Objective
+Replace chip-heavy Team Leader filters with expandable member rows and ensure selecting team KPIs routes into Log with visible team context marker.
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
+- Team Leader surface interaction model + Team KPI handoff/wiring into Log
+
+#### Scope Out
+- backend/API/schema changes
+- Home/Priority rewrite
+- Challenge layout rewrite
+- Team Member feature expansion (except no-regression checks)
+
+#### Constraints (Hard)
+- No backend/API/schema changes.
+- Keep Team/Challenge/Comms routing intact.
+- Keep shared log write mechanics unchanged.
+- Preserve role gates and accessibility tap targets.
+
+#### Required Implementation
+1. Remove Team Leader chip-matrix filter block.
+2. Expand/collapse per-member rows.
+3. Expanded row shows all active KPIs grouped as PC/GP/VP.
+4. Add in-row sort toggle for KPI group order (default PC->GP->VP).
+5. Team leader can select KPI(s) from expanded rows for team focus.
+6. Selecting team KPI routes to Log with team context marker/badge.
+7. Keep totals cards + concern flags card.
+8. Team Member screen remains simple (no leader controls added).
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime checks (leader):
+  - expand/collapse each member row
+  - sort expanded KPI list PC/GP/VP
+  - select KPI and verify Log receives team context badge/icon
+- Screenshots:
+  - `app/test-results/w12-team-leader-row-expansion/`
+
+#### Report-Back Requirements
+- before/after interaction model summary
+- exact team KPI -> log badge wiring fix
+- files + line refs
+- runtime proof steps + screenshot paths
+- commit hash
 
 ### `COACHING-W12-DRAGDROP-LIBRARY-TO-JOURNEY-SPEC-A`
 
