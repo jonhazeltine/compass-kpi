@@ -1,160 +1,201 @@
 # W12 Drag/Drop Library-to-Journey Spec
 
 ## Purpose
-Define an implementation-ready authoring UX and build map for drag/drop journey composition using existing Compass route/contract families, with explicit in-family contract gaps called out.
+Provide an implementation-ready spec for coach-portal authoring where content from Library is dragged into Journey Builder, with explicit UX behavior, data model needs, contract mapping, and phased delivery.
 
 ## Scope and Guardrails
 - Docs/control-plane only.
 - No net-new endpoint family.
-- No schema-breaking change in this assignment.
-- Preserve role boundaries:
-  - Coach is primary journey author.
-  - Team Leader upload rights are team-scoped only.
-  - Challenge Sponsor access is sponsor-scoped only.
-  - Sponsor has no KPI logging actions.
+- No schema-breaking changes in this assignment.
+- Coach is primary authoring persona.
+- Team Leader capabilities are team-scoped only (no org-wide authoring ownership).
+- Challenge Sponsor is sponsor-scoped only.
+- Sponsor has no KPI logging/edit actions.
 - `/admin/coaching/audit` remains secondary governance/troubleshooting only.
 
-## Route Targets
-- Coach portal foundation/canonical routes:
+## Target Surfaces
+- Authoring routes:
   - `/coach/library`
   - `/coach/journeys`
   - `/coach/uploads`
-  - `/coach/cohorts`
-  - `/coach/channels`
-- Runtime read-only consumption routes:
+- Runtime validation surfaces:
   - `coaching_journeys`
   - `coaching_journey_detail`
   - `coaching_lesson_detail`
 
-## Existing Contract Families (Allowed)
-- `/api/coaching/journeys*`
-- `/api/coaching/progress`
-- `/api/coaching/lessons/{id}/progress`
-- `/api/channels*`
-- `/api/messages/*`
-- `/api/coaching/broadcast`
-- `/api/ai/suggestions*` (advisory only)
-- `/sponsored-challenges*` (sponsor visibility context only)
-- `/dashboard` (summary badges/context only)
+## UX Baseline (Intuitive/High-Signal)
+- Direct manipulation first: drag cards, visible drop zones, insertion indicator, immediate visual confirmation.
+- Low-friction hierarchy: library on left, journey canvas center, item inspector right.
+- Progressive disclosure: advanced controls hidden until item is selected.
+- Fast confidence loops: autosave indicator, undo affordance, publish-readiness badge always visible.
+- Clean boundaries: role-denied controls are visible but locked with clear reason text.
 
-## Authoring UX Spec (Drag/Drop)
+## UX Flow Map
 
-### Surface Model
-- Primary surface: `/coach/journeys`.
-- Supporting source surface: `/coach/library` (asset catalog and filters).
-- Authoring mode: `Journey Builder` panel in `/coach/journeys/{journeyId}/edit` (or equivalent in current state-router implementation).
+```mermaid
+flowchart LR
+  A["Open /coach/journeys"] --> B["Select Journey Draft"]
+  B --> C["Open Builder Canvas"]
+  C --> D["Browse /coach/library Assets"]
+  D --> E["Drag Asset"]
+  E --> F{"Valid Drop Zone?"}
+  F -->|Yes| G["Drop into Milestone"]
+  F -->|No| H["Reject Drop + Reason Chip"]
+  G --> I["Reorder / Move / Remove"]
+  I --> J["Draft Autosave or Save"]
+  J --> K{"Publish Readiness Passes?"}
+  K -->|Yes| L["Publish Journey"]
+  K -->|No| M["Show Blocking Checks"]
+  L --> N["Runtime Surfaces Consume Published Order"]
+```
 
-### Layout
-- Left rail: Library list with filters (`type`, `topic`, `duration`, `scope`, `sponsor-linked`).
-- Center: Journey timeline canvas grouped by milestone.
-- Right rail: Selected item properties and publish-readiness checks.
+## Interaction State Matrix
 
-### Core Interactions
-1. Drag library item onto milestone drop zone to add lesson/content block.
-2. Drag block within milestone to reorder.
-3. Drag block across milestones to re-sequence.
-4. Multi-select + bulk move (same destination milestone only).
-5. Remove block (soft remove in draft state).
+| State | Trigger | UI Behavior | Persistence Impact | Error/Fallback |
+|---|---|---|---|---|
+| `drag_idle` | no active drag | cards static, handles visible on hover/focus | none | n/a |
+| `drag_start` | pick up card | ghost card + origin highlight | none | cancel returns to `drag_idle` |
+| `drag_hover_valid` | dragged item over compatible zone | drop zone glow + insertion line | none | n/a |
+| `drag_hover_invalid` | dragged item over incompatible zone | red outline + reason chip | none | drop blocked |
+| `drop_commit` | release on valid zone | card inserted; canvas animates to new order | staged draft op queued | failure moves to `save_error` |
+| `reorder` | move within milestone or across milestones | positional swap animation + index badge update | staged draft op queued | conflict fallback to `draft_conflict` |
+| `remove` | remove action on placed card | card fades out + undo toast | staged draft op queued | restore via undo if available |
+| `save_pending` | autosave or manual save starts | status chip `Saving...` | sends draft ops batch | timeout -> `save_error` |
+| `save_success` | draft ops acknowledged | status chip `Saved` + timestamp | server draft version advanced | n/a |
+| `save_error` | save request fails | inline error + retry CTA | no version advance | retry or refresh draft |
+| `draft_conflict` | stale version/write race | blocking banner + diff/reload options | requires rebase/reload | preserve local op queue for retry |
 
-### Keyboard/Accessibility Contract
-- Every drag action has keyboard parity:
-  - `Pick up` (space/enter), `Move` (arrow keys), `Drop` (space/enter), `Cancel` (esc).
-- Every drop zone exposes textual state:
-  - `can_drop`, `cannot_drop` with reason chip.
-- Reduced-motion mode disables animated drag previews and uses static insertion markers.
+## Required Frontend Data Model
 
-### Mobile Parity Contract
-- No mobile drag gesture required for W12.
-- Mobile coach/runtime parity uses action-sheet fallback:
-  - `Add to milestone`
-  - `Move up/down`
-  - `Move to milestone`
-- Member mobile routes remain read-only for authored structure.
+```ts
+export type ScopeType = 'org' | 'team' | 'sponsor';
+export type LibraryItemType = 'lesson' | 'module' | 'template' | 'asset';
 
-## Build Map (Implementation Ready)
+export interface LibraryItem {
+  id: string;
+  title: string;
+  itemType: LibraryItemType;
+  scopeType: ScopeType;
+  scopeId: string | null;
+  sponsorScoped: boolean;
+  tags: string[];
+  estimatedMinutes?: number;
+  status: 'active' | 'archived';
+}
 
-| Slice | Surface | Persona | UX outcome | Contract dependency | Lane |
-|---|---|---|---|---|---|
-| B1 | `/coach/library` list rows | Coach, Team Leader (team scope), Sponsor (scope-limited) | Draggable library cards with scope badges | existing read from coaching family; gap for normalized library read | Admin web |
-| B2 | `/coach/journeys` builder canvas | Coach primary | Milestone drop zones + reorder handles + draft save states | in-family write gaps under `/api/coaching/journeys*` | Admin web |
-| B3 | Role-gate denied states | Team Leader, Sponsor | Team/sponsor scope denies with clear reason chips | existing authz + scope metadata; gap for explicit action-availability fields | Backend + Admin web |
-| B4 | Publish handoff preview | Coach, Admin operator | Draft diff + publish readiness checks | in-family publish/readiness gaps in coaching family | Backend + Admin web |
-| B5 | Runtime verification | Team Leader, Team Member, Solo User, Sponsor | Authored order appears in `coaching_journeys*` read surfaces | existing `GET /api/coaching/journeys*` outputs; additive fields if needed | Mobile + Backend |
+export interface JourneyMilestoneBlock {
+  blockId: string;
+  libraryItemId: string;
+  milestoneId: string;
+  orderIndex: number;
+  required: boolean;
+}
 
-## Contract Mapping (Current vs Needed)
+export interface JourneyDraft {
+  journeyId: string;
+  draftVersion: number;
+  milestones: Array<{
+    milestoneId: string;
+    title: string;
+    blocks: JourneyMilestoneBlock[];
+  }>;
+  dirty: boolean;
+  saveState: 'idle' | 'pending' | 'success' | 'error' | 'conflict';
+  publishReadiness: {
+    status: 'ready' | 'blocked';
+    checks: Array<{ code: string; severity: 'error' | 'warning'; message: string }>;
+  };
+}
 
-### Works Today (No Family Expansion Needed)
-- Journey read/consumption:
-  - `GET /api/coaching/journeys`
-  - `GET /api/coaching/journeys/{id}`
-- Lesson progress writes (member runtime):
-  - `POST /api/coaching/lessons/{id}/progress`
-- Channel/broadcast follow-up notifications after publish:
-  - `/api/channels*`, `/api/coaching/broadcast`
+export interface JourneyDraftOp {
+  opId: string;
+  type: 'add' | 'move' | 'reorder' | 'remove';
+  blockId?: string;
+  libraryItemId?: string;
+  fromMilestoneId?: string;
+  toMilestoneId?: string;
+  toIndex?: number;
+  actorRole: 'coach' | 'admin' | 'team_leader' | 'sponsor';
+  clientTimestamp: string;
+}
 
-### Explicit Gaps (In-Family Extensions Required)
+export interface ActionCapabilities {
+  canComposeDraft: boolean;
+  canPublish: boolean;
+  canMoveAcrossScopes: boolean;
+  denialReason?: string;
+}
+```
 
-| Gap ID | Needed for drag/drop authoring | Suggested in-family contract extension | Notes |
+## API Contract Mapping (Existing)
+
+| UX Need | Existing contract | Current fit |
+|---|---|---|
+| Journey read for builder baseline | `GET /api/coaching/journeys`, `GET /api/coaching/journeys/{id}` | partial (read exists; draft structure not explicit) |
+| Runtime lesson progress | `POST /api/coaching/lessons/{id}/progress` | sufficient for runtime, not authoring |
+| Context distribution after publish | `/api/channels*`, `POST /api/coaching/broadcast` | partial, publish integration not formalized |
+| Sponsor context visibility | `GET /sponsored-challenges*` | partial, authoring link metadata not explicit |
+| Coach assist copy (advisory only) | `/api/ai/suggestions*` | optional support for draft-copy suggestions |
+
+## Explicit Contract Gaps (In-Family Only)
+
+| Gap ID | Required capability | Proposed in-family extension | Rationale |
 |---|---|---|---|
-| G1 | Library source payload normalized for builder | `GET /api/coaching/library` or additive `library_items` include on `GET /api/coaching/journeys/{id}` | Same coaching family; includes `scope_type`, `scope_id`, `item_type`, `duration_estimate`, `is_sponsor_scoped` |
-| G2 | Draft block add/remove/move writes | `POST /api/coaching/journeys/{id}/draft/ops` with op list (`add`, `move`, `remove`, `reorder`) | Keep operation-log semantics for deterministic replay and rollback |
-| G3 | Draft retrieval with sequence metadata | `GET /api/coaching/journeys/{id}/draft` | Returns milestone-block ordered structure and validation flags |
-| G4 | Publish action and readiness validation | `POST /api/coaching/journeys/{id}/publish` and `GET /api/coaching/journeys/{id}/publish-readiness` | Coach/Admin only; blocks publish if scope/authz rules fail |
-| G5 | Role-aware action-availability metadata | Add `action_capabilities` object to journey/library responses | Avoid client policy inference for team-leader/sponsor restrictions |
+| G1 | Library payload normalized for drag source | `GET /api/coaching/library` OR add `library_items` to journey detail payload | Builder needs stable card metadata and scope labels |
+| G2 | Draft operation writes for add/move/reorder/remove | `POST /api/coaching/journeys/{id}/draft/ops` | Deterministic operation-log model, auditable changes |
+| G3 | Draft fetch with versioning | `GET /api/coaching/journeys/{id}/draft` | Required for conflict handling and resume |
+| G4 | Publish readiness and publish action | `GET /api/coaching/journeys/{id}/publish-readiness`, `POST /api/coaching/journeys/{id}/publish` | Prevent invalid publish and keep checks server-authoritative |
+| G5 | Action capability metadata by role/scope | `action_capabilities` additive object on coaching responses | Prevent client-side policy inference |
 
 ## Contract Boundary Notes
-- All authoring write paths remain within `/api/coaching/*` family.
-- No new chat/messaging family for authoring operations.
-- Sponsor scope is read/link visibility only unless explicit sponsor-authoring policy is later approved.
-- Team Leader authoring remains limited to team-scoped upload/link actions; no org-wide ownership.
-- Runtime surfaces consume published artifacts only; runtime does not mutate draft structures.
+- All new authoring operations stay in `/api/coaching/*` family.
+- No net-new endpoint family for drag/drop workflow.
+- Runtime mobile/member surfaces consume published output only.
+- Team Leader write scope remains own-team only.
+- Sponsor remains read/link scoped with no KPI logging/edit routes.
 
-## Role Gate Matrix (Authoring)
+## Role Gate Matrix
 
-| Persona | Library browse | Drag/drop compose | Publish journey | KPI logging actions |
+| Persona | Browse library | Drag/drop compose | Publish | KPI logging in this flow |
 |---|---|---|---|---|
 | Coach | yes | yes | yes | no |
-| Admin operator | yes | governance-only (optional) | yes (governance override) | no |
-| Team Leader | team-scoped only | team-scoped only (if enabled) | no org-wide publish authority | no |
-| Challenge Sponsor | sponsor-scoped browse/link only | no default draft-authoring ownership | no | no |
+| Admin operator | yes | governance-assist only | yes (policy-gated) | no |
+| Team Leader | yes (team-scoped items) | team-scoped only (if enabled) | no org-wide authority | no |
+| Challenge Sponsor | yes (sponsor scope) | no default draft authoring | no | no |
 
-## UI State Contracts
-- `draft_dirty`: unsaved drag/drop operations present.
-- `draft_saving`: in-flight ops batch.
-- `draft_conflict`: version mismatch; requires refresh/merge.
-- `publish_blocked`: readiness checks failed.
-- `publish_ready`: all required checks passed.
+## Phased Build Plan
 
-These states must be returned or derivable from in-family contract outputs and not inferred from local-only heuristics.
+### Phase 1: MVP (functional drag/drop authoring)
+- Builder shell on `/coach/journeys` with drag source from `/coach/library`.
+- Add/move/reorder/remove interactions.
+- Draft save indicator and retry path.
+- Basic role-gated denied states.
+- In-family contract slices: G1, G2, G3.
 
-## Acceptance Checklist
+### Phase 2: Hardening (publish and policy confidence)
+- Publish readiness panel with blocking checks.
+- Server-authoritative publish endpoint integration.
+- Conflict resolution UX (`draft_conflict`) and version recovery.
+- In-family contract slices: G4, G5.
 
-### Admin lane
-- `/coach/journeys` supports drag/drop add/move/remove with keyboard parity.
-- Role-gated denied states exist for Team Leader out-of-scope actions.
-- Sponsor cannot access draft-authoring affordances.
+### Phase 3: Polish (sexy/intuitive finish)
+- Refined motion timing for drag hover/drop/reorder.
+- Keyboard parity polish and reduced-motion treatment.
+- Multi-select bulk move and undo stack quality pass.
+- Optional AI assist insertion for draft-copy only (`/api/ai/suggestions*`, advisory).
 
-### Backend lane
-- In-family draft ops contract enforces authz and scope (`coach/admin/team-scope` only).
-- Operation order is deterministic and auditable.
-- No endpoint-family expansion beyond `/api/coaching/*`.
-
-### Mobile lane
-- Runtime consumption renders published sequence consistently.
-- Mobile fallback actions exist for coach-authoring parity where drag is unavailable.
-- No sponsor KPI logging action appears in any authored-content flow.
-
-## Build Sequencing Recommendation
-1. Ship G1 + G3 read contracts (library + draft fetch).
-2. Ship G2 draft ops writes with operation-log semantics.
-3. Ship builder UI drag/drop + keyboard parity on `/coach/journeys`.
-4. Ship G4 publish-readiness + publish action.
-5. Validate runtime rendering on `coaching_journeys*` and sponsor/team-leader boundaries.
+## Build Steps (Implementation Checklist)
+1. Add builder information architecture contract for `/coach/library` + `/coach/journeys`.
+2. Implement frontend draft model and op queue (`JourneyDraft`, `JourneyDraftOp`).
+3. Wire drag lifecycle to queued draft ops and save states.
+4. Enforce role/scope gates from `action_capabilities` (or temporary conservative client deny until available).
+5. Add publish-readiness and publish action wiring.
+6. Validate runtime result consistency on `coaching_journeys*` surfaces.
 
 ## Validation for This Assignment
-- Verified route/surface alignment against:
+- Route/surface alignment verified against:
   - `/Users/jon/compass-kpi/app/screens/AdminShellScreen.tsx`
   - `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
-- Verified contract-family boundary against:
+- Contract boundary verified against:
   - `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
-- Verified no new endpoint family is required by this spec.
+- No new endpoint family required by this spec.
