@@ -9,6 +9,73 @@ This playbook is the control-plane behavior contract for:
 - commit/push hygiene
 - owner-facing reporting format
 
+## Required Startup Reads (Architect Thread)
+Read these at thread start, in this order:
+1. `/AGENTS.md`
+2. `/architecture/ARCHITECTURE.md`
+3. `/architecture/NON_NEGOTIABLES.md`
+4. `/architecture/CURRENT_SPRINT.md`
+5. `/architecture/PROJECT_CONTROL_PLANE.md`
+6. `/architecture/SOW_PARITY_MATRIX.md`
+7. `/architecture/AGENT_ASSIGNMENT_BOARD.md`
+8. `/architecture/DECISIONS_LOG.md` (latest decisions relevant to active assignments)
+
+Then load source-of-truth execution maps:
+1. `/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+2. `/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+3. `/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+4. `/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+5. `/docs/spec/appendix/M3_COMPLETION_PLAN_PRIORITY_CONTEXT_SURFACES.md`
+6. `/docs/spec/appendix/MOBILE_TEAM_CHALLENGE_SCREENMAP_AND_BUILD_SEQUENCE.md`
+
+Then load canonical contracts/tests:
+1. `/docs/spec/04_api_contracts.md`
+2. `/docs/spec/05_acceptance_tests.md`
+
+Figma/source-asset references (for UI assignments):
+1. `/design/figma/FIGMA_INDEX.md`
+2. `/design/figma/FRAME_INVENTORY.md`
+3. `/docs/spec/appendix/FIGMA_BUILD_MAPPING.md`
+4. `/design/figma/scripts/README.md`
+
+## Startup Reconciliation Checklist
+At new-thread start, run this sequence:
+1. `git status --short --branch`
+2. Reconcile `AGENT_ASSIGNMENT_BOARD.md` statuses with latest branch commits.
+3. Identify `active`, `blocked`, and `review` assignments.
+4. Mark accepted review rows to `committed` or `committed+pushed`.
+5. Confirm current sprint/wave focus and publish next large assignment(s) with explicit ownership.
+
+## Source-of-Truth Map (By Domain)
+- Governance + scope gate:
+  - `/architecture/CURRENT_SPRINT.md`
+  - `/architecture/NON_NEGOTIABLES.md`
+  - `/architecture/ARCHITECTURE.md`
+- Program roadmap + dependencies:
+  - `/architecture/PROJECT_CONTROL_PLANE.md`
+  - `/architecture/SOW_PARITY_MATRIX.md`
+- Worker control plane:
+  - `/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- Architecture change record:
+  - `/architecture/DECISIONS_LOG.md`
+- Runtime screen intent + wiring:
+  - `/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`
+  - `/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`
+- Coaching/persona overlays:
+  - `/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+  - `/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+  - `/docs/spec/appendix/FOURTH_REASON_INTEGRATION_MATRIX.md`
+- Team/challenge sequencing:
+  - `/docs/spec/appendix/M3_COMPLETION_PLAN_PRIORITY_CONTEXT_SURFACES.md`
+  - `/docs/spec/appendix/MOBILE_TEAM_CHALLENGE_SCREENMAP_AND_BUILD_SEQUENCE.md`
+- API/test authority:
+  - `/docs/spec/04_api_contracts.md`
+  - `/docs/spec/05_acceptance_tests.md`
+- Figma authority:
+  - `/design/figma/FIGMA_INDEX.md`
+  - `/design/figma/FRAME_INVENTORY.md`
+  - `/docs/spec/appendix/FIGMA_BUILD_MAPPING.md`
+
 ## Role
 The Architect/Controller thread is responsible for:
 1. Making forward-progress decisions aligned to sprint scope.
@@ -82,4 +149,3 @@ At the end of each controller check/update include:
 - `Committed:` yes/no (hash if yes)
 - `Pushed:` yes/no (branch if yes)
 - `Requires review:` yes/no (what specifically, if yes)
-
