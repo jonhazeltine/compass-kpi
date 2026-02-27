@@ -799,14 +799,11 @@ export default function CoachPortalScreen() {
           ) : activeKey === 'coachingJourneys' ? (
             <View style={[styles.builderWrap, isCompact && styles.builderWrapCompact]}>
               <View style={styles.libraryRail}>
-                <Text style={styles.panelTitle}>Collections and assets</Text>
-                <Text style={styles.panelHint}>Folders on left. Drag an asset to a milestone, or click Add.</Text>
+                <Text style={styles.panelTitle}>Collections (folders)</Text>
+                <Text style={styles.panelHint}>Select a collection to load its assets.</Text>
                 <View style={styles.collectionList}>
                   {collections.map((collection) => {
                     const expanded = expandedCollectionIds.includes(collection.id);
-                    const collectionAssets = collection.assetIds
-                      .map((assetId) => assetsById.get(assetId))
-                      .filter((row): row is LibraryAsset => Boolean(row));
                     return (
                       <View key={`journey-folder-${collection.id}`}>
                         <Pressable
@@ -817,38 +814,54 @@ export default function CoachPortalScreen() {
                           }}
                         >
                           <Text style={styles.collectionTitle}>{expanded ? '▾' : '▸'} {collection.name}</Text>
+                          <Text style={styles.collectionMeta}>{collection.assetIds.length} assets</Text>
                         </Pressable>
-                        {expanded ? (
-                          <View style={styles.folderAssetsList}>
-                            {collectionAssets.map((asset) => (
-                              <View key={`journey-asset-${asset.id}`} style={styles.folderAssetActionRow}>
-                                <Pressable
-                                  style={[styles.folderAssetRow, { flex: 1 }]}
-                                  {...({
-                                    draggable: canComposeDraft,
-                                    onDragStart: (event: any) => {
-                                      setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: collection.id });
-                                      event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${collection.id}`);
-                                    },
-                                    onDragEnd: () => setDragPayload(null),
-                                  } as any)}
-                                >
-                                  <Text style={styles.collectionItemText}>• {asset.title}</Text>
-                                </Pressable>
-                                <Pressable
-                                  style={styles.inlineAddButton}
-                                  onPress={() => addAssetToSelectedMilestone(asset.id)}
-                                  disabled={!canComposeDraft}
-                                >
-                                  <Text style={styles.inlineAddButtonText}>Add</Text>
-                                </Pressable>
-                              </View>
-                            ))}
-                          </View>
-                        ) : null}
                       </View>
                     );
                   })}
+                </View>
+              </View>
+
+              <View style={styles.collectionRail}>
+                <Text style={styles.panelTitle}>Assets (files)</Text>
+                <View style={styles.breadcrumbRow}>
+                  <Text style={styles.breadcrumbText}>Collections / {selectedCollection?.name ?? 'Select collection'}</Text>
+                  <Pressable
+                    onPress={() => {
+                      if (!selectedCollection?.id) return;
+                      setExpandedCollectionIds((prev) => prev.filter((id) => id !== selectedCollection.id));
+                    }}
+                  >
+                    <Text style={styles.inlineNavLink}>Back</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.panelHint}>Drag an asset to a milestone, or click Add to selected milestone.</Text>
+                <View style={styles.folderAssetsList}>
+                  {selectedCollectionAssets.map((asset) => (
+                    <View key={`journey-asset-${asset.id}`} style={styles.folderAssetActionRow}>
+                      <Pressable
+                        style={[styles.folderAssetRow, { flex: 1 }]}
+                        {...({
+                          draggable: canComposeDraft,
+                          onDragStart: (event: any) => {
+                            setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null });
+                            event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${selectedCollection?.id ?? 'none'}`);
+                          },
+                          onDragEnd: () => setDragPayload(null),
+                        } as any)}
+                      >
+                        <Text style={styles.collectionItemText}>• {asset.title}</Text>
+                        <Text style={styles.libraryCardMeta}>{asset.category}</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.inlineAddButton}
+                        onPress={() => addAssetToSelectedMilestone(asset.id)}
+                        disabled={!canComposeDraft}
+                      >
+                        <Text style={styles.inlineAddButtonText}>Add</Text>
+                      </Pressable>
+                    </View>
+                  ))}
                 </View>
               </View>
 
@@ -1482,6 +1495,17 @@ const styles = StyleSheet.create({
     paddingLeft: 10,
     paddingTop: 4,
     gap: 6,
+  },
+  breadcrumbRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  breadcrumbText: {
+    color: '#5C756A',
+    fontSize: 12,
+    fontWeight: '600',
   },
   folderAssetRow: {
     borderWidth: 1,

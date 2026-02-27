@@ -99,6 +99,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `ADMIN-W12-INTERACTION-PRIMITIVES-C` | `committed` | `A3/W12 admin interaction primitive correction pass` | `Admin operator` | `admin interaction UX` (`scroll reliability`, `tabs/rows/sort-headers/menus`, `primary-action-only buttons`) | `/admin/users`, `/admin/kpis`, `/admin/challenge-templates`, `/admin/reports`, `/admin/authz` | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | owner correction pass (W12 admin primitives) | Committed correction: normalized interaction primitives across in-scope admin routes with a dedicated `/admin/authz` matrix panel (tabs + sortable headers + row selection), reports row-selection plus overflow secondary actions, and users secondary action menus replacing duplicated button clusters; no backend/schema/API changes. |
 | `COACHING-W12-PORTAL-AUTHORING-CORRECTION-DOCS-B` | `committed` | `M6 W12 coach portal authoring correction docs sync` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal authoring UX docs` (`library assets+collections`, `journey builder create`, `mandatory drag/drop runtime`, `save draft action-bar/status`) | `/coach/library`, `/coach/journeys` (+ compatibility `/coach/uploads` and `/admin/coaching/*` references in docs) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + landed Admin-1 correction runtime | Committed docs-sync: screenmap/wiring/dragdrop spec now align to corrected IA/UX (`Library = Assets + Collections`, Journey Builder `Create New Journey`, mandatory drag/drop behavior, builder action-bar `Save Draft` status model `idle/pending/saved/error`). No structural boundary changes. |
 | `COACHING-W12-INTERACTION-PRIMITIVES-DOCS-C` | `committed` | `M6 W12 coach portal interaction primitives docs lock` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal interaction model` (`primary actions`, `section switching`, `secondary action menus`, `list row selection`, `scroll requirements`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ compatibility alias notes) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + post Admin-1 landing sync | Committed docs lock: interaction primitives are now explicit across W12 coach-portal docs (primary-action buttons, section-switching tabs/segments, secondary-action menus, list/row selection behavior, and page scroll requirements). No structural boundary changes. |
+| `COACHING-W12-PORTAL-AUTHORING-CORRECTION-B2` | `committed` | `M6 W12 coach portal authoring correction pass (file-manager IA)` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal authoring UX` (`folder/file IA`, `drag/drop to milestones`, `cohort assignment`, `channel segments`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ `/coach/uploads` and `/admin/coaching/*` compatibility checks) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | owner correction pass (W12 B2) | Committed correction B2: Journey Builder now uses file-manager IA (left collections tree, middle selected-collection assets, right milestone drop targets) with breadcrumb/back cue, retained create/save/reorder/remove controls, and aligned Cohorts/Channels with assignment/segment patterns. |
 | `ADMIN-W12-INTERACTION-PRIMITIVES-DOCS-SYNC-C` | `committed` | `A3/W12 admin interaction primitives docs sync` | `Admin operator` (primary), `Coach` (admin-hosted companion routes) | `admin interaction model` (`commit buttons`, `view switching controls`, `row-selection/sorting`, `secondary-action menus`, `scroll requirements`) | admin-hosted surfaces (`/admin/users`, `/admin/reports`, `/admin/kpis`, `/admin/challenge-templates`, `/admin/coaching/*` compatibility routes) + shared screenmap/wiring docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + post Admin-1 landing sync | Committed docs sync: admin interaction-primitives standard is now explicit in screenmap/wiring docs (primary commit buttons, tabs/segmented view switching, row selection + table-header sorting patterns, secondary-action menus, and page scroll requirements). No structural boundary changes. |
 | `COACHING-W9-COACH-PORTAL-EXPERIENCE-PLANNING-A` | `committed` | `W9 coach portal experience planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (host foundation only during transition) | `coach portal IA/UX` (`dedicated experience + migration path + production sequencing`) | dedicated coach portal IA/UX direction (outside admin-shell presentation), migration from `/admin/coaching/*` foundation routes, persona visibility model, production-experience sequencing | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W7/W8 acceptance pack | Committed W10 route-decoupling swath: dedicated `/coach/*` uploads/library/cohorts/channels routes + customer-facing shell/nav landed, coach-facing navigation migrated to `/coach/*`, and `/admin/coaching/*` retained as temporary compatibility redirect-only paths (no backend/schema/API changes). |
 | `COACHING-W7-SUPERADMIN-AI-TROUBLESHOOTING-AUDIT-A` | `queued` | `W7 optional hardening (super-admin AI troubleshooting only)` | `Super Admin` (primary), `Admin operator` (limited) | `AI troubleshooting / audit` (`exception-only`) | optional trimmed `/admin/coaching/audit` super-admin troubleshooting views | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package + explicit owner approval gate | Optional exception-only follow-on to repurpose or trim `/admin/coaching/audit` into super-admin AI troubleshooting/audit; not a coach notification or coach primary workflow surface. |
@@ -3426,6 +3427,65 @@ Normalize admin interaction primitives and remove button-overload patterns while
 - Files + line refs
 - Before/after interaction map by page
 - Validation + screenshot paths
+- Commit hash
+
+### `COACHING-W12-PORTAL-AUTHORING-CORRECTION-B2`
+
+#### Snapshot
+- `Status:` `committed`
+- `Program status:` `M6 W12 coach portal authoring correction pass (file-manager IA)`
+- `Persona:` `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only)
+- `Flow:` `coach portal authoring UX` (`folder/file IA`, `drag/drop to milestones`, `cohort assignment`, `channel segments`)
+- `Owner:` `Admin-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred)
+- `Worker note (2026-02-27, Admin-1, start):` Board updated first. Starting B2 correction pass to enforce file-manager IA for library/journey surfaces and apply cohorts/channels interaction direction.
+- `Current blocker status (2026-02-27, Admin-1, start):` `none`.
+- `Completion note (2026-02-27, Admin-1):` Completed B2 file-manager IA correction. Journey Builder now presents left `Collections` tree, middle selected-collection `Assets` file list, and right `Milestones` builder drop targets (no duplicated assets/collections columns). Added collection breadcrumb/back cue, preserved create/save/reorder/remove, and kept role gates + sponsor no-KPI-logging boundaries.
+- `Validation note (2026-02-27, Admin-1):` `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz` passed; `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed; runtime route screenshots captured for `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` in `app/test-results/w12-portal-authoring-correction-b2/`.
+- `Runtime check note (2026-02-27, Admin-1):` Drag/drop route checks were executed in web runtime context for `/coach/journeys` milestone targets; screenshot capture tooling is non-interactive, so screenshots show layout/state evidence while drag interaction validation is reported from runtime check execution.
+- `Current blocker status (2026-02-27, Admin-1, completion):` `none`.
+
+#### Primary Objective
+Enforce file-manager IA in coach authoring: collections as folders, assets as files, and drag/drop assignment into journey milestones with predictable folder navigation.
+
+#### Hard Constraints
+- No backend/schema/API changes unless blocked.
+- Keep role gates and sponsor no-KPI-logging boundaries.
+- Keep `/coach/uploads` and `/admin/coaching/*` compatibility redirects.
+
+#### Required Work
+1. Journey authoring layout:
+   - left pane collections tree/list
+   - main pane assets for selected collection
+   - right pane journey milestones as drop targets
+   - no duplicated assets/collections columns
+2. Add breadcrumb/back path cue for collection navigation.
+3. Keep drag/drop of asset row/chip -> milestone with reorder/remove interactions.
+4. Keep `Create New Journey` and builder action-bar `Save Draft`.
+5. Cohorts pattern direction:
+   - people directory + cohort membership assignment via checkbox with optional drag
+6. Channels pattern direction:
+   - channel groups/segments with clear member-scope controls.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz`
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime checks:
+  - `/coach/library`
+  - `/coach/journeys`
+  - `/coach/cohorts`
+  - `/coach/channels`
+  - compatibility redirects `/coach/uploads`, `/admin/coaching/*`
+- Screenshot evidence:
+  - folder/file flow
+  - drag to journey milestone
+
+#### Report-Back
+- Update assignment row/block status first (`review`/`blocked`/`committed`)
+- Files + line refs
+- UX behavior checks (`pass/fail`)
+- Validation summary
+- Screenshot paths
 - Commit hash
 
 ### `COACHING-W12-PORTAL-AUTHORING-CORRECTION-DOCS-B`
