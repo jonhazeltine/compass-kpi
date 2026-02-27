@@ -6044,9 +6044,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               {unreadCount > 0 ? <Text style={styles.coachingNotificationHeaderUnread}>{unreadCount} unread</Text> : null}
             </View>
           </View>
-          {summary?.read_model_status ? (
-            <Text style={styles.coachingNotificationSummaryMeta}>read-model: {summary.read_model_status}</Text>
-          ) : null}
           {visibleRows.length === 0 ? (
             <Text style={styles.coachingNotificationEmptyText}>{opts?.emptyHint ?? 'No notification rows available.'}</Text>
           ) : (
@@ -7158,7 +7155,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               ? 'No completed challenges are available for this account yet.'
                               : 'No challenge cards are available yet.'
                             : challengeListFilter === 'sponsored'
-                            ? 'Try All or Team. Sponsor flags are limited unless the challenge payload includes sponsor metadata.'
+                            ? 'Try All or Team to view more challenges.'
                             : challengeListFilter === 'team'
                               ? 'No team-mode challenges match right now.'
                               : challengeListUsingPlaceholderRows
@@ -7362,7 +7359,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           </Text>
                           <Text style={styles.challengeLeaderboardEmptySub}>
                             {challengeIsCompleted
-                              ? 'This completed challenge has only partial standings in the current payload.'
+                              ? 'Only part of the final standings are available.'
                               : 'More rows will appear as additional participants join and log challenge activity.'}
                           </Text>
                         </View>
@@ -7375,7 +7372,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </Text>
                       <Text style={styles.challengeLeaderboardEmptySub}>
                         {challengeIsCompleted
-                          ? 'This challenge has ended, but the current payload does not include final member standings yet.'
+                            ? 'This challenge has ended. Final standings are still loading.'
                           : 'Once participants join and log challenge activity, standings will appear here.'}
                       </Text>
                     </View>
@@ -7448,7 +7445,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     </View>
                     <Text style={styles.challengeDetailsHeroHint}>
                       {challengeIsCompleted
-                        ? 'Results summary is shown here. Some completion metrics still use fallback values where payload fields are missing.'
+                        ? 'Results summary is shown here.'
                         : challengeIsPlaceholderOnly
                           ? 'This is a placeholder preview card. Join/leave is disabled until a live challenge row is available.'
                           : 'Progress and leaderboard update from challenge participation data. Some detail fields still use fallback values.'}
@@ -7554,7 +7551,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             </Text>
                             <Text style={styles.challengeLeaderboardPreviewEmptySub}>
                               {challengeIsCompleted
-                                ? 'Final standings are only partially available in the current payload.'
+                                ? 'Only part of the final standings are available.'
                                 : 'Additional leaderboard rows will appear after more participation activity.'}
                             </Text>
                           </View>
@@ -7567,7 +7564,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </Text>
                         <Text style={styles.challengeLeaderboardPreviewEmptySub}>
                           {challengeIsCompleted
-                            ? 'This challenge is complete, but final standings are not included in the current list payload yet.'
+                            ? 'This challenge is complete. Final standings are still loading.'
                             : 'Join and log challenge activity to populate leaderboard standings.'}
                         </Text>
                       </View>
@@ -7591,12 +7588,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       challengeSurfaceNotificationRows,
                       summarizeNotificationRows(challengeSurfaceNotificationRows, { sourceLabel: 'challenge_surface' }),
                       { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No challenge coaching notifications yet.' }
-                    )}
-                    {renderCoachingNotificationSurface(
-                      'W7 runtime visibility',
-                      challengeRuntimeVisibilityRows,
-                      summarizeNotificationRows(challengeRuntimeVisibilityRows, { sourceLabel: 'challenge_runtime_visibility' }),
-                      { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No runtime visibility updates for this challenge context.' }
                     )}
                     {challengeCoachingGateBlocksCtas ? (
                       renderKnownLimitedDataChip('challenge coaching access')
@@ -8244,12 +8235,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           summarizeNotificationRows(teamNotificationRows, { sourceLabel: 'team_member_module' }),
                           { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No team coaching notifications yet.' }
                         )}
-                        {renderCoachingNotificationSurface(
-                          'W7 runtime visibility',
-                          teamRuntimeVisibilityRows,
-                          summarizeNotificationRows(teamRuntimeVisibilityRows, { sourceLabel: 'team_member_runtime_visibility' }),
-                          { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No runtime visibility updates for this team context.' }
-                        )}
                         <View style={styles.coachingEntryButtonRow}>
                           <TouchableOpacity
                             style={styles.coachingEntryPrimaryBtn}
@@ -8273,7 +8258,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 preferredChannelScope: 'team',
                                 preferredChannelLabel: 'Team Updates',
                                 threadTitle: 'Team Updates',
-                                threadSub: 'Team-scoped communication thread shell from Team Member dashboard.',
+                                threadSub: 'Team updates thread.',
                                 broadcastAudienceLabel: null,
                                 broadcastRoleAllowed: false,
                               })
@@ -8501,12 +8486,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         summarizeNotificationRows(teamNotificationRows, { sourceLabel: 'team_leader_module' }),
                         { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No team coaching notifications yet.' }
                       )}
-                      {renderCoachingNotificationSurface(
-                        'W7 runtime visibility',
-                        teamRuntimeVisibilityRows,
-                        summarizeNotificationRows(teamRuntimeVisibilityRows, { sourceLabel: 'team_leader_runtime_visibility' }),
-                        { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No runtime visibility updates for this team context.' }
-                      )}
                       <View style={styles.coachingEntryButtonRow}>
                         <TouchableOpacity
                           style={styles.coachingEntryPrimaryBtn}
@@ -8530,7 +8509,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               preferredChannelScope: 'team',
                               preferredChannelLabel: 'Team Updates',
                               threadTitle: 'Team Updates',
-                              threadSub: 'Team-scoped communication channel/thread entry from Team Leader dashboard.',
+                                threadSub: 'Team updates thread.',
                               broadcastAudienceLabel: 'The Elite Group',
                               broadcastRoleAllowed: true,
                             })
@@ -8547,7 +8526,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             preferredChannelScope: 'team',
                             preferredChannelLabel: 'Team Updates',
                             threadTitle: 'Team Broadcast Thread',
-                            threadSub: 'Leader-scoped team communication context for broadcast compose shell.',
+                            threadSub: 'Team broadcast thread.',
                             broadcastAudienceLabel: 'The Elite Group',
                             broadcastRoleAllowed: true,
                           })
@@ -8646,17 +8625,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const contextualThreadTitle = coachingShellContext.threadTitle ?? 'Channel Thread';
               const contextualThreadSub =
                 coachingShellContext.threadSub ??
-                'Context-scoped communication thread shell. Message send/read behavior remains deferred in W2.';
+                'Read and send updates in this channel.';
               const contextualChannelSub = preferredChannelScope
-                ? `W2 scoped channel entry from ${sourceLabel}. Preferred context: ${coachingShellContext.preferredChannelLabel ?? preferredChannelScope}.`
-                : 'W2 channel list shell with context-aware entry routing. Team/challenge/sponsor data fetch remains deferred.';
+                ? `Choose a ${coachingShellContext.preferredChannelLabel ?? preferredChannelScope} channel.`
+                : 'Choose a channel to continue.';
               const shellMeta: Record<
                 CoachingShellScreen,
                 { title: string; sub: string; badge: string; primary?: { label: string; to: CoachingShellScreen }[] }
               > = {
                 inbox: {
                   title: 'Inbox',
-                  sub: 'Manual-spec-driven shell for communication entry and coaching preferences routing (W2 entry-point wiring active).',
+                  sub: 'Review coaching updates and next actions.',
                   badge: 'communication',
                   primary: [
                     { label: 'Open Channels', to: 'inbox_channels' },
@@ -8682,29 +8661,29 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 coach_broadcast_compose: {
                   title: 'Broadcast Composer',
                   sub: roleCanOpenBroadcast
-                    ? `Role-gated compose shell entry from ${sourceLabel}. Audience context: ${coachingShellContext.broadcastAudienceLabel ?? 'team/channel scope TBD'}. Send/write remains deferred pending API integration.`
-                    : 'Leader-only broadcast composer. Current persona is not allowed to open/send broadcasts.',
+                    ? `Draft a broadcast for ${coachingShellContext.broadcastAudienceLabel ?? 'your team channel'}.`
+                    : 'Leader-only broadcast tool.',
                   badge: roleCanOpenBroadcast ? 'leader-gated' : 'blocked',
                 },
                 coaching_journeys: {
                   title: 'Coaching Journeys',
-                  sub: 'W3 content integration: API-backed journey list and progress summary using documented coaching endpoints.',
+                  sub: 'Track journey progress and open a lesson.',
                   badge: 'coaching_content',
                   primary: [{ label: 'Open Journey Detail', to: 'coaching_journey_detail' }],
                 },
                 coaching_journey_detail: {
                   title: 'Coaching Journey Detail',
                   sub: selectedJourneyTitle
-                    ? `W3 content integration: milestone/lesson detail for ${selectedJourneyTitle}.`
-                    : 'W3 content integration: milestone/lesson detail (select a journey first).',
+                    ? `Milestones and lessons for ${selectedJourneyTitle}.`
+                    : 'Select a journey to view milestones.',
                   badge: 'coaching_content',
                   primary: [{ label: 'Open Lesson Detail', to: 'coaching_lesson_detail' }],
                 },
                 coaching_lesson_detail: {
                   title: 'Coaching Lesson Detail',
                   sub: selectedLesson
-                    ? 'W3 content integration: explicit lesson progress actions are enabled (no auto-complete on view).'
-                    : 'W3 content integration: choose a lesson from journey detail first.',
+                    ? 'Read the lesson and update progress.'
+                    : 'Choose a lesson from Journey Detail.',
                   badge: 'coaching_content',
                 },
               };
@@ -8750,11 +8729,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const shellPackageGateBlocksActions =
                 shellPackageGatePresentation.tone === 'gated' || shellPackageGatePresentation.tone === 'blocked';
               const channelRows = ([
-                { scope: 'team', label: 'Team Updates', context: 'team channel shell' },
-                { scope: 'challenge', label: 'Challenge Updates', context: 'challenge channel shell' },
-                { scope: 'sponsor', label: 'Sponsor Updates', context: 'sponsor channel shell' },
-                { scope: 'cohort', label: 'Cohort Updates', context: 'cohort channel shell' },
-                { scope: 'community', label: 'Community Updates', context: 'community channel shell' },
+                { scope: 'team', label: 'Team Updates', context: 'Team updates' },
+                { scope: 'challenge', label: 'Challenge Updates', context: 'Challenge updates' },
+                { scope: 'sponsor', label: 'Sponsor Updates', context: 'Sponsor updates' },
+                { scope: 'cohort', label: 'Cohort Updates', context: 'Cohort updates' },
+                { scope: 'community', label: 'Community Updates', context: 'Community updates' },
               ] as const)
                 .filter((row) => {
                   if (!preferredChannelScope) return true;
@@ -8779,14 +8758,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     </View>
                     <Text style={styles.coachingShellSub}>{meta.sub}</Text>
                     {renderCoachingPackageGateBanner(meta.title, shellPackageOutcome, { compact: true })}
-                    {shellPackageGatePresentation.tone === 'fallback' ? (
-                      <View style={styles.coachingContractGapCard}>
-                        <Text style={styles.coachingContractGapTitle}>Contract-gap triage (runtime fallback)</Text>
-                        <Text style={styles.coachingContractGapText}>
-                          UI-only: fallback banner/copy + non-authoritative CTA state. Backend-prep (existing family): add package visibility and entitlement outcomes to current coaching/channel payloads. Net-new family: only if published assignment outcomes cannot fit documented coaching/channel endpoints.
-                        </Text>
-                      </View>
-                    ) : null}
                     {shellPackageGateBlocksActions ? (
                       renderKnownLimitedDataChip('coaching package access')
                     ) : (
@@ -8840,21 +8811,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       : null}
                     {coachingShellScreen === 'inbox' || coachingShellScreen === 'inbox_channels'
                       ? renderRuntimeStateBanner(inboxRuntimeStateModel, { compact: true })
-                      : null}
-                    {coachingShellScreen === 'inbox' ||
-                    coachingShellScreen === 'inbox_channels' ||
-                    coachingShellScreen === 'channel_thread'
-                      ? renderCoachingNotificationSurface(
-                          'W7 runtime visibility',
-                          inboxRuntimeVisibilityRows,
-                          summarizeNotificationRows(inboxRuntimeVisibilityRows, { sourceLabel: 'inbox_runtime_visibility' }),
-                          {
-                            compact: true,
-                            maxRows: 2,
-                            mode: 'banner',
-                            emptyHint: 'No runtime visibility updates for this inbox context.',
-                          }
-                        )
                       : null}
                     {coachingShellScreen === 'inbox_channels' ? (
                       <View style={styles.coachingShellList}>
@@ -8911,7 +8867,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                     preferredChannelScope: rowScope,
                                     preferredChannelLabel: row.name,
                                     threadTitle: row.name,
-                                    threadSub: `API-backed thread via /api/channels/${row.id}/messages from ${sourceLabel}.`,
+                                    threadSub: `Messages in ${row.name}.`,
                                     broadcastAudienceLabel:
                                       rowScope === 'team' && roleCanOpenBroadcast
                                         ? row.name
@@ -8945,7 +8901,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                   preferredChannelScope: row.scope,
                                   preferredChannelLabel: row.label,
                                   threadTitle: row.label,
-                                  threadSub: `${row.context}. API returned no channels for the current user; showing shell fallback.`,
+                                  threadSub: `${row.context}.`,
                                   broadcastAudienceLabel:
                                     row.scope === 'team' && roleCanOpenBroadcast ? coachingShellContext.broadcastAudienceLabel ?? 'The Elite Group' : null,
                                   broadcastRoleAllowed: row.scope === 'team' ? roleCanOpenBroadcast : false,
@@ -8980,8 +8936,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </Text>
                         <Text style={styles.coachingShellComposeSub}>
                           {selectedChannelResolvedId
-                            ? `API-backed thread using /api/channels/${selectedChannelResolvedId}/messages`
-                            : 'No API channel selected for this thread context. Showing shell fallback only.'}
+                            ? 'Channel messages'
+                            : 'Select a channel to start messaging.'}
                         </Text>
                         {renderCoachingNotificationSurface(
                           'Thread system notifications',
@@ -9211,19 +9167,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             emptyHint: 'No coaching journey notifications available.',
                           }
                         )}
-                        {renderCoachingNotificationSurface(
-                          'W7 runtime visibility',
-                          journeysRuntimeVisibilityRows,
-                          summarizeNotificationRows(journeysRuntimeVisibilityRows, {
-                            sourceLabel: 'journeys_runtime_visibility',
-                          }),
-                          {
-                            compact: true,
-                            maxRows: 2,
-                            mode: 'banner',
-                            emptyHint: 'No runtime visibility updates for journeys.',
-                          }
-                        )}
                         {shellPackageGateBlocksActions ? (
                           renderKnownLimitedDataChip('journey actions')
                         ) : (
@@ -9359,19 +9302,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             emptyHint: 'No journey detail notifications available.',
                           }
                         )}
-                        {renderCoachingNotificationSurface(
-                          'W7 runtime visibility',
-                          journeysRuntimeVisibilityRows,
-                          summarizeNotificationRows(journeysRuntimeVisibilityRows, {
-                            sourceLabel: 'journey_detail_runtime_visibility',
-                          }),
-                          {
-                            compact: true,
-                            maxRows: 2,
-                            mode: 'banner',
-                            emptyHint: 'No runtime visibility updates for this journey detail.',
-                          }
-                        )}
                         {!selectedJourneyId ? (
                           <View style={styles.coachingJourneyEmptyCard}>
                             <Text style={styles.coachingJourneyEmptyTitle}>Choose a journey first</Text>
@@ -9496,19 +9426,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <View style={styles.coachingJourneyModule}>
                         {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
                         {renderCoachingNotificationSurface(
-                          'W7 runtime visibility',
-                          journeysRuntimeVisibilityRows,
-                          summarizeNotificationRows(journeysRuntimeVisibilityRows, {
-                            sourceLabel: 'lesson_runtime_visibility',
-                          }),
-                          {
-                            compact: true,
-                            maxRows: 2,
-                            mode: 'banner',
-                            emptyHint: 'No runtime visibility updates for this lesson context.',
-                          }
-                        )}
-                        {renderCoachingNotificationSurface(
                           'Lesson notifications',
                           selectedLesson
                             ? [
@@ -9574,7 +9491,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 {selectedLesson.milestoneTitle} • {selectedJourneyTitle ?? coachingJourneyDetail?.journey?.title ?? 'Journey'}
                               </Text>
                               <Text style={styles.coachingLessonDetailBody}>
-                                {selectedLesson.body?.trim() || 'Lesson body is empty in the current payload. Progress actions are still available explicitly.'}
+                                {selectedLesson.body?.trim() || 'No lesson content yet.'}
                               </Text>
                             </View>
                             {shellPackageGateBlocksActions ? (
@@ -9759,7 +9676,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             <View style={styles.coachingEntryCard}>
               <View style={styles.coachingEntryHeaderRow}>
                 <Text style={styles.coachingEntryTitle}>Coaching Nudge (W1 Allocation)</Text>
-                <Text style={styles.coachingEntryBadge}>manual-spec-driven</Text>
+                <Text style={styles.coachingEntryBadge}>coaching</Text>
               </View>
               <Text style={styles.coachingEntrySub}>
                 Coaching entry point. Home/Priority logging stays unchanged.
@@ -9771,12 +9688,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 homeNotificationRows,
                 summarizeNotificationRows(homeNotificationRows, { sourceLabel: 'home_coaching_nudge' }),
                 { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No coaching notifications right now.' }
-              )}
-              {renderCoachingNotificationSurface(
-                'W7 runtime visibility',
-                homeRuntimeVisibilityRows,
-                summarizeNotificationRows(homeRuntimeVisibilityRows, { sourceLabel: 'home_runtime_visibility' }),
-                { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No runtime visibility updates right now.' }
               )}
               <View style={styles.coachingEntryButtonRow}>
                 <TouchableOpacity
