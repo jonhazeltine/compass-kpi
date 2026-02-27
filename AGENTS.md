@@ -5,6 +5,7 @@ Always read these files first:
 - `/architecture/ARCHITECTURE.md`
 - `/architecture/NON_NEGOTIABLES.md`
 - `/architecture/CURRENT_SPRINT.md`
+- `/architecture/ARCHITECT_CONTROLLER_PLAYBOOK.md` (for architect/controller coordination threads)
 
 ## Hard Rules
 1. If a request conflicts with `/architecture/NON_NEGOTIABLES.md`, stop and propose compliant alternatives.
