@@ -91,6 +91,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W12-IA-SIMPLIFY-DOCS-SYNC-A` | `committed` | `M6/W12 coach portal IA simplification (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance) | `coach portal IA` (`library subsumes uploads`, `top-tab only`, `drag library->journey primary`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` + wiring/screenmap/parity docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W12 parity/dragdrop package | Committed docs-sync: Library now subsumes upload intake, Uploads removed as first-class coach tab, top-tab-only IA declared, and drag Library -> Journey is documented as primary authoring target across screenmap/wiring/parity docs. |
 | `COACHING-W12-COMMS-HUB-DOCS-SYNC-A` | `committed` | `M6/W12 coach portal communications IA sync (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance) | `coach portal communication` (`channels as comms hub`, `top-tab nav only`, `runtime handoff clarity`) | `/coach/channels` + supporting `/coach/library`, `/coach/journeys`, `/coach/cohorts` docs surfaces | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W12 parity/IA package | Committed docs-sync: `/coach/channels` now documented as the primary coach communications hub with top-tab-only navigation and consistent runtime handoff language across screenmap/wiring/parity docs, preserving existing boundaries. |
 | `COACHING-W12-COMMS-HUB-DOCS-IMPLEMENTATION-SYNC-B` | `committed` | `M6/W12 communications hub implementation docs sync (control-plane)` | `Coach` (primary), `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`, `Admin operator` | `communication runtime + portal hub` (`post-implementation docs alignment`) | `inbox*`, `channel_thread`, `coach_broadcast_compose`, `/coach/channels` + screenmap/wiring/addendum docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + landed Mobile-1 runtime behaviors | Committed docs implementation-sync: screenmap/wiring/addendum now reflect landed member comms runtime and `/coach/channels` comms-hub baseline, with compatibility alias behavior and unchanged role/API boundaries. |
+| `COACHING-W12-COMMS-HUB-IA-FOURTHREASON-DOCS-SYNC-A` | `committed` | `M6/W12 comms hub IA parity docs sync (Fourth Reason aligned)` | `Coach` (primary), `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`, `Admin operator` | `communication IA docs sync` (`All/Channels/DMs/Broadcast tabs`, `scope filters`, `broadcast role gates`, `route mapping`) | `/coach/channels` + mobile `inbox*`/`channel_thread`/`coach_broadcast_compose` references in screenmap/wiring/addendum docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + landed Mobile-1 comms runtime + W12 parity direction | Committed docs sync: screenmap/wiring/addendum now lock the implemented Comms Hub IA (`All/Channels/DMs/Broadcast`), server-scoped filters (`Team/Cohort/Segment/Global`), role-gated broadcast visibility/targets, and route mapping across member and `/coach/channels` surfaces without endpoint-family expansion. |
 | `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A` | `review` | `M6 W11 coach portal standalone UX pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`standalone look`, `de-admin chrome`, `coach-first content workflows`) | canonical `/coach/*` routes with standalone shell treatment and minimized admin framing | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W10 route baseline | Review-ready hard-correction+polish pass completed: canonical `/coach/*` now mounts dedicated `CoachPortalScreen` host (not `AdminShellScreen` chrome), `/admin/coaching/*` foundation paths stay compatibility redirects, DEC-0047 logged, and refreshed screenshot set captured under `app/test-results/w11-coach-portal-standalone-hard-correction/`. |
 | `COACHING-W12-COACH-PORTAL-IA-SIMPLIFY-A` | `committed` | `M6 W12 coach portal IA simplify pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`simplify top-level IA`, `merge uploads into library`, `remove redundant progression actions`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ compatibility `/coach/uploads` redirect to `/coach/library`) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W11 host split baseline | Committed: Uploads merged into Library IA/copy, `/coach/uploads` removed from top tabs, `/coach/uploads` and `/admin/coaching/*` compatibility redirects preserved, and per-page next-tab progression actions removed in favor of top-tab navigation only. |
 | `COACHING-W12-DRAGDROP-LIBRARY-TO-JOURNEY-MVP-A` | `committed` | `M6 W12 coach portal journey authoring MVP` | `Coach` (primary), `Team Leader` (team-scoped only), `Challenge Sponsor` (sponsor-scoped read context only) | `coach portal authoring UX` (`library -> journey drag/drop`, `reorder/remove/save states`) | `/coach/library`, `/coach/journeys` (coach portal web only) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | committed W12 drag/drop spec (`COACHING_W12_DRAGDROP_LIBRARY_TO_JOURNEY_SPEC.md`) | Committed MVP: added client-side drag/drop assignment from Library to Journey milestones with move/reorder/remove controls, draft save-state feedback (`idle/pending/success/error`), and role-gated lock messaging (sponsor scoped/no KPI logging). No backend/schema/API changes required. |
@@ -397,6 +398,54 @@ Sync docs to the implemented communications hub runtime after Mobile-1 landing, 
 
 #### Report-Back Requirements
 - Update board status/blocker/completion notes first
+- Exact docs changed
+- `DECISIONS_LOG` update status (`needed`/`not needed`)
+- Commit hash
+
+### `COACHING-W12-COMMS-HUB-IA-FOURTHREASON-DOCS-SYNC-A`
+
+#### Snapshot
+- `Status:` `committed`
+- `Program status:` `M6/W12 comms hub IA parity docs sync (Fourth Reason aligned)`
+- `Persona:` `Coach` (primary), `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`, `Admin operator`
+- `Flow:` `communication IA docs sync` (`All/Channels/DMs/Broadcast tabs`, `scope filters`, `broadcast role gates`, `runtime route mapping`)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred)
+- `Execution note (2026-02-27):` Board updated first and assignment activated before doc edits.
+- `Current blocker status (2026-02-27 start):` `none`.
+- `Completion note (2026-02-27):` Updated `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`, `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`, and `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` to align the implemented Comms Hub IA: `All / Channels / DMs / Broadcast` tabs, channel-scope filters (`Team`, `Cohort`, `Segment`, `Global`), role-gated broadcast visibility/target rules, and explicit member+coach runtime route mappings.
+- `Validation note (2026-02-27):` Cross-doc consistency check passed for tab model/filter model/role-gate wording and route mapping (`inbox`, `inbox_channels`, `channel_thread`, `coach_broadcast_compose`, `/coach/channels` + `/admin/coaching/channels` compatibility alias).
+- `Decision note (2026-02-27):` `not needed` — no structural boundary change in this IA sync pass.
+- `Current blocker status (2026-02-27 completion):` `none`.
+
+#### Primary Objective
+Sync comms-hub docs to the implemented IA so the tab model, channel-scope filters, broadcast role gates/targeting rules, and route mappings are consistent across control-plane docs.
+
+#### Hard Constraints
+- Docs-only scope.
+- No net-new endpoint family.
+- Preserve role boundaries and sponsor no-KPI-logging rule.
+- Keep `/admin/coaching/audit` secondary governance/oversight only.
+- Update `DECISIONS_LOG.md` only if this pass introduces a structural boundary change.
+
+#### Required Work
+1. Update `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md` with:
+   - Comms tab model: `All`, `Channels`, `DMs`, `Broadcast`.
+   - Channel scope filters: `Team`, `Cohort`, `Segment`, `Global`.
+   - Broadcast visibility/targeting constraints by role.
+2. Update `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md` with matching IA and route mapping language.
+3. Update `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` with the same runtime IA mapping and boundaries.
+4. Update `DECISIONS_LOG.md` only if structural boundaries are changed (expected: not needed for IA sync).
+
+#### Required Validation
+- Cross-doc wording consistency for tabs, scope filters, and broadcast gate rules.
+- Runtime mapping consistency across:
+  - member comms routes (`inbox*`, `channel_thread`, `coach_broadcast_compose`)
+  - coach portal route (`/coach/channels`) and compatibility aliases.
+- Confirm no backend/API/schema changes introduced.
+
+#### Report-Back Requirements
+- Update assignment row/block status first (`committed`/`blocked`)
 - Exact docs changed
 - `DECISIONS_LOG` update status (`needed`/`not needed`)
 - Commit hash

@@ -34,9 +34,16 @@ Docs are synchronized to current landed runtime baselines:
   - `inbox_channels` list/read context,
   - `channel_thread` read/send flows,
   - `coach_broadcast_compose` role-gated broadcast path.
+- Comms Hub IA model is aligned to `All / Channels / DMs / Broadcast` tabs with server-scoped filters (`Team`, `Cohort`, `Segment`, `Global`).
+  - `All` maps to `inbox`.
+  - `Channels` maps to `inbox_channels`.
+  - `DMs` maps to `channel_thread` direct-thread contexts.
+  - `Broadcast` maps to `coach_broadcast_compose` and is visible only for authorized roles (Coach/Admin/Team Leader).
 - Coach portal comms hub baseline is present in `CoachPortalScreen.tsx`:
   - canonical `/coach/channels` hub route,
   - top-tab navigation alignment with `library`, `journeys`, `cohorts`, `channels`,
+  - same in-hub IA model (`All`, `Channels`, `DMs`, `Broadcast`) and channel-scope filters,
+  - sponsor participation constrained to sponsor-scoped channels/tools (no sponsor KPI logging),
   - compatibility alias behavior from `/admin/coaching/channels`.
 
 This sync does not introduce backend/schema/API changes and does not change role boundaries.
@@ -62,6 +69,8 @@ This sync does not introduce backend/schema/API changes and does not change role
   - channel list / inbox
   - thread view (`channel_thread`)
   - broadcast composer (role-gated, `coach_broadcast_compose`)
+  - in-hub tabs: `All`, `Channels`, `DMs`, `Broadcast`
+  - channel scope filters: `Team`, `Cohort`, `Segment`, `Global`
 - `Coaching Journeys` (`coaching_journeys`)
   - journey list
   - journey detail (`coaching_journey_detail`)
