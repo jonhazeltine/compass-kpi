@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   SafeAreaView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -13,7 +14,6 @@ import CompassMark from '../assets/brand/compass_mark.svg';
 import { useAdminAuthz } from '../contexts/AdminAuthzContext';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  ADMIN_ROUTES,
   canAccessAdminRoute,
   getAdminRouteByKey,
   getAdminRouteByPath,
@@ -22,11 +22,8 @@ import {
   type AdminRouteKey,
 } from '../lib/adminAuthz';
 
-type CoachRouteKey =
-  | 'coachingLibrary'
-  | 'coachingJourneys'
-  | 'coachingCohorts'
-  | 'coachingChannels';
+type CoachRouteKey = 'coachingLibrary' | 'coachingJourneys' | 'coachingCohorts' | 'coachingChannels';
+type SaveState = 'idle' | 'pending' | 'success' | 'error';
 
 type CoachSurface = {
   key: CoachRouteKey;
@@ -39,41 +36,60 @@ type CoachSurface = {
   rows: Array<{ id: string; c1: string; c2: string; c3: string; c4: string }>;
 };
 
-const COACH_ROUTE_KEYS: CoachRouteKey[] = [
-  'coachingLibrary',
-  'coachingJourneys',
-  'coachingCohorts',
-  'coachingChannels',
-];
+type LibraryAsset = {
+  id: string;
+  title: string;
+  category: string;
+  scope: string;
+  duration: string;
+};
+
+type JourneyBlock = {
+  id: string;
+  assetId: string;
+};
+
+type JourneyMilestone = {
+  id: string;
+  title: string;
+  blocks: JourneyBlock[];
+};
+
+type DragPayload =
+  | { type: 'library'; assetId: string }
+  | { type: 'journey_block'; sourceMilestoneId: string; blockId: string; assetId: string }
+  | null;
+
+const COACH_ROUTE_KEYS: CoachRouteKey[] = ['coachingLibrary', 'coachingJourneys', 'coachingCohorts', 'coachingChannels'];
 
 const COACH_SURFACES: Record<CoachRouteKey, CoachSurface> = {
   coachingLibrary: {
     key: 'coachingLibrary',
     path: '/coach/library',
     label: 'Library',
-    headline: 'Curate your coaching content library',
-    summary:
-      'Upload, organize, and tag coaching assets in one workspace so journeys and channels stay aligned.',
+    headline: 'Library content ready for journey assignment',
+    summary: 'Drag assets from this library into Journey Builder milestones. Upload and organization stay in Library.',
     primaryAction: 'Create Collection',
-    columns: ['Asset', 'Category', 'Audience', 'Updated'],
+    columns: ['Asset', 'Category', 'Audience', 'Duration'],
     rows: [
-      { id: 'lib-1', c1: 'Buyer Follow-Up Kit', c2: 'Lesson Pack', c3: 'All teams', c4: 'Today' },
-      { id: 'lib-2', c1: 'Sponsor Event Promo', c2: 'Campaign', c3: 'Sponsor cohort', c4: 'Yesterday' },
-      { id: 'lib-3', c1: 'New Agent Sprint', c2: 'Onboarding', c3: 'Cohort based', c4: '2d ago' },
+      { id: 'lib-1', c1: 'Buyer Follow-Up Kit', c2: 'Lesson Pack', c3: 'All teams', c4: '14 min' },
+      { id: 'lib-2', c1: 'Sponsor Event Promo', c2: 'Campaign', c3: 'Sponsor cohort', c4: '8 min' },
+      { id: 'lib-3', c1: 'New Agent Sprint', c2: 'Onboarding', c3: 'Cohort based', c4: '22 min' },
+      { id: 'lib-4', c1: 'Weekly Objection Handling', c2: 'Workshop', c3: 'Team scoped', c4: '16 min' },
     ],
   },
   coachingJourneys: {
     key: 'coachingJourneys',
     path: '/coach/journeys',
     label: 'Journeys',
-    headline: 'Design learning journeys with clear progression',
-    summary: 'Build module sequences, define release pacing, and target the right cohort or channel audience.',
-    primaryAction: 'Create Journey',
+    headline: 'Build journey drafts from Library assets',
+    summary: 'Drop assets into milestones, reorder blocks, remove anything not needed, then save your draft.',
+    primaryAction: 'Save Draft',
     columns: ['Journey', 'Audience', 'Modules', 'State'],
     rows: [
-      { id: 'jr-1', c1: '30-Day Listing Accelerator', c2: 'New agents', c3: '8', c4: 'Live' },
+      { id: 'jr-1', c1: '30-Day Listing Accelerator', c2: 'New agents', c3: '8', c4: 'Draft' },
       { id: 'jr-2', c1: 'Team Production Sprint', c2: 'Team scoped', c3: '6', c4: 'Draft' },
-      { id: 'jr-3', c1: 'Sponsor Lead Conversion', c2: 'Sponsor cohort', c3: '5', c4: 'Live' },
+      { id: 'jr-3', c1: 'Sponsor Lead Conversion', c2: 'Sponsor cohort', c3: '5', c4: 'Draft' },
     ],
   },
   coachingCohorts: {
@@ -94,8 +110,8 @@ const COACH_SURFACES: Record<CoachRouteKey, CoachSurface> = {
     key: 'coachingChannels',
     path: '/coach/channels',
     label: 'Channels',
-    headline: 'Run communication channels with the right audience scope',
-    summary: 'Coordinate messages for journeys and cohorts while keeping sponsor interactions scoped and compliant.',
+    headline: 'Run communication channels with scoped audiences',
+    summary: 'Coordinate channel plans for journeys and cohorts while keeping sponsor interactions compliant.',
     primaryAction: 'Create Channel',
     columns: ['Channel', 'Scope', 'Members', 'Activity'],
     rows: [
@@ -118,33 +134,96 @@ function getCoachRouteKeyFromPath(pathname: string | undefined): CoachRouteKey |
   return normalizeCoachKey(route?.key);
 }
 
+function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) {
+    return items;
+  }
+  const copy = [...items];
+  const [item] = copy.splice(fromIndex, 1);
+  copy.splice(toIndex, 0, item);
+  return copy;
+}
+
 export default function CoachPortalScreen() {
   const { width } = useWindowDimensions();
   const isCompact = width < 980;
   const { signOut } = useAuth();
   const { backendRole, backendRoleLoading, resolvedRoles } = useAdminAuthz();
-  const [activeKey, setActiveKey] = useState<CoachRouteKey>(() =>
-    getCoachRouteKeyFromPath(typeof window !== 'undefined' ? window.location.pathname : undefined) ?? 'coachingLibrary'
+  const [activeKey, setActiveKey] = useState<CoachRouteKey>(
+    () => getCoachRouteKeyFromPath(typeof window !== 'undefined' ? window.location.pathname : undefined) ?? 'coachingLibrary'
   );
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [notFoundPath, setNotFoundPath] = useState<string | null>(null);
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [dragPayload, setDragPayload] = useState<DragPayload>(null);
+  const [journeyMilestones, setJourneyMilestones] = useState<JourneyMilestone[]>([
+    { id: 'ms-1', title: 'Kickoff', blocks: [] },
+    { id: 'ms-2', title: 'Practice', blocks: [] },
+    { id: 'ms-3', title: 'Live Application', blocks: [] },
+  ]);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [dirty, setDirty] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('No unsaved changes.');
+  const [dropHint, setDropHint] = useState('Drag a Library asset into a milestone to begin building.');
+  const blockIdRef = useRef(0);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const effectiveRoles = resolvedRoles.length > 0 ? resolvedRoles : (['unknown'] as AdminRole[]);
   const visibleRoutes = useMemo(
     () =>
-      COACH_ROUTE_KEYS
-        .map((key) => getAdminRouteByKey(key))
-        .filter((route) => canAccessAdminRoute(effectiveRoles, route)),
+      COACH_ROUTE_KEYS.map((key) => getAdminRouteByKey(key)).filter((route) => canAccessAdminRoute(effectiveRoles, route)),
     [effectiveRoles]
   );
   const activeSurface = COACH_SURFACES[activeKey];
   const selectedRow = activeSurface.rows.find((row) => row.id === selectedRowId) ?? activeSurface.rows[0] ?? null;
-  const scopeSummary = effectiveRoles.includes('coach')
-    ? 'Coach access: full coach portal sections enabled.'
-    : effectiveRoles.includes('team_leader')
-      ? 'Team Leader access: library upload actions remain team-scoped.'
-      : effectiveRoles.includes('challenge_sponsor')
-        ? 'Sponsor access: sponsor-scoped sections only. KPI logging actions are unavailable.'
+
+  const coachCanCompose =
+    effectiveRoles.includes('coach') || effectiveRoles.includes('platform_admin') || effectiveRoles.includes('super_admin');
+  const teamLeaderCanCompose = effectiveRoles.includes('team_leader') && !coachCanCompose;
+  const sponsorOnly = effectiveRoles.includes('challenge_sponsor') && !coachCanCompose && !teamLeaderCanCompose;
+  const canComposeDraft = coachCanCompose || teamLeaderCanCompose;
+  const composeDeniedReason = sponsorOnly
+    ? 'Sponsor access is scoped for visibility only. Drag/drop authoring and KPI logging are unavailable.'
+    : 'Current role cannot edit journey drafts on this route.';
+
+  const scopeSummary = coachCanCompose
+    ? 'Coach access: full authoring controls enabled for Library and Journeys.'
+    : teamLeaderCanCompose
+      ? 'Team Leader access: draft actions are team-scoped only.'
+      : sponsorOnly
+        ? 'Sponsor access: sponsor-scoped visibility only. No KPI logging actions are available.'
         : 'Access is limited to currently authorized coach portal sections.';
+
+  const libraryAssets = useMemo<LibraryAsset[]>(
+    () =>
+      COACH_SURFACES.coachingLibrary.rows
+        .map((row) => ({ id: row.id, title: row.c1, category: row.c2, scope: row.c3, duration: row.c4 }))
+        .filter((asset) => {
+          const q = libraryQuery.trim().toLowerCase();
+          if (!q) return true;
+          return (
+            asset.title.toLowerCase().includes(q) ||
+            asset.category.toLowerCase().includes(q) ||
+            asset.scope.toLowerCase().includes(q)
+          );
+        }),
+    [libraryQuery]
+  );
+
+  const assetById = useMemo(() => {
+    const map = new Map<string, LibraryAsset>();
+    for (const asset of COACH_SURFACES.coachingLibrary.rows) {
+      map.set(asset.id, { id: asset.id, title: asset.c1, category: asset.c2, scope: asset.c3, duration: asset.c4 });
+    }
+    return map;
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    },
+    []
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -207,14 +286,140 @@ export default function CoachPortalScreen() {
     }
   };
 
+  const markDraftChanged = (hint: string) => {
+    setDirty(true);
+    setSaveState('idle');
+    setSaveMessage('Unsaved changes. Save draft to persist this arrangement.');
+    setDropHint(hint);
+  };
+
+  const parseDragPayload = (eventLike?: any): DragPayload => {
+    const text = typeof eventLike?.dataTransfer?.getData === 'function' ? eventLike.dataTransfer.getData('text/plain') : '';
+    if (text.startsWith('library:')) {
+      return { type: 'library', assetId: text.slice('library:'.length) };
+    }
+    if (text.startsWith('journey-block:')) {
+      const [, sourceMilestoneId, blockId, assetId] = text.split(':');
+      if (sourceMilestoneId && blockId && assetId) {
+        return { type: 'journey_block', sourceMilestoneId, blockId, assetId };
+      }
+    }
+    return dragPayload;
+  };
+
+  const assignToMilestone = (targetMilestoneId: string, targetIndex: number, payload: DragPayload) => {
+    if (!canComposeDraft || !payload) return;
+
+    if (payload.type === 'library') {
+      setJourneyMilestones((prev) =>
+        prev.map((milestone) => {
+          if (milestone.id !== targetMilestoneId) return milestone;
+          const nextBlock: JourneyBlock = {
+            id: `jb-${Date.now()}-${blockIdRef.current++}`,
+            assetId: payload.assetId,
+          };
+          const insertAt = Math.max(0, Math.min(targetIndex, milestone.blocks.length));
+          const nextBlocks = [...milestone.blocks];
+          nextBlocks.splice(insertAt, 0, nextBlock);
+          return { ...milestone, blocks: nextBlocks };
+        })
+      );
+      markDraftChanged('Asset assigned. You can reorder within this milestone or move it across milestones.');
+      return;
+    }
+
+    if (payload.type === 'journey_block') {
+      setJourneyMilestones((prev) => {
+        let movingBlock: JourneyBlock | null = null;
+        const removed = prev.map((milestone) => {
+          if (milestone.id !== payload.sourceMilestoneId) return milestone;
+          const nextBlocks = milestone.blocks.filter((block) => {
+            if (block.id !== payload.blockId) return true;
+            movingBlock = block;
+            return false;
+          });
+          return { ...milestone, blocks: nextBlocks };
+        });
+
+        if (!movingBlock) return prev;
+
+        return removed.map((milestone) => {
+          if (milestone.id !== targetMilestoneId) return milestone;
+          const insertAt = Math.max(0, Math.min(targetIndex, milestone.blocks.length));
+          const nextBlocks = [...milestone.blocks];
+          nextBlocks.splice(insertAt, 0, movingBlock as JourneyBlock);
+          return { ...milestone, blocks: nextBlocks };
+        });
+      });
+      markDraftChanged('Journey block moved. Save to lock this sequence.');
+    }
+  };
+
+  const handleDrop = (eventLike: any, targetMilestoneId: string, targetIndex: number) => {
+    if (typeof eventLike?.preventDefault === 'function') eventLike.preventDefault();
+    const payload = parseDragPayload(eventLike);
+    assignToMilestone(targetMilestoneId, targetIndex, payload);
+    setDragPayload(null);
+  };
+
+  const handleDragOver = (eventLike: any) => {
+    if (typeof eventLike?.preventDefault === 'function') eventLike.preventDefault();
+    if (eventLike?.dataTransfer) {
+      eventLike.dataTransfer.dropEffect = canComposeDraft ? 'move' : 'none';
+    }
+  };
+
+  const removeBlock = (milestoneId: string, blockId: string) => {
+    if (!canComposeDraft) return;
+    setJourneyMilestones((prev) =>
+      prev.map((milestone) =>
+        milestone.id === milestoneId ? { ...milestone, blocks: milestone.blocks.filter((block) => block.id !== blockId) } : milestone
+      )
+    );
+    markDraftChanged('Block removed. Save to persist this change.');
+  };
+
+  const reorderBlock = (milestoneId: string, blockId: string, direction: -1 | 1) => {
+    if (!canComposeDraft) return;
+    setJourneyMilestones((prev) =>
+      prev.map((milestone) => {
+        if (milestone.id !== milestoneId) return milestone;
+        const fromIndex = milestone.blocks.findIndex((block) => block.id === blockId);
+        if (fromIndex < 0) return milestone;
+        const toIndex = fromIndex + direction;
+        return { ...milestone, blocks: moveItem(milestone.blocks, fromIndex, toIndex) };
+      })
+    );
+    markDraftChanged('Block order updated. Save to persist this sequence.');
+  };
+
+  const saveDraft = () => {
+    if (!canComposeDraft) {
+      setSaveState('error');
+      setSaveMessage(composeDeniedReason);
+      return;
+    }
+    if (!dirty) {
+      setSaveState('idle');
+      setSaveMessage('No unsaved changes.');
+      return;
+    }
+    setSaveState('pending');
+    setSaveMessage('Saving journey draft...');
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      setSaveState('success');
+      setDirty(false);
+      setSaveMessage(`Saved at ${new Date().toLocaleTimeString()}.`);
+    }, 700);
+  };
+
   if (!visibleRoutes.length) {
     return (
       <SafeAreaView style={styles.screen}>
         <View style={styles.centerCard}>
           <Text style={styles.centerTitle}>Coach Portal Access Required</Text>
-          <Text style={styles.centerBody}>
-            This account does not have access to the coach portal routes at this time.
-          </Text>
+          <Text style={styles.centerBody}>This account does not have access to the coach portal routes at this time.</Text>
           <Text style={styles.centerMeta}>Current roles: {effectiveRoles.join(', ')}</Text>
         </View>
       </SafeAreaView>
@@ -226,9 +431,7 @@ export default function CoachPortalScreen() {
       <SafeAreaView style={styles.screen}>
         <View style={styles.centerCard}>
           <Text style={styles.centerTitle}>Route Not Found</Text>
-          <Text style={styles.centerBody}>
-            The requested coach route is not available. Continue in the coach portal home routes.
-          </Text>
+          <Text style={styles.centerBody}>The requested coach route is not available. Continue in the coach portal home routes.</Text>
           <Text style={styles.centerMeta}>{notFoundPath}</Text>
           <TouchableOpacity style={styles.primaryButton} onPress={() => navigate(visibleRoutes[0].key as CoachRouteKey)}>
             <Text style={styles.primaryButtonText}>Open Coach Portal</Text>
@@ -253,7 +456,7 @@ export default function CoachPortalScreen() {
                 <Text style={styles.eyebrow}>Compass Coach</Text>
                 <Text style={styles.heroTitle}>Coach Portal</Text>
                 <Text style={styles.heroSubtitle}>
-                  A dedicated coaching workspace for content, journeys, cohorts, and channels.
+                  Build journey experiences from your library without admin-shell noise.
                 </Text>
               </View>
             </View>
@@ -278,11 +481,7 @@ export default function CoachPortalScreen() {
             const key = route.key as CoachRouteKey;
             const selected = key === activeKey;
             return (
-              <Pressable
-                key={route.key}
-                style={[styles.navPill, selected && styles.navPillSelected]}
-                onPress={() => navigate(key)}
-              >
+              <Pressable key={route.key} style={[styles.navPill, selected && styles.navPillSelected]} onPress={() => navigate(key)}>
                 <Text style={[styles.navPillLabel, selected && styles.navPillLabelSelected]}>{COACH_SURFACES[key].label}</Text>
                 <Text style={styles.navPillPath}>{COACH_SURFACES[key].path}</Text>
               </Pressable>
@@ -294,35 +493,243 @@ export default function CoachPortalScreen() {
           <Text style={styles.sectionTitle}>{activeSurface.headline}</Text>
           <Text style={styles.sectionBody}>{activeSurface.summary}</Text>
 
-          <View style={styles.tableHeader}>
-            <Text style={[styles.colLabel, styles.colWide]}>{activeSurface.columns[0]}</Text>
-            <Text style={[styles.colLabel, styles.colWide]}>{activeSurface.columns[1]}</Text>
-            <Text style={[styles.colLabel, styles.colWide]}>{activeSurface.columns[2]}</Text>
-            <Text style={[styles.colLabel, styles.colNarrow]}>{activeSurface.columns[3]}</Text>
-          </View>
-          {activeSurface.rows.map((row) => {
-            const selected = selectedRow?.id === row.id;
-            return (
-              <Pressable key={row.id} style={[styles.tableRow, selected && styles.tableRowSelected]} onPress={() => setSelectedRowId(row.id)}>
-                <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c1}</Text>
-                <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c2}</Text>
-                <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c3}</Text>
-                <Text style={[styles.colValue, styles.colNarrow]} numberOfLines={1}>{row.c4}</Text>
-              </Pressable>
-            );
-          })}
+          {activeKey === 'coachingLibrary' ? (
+            <View style={styles.builderWrap}>
+              <View style={styles.libraryRail}>
+                <View style={styles.libraryHeaderRow}>
+                  <Text style={styles.panelTitle}>Library Assets</Text>
+                  <Text style={styles.panelHint}>Drag cards into Journey milestones</Text>
+                </View>
+                <TextInput
+                  value={libraryQuery}
+                  onChangeText={setLibraryQuery}
+                  placeholder="Search assets"
+                  placeholderTextColor="#7A9085"
+                  style={styles.searchInput}
+                />
+                <View style={styles.libraryList}>
+                  {libraryAssets.length === 0 ? (
+                    <View style={styles.emptyStateCard}>
+                      <Text style={styles.emptyStateTitle}>No assets found</Text>
+                      <Text style={styles.emptyStateBody}>Clear search to restore all Library assets.</Text>
+                    </View>
+                  ) : (
+                    libraryAssets.map((asset) => {
+                      const selected = selectedRowId === asset.id;
+                      return (
+                        <Pressable
+                          key={asset.id}
+                          onPress={() => setSelectedRowId(asset.id)}
+                          style={[styles.libraryCard, selected && styles.libraryCardSelected]}
+                          {...({
+                            draggable: canComposeDraft,
+                            onDragStart: (event: any) => {
+                              setDragPayload({ type: 'library', assetId: asset.id });
+                              event?.dataTransfer?.setData?.('text/plain', `library:${asset.id}`);
+                              markDraftChanged('Asset picked up. Drop into a milestone to assign.');
+                            },
+                            onDragEnd: () => setDragPayload(null),
+                          } as any)}
+                        >
+                          <Text style={styles.libraryCardTitle}>{asset.title}</Text>
+                          <Text style={styles.libraryCardMeta}>{asset.category}</Text>
+                          <Text style={styles.libraryCardMeta}>{asset.scope}</Text>
+                          <Text style={styles.libraryCardMeta}>{asset.duration}</Text>
+                        </Pressable>
+                      );
+                    })
+                  )}
+                </View>
+              </View>
 
-          <View style={styles.detailCard}>
-            <Text style={styles.detailTitle}>{selectedRow?.c1 ?? 'Selection'}</Text>
-            <Text style={styles.detailMeta}>{selectedRow?.c2 ?? ''}</Text>
-            <Text style={styles.detailMeta}>{selectedRow?.c3 ?? ''}</Text>
-            <Text style={styles.detailMeta}>Status: {selectedRow?.c4 ?? 'Ready'}</Text>
-            <View style={styles.actionRow}>
-              <TouchableOpacity style={styles.primaryButton}>
-                <Text style={styles.primaryButtonText}>{activeSurface.primaryAction}</Text>
-              </TouchableOpacity>
+              <View style={styles.detailCardLarge}>
+                <Text style={styles.detailTitle}>{selectedRow?.c1 ?? 'Select a library asset'}</Text>
+                <Text style={styles.detailMeta}>{selectedRow?.c2 ?? ''}</Text>
+                <Text style={styles.detailMeta}>{selectedRow?.c3 ?? ''}</Text>
+                <Text style={styles.detailMeta}>Duration: {selectedRow?.c4 ?? 'n/a'}</Text>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity style={styles.primaryButton} onPress={() => navigate('coachingJourneys')}>
+                    <Text style={styles.primaryButtonText}>Open Journey Builder</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-          </View>
+          ) : activeKey === 'coachingJourneys' ? (
+            <View style={styles.builderWrap}>
+              <View style={styles.libraryRail}>
+                <View style={styles.libraryHeaderRow}>
+                  <Text style={styles.panelTitle}>Library Assets</Text>
+                  <Text style={styles.panelHint}>Source for drag/drop assignment</Text>
+                </View>
+                <View style={styles.libraryList}>
+                  {libraryAssets.map((asset) => (
+                    <Pressable
+                      key={`builder-asset-${asset.id}`}
+                      style={styles.libraryCard}
+                      {...({
+                        draggable: canComposeDraft,
+                        onDragStart: (event: any) => {
+                          setDragPayload({ type: 'library', assetId: asset.id });
+                          event?.dataTransfer?.setData?.('text/plain', `library:${asset.id}`);
+                        },
+                        onDragEnd: () => setDragPayload(null),
+                      } as any)}
+                    >
+                      <Text style={styles.libraryCardTitle}>{asset.title}</Text>
+                      <Text style={styles.libraryCardMeta}>{asset.category}</Text>
+                      <Text style={styles.libraryCardMeta}>{asset.scope}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.journeyCanvas}>
+                <View style={styles.canvasHeaderRow}>
+                  <View>
+                    <Text style={styles.panelTitle}>Journey Builder</Text>
+                    <Text style={styles.panelHint}>{dropHint}</Text>
+                  </View>
+                  <View style={styles.savePillWrap}>
+                    <Text
+                      style={[
+                        styles.savePill,
+                        saveState === 'pending' && styles.savePillPending,
+                        saveState === 'success' && styles.savePillSuccess,
+                        saveState === 'error' && styles.savePillError,
+                      ]}
+                    >
+                      {saveState === 'pending'
+                        ? 'Saving...'
+                        : saveState === 'success'
+                          ? 'Saved'
+                          : saveState === 'error'
+                            ? 'Save failed'
+                            : dirty
+                              ? 'Unsaved'
+                              : 'Idle'}
+                    </Text>
+                  </View>
+                </View>
+
+                {!canComposeDraft ? (
+                  <View style={styles.deniedCard}>
+                    <Text style={styles.deniedTitle}>Authoring controls locked</Text>
+                    <Text style={styles.deniedBody}>{composeDeniedReason}</Text>
+                  </View>
+                ) : null}
+
+                {journeyMilestones.map((milestone) => (
+                  <View key={milestone.id} style={styles.milestoneCard}>
+                    <Text style={styles.milestoneTitle}>{milestone.title}</Text>
+                    <View
+                      style={styles.dropZone}
+                      {...({
+                        onDragOver: handleDragOver,
+                        onDrop: (event: any) => handleDrop(event, milestone.id, milestone.blocks.length),
+                      } as any)}
+                    >
+                      {milestone.blocks.length === 0 ? (
+                        <Text style={styles.dropZoneHint}>Drop a library asset here</Text>
+                      ) : (
+                        milestone.blocks.map((block, index) => {
+                          const asset = assetById.get(block.assetId);
+                          return (
+                            <View
+                              key={block.id}
+                              style={styles.journeyBlockCard}
+                              {...({
+                                draggable: canComposeDraft,
+                                onDragStart: (event: any) => {
+                                  setDragPayload({
+                                    type: 'journey_block',
+                                    sourceMilestoneId: milestone.id,
+                                    blockId: block.id,
+                                    assetId: block.assetId,
+                                  });
+                                  event?.dataTransfer?.setData?.(
+                                    'text/plain',
+                                    `journey-block:${milestone.id}:${block.id}:${block.assetId}`
+                                  );
+                                },
+                                onDragEnd: () => setDragPayload(null),
+                              } as any)}
+                            >
+                              <View style={styles.journeyBlockCopy}>
+                                <Text style={styles.journeyBlockTitle}>{asset?.title ?? 'Unknown asset'}</Text>
+                                <Text style={styles.journeyBlockMeta}>Step {index + 1} • {asset?.category ?? 'Asset'}</Text>
+                              </View>
+                              <View style={styles.blockActions}>
+                                <TouchableOpacity
+                                  style={styles.inlineActionButton}
+                                  onPress={() => reorderBlock(milestone.id, block.id, -1)}
+                                  disabled={!canComposeDraft}
+                                >
+                                  <Text style={styles.inlineActionText}>Up</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.inlineActionButton}
+                                  onPress={() => reorderBlock(milestone.id, block.id, 1)}
+                                  disabled={!canComposeDraft}
+                                >
+                                  <Text style={styles.inlineActionText}>Down</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.inlineActionButtonDanger}
+                                  onPress={() => removeBlock(milestone.id, block.id)}
+                                  disabled={!canComposeDraft}
+                                >
+                                  <Text style={styles.inlineActionTextDanger}>Remove</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          );
+                        })
+                      )}
+                    </View>
+                  </View>
+                ))}
+
+                <View style={styles.saveRow}>
+                  <TouchableOpacity style={styles.primaryButton} onPress={saveDraft}>
+                    <Text style={styles.primaryButtonText}>Save Draft</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.saveMessage}>{saveMessage}</Text>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <>
+              <View style={styles.tableHeader}>
+                <Text style={[styles.colLabel, styles.colWide]}>{activeSurface.columns[0]}</Text>
+                <Text style={[styles.colLabel, styles.colWide]}>{activeSurface.columns[1]}</Text>
+                <Text style={[styles.colLabel, styles.colWide]}>{activeSurface.columns[2]}</Text>
+                <Text style={[styles.colLabel, styles.colNarrow]}>{activeSurface.columns[3]}</Text>
+              </View>
+              {activeSurface.rows.map((row) => {
+                const selected = selectedRow?.id === row.id;
+                return (
+                  <Pressable key={row.id} style={[styles.tableRow, selected && styles.tableRowSelected]} onPress={() => setSelectedRowId(row.id)}>
+                    <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c1}</Text>
+                    <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c2}</Text>
+                    <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c3}</Text>
+                    <Text style={[styles.colValue, styles.colNarrow]} numberOfLines={1}>{row.c4}</Text>
+                  </Pressable>
+                );
+              })}
+
+              <View style={styles.detailCard}>
+                <Text style={styles.detailTitle}>{selectedRow?.c1 ?? 'Selection'}</Text>
+                <Text style={styles.detailMeta}>{selectedRow?.c2 ?? ''}</Text>
+                <Text style={styles.detailMeta}>{selectedRow?.c3 ?? ''}</Text>
+                <Text style={styles.detailMeta}>Status: {selectedRow?.c4 ?? 'Ready'}</Text>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity style={styles.primaryButton}>
+                    <Text style={styles.primaryButtonText}>{activeSurface.primaryAction}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </>
+          )}
         </View>
       </View>
     </SafeAreaView>
@@ -516,6 +923,222 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  builderWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  libraryRail: {
+    width: 330,
+    borderWidth: 1,
+    borderColor: '#DDECE4',
+    backgroundColor: '#F8FCF9',
+    borderRadius: 12,
+    padding: 10,
+    gap: 8,
+  },
+  libraryHeaderRow: {
+    gap: 2,
+  },
+  panelTitle: {
+    color: '#244034',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  panelHint: {
+    color: '#5D786C',
+    fontSize: 12,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderColor: '#CFE1D8',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#264236',
+    backgroundColor: '#FFFFFF',
+  },
+  libraryList: {
+    gap: 8,
+    paddingBottom: 4,
+  },
+  libraryCard: {
+    borderWidth: 1,
+    borderColor: '#D5E7DD',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    padding: 10,
+    gap: 2,
+  },
+  libraryCardSelected: {
+    borderColor: '#2F845E',
+    backgroundColor: '#ECF8F1',
+  },
+  libraryCardTitle: {
+    color: '#1F3A2D',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  libraryCardMeta: {
+    color: '#617A6F',
+    fontSize: 12,
+  },
+  journeyCanvas: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#DDECE4',
+    borderRadius: 12,
+    backgroundColor: '#FCFEFD',
+    padding: 10,
+    gap: 10,
+  },
+  canvasHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  savePillWrap: {
+    alignItems: 'flex-end',
+  },
+  savePill: {
+    borderWidth: 1,
+    borderColor: '#D3E6DC',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    color: '#4E6B5E',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    backgroundColor: '#F3FBF7',
+  },
+  savePillPending: {
+    borderColor: '#A8CFBA',
+    color: '#245A42',
+  },
+  savePillSuccess: {
+    borderColor: '#8FCBAA',
+    color: '#1E7B50',
+    backgroundColor: '#EAF8F1',
+  },
+  savePillError: {
+    borderColor: '#E3B3B3',
+    color: '#9A3636',
+    backgroundColor: '#FDEFEF',
+  },
+  deniedCard: {
+    borderWidth: 1,
+    borderColor: '#E7C6B4',
+    borderRadius: 10,
+    backgroundColor: '#FFF8F5',
+    padding: 10,
+    gap: 4,
+  },
+  deniedTitle: {
+    color: '#7A3E2A',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  deniedBody: {
+    color: '#8C5845',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  milestoneCard: {
+    borderWidth: 1,
+    borderColor: '#D6E8DF',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    padding: 10,
+    gap: 8,
+  },
+  milestoneTitle: {
+    color: '#1F3A2D',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  dropZone: {
+    borderWidth: 1,
+    borderColor: '#CFE2D8',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    padding: 8,
+    gap: 8,
+    backgroundColor: '#FBFEFC',
+    minHeight: 56,
+  },
+  dropZoneHint: {
+    color: '#658073',
+    fontSize: 12,
+  },
+  journeyBlockCard: {
+    borderWidth: 1,
+    borderColor: '#D4E7DD',
+    borderRadius: 8,
+    backgroundColor: '#F7FCF9',
+    padding: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  journeyBlockCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  journeyBlockTitle: {
+    color: '#234133',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  journeyBlockMeta: {
+    color: '#5F7A6E',
+    fontSize: 12,
+  },
+  blockActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  inlineActionButton: {
+    borderWidth: 1,
+    borderColor: '#CEE2D8',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: '#FFFFFF',
+  },
+  inlineActionText: {
+    color: '#2C4A3B',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  inlineActionButtonDanger: {
+    borderWidth: 1,
+    borderColor: '#E8C7C7',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: '#FFF3F3',
+  },
+  inlineActionTextDanger: {
+    color: '#974444',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  saveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 2,
+    flexWrap: 'wrap',
+  },
+  saveMessage: {
+    color: '#4F6B5C',
+    fontSize: 12,
+  },
   tableHeader: {
     flexDirection: 'row',
     borderWidth: 1,
@@ -559,6 +1182,15 @@ const styles = StyleSheet.create({
   },
   detailCard: {
     marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#D8EAE0',
+    borderRadius: 12,
+    backgroundColor: '#F9FCFA',
+    padding: 12,
+    gap: 4,
+  },
+  detailCardLarge: {
+    flex: 1,
     borderWidth: 1,
     borderColor: '#D8EAE0',
     borderRadius: 12,
@@ -613,6 +1245,23 @@ const styles = StyleSheet.create({
   },
   centerMeta: {
     color: '#6E847A',
+    fontSize: 12,
+  },
+  emptyStateCard: {
+    borderWidth: 1,
+    borderColor: '#D6E7DE',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    padding: 10,
+    gap: 4,
+  },
+  emptyStateTitle: {
+    color: '#284436',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  emptyStateBody: {
+    color: '#647D71',
     fontSize: 12,
   },
 });

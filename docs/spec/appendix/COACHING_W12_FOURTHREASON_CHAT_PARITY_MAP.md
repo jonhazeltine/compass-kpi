@@ -58,7 +58,7 @@ Extract reusable chat + journey UX patterns from Fourth Reason and map them to c
 | Journey list cards with progress percentage and cohort/context chips | `member/MemberJourneyScreen.tsx` | `coaching_journeys` | `/api/coaching/journeys`, `/api/coaching/progress` | Keep list card hierarchy: title, progress, next-action CTA; avoid placeholder-heavy card copy | Mobile |
 | Journey detail milestone timeline with lock/unlock semantics | `JourneyDetailScreen.tsx` | `coaching_journey_detail` | `/api/coaching/journeys/{id}` | Render milestone/lesson progression hierarchy and lock/read-only states from existing payload semantics | Mobile |
 | Lesson detail with clear primary CTA (`mark progress`, `next lesson`) | `LessonPlayerScreen.tsx`, `design_guidelines.md` | `coaching_lesson_detail` | `/api/coaching/lessons/{id}/progress` | Keep explicit user-triggered progress writes only; no auto-complete behavior | Mobile |
-| Coach workspace IA: top-tab sections + library-first authoring | `CoachTabNavigator.tsx`, `server/templates/coach-studio.html` | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` | Existing in-family coaching/channel/sponsor reads | Keep top-tab navigation only; treat uploads as Library intake (not standalone tab); prioritize drag `Library -> Journey` authoring path | Coach portal |
+| Coach workspace IA: top-tab sections + channels comms hub + library-first authoring | `CoachTabNavigator.tsx`, `server/templates/coach-studio.html` | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` | Existing in-family coaching/channel/sponsor reads | Keep top-tab navigation only; treat uploads as Library intake (not standalone tab); treat `/coach/channels` as primary communications hub; prioritize drag `Library -> Journey` authoring path | Coach portal |
 | Sponsor/context visibility in communication and journey surfaces | `coach/MessagesScreen.tsx`, `design_guidelines.md` | `channel_thread`, `coaching_journeys*`, `/coach/channels` | `/sponsored-challenges*`, `/api/channels*`, `/api/coaching/journeys*` | Keep sponsor scoped visibility only; explicitly deny sponsor KPI logging affordances | Mobile + Coach portal |
 
 ## Mobile Implementation-Ready Screen/Flow Spec
@@ -129,7 +129,7 @@ Extract reusable chat + journey UX patterns from Fourth Reason and map them to c
 - `/coach/library`: searchable reusable content registry with integrated upload intake + metadata tagging.
 - `/coach/journeys`: journey roster + edit/status actions.
 - `/coach/cohorts`: cohort assignment and channel linkage panel.
-- `/coach/channels`: channel roster with membership and context scopes.
+- `/coach/channels`: coach communications hub with channel roster, membership/context scopes, and runtime comms handoff context.
 - Primary coach IA navigation is top-tab-only for these sections; do not model sequential helper-button navigation between sections.
 - Primary authoring target: drag from Library items into Journey builder composition.
 
