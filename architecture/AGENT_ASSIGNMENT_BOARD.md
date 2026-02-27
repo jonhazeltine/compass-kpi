@@ -94,9 +94,10 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A` | `review` | `M6 W11 coach portal standalone UX pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`standalone look`, `de-admin chrome`, `coach-first content workflows`) | canonical `/coach/*` routes with standalone shell treatment and minimized admin framing | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W10 route baseline | Review-ready hard-correction+polish pass completed: canonical `/coach/*` now mounts dedicated `CoachPortalScreen` host (not `AdminShellScreen` chrome), `/admin/coaching/*` foundation paths stay compatibility redirects, DEC-0047 logged, and refreshed screenshot set captured under `app/test-results/w11-coach-portal-standalone-hard-correction/`. |
 | `COACHING-W12-COACH-PORTAL-IA-SIMPLIFY-A` | `committed` | `M6 W12 coach portal IA simplify pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`simplify top-level IA`, `merge uploads into library`, `remove redundant progression actions`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ compatibility `/coach/uploads` redirect to `/coach/library`) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W11 host split baseline | Committed: Uploads merged into Library IA/copy, `/coach/uploads` removed from top tabs, `/coach/uploads` and `/admin/coaching/*` compatibility redirects preserved, and per-page next-tab progression actions removed in favor of top-tab navigation only. |
 | `COACHING-W12-DRAGDROP-LIBRARY-TO-JOURNEY-MVP-A` | `committed` | `M6 W12 coach portal journey authoring MVP` | `Coach` (primary), `Team Leader` (team-scoped only), `Challenge Sponsor` (sponsor-scoped read context only) | `coach portal authoring UX` (`library -> journey drag/drop`, `reorder/remove/save states`) | `/coach/library`, `/coach/journeys` (coach portal web only) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | committed W12 drag/drop spec (`COACHING_W12_DRAGDROP_LIBRARY_TO_JOURNEY_SPEC.md`) | Committed MVP: added client-side drag/drop assignment from Library to Journey milestones with move/reorder/remove controls, draft save-state feedback (`idle/pending/success/error`), and role-gated lock messaging (sponsor scoped/no KPI logging). No backend/schema/API changes required. |
-| `COACHING-W12-PORTAL-AUTHORING-CORRECTION-B` | `active` | `M6 W12 coach portal authoring correction pass` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal authoring UX` (`library assets+collections`, `journey creation`, `functional drag/drop`, `save draft action-bar`) | `/coach/library`, `/coach/journeys` (+ `/coach/uploads` and `/admin/coaching/*` compatibility checks) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | owner correction pass (W12) | In progress: correcting library IA to Assets+Collections, adding Create New Journey (blank+name), hardening functional web drag/drop (asset -> collection, asset/collection item -> milestone), and moving Save Draft to builder action bar with explicit save-state feedback. |
+| `COACHING-W12-PORTAL-AUTHORING-CORRECTION-B` | `committed` | `M6 W12 coach portal authoring correction pass` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal authoring UX` (`library assets+collections`, `journey creation`, `functional drag/drop`, `save draft action-bar`) | `/coach/library`, `/coach/journeys` (+ `/coach/uploads` and `/admin/coaching/*` compatibility checks) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | owner correction pass (W12) | Committed correction: Library IA now presents Assets + Collections with collection-container semantics, Journey Builder includes blank Create New Journey naming flow, web drag/drop works for asset->collection and asset/collection-item->milestone with reorder/remove maintained, and Save Draft is anchored in builder action bar with clear idle/pending/saved/error feedback. |
 | `COACHING-W12-PORTAL-AUTHORING-CORRECTION-DOCS-B` | `committed` | `M6 W12 coach portal authoring correction docs sync` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal authoring UX docs` (`library assets+collections`, `journey builder create`, `mandatory drag/drop runtime`, `save draft action-bar/status`) | `/coach/library`, `/coach/journeys` (+ compatibility `/coach/uploads` and `/admin/coaching/*` references in docs) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + landed Admin-1 correction runtime | Committed docs-sync: screenmap/wiring/dragdrop spec now align to corrected IA/UX (`Library = Assets + Collections`, Journey Builder `Create New Journey`, mandatory drag/drop behavior, builder action-bar `Save Draft` status model `idle/pending/saved/error`). No structural boundary changes. |
 | `COACHING-W12-INTERACTION-PRIMITIVES-DOCS-C` | `committed` | `M6 W12 coach portal interaction primitives docs lock` | `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only) | `coach portal interaction model` (`primary actions`, `section switching`, `secondary action menus`, `list row selection`, `scroll requirements`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ compatibility alias notes) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + post Admin-1 landing sync | Committed docs lock: interaction primitives are now explicit across W12 coach-portal docs (primary-action buttons, section-switching tabs/segments, secondary-action menus, list/row selection behavior, and page scroll requirements). No structural boundary changes. |
+| `ADMIN-W12-INTERACTION-PRIMITIVES-DOCS-SYNC-C` | `active` | `A3/W12 admin interaction primitives docs sync` | `Admin operator` (primary), `Coach` (admin-hosted companion routes) | `admin interaction model` (`commit buttons`, `view switching controls`, `row-selection/sorting`, `secondary-action menus`, `scroll requirements`) | admin-hosted surfaces (`/admin/users`, `/admin/reports`, `/admin/kpis`, `/admin/challenge-templates`, `/admin/coaching/*` compatibility routes) + shared screenmap/wiring docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + post Admin-1 landing sync | In progress: syncing screenmap/wiring docs to explicit admin interaction-primitives standard for implementation consistency. |
 | `COACHING-W9-COACH-PORTAL-EXPERIENCE-PLANNING-A` | `committed` | `W9 coach portal experience planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (host foundation only during transition) | `coach portal IA/UX` (`dedicated experience + migration path + production sequencing`) | dedicated coach portal IA/UX direction (outside admin-shell presentation), migration from `/admin/coaching/*` foundation routes, persona visibility model, production-experience sequencing | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W7/W8 acceptance pack | Committed W10 route-decoupling swath: dedicated `/coach/*` uploads/library/cohorts/channels routes + customer-facing shell/nav landed, coach-facing navigation migrated to `/coach/*`, and `/admin/coaching/*` retained as temporary compatibility redirect-only paths (no backend/schema/API changes). |
 | `COACHING-W7-SUPERADMIN-AI-TROUBLESHOOTING-AUDIT-A` | `queued` | `W7 optional hardening (super-admin AI troubleshooting only)` | `Super Admin` (primary), `Admin operator` (limited) | `AI troubleshooting / audit` (`exception-only`) | optional trimmed `/admin/coaching/audit` super-admin troubleshooting views | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package + explicit owner approval gate | Optional exception-only follow-on to repurpose or trim `/admin/coaching/audit` into super-admin AI troubleshooting/audit; not a coach notification or coach primary workflow surface. |
 
@@ -3258,7 +3259,7 @@ Implement an MVP coach authoring loop where a coach can assign Library assets in
 ### `COACHING-W12-PORTAL-AUTHORING-CORRECTION-B`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `committed`
 - `Program status:` `M6 W12 coach portal authoring correction pass`
 - `Persona:` `Coach` (primary), `Team Leader` (team-scoped authoring), `Challenge Sponsor` (sponsor-scoped read-only)
 - `Flow:` `coach portal authoring UX` (`library assets+collections`, `journey creation`, `functional web drag/drop`, `save draft action bar`)
@@ -3266,6 +3267,9 @@ Implement an MVP coach authoring loop where a coach can assign Library assets in
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred)
 - `Worker note (2026-02-27, Admin-1, start):` Board updated first. Starting owner correction pass for `/coach/library` + `/coach/journeys` to apply Assets/Collections IA, Create New Journey flow, functional web drag/drop assignment loops, and Save Draft action-bar placement/state clarity.
 - `Current blocker status (2026-02-27, Admin-1, start):` `none` for frontend-only correction pass.
+- `Completion note (2026-02-27, Admin-1):` Implemented owner correction package in `CoachPortalScreen`: Library now renders canonical `Assets` + `Collections` workspace, journey builder exposes `Create New Journey` (blank draft + name), drag/drop interactions support asset->collection and asset/collection-item->milestone assignment in web runtime, reorder/remove controls remain functional, and Save Draft moved to builder action bar with explicit `IDLE/PENDING/SAVED/ERROR` feedback.
+- `Validation note (2026-02-27, Admin-1):` `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz` passed; `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed; runtime checks executed against `http://localhost:19009` for `/coach/library`, `/coach/journeys`, `/coach/uploads` redirect, and `/admin/coaching/library` compatibility redirect with screenshot evidence.
+- `Current blocker status (2026-02-27, Admin-1, completion):` `none`.
 
 #### Primary Objective
 Apply owner correction package so coach portal authoring is clear and functional in web runtime: Library as canonical Assets+Collections workspace, journey creation from blank with naming, working drag/drop assignment paths, and visible save-state feedback in builder controls.
@@ -3403,6 +3407,47 @@ Create a single, explicit interaction-primitive rule set for coach portal pages 
 #### Validation
 - Cross-doc wording consistency check for the primitive rules.
 - Verify no structural-boundary changes requiring `DECISIONS_LOG.md`.
+
+#### Report-Back
+- Update assignment row/block status first (`committed`/`blocked`)
+- Docs changed
+- Structural-boundary decision note (`DECISIONS_LOG.md` updated or not needed)
+- Commit hash
+
+### `ADMIN-W12-INTERACTION-PRIMITIVES-DOCS-SYNC-C`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `A3/W12 admin interaction primitives docs sync`
+- `Persona:` `Admin operator` (primary), `Coach` (admin-hosted companion routes)
+- `Flow:` `admin interaction model` (`commit buttons`, `view switching controls`, `row-selection/sorting`, `secondary-action menus`, `scroll requirements`)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred)
+- `Dependency note:` Execute after Admin-1 lands. This pass is docs-only and standardizes interaction primitives for admin-hosted surfaces.
+- `Worker note (2026-02-27, Coach-1, start):` Board updated first. Starting admin interaction-primitives docs sync for screenmap/wiring/board coverage.
+- `Current blocker status (2026-02-27, Coach-1, start):` `none` for docs-only scope.
+
+#### Primary Objective
+Lock a shared admin interaction-primitives standard so admin implementation lanes follow the same control behavior conventions across admin web surfaces.
+
+#### Hard Constraints
+- No backend/schema/API endpoint-family changes.
+- Preserve current role boundaries and route ownership.
+- Keep `/admin/coaching/audit` secondary-only governance/troubleshooting.
+- Update `DECISIONS_LOG.md` only if structural boundaries change.
+
+#### Required Work
+1. Update screenmap/wiring docs with admin interaction-primitives standard:
+   - primary buttons only for commit actions
+   - tabs/segmented controls for view switching
+   - row-selection/table-header sorting patterns
+   - menus for secondary actions
+   - scroll behavior requirement
+2. Update board assignment row/block status and notes after docs sync.
+
+#### Validation
+- Cross-doc consistency check between board/screenmap/wiring for shared admin primitive language.
+- Confirm no structural boundary delta requiring `DECISIONS_LOG.md`.
 
 #### Report-Back
 - Update assignment row/block status first (`committed`/`blocked`)
