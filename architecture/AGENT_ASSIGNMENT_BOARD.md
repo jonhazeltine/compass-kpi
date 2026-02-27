@@ -494,7 +494,7 @@ Produce the first implementation-ready coaching integration planning package (ma
 ### `COACHING-UI-W1-ALLOCATION-SHELLS`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W1 allocation + route shells`)
@@ -2933,6 +2933,8 @@ Make journey/lesson navigation evaluable and intuitive by removing redundant dee
 - `Validation note (2026-02-27, Admin-1):` `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz` passed; `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed; runtime screenshots captured for `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels`, `/coach/uploads`, and compatibility alias check path `/admin/coaching/library`.
 - `Current blocker status (2026-02-27, Admin-1):` `none`.
 - `Worker note (2026-02-27, Admin-1, reopen correction):` Reopened by owner for correction pass. Scope narrowed to removing remaining admin shell chrome from `/coach/*` runtime (no left admin nav/header in coach mode), preserving role gates, preserving `/admin/coaching/*` compatibility redirects, and refreshing review screenshots.
+- `Completion note (2026-02-27, Admin-1, correction):` Coach mode now omits admin shell chrome entirely (left admin sidebar removed; admin header removed) and renders a dedicated coach-only top frame + section nav + context card on canonical `/coach/*` routes. Existing route map, guard behavior, team-leader/sponsor boundaries, and sponsor no-KPI-logging stance remain unchanged.
+- `Validation note (2026-02-27, Admin-1, correction):` `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz` passed; `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed; refreshed runtime screenshots captured for `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels`, `/coach/uploads`, and `/admin/coaching/library` compatibility path.
 
 #### Primary Objective
 Make `/coach/*` feel like a distinct coach product area, not an admin surface with coach labels.
