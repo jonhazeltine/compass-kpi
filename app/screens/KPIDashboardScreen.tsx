@@ -127,6 +127,8 @@ type LoadState = 'loading' | 'empty' | 'error' | 'ready';
 type Segment = 'PC' | 'GP' | 'VP';
 type ViewMode = 'home' | 'log';
 type BottomTab = 'home' | 'challenge' | 'newkpi' | 'team' | 'comms';
+type CommsHubPrimaryTab = 'all' | 'channels' | 'dms' | 'broadcast';
+type CommsHubScopeFilter = 'all' | 'team' | 'cohort' | 'segment' | 'global';
 type DrawerFilter = 'Quick' | 'PC' | 'GP' | 'VP';
 type HomePanel = 'Quick' | 'PC' | 'GP' | 'VP';
 type ChallengeMemberListTab = 'all' | 'completed';
@@ -2149,6 +2151,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [challengeMemberCreateMode, setChallengeMemberCreateMode] = useState<'public' | 'team'>('team');
   const [teamFlowScreen, setTeamFlowScreen] = useState<TeamFlowScreen>('dashboard');
   const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox');
+  const [commsHubPrimaryTab, setCommsHubPrimaryTab] = useState<CommsHubPrimaryTab>('all');
+  const [commsHubScopeFilter, setCommsHubScopeFilter] = useState<CommsHubScopeFilter>('all');
+  const [commsHubSearchQuery, setCommsHubSearchQuery] = useState('');
   const [coachingShellContext, setCoachingShellContext] = useState<CoachingShellContext>({
     source: 'unknown',
     preferredChannelScope: null,
@@ -2201,6 +2206,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [channelMessageSubmitting, setChannelMessageSubmitting] = useState(false);
   const [channelMessageSubmitError, setChannelMessageSubmitError] = useState<string | null>(null);
   const [broadcastDraft, setBroadcastDraft] = useState('');
+  const [broadcastTargetScope, setBroadcastTargetScope] = useState<'team' | 'cohort' | 'channel'>('team');
   const [broadcastSubmitting, setBroadcastSubmitting] = useState(false);
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
   const [broadcastSuccessNote, setBroadcastSuccessNote] = useState<string | null>(null);
@@ -4737,6 +4743,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
     if (tab === 'comms') {
       setViewMode('log');
+      setCommsHubPrimaryTab('all');
+      setCommsHubScopeFilter('all');
+      setCommsHubSearchQuery('');
       setCoachingShellScreen('inbox');
       setCoachingShellContext({
         source: 'user_tab',
@@ -8587,7 +8596,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               };
               const preferredChannelScope = coachingShellContext.preferredChannelScope;
               const sourceLabel = sourceLabelByKey[coachingShellContext.source];
-              const roleCanOpenBroadcast = teamPersonaVariant === 'leader' || coachingShellContext.broadcastRoleAllowed;
+              const roleCanOpenBroadcast = isCoachRuntimeOperator || (teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime);
               const commsPersonaVariant: 'coach' | 'team_leader' | 'sponsor' | 'member' | 'solo' = isCoachRuntimeOperator
                 ? 'coach'
                 : isChallengeSponsorRuntime
@@ -8609,12 +8618,67 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         ? 'Solo layout: focus on your journey milestones and direct channel updates.'
                         : 'Member layout: keep up with team/challenge updates and journey lesson progress.';
               const allChannelApiRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
+              const scopeFilterMatch = (row: ChannelApiRow) => {
+                const scope = normalizeChannelTypeToScope(row.type);
+                if (commsHubScopeFilter === 'all') return true;
+                if (commsHubScopeFilter === 'team') return scope === 'team';
+                if (commsHubScopeFilter === 'cohort') return scope === 'cohort';
+                if (commsHubScopeFilter === 'segment') return scope === 'challenge' || scope === 'sponsor';
+                if (commsHubScopeFilter === 'global') return scope === 'community';
+                return true;
+              };
+              const searchNeedle = commsHubSearchQuery.trim().toLowerCase();
+              const searchMatch = (row: ChannelApiRow) => {
+                if (!searchNeedle) return true;
+                const scope = normalizeChannelTypeToScope(row.type) ?? 'community';
+                const chips = [row.name, row.type, scope, row.my_role ?? '', String(row.unread_count ?? 0)];
+                return chips.some((v) => String(v).toLowerCase().includes(searchNeedle));
+              };
               const filteredChannelApiRows = (coachingShellContext.preferredChannelScope
                 ? allChannelApiRows.filter((row) => {
                     const scope = normalizeChannelTypeToScope(row.type);
                     return scope === coachingShellContext.preferredChannelScope || scope === 'community';
                   })
                 : allChannelApiRows) as ChannelApiRow[];
+              const dmApiRows = allChannelApiRows.filter((row) => String(row.type ?? '').toLowerCase() === 'direct');
+              const scopeFilteredChannelRows = allChannelApiRows
+                .filter((row) => String(row.type ?? '').toLowerCase() !== 'direct')
+                .filter(scopeFilterMatch)
+                .filter(searchMatch);
+              const scopeFilteredDmRows = dmApiRows.filter(searchMatch);
+              const broadcastTargetOptions: Array<'team' | 'cohort' | 'channel'> = isCoachRuntimeOperator
+                ? ['team', 'cohort', 'channel']
+                : teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime
+                  ? ['team', 'cohort']
+                  : [];
+              const effectiveBroadcastTargetScope = broadcastTargetOptions.includes(broadcastTargetScope)
+                ? broadcastTargetScope
+                : (broadcastTargetOptions[0] ?? 'team');
+              const broadcastCandidateRows = allChannelApiRows
+                .filter((row) => String(row.type ?? '').toLowerCase() !== 'direct')
+                .filter((row) => {
+                  const scope = normalizeChannelTypeToScope(row.type);
+                  if (effectiveBroadcastTargetScope === 'team') return scope === 'team';
+                  if (effectiveBroadcastTargetScope === 'cohort') return scope === 'cohort';
+                  return true;
+                })
+                .filter(searchMatch);
+              const primaryTabRows =
+                commsHubPrimaryTab === 'dms'
+                  ? scopeFilteredDmRows
+                  : commsHubPrimaryTab === 'channels'
+                    ? scopeFilteredChannelRows
+                    : filteredChannelApiRows;
+              const searchPlaceholder =
+                commsHubPrimaryTab === 'channels'
+                  ? commsHubScopeFilter === 'all'
+                    ? 'Search channels...'
+                    : `Search ${commsHubScopeFilter} channels...`
+                  : commsHubPrimaryTab === 'dms'
+                    ? 'Search direct messages...'
+                    : commsHubPrimaryTab === 'broadcast'
+                      ? 'Search broadcast destinations...'
+                      : 'Search all communications...';
               const selectedChannelRow =
                 filteredChannelApiRows.find((row) => String(row.id) === String(selectedChannelId ?? '')) ??
                 allChannelApiRows.find((row) => String(row.id) === String(selectedChannelId ?? '')) ??
@@ -8776,33 +8840,101 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     </View>
                     <Text style={styles.coachingShellSub}>{commsPersonaSummary}</Text>
                     <View style={styles.coachingShellActionRow}>
+                      {([
+                        { key: 'all' as const, label: 'All' },
+                        { key: 'channels' as const, label: 'Channels' },
+                        { key: 'dms' as const, label: 'DMs' },
+                        ...(roleCanOpenBroadcast ? [{ key: 'broadcast' as const, label: 'Broadcast' }] : []),
+                      ] as const).map((tab) => (
+                        <TouchableOpacity
+                          key={`comms-tab-${tab.key}`}
+                          style={[
+                            styles.coachingLessonActionBtn,
+                            commsHubPrimaryTab === tab.key ? styles.coachingLessonActionBtnActive : null,
+                          ]}
+                          onPress={() => {
+                            setCommsHubPrimaryTab(tab.key);
+                            if (tab.key === 'all') {
+                              openCoachingShell('inbox', {
+                                source: 'user_tab',
+                                preferredChannelScope: null,
+                                preferredChannelLabel: null,
+                                threadTitle: null,
+                                threadSub: null,
+                                broadcastAudienceLabel: null,
+                                broadcastRoleAllowed: false,
+                              });
+                              return;
+                            }
+                            if (tab.key === 'channels' || tab.key === 'dms') {
+                              openCoachingShell('inbox_channels', {
+                                source: 'user_tab',
+                                preferredChannelScope: null,
+                                preferredChannelLabel: null,
+                                threadTitle: null,
+                                threadSub: null,
+                                broadcastAudienceLabel: null,
+                                broadcastRoleAllowed: false,
+                              });
+                              return;
+                            }
+                            openCoachingShell('coach_broadcast_compose');
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.coachingLessonActionBtnText,
+                              commsHubPrimaryTab === tab.key ? styles.coachingLessonActionBtnTextActive : null,
+                            ]}
+                          >
+                            {tab.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    {commsHubPrimaryTab === 'channels' ? (
+                      <View style={styles.coachingShellActionRow}>
+                        {([
+                          { key: 'all' as const, label: 'All Types' },
+                          { key: 'team' as const, label: 'Team' },
+                          { key: 'cohort' as const, label: 'Cohort' },
+                          { key: 'segment' as const, label: 'Segment' },
+                          { key: 'global' as const, label: 'Global' },
+                        ] as const).map((filter) => (
+                          <TouchableOpacity
+                            key={`comms-scope-${filter.key}`}
+                            style={[
+                              styles.coachingLessonActionBtn,
+                              commsHubScopeFilter === filter.key ? styles.coachingLessonActionBtnActive : null,
+                            ]}
+                            onPress={() => setCommsHubScopeFilter(filter.key)}
+                          >
+                            <Text
+                              style={[
+                                styles.coachingLessonActionBtnText,
+                                commsHubScopeFilter === filter.key ? styles.coachingLessonActionBtnTextActive : null,
+                              ]}
+                            >
+                              {filter.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
+                    <TextInput
+                      value={commsHubSearchQuery}
+                      onChangeText={setCommsHubSearchQuery}
+                      placeholder={searchPlaceholder}
+                      placeholderTextColor="#9aa3b0"
+                      style={styles.coachingShellSearchInput}
+                    />
+                    <View style={styles.coachingShellActionRow}>
                       <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('coaching_journeys')}>
                         <Text style={styles.coachingShellActionBtnText}>Journeys</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('inbox_channels')}>
-                        <Text style={styles.coachingShellActionBtnText}>Channels</Text>
+                      <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('channel_thread')}>
+                        <Text style={styles.coachingShellActionBtnText}>Open Thread</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.coachingShellActionBtn}
-                        onPress={() =>
-                          openCoachingShell('inbox', {
-                            source: 'user_tab',
-                            preferredChannelScope: null,
-                            preferredChannelLabel: null,
-                            threadTitle: null,
-                            threadSub: null,
-                            broadcastAudienceLabel: null,
-                            broadcastRoleAllowed: false,
-                          })
-                        }
-                      >
-                        <Text style={styles.coachingShellActionBtnText}>Inbox</Text>
-                      </TouchableOpacity>
-                      {roleCanOpenBroadcast ? (
-                        <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('coach_broadcast_compose')}>
-                          <Text style={styles.coachingShellActionBtnText}>Broadcast</Text>
-                        </TouchableOpacity>
-                      ) : null}
                     </View>
                     <Text style={styles.coachingShellSub}>Current: {meta.title} · {meta.sub}</Text>
                     {renderCoachingPackageGateBanner(meta.title, shellPackageOutcome, { compact: true })}
@@ -8862,15 +8994,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               <Text style={styles.coachingJourneyRetryBtnText}>Retry Channels</Text>
                             </TouchableOpacity>
                           </View>
-                        ) : filteredChannelApiRows.length > 0 ? (
-                          filteredChannelApiRows.map((row) => {
+                        ) : primaryTabRows.length > 0 ? (
+                          primaryTabRows.map((row) => {
                             const rowScope = normalizeChannelTypeToScope(row.type) ?? 'community';
                             const isSelected = String(row.id) === String(selectedChannelResolvedId ?? '');
-                            const subBits = [
-                              `${String(row.type ?? 'channel')}`,
-                              row.my_role ? `role: ${row.my_role}` : null,
-                              `unread: ${Math.max(0, Number(row.unread_count ?? 0))}`,
-                            ].filter(Boolean);
+                            const typeLabel = String(row.type ?? 'channel');
+                            const scopeLabel =
+                              rowScope === 'community'
+                                ? 'Global'
+                                : rowScope === 'challenge'
+                                  ? 'Segment'
+                                  : rowScope.charAt(0).toUpperCase() + rowScope.slice(1);
+                            const lastActivityPreview = row.last_seen_at
+                              ? `Last activity ${fmtMonthDayTime(row.last_seen_at)}`
+                              : row.created_at
+                                ? `Created ${fmtShortMonthDay(row.created_at)}`
+                                : 'Recent activity unavailable';
                             return (
                               <TouchableOpacity
                                 key={`api-channel-${row.id}`}
@@ -8905,48 +9044,101 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 </View>
                                 <View style={styles.coachingShellListCopy}>
                                   <Text style={styles.coachingShellListTitle}>{row.name}</Text>
-                                  <Text style={styles.coachingShellListSubText}>{subBits.join(' • ')}</Text>
+                                  <View style={styles.coachingShellChipRow}>
+                                    <View style={styles.coachingShellChip}>
+                                      <Text style={styles.coachingShellChipText}>{scopeLabel}</Text>
+                                    </View>
+                                    <View style={styles.coachingShellChip}>
+                                      <Text style={styles.coachingShellChipText}>{typeLabel}</Text>
+                                    </View>
+                                    {row.my_role ? (
+                                      <View style={styles.coachingShellChip}>
+                                        <Text style={styles.coachingShellChipText}>{row.my_role}</Text>
+                                      </View>
+                                    ) : null}
+                                  </View>
+                                  <Text style={styles.coachingShellListSubText}>
+                                    {lastActivityPreview} • unread: {Math.max(0, Number(row.unread_count ?? 0))}
+                                  </Text>
                                 </View>
                                 <Text style={styles.coachingShellListChevron}>›</Text>
                               </TouchableOpacity>
                             );
                           })
                         ) : fallbackChannelRowsVisible ? (
-                          channelRows.map((row) => (
-                            <TouchableOpacity
-                              key={row.label}
-                              style={[styles.coachingShellListRow, shellPackageGateBlocksActions ? styles.disabled : null]}
-                              disabled={shellPackageGateBlocksActions}
-                              onPress={() =>
-                                shellPackageGateBlocksActions
-                                  ? undefined
-                                  :
-                                openCoachingShell('channel_thread', {
-                                  preferredChannelScope: row.scope,
-                                  preferredChannelLabel: row.label,
-                                  threadTitle: row.label,
-                                  threadSub: `${row.context}.`,
-                                  broadcastAudienceLabel:
-                                    row.scope === 'team' && roleCanOpenBroadcast ? coachingShellContext.broadcastAudienceLabel ?? 'The Elite Group' : null,
-                                  broadcastRoleAllowed: row.scope === 'team' ? roleCanOpenBroadcast : false,
-                                })
-                              }
-                            >
-                              <View style={styles.coachingShellListIcon}>
-                                <Text style={styles.coachingShellListIconText}>#</Text>
-                              </View>
-                              <View style={styles.coachingShellListCopy}>
-                                <Text style={styles.coachingShellListTitle}>{row.label}</Text>
-                                <Text style={styles.coachingShellListSubText}>{row.context}</Text>
-                              </View>
-                              <Text style={styles.coachingShellListChevron}>›</Text>
-                            </TouchableOpacity>
-                          ))
+                          commsHubPrimaryTab === 'dms'
+                            ? ([
+                                { id: 'dm-sarah', name: 'Sarah Johnson', role: 'Team Lead' },
+                                { id: 'dm-alex', name: 'Alex Rodriguez', role: 'Member' },
+                                { id: 'dm-james', name: 'James Matew', role: 'Team Lead' },
+                              ] as const).map((member) => (
+                                <TouchableOpacity
+                                  key={member.id}
+                                  style={[styles.coachingShellListRow, shellPackageGateBlocksActions ? styles.disabled : null]}
+                                  disabled={shellPackageGateBlocksActions}
+                                  onPress={() =>
+                                    shellPackageGateBlocksActions
+                                      ? undefined
+                                      : openCoachingShell('channel_thread', {
+                                          preferredChannelScope: 'community',
+                                          preferredChannelLabel: member.name,
+                                          threadTitle: member.name,
+                                          threadSub: `Direct message with ${member.name}.`,
+                                          broadcastAudienceLabel: null,
+                                          broadcastRoleAllowed: false,
+                                        })
+                                  }
+                                >
+                                  <View style={styles.coachingShellListIcon}>
+                                    <Text style={styles.coachingShellListIconText}>@</Text>
+                                  </View>
+                                  <View style={styles.coachingShellListCopy}>
+                                    <Text style={styles.coachingShellListTitle}>{member.name}</Text>
+                                    <Text style={styles.coachingShellListSubText}>Direct thread • {member.role}</Text>
+                                  </View>
+                                  <Text style={styles.coachingShellListChevron}>›</Text>
+                                </TouchableOpacity>
+                              ))
+                            : channelRows.map((row) => (
+                                <TouchableOpacity
+                                  key={row.label}
+                                  style={[styles.coachingShellListRow, shellPackageGateBlocksActions ? styles.disabled : null]}
+                                  disabled={shellPackageGateBlocksActions}
+                                  onPress={() =>
+                                    shellPackageGateBlocksActions
+                                      ? undefined
+                                      : openCoachingShell('channel_thread', {
+                                          preferredChannelScope: row.scope,
+                                          preferredChannelLabel: row.label,
+                                          threadTitle: row.label,
+                                          threadSub: `${row.context}.`,
+                                          broadcastAudienceLabel:
+                                            row.scope === 'team' && roleCanOpenBroadcast
+                                              ? coachingShellContext.broadcastAudienceLabel ?? 'The Elite Group'
+                                              : null,
+                                          broadcastRoleAllowed: row.scope === 'team' ? roleCanOpenBroadcast : false,
+                                        })
+                                  }
+                                >
+                                  <View style={styles.coachingShellListIcon}>
+                                    <Text style={styles.coachingShellListIconText}>#</Text>
+                                  </View>
+                                  <View style={styles.coachingShellListCopy}>
+                                    <Text style={styles.coachingShellListTitle}>{row.label}</Text>
+                                    <Text style={styles.coachingShellListSubText}>{row.context}</Text>
+                                  </View>
+                                  <Text style={styles.coachingShellListChevron}>›</Text>
+                                </TouchableOpacity>
+                              ))
                         ) : (
                           <View style={styles.coachingJourneyEmptyCard}>
-                            <Text style={styles.coachingJourneyEmptyTitle}>No channels for this scope</Text>
+                            <Text style={styles.coachingJourneyEmptyTitle}>
+                              {commsHubPrimaryTab === 'dms' ? 'No direct messages for this view' : 'No channels for this scope'}
+                            </Text>
                             <Text style={styles.coachingJourneyEmptySub}>
-                              The API returned channels, but none match the current preferred context filter.
+                              {commsHubPrimaryTab === 'dms'
+                                ? 'No direct message rows match the active search/filter.'
+                                : 'The API returned channels, but none match the current scope/search filter.'}
                             </Text>
                           </View>
                         )}
@@ -9092,8 +9284,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         <Text style={styles.coachingShellComposeTitle}>Broadcast Composer</Text>
                         <Text style={styles.coachingShellComposeSub}>
                           {roleCanOpenBroadcast
-                            ? `Leader-gated entry is wired. Audience context: ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'team/channel scope TBD'}.`
-                            : 'Broadcast is hidden for non-leader flows; this shell is shown only as a blocked fallback if opened directly.'}
+                            ? `Role-gated broadcast entry. Audience context: ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'choose a destination'}.`
+                            : 'Broadcast is hidden for member/solo/sponsor runtime flows.'}
                         </Text>
                         {!roleCanOpenBroadcast || shellPackageGateBlocksActions ? (
                           renderKnownLimitedDataChip('broadcast compose access')
@@ -9119,13 +9311,78 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               )
                             }
                           >
-                            <Text style={styles.coachingAiAssistBtnText}>AI Assist Draft / Rewrite</Text>
-                          </TouchableOpacity>
+                              <Text style={styles.coachingAiAssistBtnText}>AI Assist Draft / Rewrite</Text>
+                            </TouchableOpacity>
                         )}
+                        {roleCanOpenBroadcast ? (
+                          <>
+                            <View style={styles.coachingLessonActionRow}>
+                              {broadcastTargetOptions.map((target) => (
+                                <TouchableOpacity
+                                  key={`broadcast-target-${target}`}
+                                  style={[
+                                    styles.coachingLessonActionBtn,
+                                    effectiveBroadcastTargetScope === target ? styles.coachingLessonActionBtnActive : null,
+                                  ]}
+                                  onPress={() => {
+                                    setBroadcastTargetScope(target);
+                                    setBroadcastError(null);
+                                    setBroadcastSuccessNote(null);
+                                  }}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.coachingLessonActionBtnText,
+                                      effectiveBroadcastTargetScope === target ? styles.coachingLessonActionBtnTextActive : null,
+                                    ]}
+                                  >
+                                    {target === 'team' ? 'Team' : target === 'cohort' ? 'Cohort' : 'Channel'}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                            <View style={styles.coachingShellList}>
+                              {broadcastCandidateRows.length > 0 ? (
+                                broadcastCandidateRows.slice(0, 8).map((row) => {
+                                  const isActive = String(row.id) === String(selectedChannelResolvedId ?? '');
+                                  const scope = normalizeChannelTypeToScope(row.type) ?? 'community';
+                                  return (
+                                    <TouchableOpacity
+                                      key={`broadcast-destination-${row.id}`}
+                                      style={[styles.coachingShellListRow, isActive ? styles.coachingShellListRowSelected : null]}
+                                      onPress={() => {
+                                        setSelectedChannelId(String(row.id));
+                                        setSelectedChannelName(row.name);
+                                      }}
+                                    >
+                                      <View style={styles.coachingShellListIcon}>
+                                        <Text style={styles.coachingShellListIconText}>#</Text>
+                                      </View>
+                                      <View style={styles.coachingShellListCopy}>
+                                        <Text style={styles.coachingShellListTitle}>{row.name}</Text>
+                                        <Text style={styles.coachingShellListSubText}>
+                                          {scope} • {String(row.type ?? 'channel')}
+                                        </Text>
+                                      </View>
+                                      <Text style={styles.coachingShellListChevron}>›</Text>
+                                    </TouchableOpacity>
+                                  );
+                                })
+                              ) : (
+                                <View style={styles.coachingJourneyEmptyCard}>
+                                  <Text style={styles.coachingJourneyEmptyTitle}>No destination channels found</Text>
+                                  <Text style={styles.coachingJourneyEmptySub}>
+                                    No channels match this target scope for your current role.
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                          </>
+                        ) : null}
                         <View style={styles.coachingShellInputGhost}>
                           <Text style={styles.coachingShellInputGhostText}>
                             {roleCanOpenBroadcast
-                              ? `Broadcast path: /api/channels/{id}/broadcast (${selectedChannelResolvedId ? `selected ${selectedChannelResolvedName ?? 'channel'}` : 'select a team channel first'})`
+                              ? `Broadcast path: /api/channels/{id}/broadcast (${selectedChannelResolvedId ? `selected ${selectedChannelResolvedName ?? 'channel'}` : 'select a destination channel first'})`
                               : 'Audience selector unavailable for this persona'}
                           </Text>
                         </View>
@@ -13914,6 +14171,7 @@ const styles = StyleSheet.create({
   coachingShellActionRow: {
     flexDirection: 'row',
     gap: 8,
+    flexWrap: 'wrap',
   },
   coachingShellActionBtn: {
     flex: 1,
@@ -13999,6 +14257,36 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 13,
     marginTop: 1,
+  },
+  coachingShellSearchInput: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dfe5ef',
+    backgroundColor: '#fff',
+    color: '#2f3442',
+    fontSize: 11,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  coachingShellChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 3,
+  },
+  coachingShellChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#dce4f1',
+    backgroundColor: '#f8fbff',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  coachingShellChipText: {
+    color: '#44536a',
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   coachingShellListChevron: {
     color: '#556277',
