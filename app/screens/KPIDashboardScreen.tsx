@@ -2169,6 +2169,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [teamLeaderKpiStatusFilter, setTeamLeaderKpiStatusFilter] = useState<TeamLeaderKpiStatusFilter>('all');
   const [teamLeaderConcernFilter, setTeamLeaderConcernFilter] = useState<TeamLeaderConcernFilter>('all');
   const [teamLeaderExpandedMemberId, setTeamLeaderExpandedMemberId] = useState<string | null>(null);
+  const [teamFocusKpiEditorOpen, setTeamFocusKpiEditorOpen] = useState(false);
+  const [teamFocusSelectedKpiIds, setTeamFocusSelectedKpiIds] = useState<string[]>([]);
   const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox');
   const [commsHubPrimaryTab, setCommsHubPrimaryTab] = useState<CommsHubPrimaryTab>('all');
   const [commsHubScopeFilter, setCommsHubScopeFilter] = useState<CommsHubScopeFilter>('all');
@@ -3154,6 +3156,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   );
   const teamKpiGroups = useMemo(() => groupTeamKpisByType(teamSurfaceKpis), [teamSurfaceKpis]);
   const teamTileCount = teamKpiGroups.PC.length + teamKpiGroups.GP.length + teamKpiGroups.VP.length;
+  useEffect(() => {
+    const availableIds = new Set(teamSurfaceKpis.map((kpi) => String(kpi.id)));
+    setTeamFocusSelectedKpiIds((prev) => {
+      const stillValid = prev.filter((id) => availableIds.has(id));
+      if (stillValid.length > 0) return stillValid;
+      return teamSurfaceKpis.slice(0, 4).map((kpi) => String(kpi.id));
+    });
+  }, [teamSurfaceKpis]);
 
   const chartSeries = useMemo(() => chartFromPayload(payload), [payload]);
   const chartSplitX =
@@ -5163,111 +5173,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               return (
                 <Pressable
                   key={`challenge-${type}-${kpi.id}`}
-                  style={[styles.gridItem, styles.challengeGridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
-                  onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
-                  disabled={submitting}
-                  onPressIn={() => runKpiTilePressInFeedback(kpi, { surface: 'log' })}
-                  onPressOut={() => runKpiTilePressOutFeedback(kpi.id)}
-                >
-                  <Animated.View
-                    style={[
-                      styles.gridTileAnimatedWrap,
-                      styles.challengeGridTileAnimatedWrap,
-                      { transform: [{ scale: getKpiTileScale(kpi.id) }] },
-                    ]}
-                  >
-                    <View style={styles.gridCircleWrap}>
-                      <View style={styles.challengeTilePlate} />
-                      <View style={[styles.gridCircle, confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed]}>
-                        {renderKpiIcon(kpi)}
-                      </View>
-                      <Animated.View
-                        pointerEvents="none"
-                        style={[
-                          styles.gridSuccessBadge,
-                          {
-                            opacity: successOpacity,
-                            transform: [{ translateY: successTranslateY }, { scale: successScale }],
-                          },
-                        ]}
-                      >
-                        <View style={styles.gridSuccessCoinOuter}>
-                          <View style={styles.gridSuccessCoinInner} />
-                          <View style={styles.gridSuccessCoinHighlight} />
-                        </View>
-                      </Animated.View>
-                    </View>
-                    <Text
-                      style={[
-                        styles.gridLabel,
-                        styles.challengeGridLabel,
-                        confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed,
-                      ]}
-                    >
-                      {kpi.name}
-                    </Text>
-                  </Animated.View>
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const renderTeamKpiSection = (type: 'PC' | 'GP' | 'VP', title: string, kpis: DashboardPayload['loggable_kpis']) => {
-    if (kpis.length === 0) return null;
-    const locked = (type === 'GP' && !gpUnlocked) || (type === 'VP' && !vpUnlocked);
-    const typeCountLabel = `${fmtNum(kpis.length)} KPI${kpis.length === 1 ? '' : 's'}`;
-    const sectionSub =
-      type === 'PC'
-        ? 'Production-driving team actions and commitments.'
-        : type === 'GP'
-          ? 'Growth actions that move team momentum forward.'
-          : 'Vitality habits that support team consistency.';
-    return (
-      <View style={styles.challengeSectionCard}>
-        <View style={styles.challengeSectionHeader}>
-          <View style={styles.challengeSectionHeaderCopy}>
-            <View style={styles.challengeSectionTitleRow}>
-              <Text style={styles.challengeSectionTitle}>{title}</Text>
-              <Text style={styles.challengeSectionCount}>{typeCountLabel}</Text>
-            </View>
-            <Text style={styles.challengeSectionSub}>{sectionSub}</Text>
-          </View>
-          <View style={[styles.challengeSectionTypePill, { backgroundColor: kpiTypeTint(type) }]}>
-            <Text style={[styles.challengeSectionTypePillText, { color: kpiTypeAccent(type) }]}>{type}</Text>
-          </View>
-        </View>
-        <View style={styles.challengeSectionDivider} />
-        {locked ? (
-          <View style={[styles.emptyPanel, styles.challengeLockedPanel]}>
-            <Text style={styles.metaText}>
-              {type === 'GP'
-                ? `Business Growth unlock progress: ${Math.min(payload?.activity.active_days ?? 0, 3)}/3 days or ${Math.min(payload?.activity.total_logs ?? 0, 20)}/20 logs`
-                : `Vitality unlock progress: ${Math.min(payload?.activity.active_days ?? 0, 7)}/7 days or ${Math.min(payload?.activity.total_logs ?? 0, 40)}/40 logs`}
-            </Text>
-          </View>
-        ) : (
-          <View style={[styles.gridWrap, styles.challengeGridWrap]}>
-            {kpis.map((kpi) => {
-              const successAnim = getKpiTileSuccessAnim(kpi.id);
-              const successOpacity = successAnim.interpolate({
-                inputRange: [0, 0.12, 1],
-                outputRange: [0, 1, 0],
-              });
-              const successTranslateY = successAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, -14],
-              });
-              const successScale = successAnim.interpolate({
-                inputRange: [0, 0.2, 1],
-                outputRange: [0.8, 1.02, 0.96],
-              });
-              return (
-                <Pressable
-                  key={`team-${type}-${kpi.id}`}
                   style={[styles.gridItem, styles.challengeGridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
                   onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
                   disabled={submitting}
@@ -7925,6 +7830,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const teamPrimaryChallenge =
                 challengeListItems.find((item) => item.challengeModeLabel === 'Team') ?? challengeListItems[0] ?? null;
               const teamLightKpis = teamSurfaceKpis.slice(0, 3);
+              const teamFocusSelectedRows = teamSurfaceKpis.filter((kpi) => teamFocusSelectedKpiIds.includes(String(kpi.id)));
+              const teamFocusKpisForDisplay = teamFocusSelectedRows.length > 0 ? teamFocusSelectedRows : teamSurfaceKpis.slice(0, 4);
+              const toggleTeamFocusKpi = (kpiId: string) => {
+                setTeamFocusSelectedKpiIds((prev) =>
+                  prev.includes(kpiId) ? prev.filter((id) => id !== kpiId) : [...prev, kpiId]
+                );
+              };
               const parsePercent = (value: string) => {
                 const normalized = Number(String(value).replace('%', '').trim());
                 return Number.isFinite(normalized) ? normalized : 0;
@@ -7971,11 +7883,24 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const teamLoggingBlock = (
                 <View style={styles.challengeSectionsWrap}>
                   <View style={styles.challengeLoggingHeaderCard}>
-                    <Text style={styles.challengeLoggingHeaderTitle}>Team Logging</Text>
+                    <Text style={styles.challengeLoggingHeaderTitle}>Team Focus KPIs</Text>
                     <Text style={styles.challengeLoggingHeaderSub}>
-                      Shared KPI logging mechanics stay unchanged. This module is intentionally lower so the Team screen reads dashboard-first.
+                      Selected focus KPIs only. Shared KPI logging mechanics stay unchanged.
                     </Text>
                   </View>
+                  {teamPersonaVariant === 'leader' ? (
+                    <TouchableOpacity
+                      style={styles.teamFocusEditorToggleBtn}
+                      onPress={() => setTeamFocusKpiEditorOpen((prev) => !prev)}
+                    >
+                      <Text style={styles.teamFocusEditorToggleBtnText}>
+                        {teamFocusKpiEditorOpen ? 'Close Team Focus KPI Selector' : 'Select Team Focus KPIs'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {teamPersonaVariant === 'member' ? (
+                    <Text style={styles.teamFocusReadOnlyLabel}>Read-only focus KPIs</Text>
+                  ) : null}
 
                   {teamTileCount === 0 ? (
                     <View style={styles.challengeEmptyCard}>
@@ -7998,13 +7923,47 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     </View>
                   ) : (
                     <>
-                      {renderParticipationFocusCard('team', teamSurfaceKpis, {
-                        title: 'Team focus actions',
-                        sub: 'Placeholder relevance ordering until team/team-challenge payload wiring is available.',
-                      })}
-                      {renderTeamKpiSection('PC', 'Projections (PC)', teamKpiGroups.PC)}
-                      {renderTeamKpiSection('GP', 'Growth (GP)', teamKpiGroups.GP)}
-                      {renderTeamKpiSection('VP', 'Vitality (VP)', teamKpiGroups.VP)}
+                      <View style={styles.teamFocusSummaryCard}>
+                        {teamFocusKpisForDisplay.length === 0 ? (
+                          <Text style={styles.teamFocusSummaryEmpty}>No focus KPIs selected yet.</Text>
+                        ) : (
+                          teamFocusKpisForDisplay.map((kpi) => (
+                            <View key={`team-focus-kpi-${kpi.id}`} style={styles.teamFocusSummaryRow}>
+                              <Text style={styles.teamFocusSummaryName}>{kpi.name}</Text>
+                              <Text style={styles.teamFocusSummaryValue}>
+                                {fmtNum(Number(kpi.vp_value ?? kpi.gp_value ?? kpi.pc_weight ?? 0))}
+                              </Text>
+                            </View>
+                          ))
+                        )}
+                      </View>
+                      {teamPersonaVariant === 'leader' && teamFocusKpiEditorOpen ? (
+                        <View style={styles.teamFocusEditorPanel}>
+                          <Text style={styles.teamFocusEditorTitle}>Select Team Focus KPIs</Text>
+                          {teamSurfaceKpis.map((kpi) => {
+                            const kpiId = String(kpi.id);
+                            const selected = teamFocusSelectedKpiIds.includes(kpiId);
+                            return (
+                              <TouchableOpacity
+                                key={`team-focus-editor-${kpiId}`}
+                                style={styles.teamFocusEditorRow}
+                                onPress={() => toggleTeamFocusKpi(kpiId)}
+                              >
+                                <Text style={styles.teamFocusEditorRowName}>{kpi.name}</Text>
+                                <Text style={selected ? styles.teamFocusEditorSelectedText : styles.teamFocusEditorUnselectedText}>
+                                  {selected ? 'Selected' : 'Select'}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                          <TouchableOpacity
+                            style={styles.teamFocusEditorDoneBtn}
+                            onPress={() => setTeamFocusKpiEditorOpen(false)}
+                          >
+                            <Text style={styles.teamFocusEditorDoneBtnText}>Save and Close</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
                     </>
                   )}
                 </View>
@@ -12886,6 +12845,110 @@ const styles = StyleSheet.create({
     color: '#6d4b4b',
     fontSize: 11,
     lineHeight: 15,
+  },
+  teamFocusEditorToggleBtn: {
+    alignSelf: 'flex-start',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cfdcf2',
+    backgroundColor: '#f3f8ff',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  teamFocusEditorToggleBtnText: {
+    color: '#2f58b7',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  teamFocusReadOnlyLabel: {
+    color: '#6f7e95',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  teamFocusSummaryCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#dfe7f2',
+    backgroundColor: '#fbfdff',
+    padding: 10,
+    gap: 7,
+  },
+  teamFocusSummaryEmpty: {
+    color: '#77839a',
+    fontSize: 11,
+  },
+  teamFocusSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  teamFocusSummaryName: {
+    color: '#425069',
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  teamFocusSummaryValue: {
+    color: '#2f3b4b',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  teamFocusEditorPanel: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d9e3f5',
+    backgroundColor: '#fff',
+    padding: 10,
+    gap: 8,
+  },
+  teamFocusEditorTitle: {
+    color: '#32405a',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  teamFocusEditorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e4ebf6',
+    backgroundColor: '#fbfdff',
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+  },
+  teamFocusEditorRowName: {
+    color: '#44526a',
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  teamFocusEditorSelectedText: {
+    color: '#1e5ac8',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  teamFocusEditorUnselectedText: {
+    color: '#7a879c',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  teamFocusEditorDoneBtn: {
+    marginTop: 2,
+    borderRadius: 8,
+    backgroundColor: '#1f5fe2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+  },
+  teamFocusEditorDoneBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   teamParityNavRow: {
     flexDirection: 'row',
