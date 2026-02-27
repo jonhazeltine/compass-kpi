@@ -14,16 +14,16 @@ import CompassMark from '../assets/brand/compass_mark.svg';
 import { useAdminAuthz } from '../contexts/AdminAuthzContext';
 import { useAuth } from '../contexts/AuthContext';
 import {
+  LEGACY_ADMIN_COACHING_PATH_BY_ROUTE_KEY,
   canAccessAdminRoute,
   getAdminRouteByKey,
   getAdminRouteByPath,
-  LEGACY_ADMIN_COACHING_PATH_BY_ROUTE_KEY,
   type AdminRole,
   type AdminRouteKey,
 } from '../lib/adminAuthz';
 
 type CoachRouteKey = 'coachingLibrary' | 'coachingJourneys' | 'coachingCohorts' | 'coachingChannels';
-type SaveState = 'idle' | 'pending' | 'success' | 'error';
+type SaveState = 'idle' | 'pending' | 'saved' | 'error';
 
 type CoachSurface = {
   key: CoachRouteKey;
@@ -31,9 +31,6 @@ type CoachSurface = {
   label: string;
   headline: string;
   summary: string;
-  primaryAction: string;
-  columns: [string, string, string, string];
-  rows: Array<{ id: string; c1: string; c2: string; c3: string; c4: string }>;
 };
 
 type LibraryAsset = {
@@ -42,6 +39,12 @@ type LibraryAsset = {
   category: string;
   scope: string;
   duration: string;
+};
+
+type LibraryCollection = {
+  id: string;
+  name: string;
+  assetIds: string[];
 };
 
 type JourneyBlock = {
@@ -55,9 +58,16 @@ type JourneyMilestone = {
   blocks: JourneyBlock[];
 };
 
+type JourneyDraft = {
+  id: string;
+  name: string;
+  audience: string;
+  milestones: JourneyMilestone[];
+};
+
 type DragPayload =
-  | { type: 'library'; assetId: string }
-  | { type: 'journey_block'; sourceMilestoneId: string; blockId: string; assetId: string }
+  | { type: 'asset'; assetId: string; sourceCollectionId: string | null }
+  | { type: 'journey_block'; sourceJourneyId: string; sourceMilestoneId: string; blockId: string; assetId: string }
   | null;
 
 const COACH_ROUTE_KEYS: CoachRouteKey[] = ['coachingLibrary', 'coachingJourneys', 'coachingCohorts', 'coachingChannels'];
@@ -67,30 +77,15 @@ const COACH_SURFACES: Record<CoachRouteKey, CoachSurface> = {
     key: 'coachingLibrary',
     path: '/coach/library',
     label: 'Library',
-    headline: 'Library content ready for journey assignment',
-    summary: 'Drag assets from this library into Journey Builder milestones. Upload and organization stay in Library.',
-    primaryAction: 'Create Collection',
-    columns: ['Asset', 'Category', 'Audience', 'Duration'],
-    rows: [
-      { id: 'lib-1', c1: 'Buyer Follow-Up Kit', c2: 'Lesson Pack', c3: 'All teams', c4: '14 min' },
-      { id: 'lib-2', c1: 'Sponsor Event Promo', c2: 'Campaign', c3: 'Sponsor cohort', c4: '8 min' },
-      { id: 'lib-3', c1: 'New Agent Sprint', c2: 'Onboarding', c3: 'Cohort based', c4: '22 min' },
-      { id: 'lib-4', c1: 'Weekly Objection Handling', c2: 'Workshop', c3: 'Team scoped', c4: '16 min' },
-    ],
+    headline: 'Library workspace: Assets and Collections',
+    summary: 'Library is the canonical content workspace. Organize assets into collections, then assign them into journeys.',
   },
   coachingJourneys: {
     key: 'coachingJourneys',
     path: '/coach/journeys',
     label: 'Journeys',
-    headline: 'Build journey drafts from Library assets',
-    summary: 'Drop assets into milestones, reorder blocks, remove anything not needed, then save your draft.',
-    primaryAction: 'Save Draft',
-    columns: ['Journey', 'Audience', 'Modules', 'State'],
-    rows: [
-      { id: 'jr-1', c1: '30-Day Listing Accelerator', c2: 'New agents', c3: '8', c4: 'Draft' },
-      { id: 'jr-2', c1: 'Team Production Sprint', c2: 'Team scoped', c3: '6', c4: 'Draft' },
-      { id: 'jr-3', c1: 'Sponsor Lead Conversion', c2: 'Sponsor cohort', c3: '5', c4: 'Draft' },
-    ],
+    headline: 'Journey builder',
+    summary: 'Create a new journey, drag assets or collection items into milestones, then save draft changes.',
   },
   coachingCohorts: {
     key: 'coachingCohorts',
@@ -98,13 +93,6 @@ const COACH_SURFACES: Record<CoachRouteKey, CoachSurface> = {
     label: 'Cohorts',
     headline: 'Group participants for targeted coaching delivery',
     summary: 'Manage cohort membership and align each cohort to the right journeys and communication channels.',
-    primaryAction: 'Create Cohort',
-    columns: ['Cohort', 'Owner', 'Members', 'Program'],
-    rows: [
-      { id: 'co-1', c1: 'Q1 Rising Agents', c2: 'Coach Avery', c3: '24', c4: 'Listing Accelerator' },
-      { id: 'co-2', c1: 'Sponsor Elite Leads', c2: 'Sponsor North', c3: '19', c4: 'Lead Conversion' },
-      { id: 'co-3', c1: 'Team Velocity', c2: 'TL Jamie', c3: '11', c4: 'Production Sprint' },
-    ],
   },
   coachingChannels: {
     key: 'coachingChannels',
@@ -112,15 +100,26 @@ const COACH_SURFACES: Record<CoachRouteKey, CoachSurface> = {
     label: 'Channels',
     headline: 'Run communication channels with scoped audiences',
     summary: 'Coordinate channel plans for journeys and cohorts while keeping sponsor interactions compliant.',
-    primaryAction: 'Create Channel',
-    columns: ['Channel', 'Scope', 'Members', 'Activity'],
-    rows: [
-      { id: 'ch-1', c1: 'Listing Accelerator Hub', c2: 'Coach', c3: '42', c4: '2h ago' },
-      { id: 'ch-2', c1: 'Sponsor Lead Briefing', c2: 'Sponsor scoped', c3: '19', c4: '4h ago' },
-      { id: 'ch-3', c1: 'Team Velocity Check-In', c2: 'Team scoped', c3: '11', c4: '1d ago' },
-    ],
   },
 };
+
+const COHORT_ROWS = [
+  { id: 'co-1', c1: 'Q1 Rising Agents', c2: 'Coach Avery', c3: '24', c4: 'Listing Accelerator' },
+  { id: 'co-2', c1: 'Sponsor Elite Leads', c2: 'Sponsor North', c3: '19', c4: 'Lead Conversion' },
+  { id: 'co-3', c1: 'Team Velocity', c2: 'TL Jamie', c3: '11', c4: 'Production Sprint' },
+];
+
+const CHANNEL_ROWS = [
+  { id: 'ch-1', c1: 'Listing Accelerator Hub', c2: 'Coach', c3: '42', c4: '2h ago' },
+  { id: 'ch-2', c1: 'Sponsor Lead Briefing', c2: 'Sponsor scoped', c3: '19', c4: '4h ago' },
+  { id: 'ch-3', c1: 'Team Velocity Check-In', c2: 'Team scoped', c3: '11', c4: '1d ago' },
+];
+
+const DEFAULT_MILESTONES: JourneyMilestone[] = [
+  { id: 'ms-kickoff', title: 'Kickoff', blocks: [] },
+  { id: 'ms-practice', title: 'Practice', blocks: [] },
+  { id: 'ms-application', title: 'Live Application', blocks: [] },
+];
 
 function normalizeCoachKey(routeKey: AdminRouteKey | null | undefined): CoachRouteKey | null {
   if (!routeKey) return null;
@@ -144,6 +143,10 @@ function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
   return copy;
 }
 
+function cloneMilestones(): JourneyMilestone[] {
+  return DEFAULT_MILESTONES.map((milestone) => ({ ...milestone, blocks: [] }));
+}
+
 export default function CoachPortalScreen() {
   const { width } = useWindowDimensions();
   const isCompact = width < 980;
@@ -152,19 +155,37 @@ export default function CoachPortalScreen() {
   const [activeKey, setActiveKey] = useState<CoachRouteKey>(
     () => getCoachRouteKeyFromPath(typeof window !== 'undefined' ? window.location.pathname : undefined) ?? 'coachingLibrary'
   );
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [notFoundPath, setNotFoundPath] = useState<string | null>(null);
-  const [libraryQuery, setLibraryQuery] = useState('');
-  const [dragPayload, setDragPayload] = useState<DragPayload>(null);
-  const [journeyMilestones, setJourneyMilestones] = useState<JourneyMilestone[]>([
-    { id: 'ms-1', title: 'Kickoff', blocks: [] },
-    { id: 'ms-2', title: 'Practice', blocks: [] },
-    { id: 'ms-3', title: 'Live Application', blocks: [] },
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+
+  const [assets, setAssets] = useState<LibraryAsset[]>([
+    { id: 'asset-1', title: 'Buyer Follow-Up Kit', category: 'Lesson Pack', scope: 'All teams', duration: '14 min' },
+    { id: 'asset-2', title: 'Sponsor Event Promo', category: 'Campaign', scope: 'Sponsor cohort', duration: '8 min' },
+    { id: 'asset-3', title: 'New Agent Sprint', category: 'Onboarding', scope: 'Cohort based', duration: '22 min' },
+    { id: 'asset-4', title: 'Weekly Objection Handling', category: 'Workshop', scope: 'Team scoped', duration: '16 min' },
+    { id: 'asset-5', title: 'Price-Point Discovery Script', category: 'Lesson Pack', scope: 'All teams', duration: '10 min' },
   ]);
+  const [collections, setCollections] = useState<LibraryCollection[]>([
+    { id: 'col-1', name: 'Listing Accelerator', assetIds: ['asset-1', 'asset-4'] },
+    { id: 'col-2', name: 'Sponsor Conversion', assetIds: ['asset-2', 'asset-5'] },
+    { id: 'col-3', name: 'Onboarding Essentials', assetIds: ['asset-3'] },
+  ]);
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string>('col-1');
+
+  const [journeys, setJourneys] = useState<JourneyDraft[]>([
+    { id: 'jr-1', name: '30-Day Listing Accelerator', audience: 'New agents', milestones: cloneMilestones() },
+    { id: 'jr-2', name: 'Sponsor Lead Conversion', audience: 'Sponsor cohort', milestones: cloneMilestones() },
+  ]);
+  const [selectedJourneyId, setSelectedJourneyId] = useState('jr-1');
+  const [newJourneyName, setNewJourneyName] = useState('');
+
+  const [dragPayload, setDragPayload] = useState<DragPayload>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [dirty, setDirty] = useState(false);
   const [saveMessage, setSaveMessage] = useState('No unsaved changes.');
-  const [dropHint, setDropHint] = useState('Drag a Library asset into a milestone to begin building.');
+  const [dropHint, setDropHint] = useState('Drag an asset into a collection or journey milestone.');
+
   const blockIdRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -174,8 +195,6 @@ export default function CoachPortalScreen() {
       COACH_ROUTE_KEYS.map((key) => getAdminRouteByKey(key)).filter((route) => canAccessAdminRoute(effectiveRoles, route)),
     [effectiveRoles]
   );
-  const activeSurface = COACH_SURFACES[activeKey];
-  const selectedRow = activeSurface.rows.find((row) => row.id === selectedRowId) ?? activeSurface.rows[0] ?? null;
 
   const coachCanCompose =
     effectiveRoles.includes('coach') || effectiveRoles.includes('platform_admin') || effectiveRoles.includes('super_admin');
@@ -189,34 +208,48 @@ export default function CoachPortalScreen() {
   const scopeSummary = coachCanCompose
     ? 'Coach access: full authoring controls enabled for Library and Journeys.'
     : teamLeaderCanCompose
-      ? 'Team Leader access: draft actions are team-scoped only.'
+      ? 'Team Leader access: authoring controls are team-scoped only.'
       : sponsorOnly
         ? 'Sponsor access: sponsor-scoped visibility only. No KPI logging actions are available.'
         : 'Access is limited to currently authorized coach portal sections.';
 
-  const libraryAssets = useMemo<LibraryAsset[]>(
-    () =>
-      COACH_SURFACES.coachingLibrary.rows
-        .map((row) => ({ id: row.id, title: row.c1, category: row.c2, scope: row.c3, duration: row.c4 }))
-        .filter((asset) => {
-          const q = libraryQuery.trim().toLowerCase();
-          if (!q) return true;
-          return (
-            asset.title.toLowerCase().includes(q) ||
-            asset.category.toLowerCase().includes(q) ||
-            asset.scope.toLowerCase().includes(q)
-          );
-        }),
-    [libraryQuery]
+  const activeSurface = COACH_SURFACES[activeKey];
+
+  const filteredAssets = useMemo(() => {
+    const q = libraryQuery.trim().toLowerCase();
+    if (!q) return assets;
+    return assets.filter(
+      (asset) =>
+        asset.title.toLowerCase().includes(q) ||
+        asset.category.toLowerCase().includes(q) ||
+        asset.scope.toLowerCase().includes(q) ||
+        asset.duration.toLowerCase().includes(q)
+    );
+  }, [assets, libraryQuery]);
+
+  const assetsById = useMemo(() => {
+    const map = new Map<string, LibraryAsset>();
+    for (const asset of assets) map.set(asset.id, asset);
+    return map;
+  }, [assets]);
+
+  const selectedCollection = useMemo(
+    () => collections.find((collection) => collection.id === selectedCollectionId) ?? collections[0] ?? null,
+    [collections, selectedCollectionId]
   );
 
-  const assetById = useMemo(() => {
-    const map = new Map<string, LibraryAsset>();
-    for (const asset of COACH_SURFACES.coachingLibrary.rows) {
-      map.set(asset.id, { id: asset.id, title: asset.c1, category: asset.c2, scope: asset.c3, duration: asset.c4 });
-    }
-    return map;
-  }, []);
+  const selectedCollectionAssets = useMemo(() => {
+    if (!selectedCollection) return [] as LibraryAsset[];
+    return selectedCollection.assetIds.map((assetId) => assetsById.get(assetId)).filter((row): row is LibraryAsset => Boolean(row));
+  }, [selectedCollection, assetsById]);
+
+  const selectedJourney = useMemo(
+    () => journeys.find((journey) => journey.id === selectedJourneyId) ?? journeys[0] ?? null,
+    [journeys, selectedJourneyId]
+  );
+
+  const selectedGenericRows = activeKey === 'coachingChannels' ? CHANNEL_ROWS : COHORT_ROWS;
+  const selectedGenericRow = selectedGenericRows.find((row) => row.id === selectedRowId) ?? selectedGenericRows[0] ?? null;
 
   useEffect(
     () => () => {
@@ -224,6 +257,25 @@ export default function CoachPortalScreen() {
     },
     []
   );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const clearDrag = () => setDragPayload(null);
+    window.addEventListener('mouseup', clearDrag);
+    return () => window.removeEventListener('mouseup', clearDrag);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedJourney && journeys.length > 0) {
+      setSelectedJourneyId(journeys[0].id);
+    }
+  }, [journeys, selectedJourney]);
+
+  useEffect(() => {
+    if (!selectedCollection && collections.length > 0) {
+      setSelectedCollectionId(collections[0].id);
+    }
+  }, [collections, selectedCollection]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -256,6 +308,7 @@ export default function CoachPortalScreen() {
       }
       setActiveKey((prev) => (prev === routeKey ? prev : routeKey));
     };
+
     sync();
     window.addEventListener('popstate', sync);
     window.addEventListener('codex:pathchange', sync as EventListener);
@@ -295,71 +348,17 @@ export default function CoachPortalScreen() {
 
   const parseDragPayload = (eventLike?: any): DragPayload => {
     const text = typeof eventLike?.dataTransfer?.getData === 'function' ? eventLike.dataTransfer.getData('text/plain') : '';
-    if (text.startsWith('library:')) {
-      return { type: 'library', assetId: text.slice('library:'.length) };
+    if (text.startsWith('asset:')) {
+      const [, assetId, sourceCollectionId] = text.split(':');
+      return { type: 'asset', assetId, sourceCollectionId: sourceCollectionId === 'none' ? null : sourceCollectionId };
     }
     if (text.startsWith('journey-block:')) {
-      const [, sourceMilestoneId, blockId, assetId] = text.split(':');
-      if (sourceMilestoneId && blockId && assetId) {
-        return { type: 'journey_block', sourceMilestoneId, blockId, assetId };
+      const [, sourceJourneyId, sourceMilestoneId, blockId, assetId] = text.split(':');
+      if (sourceJourneyId && sourceMilestoneId && blockId && assetId) {
+        return { type: 'journey_block', sourceJourneyId, sourceMilestoneId, blockId, assetId };
       }
     }
     return dragPayload;
-  };
-
-  const assignToMilestone = (targetMilestoneId: string, targetIndex: number, payload: DragPayload) => {
-    if (!canComposeDraft || !payload) return;
-
-    if (payload.type === 'library') {
-      setJourneyMilestones((prev) =>
-        prev.map((milestone) => {
-          if (milestone.id !== targetMilestoneId) return milestone;
-          const nextBlock: JourneyBlock = {
-            id: `jb-${Date.now()}-${blockIdRef.current++}`,
-            assetId: payload.assetId,
-          };
-          const insertAt = Math.max(0, Math.min(targetIndex, milestone.blocks.length));
-          const nextBlocks = [...milestone.blocks];
-          nextBlocks.splice(insertAt, 0, nextBlock);
-          return { ...milestone, blocks: nextBlocks };
-        })
-      );
-      markDraftChanged('Asset assigned. You can reorder within this milestone or move it across milestones.');
-      return;
-    }
-
-    if (payload.type === 'journey_block') {
-      setJourneyMilestones((prev) => {
-        let movingBlock: JourneyBlock | null = null;
-        const removed = prev.map((milestone) => {
-          if (milestone.id !== payload.sourceMilestoneId) return milestone;
-          const nextBlocks = milestone.blocks.filter((block) => {
-            if (block.id !== payload.blockId) return true;
-            movingBlock = block;
-            return false;
-          });
-          return { ...milestone, blocks: nextBlocks };
-        });
-
-        if (!movingBlock) return prev;
-
-        return removed.map((milestone) => {
-          if (milestone.id !== targetMilestoneId) return milestone;
-          const insertAt = Math.max(0, Math.min(targetIndex, milestone.blocks.length));
-          const nextBlocks = [...milestone.blocks];
-          nextBlocks.splice(insertAt, 0, movingBlock as JourneyBlock);
-          return { ...milestone, blocks: nextBlocks };
-        });
-      });
-      markDraftChanged('Journey block moved. Save to lock this sequence.');
-    }
-  };
-
-  const handleDrop = (eventLike: any, targetMilestoneId: string, targetIndex: number) => {
-    if (typeof eventLike?.preventDefault === 'function') eventLike.preventDefault();
-    const payload = parseDragPayload(eventLike);
-    assignToMilestone(targetMilestoneId, targetIndex, payload);
-    setDragPayload(null);
   };
 
   const handleDragOver = (eventLike: any) => {
@@ -369,34 +368,161 @@ export default function CoachPortalScreen() {
     }
   };
 
-  const removeBlock = (milestoneId: string, blockId: string) => {
-    if (!canComposeDraft) return;
-    setJourneyMilestones((prev) =>
-      prev.map((milestone) =>
-        milestone.id === milestoneId ? { ...milestone, blocks: milestone.blocks.filter((block) => block.id !== blockId) } : milestone
-      )
+  const assignAssetToCollection = (collectionId: string, payload: DragPayload) => {
+    if (!canComposeDraft || !payload || payload.type !== 'asset') return;
+    const targetExists = collections.some((collection) => collection.id === collectionId);
+    if (!targetExists) return;
+    setCollections((prev) =>
+      prev.map((collection) => {
+        const filteredIds = collection.assetIds.filter((assetId) => assetId !== payload.assetId);
+        if (collection.id !== collectionId) {
+          return { ...collection, assetIds: filteredIds };
+        }
+        return { ...collection, assetIds: [...filteredIds, payload.assetId] };
+      })
     );
-    markDraftChanged('Block removed. Save to persist this change.');
+    setSelectedCollectionId(collectionId);
+    markDraftChanged('Asset moved into collection.');
+  };
+
+  const addAssetToMilestone = (payload: DragPayload, targetMilestoneId: string, targetIndex: number) => {
+    if (!selectedJourney) return;
+
+    if (payload?.type === 'asset') {
+      setJourneys((prev) =>
+        prev.map((journey) => {
+          if (journey.id !== selectedJourney.id) return journey;
+          const milestones = journey.milestones.map((milestone) => {
+            if (milestone.id !== targetMilestoneId) return milestone;
+            const insertAt = Math.max(0, Math.min(targetIndex, milestone.blocks.length));
+            const nextBlocks = [...milestone.blocks];
+            nextBlocks.splice(insertAt, 0, {
+              id: `jb-${Date.now()}-${blockIdRef.current++}`,
+              assetId: payload.assetId,
+            });
+            return { ...milestone, blocks: nextBlocks };
+          });
+          return { ...journey, milestones };
+        })
+      );
+      markDraftChanged('Asset assigned to journey milestone.');
+      return;
+    }
+
+    if (payload?.type === 'journey_block') {
+      setJourneys((prev) =>
+        prev.map((journey) => {
+          if (journey.id !== selectedJourney.id || payload.sourceJourneyId !== selectedJourney.id) return journey;
+          let movingBlock: JourneyBlock | null = null;
+          const strippedMilestones = journey.milestones.map((milestone) => {
+            if (milestone.id !== payload.sourceMilestoneId) return milestone;
+            const remainingBlocks = milestone.blocks.filter((block) => {
+              if (block.id !== payload.blockId) return true;
+              movingBlock = block;
+              return false;
+            });
+            return { ...milestone, blocks: remainingBlocks };
+          });
+          if (!movingBlock) return journey;
+
+          const milestones = strippedMilestones.map((milestone) => {
+            if (milestone.id !== targetMilestoneId) return milestone;
+            const insertAt = Math.max(0, Math.min(targetIndex, milestone.blocks.length));
+            const nextBlocks = [...milestone.blocks];
+            nextBlocks.splice(insertAt, 0, movingBlock as JourneyBlock);
+            return { ...milestone, blocks: nextBlocks };
+          });
+          return { ...journey, milestones };
+        })
+      );
+      markDraftChanged('Journey block moved.');
+    }
+  };
+
+  const handleDropToMilestone = (eventLike: any, milestoneId: string, index: number) => {
+    if (typeof eventLike?.preventDefault === 'function') eventLike.preventDefault();
+    if (!canComposeDraft) return;
+    const payload = parseDragPayload(eventLike);
+    addAssetToMilestone(payload, milestoneId, index);
+    setDragPayload(null);
+  };
+
+  const handleDropToCollection = (eventLike: any, collectionId: string) => {
+    if (typeof eventLike?.preventDefault === 'function') eventLike.preventDefault();
+    if (!canComposeDraft) return;
+    const payload = parseDragPayload(eventLike);
+    assignAssetToCollection(collectionId, payload);
+    setDragPayload(null);
   };
 
   const reorderBlock = (milestoneId: string, blockId: string, direction: -1 | 1) => {
-    if (!canComposeDraft) return;
-    setJourneyMilestones((prev) =>
-      prev.map((milestone) => {
-        if (milestone.id !== milestoneId) return milestone;
-        const fromIndex = milestone.blocks.findIndex((block) => block.id === blockId);
-        if (fromIndex < 0) return milestone;
-        const toIndex = fromIndex + direction;
-        return { ...milestone, blocks: moveItem(milestone.blocks, fromIndex, toIndex) };
+    if (!canComposeDraft || !selectedJourney) return;
+    setJourneys((prev) =>
+      prev.map((journey) => {
+        if (journey.id !== selectedJourney.id) return journey;
+        const milestones = journey.milestones.map((milestone) => {
+          if (milestone.id !== milestoneId) return milestone;
+          const fromIndex = milestone.blocks.findIndex((block) => block.id === blockId);
+          if (fromIndex < 0) return milestone;
+          const toIndex = fromIndex + direction;
+          return { ...milestone, blocks: moveItem(milestone.blocks, fromIndex, toIndex) };
+        });
+        return { ...journey, milestones };
       })
     );
-    markDraftChanged('Block order updated. Save to persist this sequence.');
+    markDraftChanged('Journey step order updated.');
+  };
+
+  const removeBlock = (milestoneId: string, blockId: string) => {
+    if (!canComposeDraft || !selectedJourney) return;
+    setJourneys((prev) =>
+      prev.map((journey) => {
+        if (journey.id !== selectedJourney.id) return journey;
+        const milestones = journey.milestones.map((milestone) =>
+          milestone.id === milestoneId
+            ? { ...milestone, blocks: milestone.blocks.filter((block) => block.id !== blockId) }
+            : milestone
+        );
+        return { ...journey, milestones };
+      })
+    );
+    markDraftChanged('Journey step removed.');
+  };
+
+  const createJourney = () => {
+    if (!canComposeDraft) {
+      setSaveState('error');
+      setSaveMessage(composeDeniedReason);
+      return;
+    }
+    const name = newJourneyName.trim();
+    if (!name) {
+      setSaveState('error');
+      setSaveMessage('Enter a journey name to create a blank journey.');
+      return;
+    }
+    const id = `jr-${Date.now()}`;
+    const newJourney: JourneyDraft = {
+      id,
+      name,
+      audience: 'Draft audience',
+      milestones: cloneMilestones(),
+    };
+    setJourneys((prev) => [newJourney, ...prev]);
+    setSelectedJourneyId(id);
+    setNewJourneyName('');
+    markDraftChanged('New blank journey created. Add assets to milestones and save.');
   };
 
   const saveDraft = () => {
     if (!canComposeDraft) {
       setSaveState('error');
       setSaveMessage(composeDeniedReason);
+      return;
+    }
+    if (!selectedJourney) {
+      setSaveState('error');
+      setSaveMessage('Create or select a journey before saving.');
       return;
     }
     if (!dirty) {
@@ -408,9 +534,9 @@ export default function CoachPortalScreen() {
     setSaveMessage('Saving journey draft...');
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      setSaveState('success');
+      setSaveState('saved');
       setDirty(false);
-      setSaveMessage(`Saved at ${new Date().toLocaleTimeString()}.`);
+      setSaveMessage(`Draft saved at ${new Date().toLocaleTimeString()}.`);
     }, 700);
   };
 
@@ -431,7 +557,7 @@ export default function CoachPortalScreen() {
       <SafeAreaView style={styles.screen}>
         <View style={styles.centerCard}>
           <Text style={styles.centerTitle}>Route Not Found</Text>
-          <Text style={styles.centerBody}>The requested coach route is not available. Continue in the coach portal home routes.</Text>
+          <Text style={styles.centerBody}>The requested coach route is not available. Continue in the coach portal routes.</Text>
           <Text style={styles.centerMeta}>{notFoundPath}</Text>
           <TouchableOpacity style={styles.primaryButton} onPress={() => navigate(visibleRoutes[0].key as CoachRouteKey)}>
             <Text style={styles.primaryButtonText}>Open Coach Portal</Text>
@@ -455,9 +581,7 @@ export default function CoachPortalScreen() {
               <View style={styles.heroCopy}>
                 <Text style={styles.eyebrow}>Compass Coach</Text>
                 <Text style={styles.heroTitle}>Coach Portal</Text>
-                <Text style={styles.heroSubtitle}>
-                  Build journey experiences from your library without admin-shell noise.
-                </Text>
+                <Text style={styles.heroSubtitle}>Authoring-focused workspace for Library, Journeys, Cohorts, and Channels.</Text>
               </View>
             </View>
             <View style={styles.heroActions}>
@@ -472,7 +596,7 @@ export default function CoachPortalScreen() {
           </View>
           <Text style={styles.scopeText}>{scopeSummary}</Text>
           <Text style={styles.compatText}>
-            Legacy `/admin/coaching/*` links remain compatibility redirects to canonical `/coach/*` routes.
+            Compatibility aliases remain active: `/coach/uploads` and `/admin/coaching/*` map to canonical `/coach/*` routes.
           </Text>
         </View>
 
@@ -496,10 +620,8 @@ export default function CoachPortalScreen() {
           {activeKey === 'coachingLibrary' ? (
             <View style={styles.builderWrap}>
               <View style={styles.libraryRail}>
-                <View style={styles.libraryHeaderRow}>
-                  <Text style={styles.panelTitle}>Library Assets</Text>
-                  <Text style={styles.panelHint}>Drag cards into Journey milestones</Text>
-                </View>
+                <Text style={styles.panelTitle}>Assets</Text>
+                <Text style={styles.panelHint}>Drag assets into collections or journey milestones.</Text>
                 <TextInput
                   value={libraryQuery}
                   onChangeText={setLibraryQuery}
@@ -508,76 +630,139 @@ export default function CoachPortalScreen() {
                   style={styles.searchInput}
                 />
                 <View style={styles.libraryList}>
-                  {libraryAssets.length === 0 ? (
-                    <View style={styles.emptyStateCard}>
-                      <Text style={styles.emptyStateTitle}>No assets found</Text>
-                      <Text style={styles.emptyStateBody}>Clear search to restore all Library assets.</Text>
-                    </View>
-                  ) : (
-                    libraryAssets.map((asset) => {
-                      const selected = selectedRowId === asset.id;
-                      return (
-                        <Pressable
-                          key={asset.id}
-                          onPress={() => setSelectedRowId(asset.id)}
-                          style={[styles.libraryCard, selected && styles.libraryCardSelected]}
-                          {...({
-                            draggable: canComposeDraft,
-                            onDragStart: (event: any) => {
-                              setDragPayload({ type: 'library', assetId: asset.id });
-                              event?.dataTransfer?.setData?.('text/plain', `library:${asset.id}`);
-                              markDraftChanged('Asset picked up. Drop into a milestone to assign.');
-                            },
-                            onDragEnd: () => setDragPayload(null),
-                          } as any)}
-                        >
-                          <Text style={styles.libraryCardTitle}>{asset.title}</Text>
-                          <Text style={styles.libraryCardMeta}>{asset.category}</Text>
-                          <Text style={styles.libraryCardMeta}>{asset.scope}</Text>
-                          <Text style={styles.libraryCardMeta}>{asset.duration}</Text>
-                        </Pressable>
-                      );
-                    })
-                  )}
+                  {filteredAssets.map((asset) => {
+                    const selected = selectedRowId === asset.id;
+                    return (
+                      <Pressable
+                        key={asset.id}
+                        onPress={() => setSelectedRowId(asset.id)}
+                        style={[styles.libraryCard, selected && styles.libraryCardSelected]}
+                        {...({
+                          draggable: canComposeDraft,
+                          onMouseDown: () => canComposeDraft && setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: null }),
+                          onDragStart: (event: any) => {
+                            setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: null });
+                            event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:none`);
+                            setDropHint('Asset in hand. Drop onto a collection or journey milestone.');
+                          },
+                          onDragEnd: () => setDragPayload(null),
+                        } as any)}
+                      >
+                        <Text style={styles.libraryCardTitle}>{asset.title}</Text>
+                        <Text style={styles.libraryCardMeta}>{asset.category}</Text>
+                        <Text style={styles.libraryCardMeta}>{asset.scope}</Text>
+                        <Text style={styles.libraryCardMeta}>{asset.duration}</Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               </View>
 
-              <View style={styles.detailCardLarge}>
-                <Text style={styles.detailTitle}>{selectedRow?.c1 ?? 'Select a library asset'}</Text>
-                <Text style={styles.detailMeta}>{selectedRow?.c2 ?? ''}</Text>
-                <Text style={styles.detailMeta}>{selectedRow?.c3 ?? ''}</Text>
-                <Text style={styles.detailMeta}>Duration: {selectedRow?.c4 ?? 'n/a'}</Text>
-                <View style={styles.actionRow}>
-                  <TouchableOpacity style={styles.primaryButton} onPress={() => navigate('coachingJourneys')}>
-                    <Text style={styles.primaryButtonText}>Open Journey Builder</Text>
-                  </TouchableOpacity>
+              <View style={styles.collectionRail}>
+                <Text style={styles.panelTitle}>Collections</Text>
+                <Text style={styles.panelHint}>Collections are the organizational container for assets.</Text>
+                <View style={styles.collectionList}>
+                  {collections.map((collection) => {
+                    const isSelected = selectedCollection?.id === collection.id;
+                    return (
+                      <Pressable
+                        key={collection.id}
+                        onPress={() => setSelectedCollectionId(collection.id)}
+                        style={[styles.collectionCard, isSelected && styles.collectionCardSelected]}
+                        {...({
+                          onDragOver: handleDragOver,
+                          onDrop: (event: any) => handleDropToCollection(event, collection.id),
+                          onMouseUp: (event: any) => handleDropToCollection(event, collection.id),
+                        } as any)}
+                      >
+                        <Text style={styles.collectionTitle}>{collection.name}</Text>
+                        <Text style={styles.collectionMeta}>{collection.assetIds.length} assets</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.collectionDetailCard}>
+                  <Text style={styles.detailTitle}>{selectedCollection?.name ?? 'Collection'}</Text>
+                  <Text style={styles.detailMeta}>Drag from Assets to organize this collection.</Text>
+                  <View style={styles.collectionItemsList}>
+                    {selectedCollectionAssets.map((asset) => (
+                      <Pressable
+                        key={`collection-item-${asset.id}`}
+                        style={styles.collectionItemChip}
+                        {...({
+                          draggable: canComposeDraft,
+                          onMouseDown: () =>
+                            canComposeDraft &&
+                            setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null }),
+                          onDragStart: (event: any) => {
+                            setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null });
+                            event?.dataTransfer?.setData?.(
+                              'text/plain',
+                              `asset:${asset.id}:${selectedCollection?.id ?? 'none'}`
+                            );
+                            setDropHint('Collection item in hand. Drop into journey milestone to assign.');
+                          },
+                          onDragEnd: () => setDragPayload(null),
+                        } as any)}
+                      >
+                        <Text style={styles.collectionItemText}>{asset.title}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity style={styles.primaryButton} onPress={() => navigate('coachingJourneys')}>
+                      <Text style={styles.primaryButtonText}>Open Journey Builder</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             </View>
           ) : activeKey === 'coachingJourneys' ? (
             <View style={styles.builderWrap}>
               <View style={styles.libraryRail}>
-                <View style={styles.libraryHeaderRow}>
-                  <Text style={styles.panelTitle}>Library Assets</Text>
-                  <Text style={styles.panelHint}>Source for drag/drop assignment</Text>
-                </View>
+                <Text style={styles.panelTitle}>Source Assets</Text>
+                <Text style={styles.panelHint}>Drag assets or collection items into milestones.</Text>
                 <View style={styles.libraryList}>
-                  {libraryAssets.map((asset) => (
+                  {filteredAssets.map((asset) => (
                     <Pressable
-                      key={`builder-asset-${asset.id}`}
+                      key={`journey-asset-${asset.id}`}
                       style={styles.libraryCard}
                       {...({
                         draggable: canComposeDraft,
+                        onMouseDown: () => canComposeDraft && setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: null }),
                         onDragStart: (event: any) => {
-                          setDragPayload({ type: 'library', assetId: asset.id });
-                          event?.dataTransfer?.setData?.('text/plain', `library:${asset.id}`);
+                          setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: null });
+                          event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:none`);
                         },
                         onDragEnd: () => setDragPayload(null),
                       } as any)}
                     >
                       <Text style={styles.libraryCardTitle}>{asset.title}</Text>
                       <Text style={styles.libraryCardMeta}>{asset.category}</Text>
-                      <Text style={styles.libraryCardMeta}>{asset.scope}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <View style={styles.sourceCollectionsBox}>
+                  <Text style={styles.sourceCollectionsTitle}>Collection Items</Text>
+                  {selectedCollectionAssets.map((asset) => (
+                    <Pressable
+                      key={`journey-col-asset-${asset.id}`}
+                      style={styles.collectionItemChip}
+                      {...({
+                        draggable: canComposeDraft,
+                        onMouseDown: () =>
+                          canComposeDraft &&
+                          setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null }),
+                        onDragStart: (event: any) => {
+                          setDragPayload({ type: 'asset', assetId: asset.id, sourceCollectionId: selectedCollection?.id ?? null });
+                          event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${selectedCollection?.id ?? 'none'}`);
+                        },
+                        onDragEnd: () => setDragPayload(null),
+                      } as any)}
+                    >
+                      <Text style={styles.collectionItemText}>{asset.title}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -585,31 +770,51 @@ export default function CoachPortalScreen() {
 
               <View style={styles.journeyCanvas}>
                 <View style={styles.canvasHeaderRow}>
-                  <View>
-                    <Text style={styles.panelTitle}>Journey Builder</Text>
-                    <Text style={styles.panelHint}>{dropHint}</Text>
-                  </View>
-                  <View style={styles.savePillWrap}>
-                    <Text
-                      style={[
-                        styles.savePill,
-                        saveState === 'pending' && styles.savePillPending,
-                        saveState === 'success' && styles.savePillSuccess,
-                        saveState === 'error' && styles.savePillError,
-                      ]}
-                    >
-                      {saveState === 'pending'
-                        ? 'Saving...'
-                        : saveState === 'success'
-                          ? 'Saved'
-                          : saveState === 'error'
-                            ? 'Save failed'
-                            : dirty
-                              ? 'Unsaved'
-                              : 'Idle'}
-                    </Text>
+                  <View style={styles.journeyListWrap}>
+                    {journeys.map((journey) => {
+                      const selected = journey.id === selectedJourney?.id;
+                      return (
+                        <Pressable
+                          key={journey.id}
+                          style={[styles.journeySelectPill, selected && styles.journeySelectPillSelected]}
+                          onPress={() => setSelectedJourneyId(journey.id)}
+                        >
+                          <Text style={[styles.journeySelectLabel, selected && styles.journeySelectLabelSelected]}>{journey.name}</Text>
+                          <Text style={styles.journeySelectMeta}>{journey.audience}</Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
                 </View>
+
+                <View style={styles.builderActionBar}>
+                  <TextInput
+                    value={newJourneyName}
+                    onChangeText={setNewJourneyName}
+                    placeholder="New journey name"
+                    placeholderTextColor="#72887C"
+                    style={styles.createJourneyInput}
+                  />
+                  <TouchableOpacity style={styles.secondaryButton} onPress={createJourney}>
+                    <Text style={styles.secondaryButtonText}>Create New Journey</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.primaryButton} onPress={saveDraft}>
+                    <Text style={styles.primaryButtonText}>Save Draft</Text>
+                  </TouchableOpacity>
+                  <Text
+                    style={[
+                      styles.saveStateChip,
+                      saveState === 'pending' && styles.saveStateChipPending,
+                      saveState === 'saved' && styles.saveStateChipSaved,
+                      saveState === 'error' && styles.saveStateChipError,
+                    ]}
+                  >
+                    {saveState === 'pending' ? 'PENDING' : saveState === 'saved' ? 'SAVED' : saveState === 'error' ? 'ERROR' : 'IDLE'}
+                  </Text>
+                </View>
+
+                <Text style={styles.panelHint}>{dropHint}</Text>
+                <Text style={styles.saveMessage}>{saveMessage}</Text>
 
                 {!canComposeDraft ? (
                   <View style={styles.deniedCard}>
@@ -618,37 +823,50 @@ export default function CoachPortalScreen() {
                   </View>
                 ) : null}
 
-                {journeyMilestones.map((milestone) => (
+                {selectedJourney?.milestones.map((milestone) => (
                   <View key={milestone.id} style={styles.milestoneCard}>
                     <Text style={styles.milestoneTitle}>{milestone.title}</Text>
                     <View
                       style={styles.dropZone}
                       {...({
                         onDragOver: handleDragOver,
-                        onDrop: (event: any) => handleDrop(event, milestone.id, milestone.blocks.length),
+                        onDrop: (event: any) => handleDropToMilestone(event, milestone.id, milestone.blocks.length),
+                        onMouseUp: (event: any) => handleDropToMilestone(event, milestone.id, milestone.blocks.length),
                       } as any)}
                     >
                       {milestone.blocks.length === 0 ? (
-                        <Text style={styles.dropZoneHint}>Drop a library asset here</Text>
+                        <Text style={styles.dropZoneHint}>Drop an asset or collection item here</Text>
                       ) : (
                         milestone.blocks.map((block, index) => {
-                          const asset = assetById.get(block.assetId);
+                          const asset = assetsById.get(block.assetId);
                           return (
                             <View
                               key={block.id}
                               style={styles.journeyBlockCard}
                               {...({
                                 draggable: canComposeDraft,
-                                onDragStart: (event: any) => {
+                                onMouseDown: () => {
+                                  if (!selectedJourney || !canComposeDraft) return;
                                   setDragPayload({
                                     type: 'journey_block',
+                                    sourceJourneyId: selectedJourney.id,
+                                    sourceMilestoneId: milestone.id,
+                                    blockId: block.id,
+                                    assetId: block.assetId,
+                                  });
+                                },
+                                onDragStart: (event: any) => {
+                                  if (!selectedJourney) return;
+                                  setDragPayload({
+                                    type: 'journey_block',
+                                    sourceJourneyId: selectedJourney.id,
                                     sourceMilestoneId: milestone.id,
                                     blockId: block.id,
                                     assetId: block.assetId,
                                   });
                                   event?.dataTransfer?.setData?.(
                                     'text/plain',
-                                    `journey-block:${milestone.id}:${block.id}:${block.assetId}`
+                                    `journey-block:${selectedJourney.id}:${milestone.id}:${block.id}:${block.assetId}`
                                   );
                                 },
                                 onDragEnd: () => setDragPayload(null),
@@ -688,25 +906,18 @@ export default function CoachPortalScreen() {
                     </View>
                   </View>
                 ))}
-
-                <View style={styles.saveRow}>
-                  <TouchableOpacity style={styles.primaryButton} onPress={saveDraft}>
-                    <Text style={styles.primaryButtonText}>Save Draft</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.saveMessage}>{saveMessage}</Text>
-                </View>
               </View>
             </View>
           ) : (
             <>
               <View style={styles.tableHeader}>
-                <Text style={[styles.colLabel, styles.colWide]}>{activeSurface.columns[0]}</Text>
-                <Text style={[styles.colLabel, styles.colWide]}>{activeSurface.columns[1]}</Text>
-                <Text style={[styles.colLabel, styles.colWide]}>{activeSurface.columns[2]}</Text>
-                <Text style={[styles.colLabel, styles.colNarrow]}>{activeSurface.columns[3]}</Text>
+                <Text style={[styles.colLabel, styles.colWide]}>{activeKey === 'coachingChannels' ? 'Channel' : 'Cohort'}</Text>
+                <Text style={[styles.colLabel, styles.colWide]}>{activeKey === 'coachingChannels' ? 'Scope' : 'Owner'}</Text>
+                <Text style={[styles.colLabel, styles.colWide]}>{activeKey === 'coachingChannels' ? 'Members' : 'Members'}</Text>
+                <Text style={[styles.colLabel, styles.colNarrow]}>{activeKey === 'coachingChannels' ? 'Activity' : 'Program'}</Text>
               </View>
-              {activeSurface.rows.map((row) => {
-                const selected = selectedRow?.id === row.id;
+              {selectedGenericRows.map((row) => {
+                const selected = selectedGenericRow?.id === row.id;
                 return (
                   <Pressable key={row.id} style={[styles.tableRow, selected && styles.tableRowSelected]} onPress={() => setSelectedRowId(row.id)}>
                     <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c1}</Text>
@@ -718,15 +929,10 @@ export default function CoachPortalScreen() {
               })}
 
               <View style={styles.detailCard}>
-                <Text style={styles.detailTitle}>{selectedRow?.c1 ?? 'Selection'}</Text>
-                <Text style={styles.detailMeta}>{selectedRow?.c2 ?? ''}</Text>
-                <Text style={styles.detailMeta}>{selectedRow?.c3 ?? ''}</Text>
-                <Text style={styles.detailMeta}>Status: {selectedRow?.c4 ?? 'Ready'}</Text>
-                <View style={styles.actionRow}>
-                  <TouchableOpacity style={styles.primaryButton}>
-                    <Text style={styles.primaryButtonText}>{activeSurface.primaryAction}</Text>
-                  </TouchableOpacity>
-                </View>
+                <Text style={styles.detailTitle}>{selectedGenericRow?.c1 ?? 'Selection'}</Text>
+                <Text style={styles.detailMeta}>{selectedGenericRow?.c2 ?? ''}</Text>
+                <Text style={styles.detailMeta}>{selectedGenericRow?.c3 ?? ''}</Text>
+                <Text style={styles.detailMeta}>{selectedGenericRow?.c4 ?? ''}</Text>
               </View>
             </>
           )}
@@ -937,8 +1143,14 @@ const styles = StyleSheet.create({
     padding: 10,
     gap: 8,
   },
-  libraryHeaderRow: {
-    gap: 2,
+  collectionRail: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#DDECE4',
+    backgroundColor: '#FCFEFD',
+    borderRadius: 12,
+    padding: 10,
+    gap: 8,
   },
   panelTitle: {
     color: '#244034',
@@ -984,6 +1196,57 @@ const styles = StyleSheet.create({
     color: '#617A6F',
     fontSize: 12,
   },
+  collectionList: {
+    gap: 8,
+  },
+  collectionCard: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#CFE2D8',
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: '#FFFFFF',
+    gap: 2,
+  },
+  collectionCardSelected: {
+    borderColor: '#2F845E',
+    backgroundColor: '#ECF8F1',
+    borderStyle: 'solid',
+  },
+  collectionTitle: {
+    color: '#214033',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  collectionMeta: {
+    color: '#5C756A',
+    fontSize: 12,
+  },
+  collectionDetailCard: {
+    borderWidth: 1,
+    borderColor: '#D7E9DF',
+    borderRadius: 12,
+    backgroundColor: '#F9FCFA',
+    padding: 12,
+    gap: 6,
+    marginTop: 4,
+  },
+  collectionItemsList: {
+    gap: 6,
+  },
+  collectionItemChip: {
+    borderWidth: 1,
+    borderColor: '#D2E6DB',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  collectionItemText: {
+    color: '#2A473A',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   journeyCanvas: {
     flex: 1,
     borderWidth: 1,
@@ -999,34 +1262,107 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  savePillWrap: {
-    alignItems: 'flex-end',
+  journeyListWrap: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
   },
-  savePill: {
+  journeySelectPill: {
+    borderWidth: 1,
+    borderColor: '#D4E6DC',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    minWidth: 170,
+  },
+  journeySelectPillSelected: {
+    borderColor: '#2F845E',
+    backgroundColor: '#ECF8F1',
+  },
+  journeySelectLabel: {
+    color: '#2A473A',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  journeySelectLabelSelected: {
+    color: '#1D6C49',
+  },
+  journeySelectMeta: {
+    color: '#647E73',
+    fontSize: 11,
+  },
+  builderActionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    paddingVertical: 2,
+  },
+  createJourneyInput: {
+    minWidth: 220,
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#CFE1D8',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#264236',
+    backgroundColor: '#FFFFFF',
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: '#C9DDD1',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    backgroundColor: '#F4FBF7',
+  },
+  secondaryButtonText: {
+    color: '#28553F',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  saveStateChip: {
     borderWidth: 1,
     borderColor: '#D3E6DC',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    color: '#4E6B5E',
+    backgroundColor: '#F5FBF8',
+    color: '#5B776A',
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
-    backgroundColor: '#F3FBF7',
   },
-  savePillPending: {
-    borderColor: '#A8CFBA',
-    color: '#245A42',
+  saveStateChipPending: {
+    borderColor: '#ABCFB9',
+    color: '#2A6348',
   },
-  savePillSuccess: {
+  saveStateChipSaved: {
     borderColor: '#8FCBAA',
     color: '#1E7B50',
     backgroundColor: '#EAF8F1',
   },
-  savePillError: {
-    borderColor: '#E3B3B3',
-    color: '#9A3636',
-    backgroundColor: '#FDEFEF',
+  saveStateChipError: {
+    borderColor: '#E4B9B9',
+    color: '#8E4040',
+    backgroundColor: '#FDF0F0',
+  },
+  sourceCollectionsBox: {
+    borderWidth: 1,
+    borderColor: '#D7E9DF',
+    borderRadius: 10,
+    backgroundColor: '#F9FCFA',
+    padding: 8,
+    gap: 6,
+    marginTop: 2,
+  },
+  sourceCollectionsTitle: {
+    color: '#284436',
+    fontSize: 12,
+    fontWeight: '700',
   },
   deniedCard: {
     borderWidth: 1,
@@ -1128,13 +1464,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
-  saveRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 2,
-    flexWrap: 'wrap',
-  },
   saveMessage: {
     color: '#4F6B5C',
     fontSize: 12,
@@ -1189,15 +1518,6 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 4,
   },
-  detailCardLarge: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#D8EAE0',
-    borderRadius: 12,
-    backgroundColor: '#F9FCFA',
-    padding: 12,
-    gap: 4,
-  },
   detailTitle: {
     color: '#243C31',
     fontSize: 15,
@@ -1245,23 +1565,6 @@ const styles = StyleSheet.create({
   },
   centerMeta: {
     color: '#6E847A',
-    fontSize: 12,
-  },
-  emptyStateCard: {
-    borderWidth: 1,
-    borderColor: '#D6E7DE',
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    padding: 10,
-    gap: 4,
-  },
-  emptyStateTitle: {
-    color: '#284436',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  emptyStateBody: {
-    color: '#647D71',
     fontSize: 12,
   },
 });
