@@ -31,6 +31,13 @@ export type AdminRouteDefinition = {
   description: string;
 };
 
+export const LEGACY_ADMIN_COACHING_PATH_BY_ROUTE_KEY: Partial<Record<AdminRouteKey, string>> = {
+  coachingUploads: '/admin/coaching/uploads',
+  coachingLibrary: '/admin/coaching/library',
+  coachingCohorts: '/admin/coaching/cohorts',
+  coachingChannels: '/admin/coaching/channels',
+};
+
 const ADMIN_ROLE_ALIASES: Record<string, AdminRole> = {
   admin: 'platform_admin',
   platform_admin: 'platform_admin',
@@ -140,30 +147,30 @@ export const ADMIN_ROUTES: AdminRouteDefinition[] = [
   {
     key: 'coachingUploads',
     label: 'Coach Uploads',
-    path: '/admin/coaching/uploads',
+    path: '/coach/uploads',
     requiredRoles: ['platform_admin', 'super_admin', 'coach', 'team_leader', 'challenge_sponsor'],
-    description: 'W7 coach portal companion shell for content uploads with scoped role boundaries.',
+    description: 'W10 coach portal uploads shell with role-scoped boundaries and transition-host compatibility redirects.',
   },
   {
     key: 'coachingLibrary',
     label: 'Coach Library',
-    path: '/admin/coaching/library',
+    path: '/coach/library',
     requiredRoles: ['platform_admin', 'super_admin', 'coach', 'challenge_sponsor'],
-    description: 'W7 coach portal companion shell for scoped coaching/sponsor content library access.',
+    description: 'W10 coach portal library shell for customer-facing coaching/sponsor scoped tools.',
   },
   {
     key: 'coachingCohorts',
     label: 'Coach Cohorts',
-    path: '/admin/coaching/cohorts',
+    path: '/coach/cohorts',
     requiredRoles: ['platform_admin', 'super_admin', 'coach', 'challenge_sponsor'],
-    description: 'W7 coach portal companion shell for cohort/audience segmentation with scoped sponsor visibility.',
+    description: 'W10 coach portal cohorts shell for audience segmentation with scoped sponsor visibility.',
   },
   {
     key: 'coachingChannels',
     label: 'Coach Channels',
-    path: '/admin/coaching/channels',
+    path: '/coach/channels',
     requiredRoles: ['platform_admin', 'super_admin', 'coach', 'challenge_sponsor'],
-    description: 'W7 coach portal companion shell for scoped channel operations and communication context.',
+    description: 'W10 coach portal channels shell for customer-facing scoped communication operations.',
   },
   {
     key: 'coachingAudit',
@@ -189,6 +196,12 @@ export function getAdminRouteByPath(pathname: string | undefined): AdminRouteDef
 
   if (normalized === '/admin') {
     return ADMIN_ROUTES.find((item) => item.path === '/admin') ?? null;
+  }
+
+  const legacyMatch = Object.entries(LEGACY_ADMIN_COACHING_PATH_BY_ROUTE_KEY).find(([, legacyPath]) => legacyPath === normalized);
+  if (legacyMatch) {
+    const [routeKey] = legacyMatch;
+    return ADMIN_ROUTES.find((item) => item.key === routeKey) ?? null;
   }
 
   return ADMIN_ROUTES.find((item) => item.path === normalized) ?? null;

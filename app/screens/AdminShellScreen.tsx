@@ -2657,7 +2657,7 @@ function AdminCoachingPortalFoundationPanel({
     }
   > = {
     coachingUploads: {
-      path: '/admin/coaching/uploads',
+      path: '/coach/uploads',
       title: 'Coach Portal Foundation: Uploads',
       summary: 'Foundation upload shell for coaching and sponsor campaign assets. Authoring and KPI logging remain out of scope.',
       scopeRules: [
@@ -2669,7 +2669,7 @@ function AdminCoachingPortalFoundationPanel({
       runtimeCompanion: 'Feeds content references used by runtime coaching journeys/channels; does not replace runtime host flows.',
     },
     coachingLibrary: {
-      path: '/admin/coaching/library',
+      path: '/coach/library',
       title: 'Coach Portal Foundation: Library',
       summary: 'Foundation library shell for scoped content lookup/linking and catalog visibility controls.',
       scopeRules: [
@@ -2681,7 +2681,7 @@ function AdminCoachingPortalFoundationPanel({
       runtimeCompanion: 'Provides references for runtime surfaces/channels; runtime delivery remains in host surfaces.',
     },
     coachingCohorts: {
-      path: '/admin/coaching/cohorts',
+      path: '/coach/cohorts',
       title: 'Coach Portal Foundation: Cohorts',
       summary: 'Foundation cohort shell for audience segmentation and sponsor-scoped visibility planning.',
       scopeRules: [
@@ -2693,7 +2693,7 @@ function AdminCoachingPortalFoundationPanel({
       runtimeCompanion: 'Complements runtime cohort-channel targeting and does not replace runtime participation flows.',
     },
     coachingChannels: {
-      path: '/admin/coaching/channels',
+      path: '/coach/channels',
       title: 'Coach Portal Foundation: Channels',
       summary: 'Foundation channel-ops shell for scoped communication context and template planning.',
       scopeRules: [
@@ -2754,7 +2754,7 @@ function AdminCoachingPortalFoundationPanel({
             <Text style={styles.keyValueValue}>`/admin/coaching/audit`</Text>
           </View>
           <Text style={styles.fieldHelpText}>
-            Audit remains a secondary troubleshooting/governance surface. Primary coach portal scope is uploads/library/cohorts/channels.
+            Audit remains a secondary troubleshooting/governance surface. Legacy `/admin/coaching/*` paths are compatibility redirects to these `/coach/*` routes.
           </Text>
         </View>
       </View>
@@ -4416,7 +4416,7 @@ export default function AdminShellScreen() {
                 <Text style={styles.brandTitle}>{showCoachPortalExperience ? 'Coach Portal' : 'Admin Shell'}</Text>
                 <Text style={styles.brandSubtitle}>
                   {showCoachPortalExperience
-                    ? 'Dedicated coach workspace using /admin/coaching/* transition host routes'
+                    ? 'Dedicated coach workspace on /coach/* routes with legacy /admin/coaching/* compatibility redirects'
                     : 'User Ops, Catalog, and Reporting tools'}
                 </Text>
               </View>
@@ -4499,7 +4499,7 @@ export default function AdminShellScreen() {
                 <Text style={styles.navFooterTitle}>Admin workspace routes</Text>
                 <Text style={styles.navFooterText}>
                   {showCoachPortalExperience
-                    ? 'Coach portal transition navigation shows only role-allowed coaching routes. Admin maintenance routes are intentionally hidden.'
+                    ? 'Coach portal navigation shows only role-allowed /coach/* routes. Legacy /admin/coaching/* URLs redirect for compatibility.'
                     : 'Use the left navigation to move between available admin tools. Routes that are not available yet are labeled in the list.'}
                 </Text>
               </View>
@@ -4518,7 +4518,7 @@ export default function AdminShellScreen() {
                 <Text style={styles.headerTitle}>{showCoachPortalExperience ? 'Compass KPI Coach Portal' : 'Compass KPI Admin'}</Text>
                 <Text style={styles.headerSubtitle}>
                   {showCoachPortalExperience
-                    ? 'Coach-focused transition-host experience for uploads, library, cohorts, and channels'
+                    ? 'Coach-focused customer-facing experience for uploads, library, cohorts, and channels'
                     : 'Operator tools for user access, KPI catalog, templates, and reporting checks'}
                 </Text>
               </View>

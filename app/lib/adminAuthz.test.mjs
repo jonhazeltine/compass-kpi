@@ -33,6 +33,9 @@ test('getAdminRouteByPath matches admin paths and trims trailing slash', () => {
   assert.equal(getAdminRouteByPath('/admin/')?.key, 'overview');
   assert.equal(getAdminRouteByPath('/admin/authz')?.key, 'authz');
   assert.equal(getAdminRouteByPath('/admin/users/')?.key, 'users');
+  assert.equal(getAdminRouteByPath('/coach/uploads')?.key, 'coachingUploads');
+  assert.equal(getAdminRouteByPath('/coach/library')?.key, 'coachingLibrary');
+  assert.equal(getAdminRouteByPath('/coach/channels')?.key, 'coachingChannels');
   assert.equal(getAdminRouteByPath('/admin/coaching/uploads')?.key, 'coachingUploads');
   assert.equal(getAdminRouteByPath('/admin/coaching/library')?.key, 'coachingLibrary');
   assert.equal(getAdminRouteByPath('/admin/nope'), null);
@@ -73,6 +76,6 @@ test('admin routes remain defined for A1 shell placeholders', () => {
   assert.ok(ADMIN_ROUTES.length >= 2);
   assert.ok(ADMIN_ROUTES.some((route) => route.path === '/admin'));
   assert.ok(ADMIN_ROUTES.some((route) => route.path === '/admin/authz'));
-  assert.ok(ADMIN_ROUTES.some((route) => route.path === '/admin/coaching/uploads'));
-  assert.ok(ADMIN_ROUTES.some((route) => route.path === '/admin/coaching/channels'));
+  assert.ok(ADMIN_ROUTES.some((route) => route.path === '/coach/uploads'));
+  assert.ok(ADMIN_ROUTES.some((route) => route.path === '/coach/channels'));
 });
