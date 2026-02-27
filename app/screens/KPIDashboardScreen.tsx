@@ -126,7 +126,8 @@ type MePayload = {
 type LoadState = 'loading' | 'empty' | 'error' | 'ready';
 type Segment = 'PC' | 'GP' | 'VP';
 type ViewMode = 'home' | 'log';
-type BottomTab = 'home' | 'challenge' | 'newkpi' | 'team' | 'comms';
+type BottomTab = 'home' | 'challenge' | 'logs' | 'team' | 'comms';
+type LogsReportsSubview = 'logs' | 'reports';
 type CommsHubPrimaryTab = 'all' | 'channels' | 'dms' | 'broadcast';
 type CommsHubScopeFilter = 'all' | 'team' | 'cohort' | 'segment' | 'global';
 type DrawerFilter = 'Quick' | 'PC' | 'GP' | 'VP';
@@ -2098,7 +2099,7 @@ const feedbackAudioAssets = {
 const bottomTabIconSvgByKey = {
   home: TabDashboardIcon,
   challenge: TabChallengesIcon,
-  newkpi: TabLogsIcon,
+  logs: TabLogsIcon,
   team: TabTeamIcon,
   comms: TabCoachIcon,
 } as const;
@@ -2113,15 +2114,15 @@ const homePanelPillSvgBg = {
 const bottomTabIconStyleByKey: Record<BottomTab, any> = {
   home: null,
   challenge: null,
-  newkpi: null,
+  logs: null,
   team: { transform: [{ translateY: -6 }] },
   comms: { transform: [{ translateY: -3 }] },
 };
 
-const bottomTabOrder: BottomTab[] = ['challenge', 'newkpi', 'home', 'team', 'comms'];
+const bottomTabOrder: BottomTab[] = ['challenge', 'logs', 'home', 'team', 'comms'];
 const bottomTabAccessibilityLabel: Record<BottomTab, string> = {
   challenge: 'Challenges',
-  newkpi: 'KPI entries',
+  logs: 'Logs and reports',
   home: 'LOG',
   team: 'Team',
   comms: 'Comms',
@@ -2145,6 +2146,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [segment, setSegment] = useState<Segment>('PC');
   const [homePanel, setHomePanel] = useState<HomePanel>('Quick');
   const [viewMode, setViewMode] = useState<ViewMode>('home');
+  const [logsReportsSubview, setLogsReportsSubview] = useState<LogsReportsSubview>('logs');
   const [activeTab, setActiveTab] = useState<BottomTab>('home');
   const [challengeFlowScreen, setChallengeFlowScreen] = useState<'list' | 'details' | 'leaderboard'>('list');
   const [challengeListFilter, setChallengeListFilter] = useState<ChallengeListFilter>('all');
@@ -4742,8 +4744,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setViewMode('log');
       return;
     }
-    if (tab === 'newkpi') {
+    if (tab === 'logs') {
       setViewMode('log');
+      setLogsReportsSubview('logs');
       return;
     }
     if (tab === 'team') {
@@ -4772,6 +4775,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       return;
     }
     Alert.alert('Coming next', 'This section is planned for later sprint scope.');
+  };
+
+  const handleOpenProfileFromAvatar = () => {
+    if (onOpenProfile) {
+      onOpenProfile();
+      return;
+    }
+    Alert.alert('Profile unavailable', 'Profile and settings routing is not available in this build context.');
   };
 
   // Boost states remain inactive until dedicated boost metrics/policies are wired.
@@ -6935,6 +6946,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     );
   }
 
+  const resolvedDisplayName =
+    String(
+      session?.user?.user_metadata?.full_name ??
+        session?.user?.user_metadata?.name ??
+        session?.user?.user_metadata?.first_name ??
+        session?.user?.email?.split('@')[0] ??
+        'there'
+    ) || 'there';
+  const greetingFirstName = resolvedDisplayName.trim().split(' ')[0] || 'there';
+  const profileInitials = resolvedDisplayName
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('') || 'U';
+
   return (
     <View
       ref={(node) => {
@@ -6950,6 +6977,20 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         showsVerticalScrollIndicator={!isHomeGameplaySurface}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        <View style={styles.homeHeaderRow}>
+          <View>
+            <Text style={styles.hello}>Hi, {greetingFirstName}</Text>
+            <Text style={styles.welcomeBack}>Welcome back</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.avatarBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Open profile and settings"
+            onPress={handleOpenProfileFromAvatar}
+          >
+            <Text style={styles.avatarText}>{profileInitials}</Text>
+          </TouchableOpacity>
+        </View>
         {activeTab === 'challenge' ? (
           <View style={styles.challengeSurfaceWrap}>
             {challengeFlowScreen === 'list' ? (
@@ -10009,7 +10050,49 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 Review prior entries, backfill a selected day, and manage corrections without leaving the dashboard flow.
               </Text>
             </View>
+            <View style={styles.logsReportsSwitchCard}>
+              <TouchableOpacity
+                style={[
+                  styles.logsReportsSwitchBtn,
+                  logsReportsSubview === 'logs' ? styles.logsReportsSwitchBtnActive : null,
+                ]}
+                onPress={() => setLogsReportsSubview('logs')}
+                accessibilityRole="button"
+                accessibilityState={{ selected: logsReportsSubview === 'logs' }}
+                accessibilityLabel="Open logs history"
+              >
+                <Text
+                  style={[
+                    styles.logsReportsSwitchText,
+                    logsReportsSubview === 'logs' ? styles.logsReportsSwitchTextActive : null,
+                  ]}
+                >
+                  Logs
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.logsReportsSwitchBtn,
+                  logsReportsSubview === 'reports' ? styles.logsReportsSwitchBtnActive : null,
+                ]}
+                onPress={() => setLogsReportsSubview('reports')}
+                accessibilityRole="button"
+                accessibilityState={{ selected: logsReportsSubview === 'reports' }}
+                accessibilityLabel="Open reports summary"
+              >
+                <Text
+                  style={[
+                    styles.logsReportsSwitchText,
+                    logsReportsSubview === 'reports' ? styles.logsReportsSwitchTextActive : null,
+                  ]}
+                >
+                  Reports
+                </Text>
+              </TouchableOpacity>
+            </View>
 
+            {logsReportsSubview === 'logs' ? (
+              <>
             <View style={styles.activityDateCard}>
               <View style={styles.activityDateHeaderRow}>
                 <View>
@@ -10282,6 +10365,61 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 </Text>
               </View>
             </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.logsReportsSummaryGrid}>
+                  <View style={styles.logsReportsSummaryCard}>
+                    <Text style={styles.logsReportsSummaryLabel}>Active Days</Text>
+                    <Text style={styles.logsReportsSummaryValue}>{fmtNum(payload?.activity.active_days ?? 0)}</Text>
+                    <Text style={styles.logsReportsSummarySub}>Logging streak context</Text>
+                  </View>
+                  <View style={styles.logsReportsSummaryCard}>
+                    <Text style={styles.logsReportsSummaryLabel}>Total Logs</Text>
+                    <Text style={styles.logsReportsSummaryValue}>{fmtNum(payload?.activity.total_logs ?? 0)}</Text>
+                    <Text style={styles.logsReportsSummarySub}>Historical entries</Text>
+                  </View>
+                </View>
+
+                <View style={styles.logsReportsCard}>
+                  <Text style={styles.logsReportsCardTitle}>Reports snapshot</Text>
+                  <Text style={styles.logsReportsCardSub}>
+                    Reports remain in this shared surface. Use Logs for date-based entry history and Reports for trend review.
+                  </Text>
+                  <View style={styles.logsReportsMetricRow}>
+                    <Text style={styles.logsReportsMetricLabel}>Projected (90d)</Text>
+                    <Text style={styles.logsReportsMetricValue}>{fmtUsd(cardMetrics.projectedNext90)}</Text>
+                  </View>
+                  <View style={styles.logsReportsMetricRow}>
+                    <Text style={styles.logsReportsMetricLabel}>Actual (365d)</Text>
+                    <Text style={styles.logsReportsMetricValue}>{fmtUsd(cardMetrics.actualLast365)}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.logsReportsCard}>
+                  <Text style={styles.logsReportsCardTitle}>Recent activity (read-only)</Text>
+                  {recentLogEntries.length === 0 ? (
+                    <Text style={styles.todayLogsEmpty}>No recent activity yet.</Text>
+                  ) : (
+                    recentLogEntries.slice(0, 6).map((log) => (
+                      <View key={`report-${log.id}`} style={styles.recentEntryRow}>
+                        <View style={styles.recentEntryMeta}>
+                          <Text style={styles.recentEntryName}>{log.kpi_name || 'KPI'}</Text>
+                          <Text style={styles.recentEntryTime}>
+                            {new Date(log.event_timestamp).toLocaleString(undefined, {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}
+                          </Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+              </>
+            )}
           </>
         )}
       </ScrollView>
@@ -10403,6 +10541,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       ]}
                     />
                     {tab === 'home' ? <Text style={styles.bottomLogLabel}>LOG</Text> : null}
+                    {tab === 'logs' ? <Text style={styles.bottomLogsReportsLabel}>Logs/Reports</Text> : null}
                   </View>
                 );
               })()}
@@ -15857,6 +15996,99 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
+  logsReportsSwitchCard: {
+    backgroundColor: '#eef2f8',
+    borderRadius: 999,
+    padding: 4,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  logsReportsSwitchBtn: {
+    flex: 1,
+    borderRadius: 999,
+    minHeight: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logsReportsSwitchBtnActive: {
+    backgroundColor: '#1f5fe2',
+  },
+  logsReportsSwitchText: {
+    color: '#5e6779',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  logsReportsSwitchTextActive: {
+    color: '#fff',
+  },
+  logsReportsSummaryGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  logsReportsSummaryCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 3,
+  },
+  logsReportsSummaryLabel: {
+    color: '#6f7888',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  logsReportsSummaryValue: {
+    color: '#2f3442',
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  logsReportsSummarySub: {
+    color: '#7f8795',
+    fontSize: 11,
+  },
+  logsReportsCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6ebf2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  logsReportsCardTitle: {
+    color: '#2f3442',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  logsReportsCardSub: {
+    color: '#6f7888',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  logsReportsMetricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#edf1f6',
+    paddingTop: 8,
+  },
+  logsReportsMetricLabel: {
+    color: '#5f6a7d',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  logsReportsMetricValue: {
+    color: '#2f3442',
+    fontSize: 15,
+    fontWeight: '800',
+  },
   logPipelineBtn: {
     borderRadius: 999,
     borderWidth: 1,
@@ -16541,6 +16773,14 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     fontWeight: '900',
     letterSpacing: 0.6,
+  },
+  bottomLogsReportsLabel: {
+    position: 'absolute',
+    bottom: -11,
+    color: '#5f6b7f',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.15,
   },
   bottomIconImageInactive: {
     opacity: 0.88,
