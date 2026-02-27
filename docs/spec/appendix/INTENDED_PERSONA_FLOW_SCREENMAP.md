@@ -284,7 +284,8 @@ Challenge Sponsor is a distinct persona for sponsored challenge funding/campaign
 | Sponsor-scoped `channel_thread` participation | Participate in approved sponsor/challenge/cohort channels | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Sponsor persona may use sponsor-scoped communication tools in host surfaces/channels where enabled; no KPI logging controls. |
 
 #### W7/W8 implementation checklist alignment (required)
-- Admin Web and Mobile Runtime implementation-ready checklists for this portal package are defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
+- Admin Web, Mobile Runtime, and Backend implementation-ready acceptance checklists for this portal package are defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
+- W8 package/flow sequencing for portal + runtime handoff is defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
 - Team Leader access in this package is limited to team-scoped `content_upload`; no org-wide authoring ownership and no sponsor-scoped package authority.
 - `/admin/coaching/audit` remains secondary governance/troubleshooting only and is not part of primary coach/sponsor workflow routing.
 

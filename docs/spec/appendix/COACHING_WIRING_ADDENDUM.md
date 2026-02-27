@@ -382,6 +382,28 @@ This section advances the W7 portal foundation package using accepted W6/W7 resc
 7. Keep `/admin/coaching/audit` out of primary runtime flows (secondary admin governance only).
 8. Validate runtime copy/states for blocked/out-of-scope actions match role-gate contracts.
 
+#### Backend lane checklist (implementation-ready)
+
+1. Enforce role/scope boundaries on portal and runtime companion endpoints:
+   - Coach primary authoring/package ops scope
+   - Team Leader `content_upload` own-team scope only
+   - Challenge Sponsor sponsor-scoped access only
+2. Reject Team Leader attempts to access org-wide authoring controls or sponsor-scoped package governance actions.
+3. Reject sponsor persona KPI logging/edit writes; expose sponsor KPI visibility read models as read-only only.
+4. Ensure handoff/read-model outputs are explicit for runtime companion surfaces (`content refs`, `scope labels`, `visibility/entitlement results`, `disclaimer flags`).
+5. Keep no net-new endpoint families unless explicitly approved; prefer in-family additive shaping for read-model outputs.
+6. Preserve challenge participation/results ownership boundaries while supporting sponsor-linked coaching overlays/channels.
+7. Keep `/admin/coaching/audit` scoped to secondary governance/troubleshooting and avoid coupling primary workflow writes to audit surfaces.
+8. Validate API contract docs and acceptance mappings for admin/mobile/backend lane handoff fields before implementation sign-off.
+
+### W8 package/flow sequencing for portal + runtime handoff (control-plane)
+
+1. Finalize portal role-gated surface shells and action boundaries (`content_upload`, `content_library`, `journeys`, `cohorts`, `channels`) on Admin lane.
+2. Finalize backend scope enforcement and handoff/read-model outputs required by runtime companion surfaces (no sponsor KPI logging writes).
+3. Wire/validate runtime companion consumption on Mobile lane without exposing portal authoring/governance actions.
+4. Execute cross-lane acceptance checklist run (Admin + Backend + Mobile) and resolve any boundary violations before widening capabilities.
+5. Keep `/admin/coaching/audit` secondary-only through W8 unless owner policy explicitly promotes it.
+
 ## Coach Ops Touchpoint Workflow Sequences (Authoring -> Publishing -> Runtime)
 
 ### `coach_content_library`

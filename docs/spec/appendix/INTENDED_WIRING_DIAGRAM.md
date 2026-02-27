@@ -212,7 +212,8 @@ Near-term recommendation: use `Admin Shell` as the host (role-gated extension ro
 Hybrid/dedicated coach portal remains a deferred option and is `decision needed` in implementation if adopted (requires `DECISIONS_LOG.md` update for route/module boundary change).
 
 W7/W8 checklist alignment:
-- Implementation-ready Admin Web and Mobile Runtime checklists live in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
+- Implementation-ready Admin Web, Mobile Runtime, and Backend acceptance checklists live in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
+- W8 package/flow sequencing for portal + runtime handoff is defined in the same addendum.
 - Team Leader role in this package is constrained to team-scoped `content_upload` only (no org-wide authoring ownership, no sponsor package authority).
 - `/admin/coaching/audit` remains secondary governance/troubleshooting and is not modeled as primary workflow routing.
 

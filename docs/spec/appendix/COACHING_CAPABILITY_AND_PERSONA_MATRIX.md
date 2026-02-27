@@ -134,7 +134,8 @@ No-sponsor-KPI-logging enforcement note (W7/W8):
 - Any sponsor-facing KPI views are read-only and server-scoped to sponsored challenge/member contexts.
 
 Implementation checklist anchor:
-- Admin and Mobile lane implementation-ready checklists are defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` under `W7/W8 implementation-ready checklists`.
+- Admin, Mobile, and Backend lane implementation-ready checklists are defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` under `W7/W8 implementation-ready checklists`.
+- W8 package/flow sequencing for portal + runtime handoff is defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` under `W8 package/flow sequencing for portal + runtime handoff (control-plane)`.
 
 ## Authoring vs Delivery Ownership Model (Canonical Planning Boundary)
 
