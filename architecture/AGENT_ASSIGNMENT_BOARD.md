@@ -114,6 +114,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-W12-TEAM-LEADER-ROW-EXPANSION-AND-LOG-WIRING-A` | `review` | `M6 / W12` | `Team Leader` (primary), `Team Member` (no-regression) | `team leader ops` (`row expansion UI`, `team KPI -> log context wiring`) | `KPIDashboardScreen` Team Leader surface + handoff to Log interface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (interaction model + wiring fix) | Review-ready lock-follow-on: expanded member rows now render only active tracked KPIs via `Team Focus` (mandated) + `Personal` (user-selected minus mandated), preserve PC/GP/VP grouping/sort per block, render overlap once in Team Focus with `also personal`, and keep team-context log handoff badge/icon behavior. |
 | `M6-W12-TEAM-SCREEN-PERSONA-SPLIT-A` | `review` | `M6 / W12 (persona split hardening)` | `Team Member` (simple view), `Team Leader` (ops-heavy view) | `team surface runtime split` (`member simplicity`, `leader operational controls`) | `KPIDashboardScreen` Team surface only | `Mobile-1` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | team runtime parity task (no new Figma node lock for this swath) | Review-ready requirement-lock follow-on: Team default now shows only selected Team Focus KPIs; full KPI catalog is rendered only in leader-only “Select Team Focus KPIs” editor; member view remains read-only selected set and leader ops panel remains intact. |
 | `M6-W12-TEAM-PERSON-PROFILE-CARD-AND-FOCUS-EDITOR-A` | `review` | `M6 / W12 (team leader ops + person profile UX)` | `Team Leader` (primary), `Team Member` (limited profile-only behavior) | `team interaction refinement` (`focus editor usability`, `avatar/profile split`, `leader KPI detail`, `DM handoff`) | `KPIDashboardScreen` Team surface + person profile card surface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + persona-gated card UX) | Review-ready follow-on lock: Team Leader member KPI-detail taps now hand off to Log with route context (`member_id`, `kpi_id`, `source=team_leader_member_detail`), and Log renders member+KPI+period plus onboarding->profile goal-priority progress meter with last-7-days fallback summary when goal context is missing. |
+| `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A` | `active` | `M6 / W12` | `Team Leader`, `Team Member`, `Solo User` | `challenge surface` (`team-pattern interaction alignment`) | `KPIDashboardScreen` Challenge surface only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + wiring pass) | Active: redesign challenge landing around Active/Upcoming/History switching, Team-pattern list/detail structure, and details/leaderboard path integrity without Team/Home rewrites. |
 
 ## Blocked Assignments
 
@@ -4198,3 +4199,45 @@ Lock a shared admin interaction-primitives standard so admin implementation lane
 - `Worker note (2026-02-27, Coach-1 W10 customer-facing shell pass start):` Board updated first. Executing large-swatch customer-facing shell pass on canonical `/coach/*` routes: stronger top-nav + section-nav IA, coach-product copy (not admin-ops wording), actionable table/card surfaces for Library/Journeys/Cohorts/Channels, and lightweight detail drill-ins while preserving role boundaries and legacy compatibility redirects.
 - `Completion note (2026-02-27, Coach-1 W10 customer-facing shell pass completion):` Delivered customer-facing coach portal shell baseline with canonical `/coach/*` IA connectivity across Library/Journeys/Cohorts/Channels/Uploads. Added `/coach/journeys` + legacy `/admin/coaching/journeys` compatibility alias, customer-facing top nav and section nav, consistent page header/subheader treatment, actionable table-style list cards, and in-panel detail drill-ins for each major section. Dense admin diagnostics remain removed from coach-facing main viewport.
 - `Validation note (2026-02-27, Coach-1 W10 customer-facing shell pass completion):` `adminAuthz` unit tests pass; repo-wide app typecheck still reports pre-existing unrelated `KPIDashboardScreen.tsx` style-key errors (`knownLimitedDataChip`, `knownLimitedDataChipText`) outside this swath. Captured route screenshots for each touched `/coach/*` page under `app/test-results/w10-coach-portal-shell-pass/`.
+
+### `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 / W12`
+- `Persona:` `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `challenge surface` (`team-pattern interaction alignment`)
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (mobile app worktree preferred)
+- `Scope:` `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (challenge surface only; no bottom-nav merge)
+- `Execution note (2026-02-27, Mobile-2 start):` Board updated first. Starting Challenge redesign pass to align with Team interaction patterns: Active/Upcoming/History state switcher, active-default landing, team-style participant/KPI context blocks, and non-dead-end details/leaderboard navigation.
+- `Current blocker status (2026-02-27, Mobile-2 start):` `none` for scoped mobile challenge-surface pass.
+
+#### Primary Objective
+Redesign the Challenge surface to mirror Team interaction patterns while preserving existing join/leave API behavior and details/leaderboard flow usability.
+
+#### Scope In
+- Challenge landing state model and top switcher (`Active`, `Upcoming`, `History`)
+- Active challenge default selection and quick challenge switching behavior
+- Team-pattern active view structure (participant rows, KPI summary, role-aware actions)
+- Clean navigation paths into challenge details and leaderboard
+
+#### Scope Out
+- Team screen rewrite
+- Home/Priority rewrites
+- backend/API/schema changes
+
+#### Hard Constraints
+- Keep existing challenge join/leave endpoint usage intact.
+- Do not modify Team surface except shared local helper/style reuse if required.
+- No structural/backend boundary changes.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime checks:
+  - opens to active challenge by default
+  - switches among Active/Upcoming/History correctly
+  - details/leaderboard paths work from relevant states
+  - no broken CTA/link states
+- Screenshots:
+  - `app/test-results/w12-challenge-team-pattern-align/`
