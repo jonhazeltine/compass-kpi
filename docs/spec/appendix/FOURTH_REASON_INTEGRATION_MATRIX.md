@@ -128,6 +128,13 @@ Create a technical migration RFC that defines:
 - permission model mapping (coach/member/team leader/super admin)
 - incremental rollout plan and fallback strategy
 
+## W12 Parity Mapping Deliverable (Landed)
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_W12_FOURTHREASON_CHAT_PARITY_MAP.md`
+  - Extracts reusable Fourth Reason chat/journey UX patterns.
+  - Maps each pattern to current Compass mobile shell routes and `/coach/*` portal surfaces.
+  - Constrains implementation to existing endpoint families in `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`.
+  - Provides implementation-ready flow specs and `build now` vs `defer` boundaries for W12 planning.
+
 ## Phase 1 RFC Starter Table (One-Page)
 
 | New table | Tenancy key | Purpose |
