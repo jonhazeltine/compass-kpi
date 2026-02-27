@@ -2627,6 +2627,12 @@ function AdminUsersPanel({
 }
 
 type CoachingPortalSurfaceKey = 'coachingUploads' | 'coachingLibrary' | 'coachingCohorts' | 'coachingChannels';
+const COACH_PORTAL_TRANSITION_ROUTE_KEYS: CoachingPortalSurfaceKey[] = [
+  'coachingUploads',
+  'coachingLibrary',
+  'coachingCohorts',
+  'coachingChannels',
+];
 
 function AdminCoachingPortalFoundationPanel({
   routeKey,
@@ -3806,11 +3812,26 @@ export default function AdminShellScreen() {
   const rolesLabel = formatRoles(effectiveRoles);
   const devOverrideActive = __DEV__ && devRolePreview !== 'live';
   const effectiveHasAdminAccess = effectiveRoles.includes('platform_admin') || effectiveRoles.includes('super_admin');
+  const hasCoachRole = effectiveRoles.includes('coach');
+  const hasTeamLeaderRole = effectiveRoles.includes('team_leader');
+  const hasSponsorRole = effectiveRoles.includes('challenge_sponsor');
+  const hasCoachFacingRole = hasCoachRole || hasTeamLeaderRole || hasSponsorRole;
   const activeRoute = getAdminRouteByKey(activeRouteKey);
   const canOpenActiveRoute = canAccessAdminRoute(effectiveRoles, activeRoute);
   const a1Routes = ADMIN_ROUTES.filter((route) => getAdminRouteStage(route.key) === 'A1 now').length;
   const blockedRoutes = ADMIN_ROUTES.filter((route) => !canAccessAdminRoute(effectiveRoles, route)).length;
-  const visibleRoutes = ADMIN_ROUTES;
+  const coachingTransitionRoutes = useMemo(
+    () =>
+      ADMIN_ROUTES.filter(
+        (route) =>
+          COACH_PORTAL_TRANSITION_ROUTE_KEYS.includes(route.key as CoachingPortalSurfaceKey) &&
+          canAccessAdminRoute(effectiveRoles, route)
+      ),
+    [effectiveRoles]
+  );
+  const isCoachingTransitionRoute = COACH_PORTAL_TRANSITION_ROUTE_KEYS.includes(activeRoute.key as CoachingPortalSurfaceKey);
+  const showCoachPortalExperience = hasCoachFacingRole && !effectiveHasAdminAccess && isCoachingTransitionRoute;
+  const visibleRoutes = showCoachPortalExperience ? coachingTransitionRoutes : ADMIN_ROUTES;
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -3855,6 +3876,27 @@ export default function AdminShellScreen() {
 
     setUnknownAdminPath(getAdminRouteByPath(pathname) ? null : pathname);
   }, [activeRouteKey, canOpenActiveRoute]);
+
+  useEffect(() => {
+    if (effectiveHasAdminAccess) return;
+    if (!hasCoachFacingRole) return;
+    if (canOpenActiveRoute) return;
+    const firstCoachRoute = coachingTransitionRoutes[0];
+    if (!firstCoachRoute) return;
+    if (firstCoachRoute.key !== activeRouteKey) {
+      setUnknownAdminPath(null);
+      setActiveRouteKey(firstCoachRoute.key);
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.pathname !== firstCoachRoute.path) {
+        window.history.replaceState({}, '', firstCoachRoute.path);
+      }
+    }
+  }, [
+    activeRouteKey,
+    canOpenActiveRoute,
+    coachingTransitionRoutes,
+    effectiveHasAdminAccess,
+    hasCoachFacingRole,
+  ]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -4370,23 +4412,39 @@ export default function AdminShellScreen() {
                 <CompassMark width={42} height={42} />
               </View>
               <View style={styles.brandCopy}>
-                <Text style={styles.brandTag}>A1</Text>
-                <Text style={styles.brandTitle}>Admin Shell</Text>
-                <Text style={styles.brandSubtitle}>User Ops, Catalog, and Reporting tools</Text>
+                <Text style={styles.brandTag}>{showCoachPortalExperience ? 'W9' : 'A1'}</Text>
+                <Text style={styles.brandTitle}>{showCoachPortalExperience ? 'Coach Portal' : 'Admin Shell'}</Text>
+                <Text style={styles.brandSubtitle}>
+                  {showCoachPortalExperience
+                    ? 'Dedicated coach workspace using /admin/coaching/* transition host routes'
+                    : 'User Ops, Catalog, and Reporting tools'}
+                </Text>
               </View>
             </View>
             <View style={styles.brandMetricsRow}>
               <View style={styles.brandMetricCard}>
-                <Text style={styles.brandMetricLabel}>A1 routes</Text>
-                <Text style={styles.brandMetricValue}>{a1Routes}</Text>
+                <Text style={styles.brandMetricLabel}>{showCoachPortalExperience ? 'Coach routes' : 'A1 routes'}</Text>
+                <Text style={styles.brandMetricValue}>{showCoachPortalExperience ? coachingTransitionRoutes.length : a1Routes}</Text>
               </View>
               <View style={styles.brandMetricCard}>
-                <Text style={styles.brandMetricLabel}>Blocked now</Text>
-                <Text style={styles.brandMetricValue}>{blockedRoutes}</Text>
+                <Text style={styles.brandMetricLabel}>{showCoachPortalExperience ? 'Role scope' : 'Blocked now'}</Text>
+                <Text style={styles.brandMetricValue}>
+                  {showCoachPortalExperience
+                    ? hasCoachRole
+                      ? 'Coach'
+                      : hasTeamLeaderRole
+                        ? 'Team'
+                        : hasSponsorRole
+                          ? 'Sponsor'
+                          : 'N/A'
+                    : blockedRoutes}
+                </Text>
               </View>
             </View>
             <Text style={styles.brandFootnote}>
-              Styled from Compass export palette (navy + blue gradient) while keeping A1 scope to shell/authz only.
+              {showCoachPortalExperience
+                ? 'Coach-facing navigation is role-scoped and intentionally excludes admin-heavy maintenance views.'
+                : 'Styled from Compass export palette (navy + blue gradient) while keeping A1 scope to shell/authz only.'}
             </Text>
           </View>
 
@@ -4440,7 +4498,9 @@ export default function AdminShellScreen() {
               <View style={styles.navFooterCopy}>
                 <Text style={styles.navFooterTitle}>Admin workspace routes</Text>
                 <Text style={styles.navFooterText}>
-                  Use the left navigation to move between available admin tools. Routes that are not available yet are labeled in the list.
+                  {showCoachPortalExperience
+                    ? 'Coach portal transition navigation shows only role-allowed coaching routes. Admin maintenance routes are intentionally hidden.'
+                    : 'Use the left navigation to move between available admin tools. Routes that are not available yet are labeled in the list.'}
                 </Text>
               </View>
             </View>
@@ -4455,8 +4515,12 @@ export default function AdminShellScreen() {
           >
             <View style={styles.header}>
               <View>
-                <Text style={styles.headerTitle}>Compass KPI Admin</Text>
-                <Text style={styles.headerSubtitle}>Operator tools for user access, KPI catalog, templates, and reporting checks</Text>
+                <Text style={styles.headerTitle}>{showCoachPortalExperience ? 'Compass KPI Coach Portal' : 'Compass KPI Admin'}</Text>
+                <Text style={styles.headerSubtitle}>
+                  {showCoachPortalExperience
+                    ? 'Coach-focused transition-host experience for uploads, library, cohorts, and channels'
+                    : 'Operator tools for user access, KPI catalog, templates, and reporting checks'}
+                </Text>
               </View>
               <View style={styles.headerActions}>
                 <View style={styles.roleBadge}>
@@ -4478,67 +4542,67 @@ export default function AdminShellScreen() {
               </View>
             </View>
 
-            <View style={[styles.summaryRow, isCompact && styles.summaryRowCompact]}>
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryLabel}>AuthZ Source</Text>
-                <Text style={styles.summaryValue}>
-                  {backendRole ? 'Supabase session + backend /me fallback' : 'Supabase session metadata first'}
-                </Text>
-                <Text style={styles.summaryNote}>
-                  {__DEV__ && devRolePreview !== 'live'
-                    ? `Dev preview override active: ${devRolePreview}`
-                    : 'No new endpoint family introduced'}
-                </Text>
-              </View>
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryLabel}>Admin Workspace</Text>
-                <Text style={styles.summaryValue}>User ops, KPI catalog, templates, and reporting checks in one admin surface</Text>
-                <Text style={styles.summaryNote}>Use the left navigation to move between admin workflows</Text>
-              </View>
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryLabel}>Navigation</Text>
-                <Text style={styles.summaryValue}>
-                  {Platform.OS === 'web'
-                    ? `Path sync enabled (${
-                        !effectiveHasAdminAccess || !canOpenActiveRoute
-                          ? ADMIN_UNAUTHORIZED_PATH
-                          : unknownAdminPath
-                            ? ADMIN_NOT_FOUND_PATH
-                            : activeRoute.path
-                      })`
-                    : 'Path sync inactive outside web runtime'}
-                </Text>
-                <Text style={styles.summaryNote}>Browser back/forward tracks admin route changes, unauthorized, and not-found states</Text>
-              </View>
-            </View>
-
-            <View style={styles.checklistCard}>
-              <Pressable style={styles.formHeaderRow} onPress={() => setShowImplementationNotes((prev) => !prev)}>
-                <View style={styles.checklistHeader}>
-                  <Text style={styles.checklistTitle}>Implementation Status</Text>
-                  <Text style={styles.checklistSubtitle}>Internal readiness notes and debug context for admin maintenance</Text>
+            {!showCoachPortalExperience ? (
+              <>
+                <View style={[styles.summaryRow, isCompact && styles.summaryRowCompact]}>
+                  <View style={styles.summaryCard}>
+                    <Text style={styles.summaryLabel}>AuthZ Source</Text>
+                    <Text style={styles.summaryValue}>
+                      {backendRole ? 'Supabase session + backend /me fallback' : 'Supabase session metadata first'}
+                    </Text>
+                    <Text style={styles.summaryNote}>
+                      {__DEV__ && devRolePreview !== 'live'
+                        ? `Dev preview override active: ${devRolePreview}`
+                        : 'No new endpoint family introduced'}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryCard}>
+                    <Text style={styles.summaryLabel}>Admin Workspace</Text>
+                    <Text style={styles.summaryValue}>User ops, KPI catalog, templates, and reporting checks in one admin surface</Text>
+                    <Text style={styles.summaryNote}>Use the left navigation to move between admin workflows</Text>
+                  </View>
+                  <View style={styles.summaryCard}>
+                    <Text style={styles.summaryLabel}>Navigation</Text>
+                    <Text style={styles.summaryValue}>
+                      {Platform.OS === 'web'
+                        ? `Path sync enabled (${
+                            !canOpenActiveRoute ? ADMIN_UNAUTHORIZED_PATH : unknownAdminPath ? ADMIN_NOT_FOUND_PATH : activeRoute.path
+                          })`
+                        : 'Path sync inactive outside web runtime'}
+                    </Text>
+                    <Text style={styles.summaryNote}>Browser back/forward tracks admin route changes, unauthorized, and not-found states</Text>
+                  </View>
                 </View>
-                <Text style={styles.smallGhostButtonText}>{showImplementationNotes ? 'Hide' : 'Show'}</Text>
-              </Pressable>
-              {showImplementationNotes ? (
-                <View style={styles.checklistList}>
-                  <Text style={styles.metaRow}>Historic A1 shell/authz baseline checklist (completed; kept for traceability)</Text>
-                  {checklistItems.map((item) => {
-                    const done = item.status === 'done';
-                    return (
-                      <View key={item.label} style={styles.checklistRow}>
-                        <View style={[styles.checklistDot, done ? styles.checklistDotDone : styles.checklistDotPending]} />
-                        <Text style={[styles.checklistText, done ? styles.checklistTextDone : styles.checklistTextPending]}>
-                          {done ? '[done]' : '[next]'} {item.label}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              ) : null}
-            </View>
 
-            {__DEV__ ? (
+                <View style={styles.checklistCard}>
+                  <Pressable style={styles.formHeaderRow} onPress={() => setShowImplementationNotes((prev) => !prev)}>
+                    <View style={styles.checklistHeader}>
+                      <Text style={styles.checklistTitle}>Implementation Status</Text>
+                      <Text style={styles.checklistSubtitle}>Internal readiness notes and debug context for admin maintenance</Text>
+                    </View>
+                    <Text style={styles.smallGhostButtonText}>{showImplementationNotes ? 'Hide' : 'Show'}</Text>
+                  </Pressable>
+                  {showImplementationNotes ? (
+                    <View style={styles.checklistList}>
+                      <Text style={styles.metaRow}>Historic A1 shell/authz baseline checklist (completed; kept for traceability)</Text>
+                      {checklistItems.map((item) => {
+                        const done = item.status === 'done';
+                        return (
+                          <View key={item.label} style={styles.checklistRow}>
+                            <View style={[styles.checklistDot, done ? styles.checklistDotDone : styles.checklistDotPending]} />
+                            <Text style={[styles.checklistText, done ? styles.checklistTextDone : styles.checklistTextPending]}>
+                              {done ? '[done]' : '[next]'} {item.label}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                </View>
+              </>
+            ) : null}
+
+            {__DEV__ && !showCoachPortalExperience ? (
               <View style={styles.devPanel}>
                 <View style={styles.devPanelHeader}>
                   <Text style={styles.devPanelTitle}>Dev AuthZ Preview</Text>
