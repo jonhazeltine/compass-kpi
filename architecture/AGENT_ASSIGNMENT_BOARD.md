@@ -83,9 +83,11 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W10-MOBILE-UI-EVALUATION-READINESS-A` | `committed` | `M6 W10 mobile UI evaluation readiness` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching / team / challenge evaluability` (`CTA integrity`, `connected screens`, `compact state UI`) | `KPIDashboardScreen` surfaces: `Team`, `Team Challenges`, `Challenge Details`, `Leaderboard/Results`, `coaching_journeys*`, `coaching_journey_detail`, `coaching_lesson_detail`, `inbox*`, `channel_thread` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred) | manual-spec-driven + accepted W6/W7/W8 runtime stack | Committed: large-swatch W10 evaluation-readiness pass in mobile runtime surface completed. Misleading/dead CTAs were removed/re-labeled, diagnostic wall text was condensed into concise state cards/chips, and team/challenge/coaching paths remain connected end-to-end without backend/schema/API changes. |
 | `COACHING-W10-COACH-PORTAL-CUSTOMER-SHELL-A` | `committed` | `M6 W10 coach portal customer-facing shell` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`customer-facing shell`, `route connectivity`, `copy cleanup`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ existing detail drill-ins where scaffolded) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W9/W10 direction | Committed: upgraded `/coach/*` to a coach-product-facing shell baseline with connected route flow, customer-facing copy, actionable Library/Journeys/Cohorts/Channels surfaces, and preserved `/admin/coaching/*` compatibility redirects for transition. |
 | `COACHING-W10-REALISM-DATA-PACK-A` | `committed` | `M6 W10 realism data for UI evaluation` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `coaching content realism` (`journeys`, `lessons`, `cohorts`, `channels`, `messages`) | Seeded runtime data feeding `coaching_journeys*`, `coaching_lesson_detail`, `inbox*`, team/challenge coaching modules, and `/coach/*` list/detail surfaces | `Coach-1` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (seed/data/docs swath) | Committed: deterministic realism seed/reset/smoke pack + docs discoverability landed for owner UI evaluation (`9c617f7`). |
+| `COACHING-W12-JOURNEY-LESSON-HIERARCHY-UX-A` | `active` | `M6 W12 mobile hierarchy UX pass` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching journeys UX` (`tap hierarchy`, `explicit back path`, `remove misleading detail-open buttons`) | `KPIDashboardScreen` surfaces: `coaching_journeys`, `coaching_journey_detail`, `coaching_lesson_detail` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + accepted W11 route/data baseline | Active: replace button-led detail jumps with hierarchical tap flow (`Journey list -> Journey detail -> Lesson detail`) and explicit back path, keeping no backend/schema/API changes. |
 | `COACHING-W11-MOBILE-PRODUCT-CLARITY-PASS-A` | `review` | `M6 W11 mobile product-clarity pass` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching / challenge / team UX clarity` (`replace diagnostic text walls`, `tight CTA intent copy`, `owner-evaluable screens`) | `KPIDashboardScreen` surfaces: `coaching_journeys*`, `coaching_journey_detail`, `coaching_lesson_detail`, `inbox*`, `channel_thread`, `Team Challenges`, `Challenge Details`, `Leaderboard/Results` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + accepted W10 route/data baseline | Review-ready: readability-first copy/state pass completed on in-scope mobile surfaces with stacked diagnostic/legalistic cards removed, concise state messaging, and clearer CTA intent hierarchy while preserving route continuity and sponsor/logging guardrails. |
 | `COACHING-W12-FOURTHREASON-CHAT-PARITY-MAP-A` | `committed` | `M6/W12 coaching parity planning (docs/control-plane)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `coaching / communication parity` (`Fourth Reason chat+journies UX pattern mapping`) | mobile runtime coaching/comms shells (`inbox*`, `channel_thread`, `coach_broadcast_compose`, `coaching_journeys*`) + `/coach/*` portal surfaces (`/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels`, `/coach/uploads`) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + Fourth Reason reference repo | Committed: W12 parity mapping package landed with implementation-ready mobile + `/coach/*` screen/flow specs mapped to existing Compass contract families (no new endpoint families). |
-| `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A` | `review` | `M6 W11 coach portal standalone UX pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`standalone look`, `de-admin chrome`, `coach-first content workflows`) | canonical `/coach/*` routes with standalone shell treatment and minimized admin framing | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W10 route baseline | Review-ready: standalone coach shell framing pass completed on `/coach/*` (coach-specific sidebar/header/nav styling + copy de-admin), route map preserved, legacy `/admin/coaching/*` compatibility alias behavior retained. Validation passed (`npm run test:unit -- adminAuthz`, `npx tsc --noEmit --pretty false`) and route screenshots captured under `app/test-results/w11-coach-portal-standalone-ux-pass/`. |
+| `COACHING-W12-DRAGDROP-LIBRARY-TO-JOURNEY-SPEC-A` | `committed` | `M6/W12 coach portal authoring parity planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance) | `coach portal content authoring` (`library -> journey drag/drop build map`) | `/coach/library`, `/coach/journeys`, `/coach/uploads` + runtime verification touchpoints `coaching_journeys*` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + Fourth Reason references + existing API contracts | Committed: implementation-ready drag/drop authoring spec landed with build slices, role gates, existing-contract mapping, and explicit in-family contract gaps (no new endpoint family). |
+| `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A` | `review` | `M6 W11 coach portal standalone UX pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`standalone look`, `de-admin chrome`, `coach-first content workflows`) | canonical `/coach/*` routes with standalone shell treatment and minimized admin framing | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W10 route baseline | Review-ready correction pass: `/coach/*` now renders without left admin nav and without admin header chrome in coach mode; role gates and `/admin/coaching/*` compatibility redirects preserved; refreshed route screenshots captured in `app/test-results/w11-coach-portal-standalone-ux-pass/`. |
 | `COACHING-W9-COACH-PORTAL-EXPERIENCE-PLANNING-A` | `committed` | `W9 coach portal experience planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (host foundation only during transition) | `coach portal IA/UX` (`dedicated experience + migration path + production sequencing`) | dedicated coach portal IA/UX direction (outside admin-shell presentation), migration from `/admin/coaching/*` foundation routes, persona visibility model, production-experience sequencing | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W7/W8 acceptance pack | Committed W10 route-decoupling swath: dedicated `/coach/*` uploads/library/cohorts/channels routes + customer-facing shell/nav landed, coach-facing navigation migrated to `/coach/*`, and `/admin/coaching/*` retained as temporary compatibility redirect-only paths (no backend/schema/API changes). |
 | `COACHING-W7-SUPERADMIN-AI-TROUBLESHOOTING-AUDIT-A` | `queued` | `W7 optional hardening (super-admin AI troubleshooting only)` | `Super Admin` (primary), `Admin operator` (limited) | `AI troubleshooting / audit` (`exception-only`) | optional trimmed `/admin/coaching/audit` super-admin troubleshooting views | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package + explicit owner approval gate | Optional exception-only follow-on to repurpose or trim `/admin/coaching/audit` into super-admin AI troubleshooting/audit; not a coach notification or coach primary workflow surface. |
 
@@ -241,6 +243,44 @@ Produce a reusable parity map that translates Fourth Reason chat/journey UX patt
 - `Coach portal implementation-ready screens/flow spec`
 - `No new endpoint family` confirmation
 - `Files/docs changed`
+- Commit hash
+
+### `COACHING-W12-DRAGDROP-LIBRARY-TO-JOURNEY-SPEC-A`
+
+#### Snapshot
+- `Status:` `committed`
+- `Program status:` `M6/W12 coach portal authoring parity planning (docs/control-plane)`
+- `Persona:` `Coach` (primary), `Team Leader` (team-scoped upload/link), `Challenge Sponsor` (sponsor-scoped visibility/link), `Admin operator` (governance)
+- `Flow:` `coach portal content authoring` (`library -> journey drag/drop`)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred)
+- `Controller launch note (2026-02-27):` Create and execute a new assignment for implementation-ready drag/drop authoring UX spec and build map using existing contracts or explicit contract gaps, then update board and commit.
+- `Execution note (2026-02-27):` Board checked and updated first. Executed docs-only W12 drag/drop authoring planning swath with explicit no-net-new-endpoint-family boundary.
+- `Current blocker status (2026-02-27 start):` `none` for docs/control-plane scope.
+- `Completion note (2026-02-27):` Added `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_W12_DRAGDROP_LIBRARY_TO_JOURNEY_SPEC.md` with implementation-ready `/coach/library` -> `/coach/journeys` drag/drop UX contract, keyboard/mobile fallback behavior, lane build map, role-gate matrix, and explicit in-family `/api/coaching/*` contract gaps for draft ops/publish-readiness.
+- `Validation note (2026-02-27):` Verified route/surface alignment against `/Users/jon/compass-kpi/app/screens/AdminShellScreen.tsx` and `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`; verified contract-family boundaries against `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`; confirmed no new endpoint family required.
+- `Current blocker status (2026-02-27 completion):` `none`.
+
+#### Primary Objective
+Produce an implementation-ready drag/drop authoring spec that maps library assets into journey composition flows with explicit build slices and contract boundaries, while keeping all API work inside existing endpoint families.
+
+#### Hard Constraints
+- No net-new endpoint family.
+- No schema-breaking changes in this assignment.
+- Preserve role boundaries: coach primary authoring, Team Leader team-scoped only, sponsor scoped visibility only, sponsor no KPI logging.
+- Keep `/admin/coaching/audit` secondary-only governance/troubleshooting.
+
+#### Required Validation
+- Cross-check drag/drop flow mappings against current `/coach/*` and runtime route surfaces.
+- Cross-check contract mapping and gaps against existing families in `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`.
+- Ensure gap proposals are in-family extensions only (`/api/coaching/*`) and do not introduce net-new endpoint family.
+
+#### Report-Back Requirements
+- Update this assignment row/block status first
+- Drag/drop build map by lane/surface
+- Existing contract mapping + explicit in-family gap list
+- Persona/role-gate summary
+- Files/docs changed
 - Commit hash
 
 ### `TEAM-MEMBER-PARITY-A`
@@ -454,7 +494,7 @@ Produce the first implementation-ready coaching integration planning package (ma
 ### `COACHING-UI-W1-ALLOCATION-SHELLS`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `active`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W1 allocation + route shells`)
@@ -2826,6 +2866,58 @@ Ship a readability-first mobile pass so owner can evaluate flow quality without 
   - `/Users/jon/compass-kpi/app/test-results/team-member-parity-a/challenge_leaderboard_results_member.png`
 - `Current blocker status (2026-02-27, Mobile-1):` `none` for implementation scope. Expanded multi-surface screenshot automation remains limited by local macOS assistive-access restrictions for scripted Simulator tab navigation.
 
+### `COACHING-W12-JOURNEY-LESSON-HIERARCHY-UX-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 W12 mobile hierarchy UX pass`
+- `Persona:` `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `coaching journeys` (`hierarchical tap flow`, `explicit back path`)
+- `Owner:` `Mobile-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required)
+- `Figma refs:` `manual-spec-driven + accepted W11 runtime baseline`
+- `Worker note (2026-02-27, Mobile-1, start):` Board status updated first. Starting W12 hierarchy UX pass in `KPIDashboardScreen.tsx` to replace button-led `Open Journey/Open Detail` navigation with list-tap hierarchy (`Journey list -> Journey detail -> Lesson detail`) and explicit in-context back path controls.
+- `Current blocker status (2026-02-27, Mobile-1, start):` `none`.
+
+#### Primary Objective
+Make journey/lesson navigation evaluable and intuitive by removing redundant deep-link buttons and enforcing a clear hierarchical tap flow with explicit back actions.
+
+#### Scope / Ownership
+- Own only `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`.
+- No admin web edits in this assignment.
+
+#### Hard Constraints
+- No backend/API/schema changes.
+- No Home/Priority KPI logging mechanic changes.
+- Keep sponsor no-KPI-logging boundaries unchanged.
+- Preserve existing Team/Challenge participation wiring.
+
+#### Required Work
+1. Remove button-led journey/lesson open controls that bypass hierarchy (`Open Journey Detail`, `Open Lesson Detail`).
+2. Keep/strengthen tap hierarchy:
+   - `coaching_journeys` row tap opens `coaching_journey_detail`
+   - lesson row tap opens `coaching_lesson_detail`
+3. Add explicit back path controls:
+   - `coaching_journey_detail` -> back to `coaching_journeys`
+   - `coaching_lesson_detail` -> back to `coaching_journey_detail` (and optional back to journeys shortcut if consistent)
+4. Preserve existing progress actions and AI draft actions.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Screenshot set for changed journey/lesson surfaces
+
+#### Report-Back
+- Update assignment row/block status first (`review`/`blocked`)
+- Program status + persona(s)
+- Screens changed
+- CTA map (`control -> destination`)
+- Files + line refs
+- Home/Priority unchanged (`yes/no`)
+- Shared logging mechanics unchanged (`yes/no`)
+- `tsc` result
+- Screenshot paths
+- Commit hash
+
 ### `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A`
 
 #### Snapshot
@@ -2840,6 +2932,7 @@ Ship a readability-first mobile pass so owner can evaluate flow quality without 
 - `Completion note (2026-02-27, Admin-1):` Coach shell now uses coach-specific frame styling and copy on `/coach/*` (sidebar/brand/nav/header de-admin treatment), keeps role-scoped route visibility, and improves section affordance wording for Library/Journeys/Cohorts/Channels while preserving existing route map and sponsor/team-leader boundaries.
 - `Validation note (2026-02-27, Admin-1):` `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz` passed; `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed; runtime screenshots captured for `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels`, `/coach/uploads`, and compatibility alias check path `/admin/coaching/library`.
 - `Current blocker status (2026-02-27, Admin-1):` `none`.
+- `Worker note (2026-02-27, Admin-1, reopen correction):` Reopened by owner for correction pass. Scope narrowed to removing remaining admin shell chrome from `/coach/*` runtime (no left admin nav/header in coach mode), preserving role gates, preserving `/admin/coaching/*` compatibility redirects, and refreshing review screenshots.
 
 #### Primary Objective
 Make `/coach/*` feel like a distinct coach product area, not an admin surface with coach labels.

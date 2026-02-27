@@ -134,6 +134,10 @@ Create a technical migration RFC that defines:
   - Maps each pattern to current Compass mobile shell routes and `/coach/*` portal surfaces.
   - Constrains implementation to existing endpoint families in `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`.
   - Provides implementation-ready flow specs and `build now` vs `defer` boundaries for W12 planning.
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_W12_DRAGDROP_LIBRARY_TO_JOURNEY_SPEC.md`
+  - Defines implementation-ready drag/drop authoring UX from library assets into journey builder.
+  - Maps required interactions to existing `/api/coaching/*` family and calls out explicit in-family contract gaps.
+  - Preserves coach/team-leader/sponsor guardrails (team-scoped team-leader upload, sponsor no KPI logging).
 
 ## Phase 1 RFC Starter Table (One-Page)
 

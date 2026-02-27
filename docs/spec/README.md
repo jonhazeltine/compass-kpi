@@ -20,6 +20,7 @@ Guidance for future agents: Prefer markdown chunks; full master spec lives in `a
 ## Appendix Runbooks
 - `appendix/M6_REALISM_DATA_PACK_UI_EVALUATION.md`: deterministic coaching seed/run/smoke runbook for `/coach/*` + mobile UI realism evaluation
 - `appendix/COACHING_W12_FOURTHREASON_CHAT_PARITY_MAP.md`: Fourth Reason chat/journey UX pattern parity map to Compass mobile + `/coach/*` routes/contracts (no new endpoint families)
+- `appendix/COACHING_W12_DRAGDROP_LIBRARY_TO_JOURNEY_SPEC.md`: implementation-ready drag/drop authoring UX spec + build map for `/coach/library` -> `/coach/journeys` using existing contract families with explicit in-family gaps
 
 ## Working Rules
 - Keep sections concise and plain English.
