@@ -14,12 +14,14 @@ Provide an implementation-ready spec for coach-portal authoring where content fr
 - `/admin/coaching/audit` remains secondary governance/troubleshooting only.
 
 ## Target Surfaces
-- Authoring routes:
-  - `/coach/library`
-  - `/coach/journeys`
+- Canonical workspace mode:
+  - `/coach/journeys` (`Journeys` mode: Library tree/source pane + Journey Builder pane)
+- People workspace companion mode:
+  - `/coach/people` (`People` mode: People list + Cohorts/Channels split)
 - Compatibility aliases only:
-  - `/coach/uploads` -> `/coach/library`
-  - `/admin/coaching/uploads` -> `/coach/library`
+  - `/coach/library` -> `/coach/journeys` (open source-pane library context)
+  - `/coach/uploads` -> `/coach/journeys` (open source-pane library context)
+  - `/admin/coaching/uploads` -> `/coach/journeys` (open source-pane library context)
 - Runtime validation surfaces:
   - `coaching_journeys`
   - `coaching_journey_detail`
@@ -28,11 +30,12 @@ Provide an implementation-ready spec for coach-portal authoring where content fr
 ## UX Baseline (Intuitive/High-Signal)
 - Direct manipulation first: drag cards, visible drop zones, insertion indicator, immediate visual confirmation.
 - Folder/files first: Library is `Collections -> Assets` (folder -> files) with no duplicate Assets tab model.
+- Folder behavior rules: collections allow nested assets with multi-expand support (multiple collections may stay expanded simultaneously).
 - Low-friction layout: two-column Journey authoring (`source pane` + `journey builder`), not multi-pane duplication.
 - Progressive disclosure: advanced controls hidden until item is selected.
 - Fast confidence loops: builder action-bar `Save Draft` with explicit status chip (`idle`/`pending`/`saved`/`error`), undo affordance, and publish-readiness badge always visible.
 - Clean boundaries: role-denied controls are visible but locked with clear reason text.
-- Mandatory behavior: drag/drop interactions are required runtime behavior (asset<->collection, asset->journey, reorder/remove), not placeholder states.
+- Mandatory behavior: drag/drop interactions are required runtime behavior (asset<->collection, asset->lesson/task, reorder/remove), not placeholder states.
 
 ## Interaction Primitives Lock (Coach Portal)
 - Buttons are for primary actions only (`Create New Journey`, `Save Draft`, `Publish`).
@@ -76,7 +79,7 @@ flowchart LR
 | `drag_hover_valid` | dragged item over compatible zone | drop zone glow + insertion line | none | n/a |
 | `drag_hover_invalid` | dragged item over incompatible zone | red outline + reason chip | none | drop blocked |
 | `drop_commit_collection` | release asset on collection target | asset assigned/moved in collection file list | staged draft op queued | failure moves to `save_error` |
-| `drop_commit_journey` | release asset on milestone target | card inserted; builder animates to new order | staged draft op queued | failure moves to `save_error` |
+| `drop_commit_journey` | release asset on lesson/task slot target | card inserted; builder animates to new order | staged draft op queued | failure moves to `save_error` |
 | `reorder` | move within milestone or across milestones | positional swap animation + index badge update | staged draft op queued | conflict fallback to `draft_conflict` |
 | `remove` | remove action on placed card | card fades out + undo toast | staged draft op queued | restore via undo if available |
 | `save_pending` | action-bar `Save Draft` starts | status chip `Saving...` in builder action bar | sends draft ops batch | timeout -> `save_error` |
@@ -170,7 +173,7 @@ export interface ActionCapabilities {
 
 | Gap ID | Required capability | Proposed in-family extension | Rationale |
 |---|---|---|---|
-| G1 | Library payload normalized for `Assets + Collections` drag sources | `GET /api/coaching/library` OR add `library_items` + `library_collections` to journey detail payload | Builder needs stable asset/collection metadata and scope labels |
+| G1 | Library payload normalized for `Collections -> nested Assets` drag sources | `GET /api/coaching/library` OR add `library_items` + `library_collections` to journey detail payload | Builder needs stable asset/collection metadata, hierarchy state, and scope labels |
 | G2 | Draft operation writes for add/move/reorder/remove | `POST /api/coaching/journeys/{id}/draft/ops` | Deterministic operation-log model, auditable changes |
 | G3 | Draft fetch with versioning | `GET /api/coaching/journeys/{id}/draft` | Required for conflict handling and resume |
 | G4 | Publish readiness and publish action | `GET /api/coaching/journeys/{id}/publish-readiness`, `POST /api/coaching/journeys/{id}/publish` | Prevent invalid publish and keep checks server-authoritative |
@@ -198,7 +201,7 @@ export interface ActionCapabilities {
 - Builder shell on `/coach/journeys` with two-column layout (`source pane` + `journey builder`).
 - Source pane follows folder/files IA (`Collections -> Assets`) with no duplicate Assets tab model.
 - `Create New Journey` (blank + name) available in Journey Builder.
-- Add/move/reorder/remove interactions plus asset<->collection drag behavior.
+- Add/move/reorder/remove interactions plus asset<->collection and asset->lesson/task drag behavior.
 - Action-bar `Save Draft` control with status model (`idle`, `pending`, `saved`, `error`) and retry path.
 - Basic role-gated denied states.
 - In-family contract slices: G1, G2, G3.
@@ -220,7 +223,7 @@ export interface ActionCapabilities {
    - Lock `Collections -> Assets` folder/files model.
    - Remove duplicate Assets tab framing from source model.
 2. Implement frontend draft model and op queue (`JourneyDraft`, `JourneyDraftOp`).
-3. Wire mandatory drag lifecycle (asset<->collection, asset->journey, drag/hover/drop/reorder/remove) to queued draft ops and save states.
+3. Wire mandatory drag lifecycle (asset<->collection, asset->lesson/task, drag/hover/drop/reorder/remove) to queued draft ops and save states.
 4. Enforce role/scope gates from `action_capabilities` (or temporary conservative client deny until available).
 5. Add publish-readiness and publish action wiring.
 6. Validate runtime result consistency on `coaching_journeys*` surfaces.
