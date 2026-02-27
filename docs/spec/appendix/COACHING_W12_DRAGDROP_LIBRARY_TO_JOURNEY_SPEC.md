@@ -17,7 +17,9 @@ Provide an implementation-ready spec for coach-portal authoring where content fr
 - Authoring routes:
   - `/coach/library`
   - `/coach/journeys`
-  - `/coach/uploads`
+- Compatibility aliases only:
+  - `/coach/uploads` -> `/coach/library`
+  - `/admin/coaching/uploads` -> `/coach/library`
 - Runtime validation surfaces:
   - `coaching_journeys`
   - `coaching_journey_detail`
@@ -27,26 +29,28 @@ Provide an implementation-ready spec for coach-portal authoring where content fr
 - Direct manipulation first: drag cards, visible drop zones, insertion indicator, immediate visual confirmation.
 - Low-friction hierarchy: library on left, journey canvas center, item inspector right.
 - Progressive disclosure: advanced controls hidden until item is selected.
-- Fast confidence loops: autosave indicator, undo affordance, publish-readiness badge always visible.
+- Fast confidence loops: builder action-bar `Save Draft` with explicit status chip (`idle`/`pending`/`saved`/`error`), undo affordance, and publish-readiness badge always visible.
 - Clean boundaries: role-denied controls are visible but locked with clear reason text.
+- Mandatory behavior: drag/drop assignment and reorder/remove interactions are required runtime behavior, not placeholder states.
 
 ## UX Flow Map
 
 ```mermaid
 flowchart LR
   A["Open /coach/journeys"] --> B["Select Journey Draft"]
-  B --> C["Open Builder Canvas"]
-  C --> D["Browse /coach/library Assets"]
-  D --> E["Drag Asset"]
-  E --> F{"Valid Drop Zone?"}
-  F -->|Yes| G["Drop into Milestone"]
-  F -->|No| H["Reject Drop + Reason Chip"]
-  G --> I["Reorder / Move / Remove"]
-  I --> J["Draft Autosave or Save"]
-  J --> K{"Publish Readiness Passes?"}
-  K -->|Yes| L["Publish Journey"]
-  K -->|No| M["Show Blocking Checks"]
-  L --> N["Runtime Surfaces Consume Published Order"]
+  B --> C["Open Builder Canvas or Create New Journey"]
+  C --> D["Name Journey Draft"]
+  D --> E["Browse /coach/library Assets + Collections"]
+  E --> F["Drag Asset or Collection Item"]
+  F --> G{"Valid Drop Zone?"}
+  G -->|Yes| H["Drop into Milestone"]
+  G -->|No| I["Reject Drop + Reason Chip"]
+  H --> J["Reorder / Move / Remove"]
+  J --> K["Save Draft from Builder Action Bar"]
+  K --> L{"Publish Readiness Passes?"}
+  L -->|Yes| M["Publish Journey"]
+  L -->|No| N["Show Blocking Checks"]
+  M --> O["Runtime Surfaces Consume Published Order"]
 ```
 
 ## Interaction State Matrix
@@ -60,8 +64,8 @@ flowchart LR
 | `drop_commit` | release on valid zone | card inserted; canvas animates to new order | staged draft op queued | failure moves to `save_error` |
 | `reorder` | move within milestone or across milestones | positional swap animation + index badge update | staged draft op queued | conflict fallback to `draft_conflict` |
 | `remove` | remove action on placed card | card fades out + undo toast | staged draft op queued | restore via undo if available |
-| `save_pending` | autosave or manual save starts | status chip `Saving...` | sends draft ops batch | timeout -> `save_error` |
-| `save_success` | draft ops acknowledged | status chip `Saved` + timestamp | server draft version advanced | n/a |
+| `save_pending` | action-bar `Save Draft` starts | status chip `Saving...` in builder action bar | sends draft ops batch | timeout -> `save_error` |
+| `save_saved` | draft ops acknowledged | status chip `Saved` + timestamp in builder action bar | server draft version advanced | n/a |
 | `save_error` | save request fails | inline error + retry CTA | no version advance | retry or refresh draft |
 | `draft_conflict` | stale version/write race | blocking banner + diff/reload options | requires rebase/reload | preserve local op queue for retry |
 
@@ -69,7 +73,7 @@ flowchart LR
 
 ```ts
 export type ScopeType = 'org' | 'team' | 'sponsor';
-export type LibraryItemType = 'lesson' | 'module' | 'template' | 'asset';
+export type LibraryItemType = 'lesson' | 'module' | 'template' | 'asset' | 'collection_item';
 
 export interface LibraryItem {
   id: string;
@@ -80,6 +84,16 @@ export interface LibraryItem {
   sponsorScoped: boolean;
   tags: string[];
   estimatedMinutes?: number;
+  status: 'active' | 'archived';
+  collectionId?: string | null;
+}
+
+export interface LibraryCollection {
+  id: string;
+  title: string;
+  scopeType: ScopeType;
+  scopeId: string | null;
+  itemIds: string[];
   status: 'active' | 'archived';
 }
 
@@ -100,7 +114,7 @@ export interface JourneyDraft {
     blocks: JourneyMilestoneBlock[];
   }>;
   dirty: boolean;
-  saveState: 'idle' | 'pending' | 'success' | 'error' | 'conflict';
+  saveState: 'idle' | 'pending' | 'saved' | 'error' | 'conflict';
   publishReadiness: {
     status: 'ready' | 'blocked';
     checks: Array<{ code: string; severity: 'error' | 'warning'; message: string }>;
@@ -141,7 +155,7 @@ export interface ActionCapabilities {
 
 | Gap ID | Required capability | Proposed in-family extension | Rationale |
 |---|---|---|---|
-| G1 | Library payload normalized for drag source | `GET /api/coaching/library` OR add `library_items` to journey detail payload | Builder needs stable card metadata and scope labels |
+| G1 | Library payload normalized for `Assets + Collections` drag sources | `GET /api/coaching/library` OR add `library_items` + `library_collections` to journey detail payload | Builder needs stable asset/collection metadata and scope labels |
 | G2 | Draft operation writes for add/move/reorder/remove | `POST /api/coaching/journeys/{id}/draft/ops` | Deterministic operation-log model, auditable changes |
 | G3 | Draft fetch with versioning | `GET /api/coaching/journeys/{id}/draft` | Required for conflict handling and resume |
 | G4 | Publish readiness and publish action | `GET /api/coaching/journeys/{id}/publish-readiness`, `POST /api/coaching/journeys/{id}/publish` | Prevent invalid publish and keep checks server-authoritative |
@@ -167,8 +181,9 @@ export interface ActionCapabilities {
 
 ### Phase 1: MVP (functional drag/drop authoring)
 - Builder shell on `/coach/journeys` with drag source from `/coach/library`.
+- `Create New Journey` (blank + name) available in Journey Builder.
 - Add/move/reorder/remove interactions.
-- Draft save indicator and retry path.
+- Action-bar `Save Draft` control with status model (`idle`, `pending`, `saved`, `error`) and retry path.
 - Basic role-gated denied states.
 - In-family contract slices: G1, G2, G3.
 
@@ -187,7 +202,7 @@ export interface ActionCapabilities {
 ## Build Steps (Implementation Checklist)
 1. Add builder information architecture contract for `/coach/library` + `/coach/journeys`.
 2. Implement frontend draft model and op queue (`JourneyDraft`, `JourneyDraftOp`).
-3. Wire drag lifecycle to queued draft ops and save states.
+3. Wire mandatory drag lifecycle (drag/hover/drop/reorder/remove) to queued draft ops and save states.
 4. Enforce role/scope gates from `action_capabilities` (or temporary conservative client deny until available).
 5. Add publish-readiness and publish action wiring.
 6. Validate runtime result consistency on `coaching_journeys*` surfaces.
