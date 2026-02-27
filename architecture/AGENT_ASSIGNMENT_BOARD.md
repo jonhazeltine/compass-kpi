@@ -217,6 +217,7 @@ Provide realistic, repeatable seeded data so mobile + `/coach/*` evaluate as pro
 - `Current blocker status (2026-02-27 start):` `none` for docs/control-plane scope.
 - `Completion note (2026-02-27):` Added `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_W12_FOURTHREASON_CHAT_PARITY_MAP.md` with reusable Fourth Reason chat/journey UX pattern extraction, Compass route/contract mapping, and implementation-ready mobile + `/coach/*` screen/flow specs constrained to existing endpoint families.
 - `Validation note (2026-02-27):` Verified mapped patterns against current Compass route surfaces in `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` and `/Users/jon/compass-kpi/app/screens/AdminShellScreen.tsx`, and against existing contract families in `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`; no net-new endpoint family introduced.
+- `Completion note (2026-02-27 W12 closeout):` Linked the parity package into `/Users/jon/compass-kpi/docs/spec/appendix/FOURTH_REASON_INTEGRATION_MATRIX.md` and `/Users/jon/compass-kpi/docs/spec/README.md` so the mapping is discoverable from core integration docs and appendix index.
 
 #### Primary Objective
 Produce a reusable parity map that translates Fourth Reason chat/journey UX patterns into Compass-ready mobile and `/coach/*` implementation specs using existing endpoint families and current route surfaces.
@@ -2764,7 +2765,7 @@ Prepare/advance an implementation-guiding W7 docs-first foundation package for c
 ### `COACHING-W11-MOBILE-PRODUCT-CLARITY-PASS-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `M6 W11 mobile product-clarity pass`
 - `Persona:` `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / challenge / team UX clarity`
