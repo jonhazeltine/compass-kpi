@@ -83,6 +83,8 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W10-MOBILE-UI-EVALUATION-READINESS-A` | `committed` | `M6 W10 mobile UI evaluation readiness` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching / team / challenge evaluability` (`CTA integrity`, `connected screens`, `compact state UI`) | `KPIDashboardScreen` surfaces: `Team`, `Team Challenges`, `Challenge Details`, `Leaderboard/Results`, `coaching_journeys*`, `coaching_journey_detail`, `coaching_lesson_detail`, `inbox*`, `channel_thread` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred) | manual-spec-driven + accepted W6/W7/W8 runtime stack | Committed: large-swatch W10 evaluation-readiness pass in mobile runtime surface completed. Misleading/dead CTAs were removed/re-labeled, diagnostic wall text was condensed into concise state cards/chips, and team/challenge/coaching paths remain connected end-to-end without backend/schema/API changes. |
 | `COACHING-W10-COACH-PORTAL-CUSTOMER-SHELL-A` | `committed` | `M6 W10 coach portal customer-facing shell` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`customer-facing shell`, `route connectivity`, `copy cleanup`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ existing detail drill-ins where scaffolded) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W9/W10 direction | Committed: upgraded `/coach/*` to a coach-product-facing shell baseline with connected route flow, customer-facing copy, actionable Library/Journeys/Cohorts/Channels surfaces, and preserved `/admin/coaching/*` compatibility redirects for transition. |
 | `COACHING-W10-REALISM-DATA-PACK-A` | `committed` | `M6 W10 realism data for UI evaluation` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `coaching content realism` (`journeys`, `lessons`, `cohorts`, `channels`, `messages`) | Seeded runtime data feeding `coaching_journeys*`, `coaching_lesson_detail`, `inbox*`, team/challenge coaching modules, and `/coach/*` list/detail surfaces | `Coach-1` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (seed/data/docs swath) | Committed: deterministic realism seed/reset/smoke pack + docs discoverability landed for owner UI evaluation (`9c617f7`). |
+| `COACHING-W11-MOBILE-PRODUCT-CLARITY-PASS-A` | `active` | `M6 W11 mobile product-clarity pass` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching / challenge / team UX clarity` (`replace diagnostic text walls`, `tight CTA intent copy`, `owner-evaluable screens`) | `KPIDashboardScreen` surfaces: `coaching_journeys*`, `coaching_journey_detail`, `coaching_lesson_detail`, `inbox*`, `channel_thread`, `Team Challenges`, `Challenge Details`, `Leaderboard/Results` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + accepted W10 route/data baseline | Active: owner review marked navigation pass but UI fail due heavy notes/unclear flow; convert key mobile surfaces to product-readable copy/state hierarchy with minimal fallback noise and explicit primary actions. |
+| `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A` | `active` | `M6 W11 coach portal standalone UX pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`standalone look`, `de-admin chrome`, `coach-first content workflows`) | canonical `/coach/*` routes with standalone shell treatment and minimized admin framing | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W10 route baseline | Active: owner review confirms routes work but still feels like admin panel; move coach portal to visibly standalone coach UX frame while preserving existing role gates and compatibility aliases. |
 | `COACHING-W9-COACH-PORTAL-EXPERIENCE-PLANNING-A` | `committed` | `W9 coach portal experience planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (host foundation only during transition) | `coach portal IA/UX` (`dedicated experience + migration path + production sequencing`) | dedicated coach portal IA/UX direction (outside admin-shell presentation), migration from `/admin/coaching/*` foundation routes, persona visibility model, production-experience sequencing | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W7/W8 acceptance pack | Committed W10 route-decoupling swath: dedicated `/coach/*` uploads/library/cohorts/channels routes + customer-facing shell/nav landed, coach-facing navigation migrated to `/coach/*`, and `/admin/coaching/*` retained as temporary compatibility redirect-only paths (no backend/schema/API changes). |
 | `COACHING-W7-SUPERADMIN-AI-TROUBLESHOOTING-AUDIT-A` | `queued` | `W7 optional hardening (super-admin AI troubleshooting only)` | `Super Admin` (primary), `Admin operator` (limited) | `AI troubleshooting / audit` (`exception-only`) | optional trimmed `/admin/coaching/audit` super-admin troubleshooting views | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package + explicit owner approval gate | Optional exception-only follow-on to repurpose or trim `/admin/coaching/audit` into super-admin AI troubleshooting/audit; not a coach notification or coach primary workflow surface. |
 
@@ -2719,6 +2721,109 @@ Prepare/advance an implementation-guiding W7 docs-first foundation package for c
 - `Screenshot note (2026-02-27, Mobile-1):` Runtime screenshot capture started via simulator capture script. Captured baseline frame:
   - `/var/folders/zb/9w69k6j97x5dltcvt6pw91500000gn/T/codex-shot-2026-02-26_22-11-49.png`
 - `Screenshot blocker note (2026-02-27, Mobile-1):` scripted multi-surface simulator navigation for expanded screenshot matrix is blocked locally by macOS assistive access denial for UI automation (`osascript` click control unavailable). Capture command works, but cross-surface tab navigation could not be automated in this session.
+- `Owner review note (2026-02-27):` Navigation works but UI clarity failed: coaching journey/lesson surfaces are too note-heavy and confusing to evaluate.
+
+### `COACHING-W11-MOBILE-PRODUCT-CLARITY-PASS-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 W11 mobile product-clarity pass`
+- `Persona:` `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `coaching / challenge / team UX clarity`
+- `Owner:` `Mobile-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required)
+- `Controller launch note (2026-02-27):` Owner hard review outcome: route connectivity passes, but product readability fails due note-heavy UI and unclear action intent. W11 converts in-app coaching/challenge/team surfaces into concise, product-readable UX.
+
+#### Primary Objective
+Ship a readability-first mobile pass so owner can evaluate flow quality without parsing diagnostic policy notes.
+
+#### Scope / Ownership
+- Own only `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`.
+- No admin web edits in this assignment.
+
+#### Hard Constraints
+- No backend/API/schema changes.
+- No Home/Priority KPI logging mechanic changes.
+- Preserve Team/Challenge route continuity already verified.
+- Preserve sponsor no-KPI-logging rule.
+
+#### Required Work
+1. Remove stacked diagnostic/legalistic note cards from in-scope mobile surfaces.
+2. Replace with concise product states:
+   - one-line state label
+   - one short supporting sentence
+   - one primary CTA (or explicit disabled reason chip)
+3. Clarify primary action hierarchy on:
+   - `coaching_journeys*`, `coaching_journey_detail`, `coaching_lesson_detail`
+   - `inbox*`, `channel_thread`
+   - Team Challenges / Challenge Details / Leaderboard touchpoints when coaching CTAs appear
+4. Keep copy specific and user-facing; no “contract-gap triage” language in runtime UI.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Static CTA map for touched surfaces (`control -> destination/action`)
+- Runtime screenshot set (changed surfaces only)
+
+#### Report-Back
+- Update assignment row/block status first (`review`/`blocked`)
+- Program status + personas
+- Surfaces changed
+- Before/after copy-state examples (short)
+- CTA map
+- Files + line refs
+- Home/Priority unchanged (`yes/no`)
+- Shared logging mechanics unchanged (`yes/no`)
+- `tsc` result
+- Screenshot paths
+- Commit hash
+
+### `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 W11 coach portal standalone UX pass`
+- `Persona:` `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools)
+- `Flow:` `coach portal IA/UX` (`standalone feel`, `de-admin framing`, `coach-first clarity`)
+- `Owner:` `Admin-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred)
+- `Controller launch note (2026-02-27):` Owner hard review outcome: `/coach/*` routes work, but portal still visually reads as admin panel. W11 delivers standalone coach UX framing.
+
+#### Primary Objective
+Make `/coach/*` feel like a distinct coach product area, not an admin surface with coach labels.
+
+#### Hard Constraints
+- No backend/API/schema changes.
+- Keep `/admin/coaching/*` compatibility aliases operational.
+- Do not expand `/admin/coaching/audit` as primary workflow.
+- Preserve role boundaries and sponsor no-KPI-logging.
+
+#### Required Work
+1. Reduce admin-shell visual dominance on `/coach/*`:
+   - coach-specific header/nav framing
+   - coach-product section hierarchy
+   - remove admin-centric phrasing in viewport content
+2. Improve in-page affordance clarity for:
+   - Library, Journeys, Cohorts, Channels
+3. Keep existing route map intact; prioritize readability and intent clarity over new functionality.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz`
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Route check:
+  - `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels`
+  - `/admin/coaching/library` redirects to canonical `/coach/*`
+- Runtime screenshots for all touched `/coach/*` routes
+
+#### Report-Back
+- Update assignment row/block status first (`review`/`blocked`)
+- Program status + persona
+- Routes changed
+- Before/after UI framing summary
+- Files + line refs
+- Redirect behavior status
+- Validation summary
+- Screenshot paths
+- Commit hash
 
 ### `COACHING-W9-COACH-PORTAL-EXPERIENCE-PLANNING-A`
 
