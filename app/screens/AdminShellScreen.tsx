@@ -1727,6 +1727,8 @@ function AdminUsersPanel({
   const [userActivityFeed, setUserActivityFeed] = useState<Array<{ id: string; tone: 'success' | 'error' | 'info'; text: string; at: string }>>([]);
   const [sortKey, setSortKey] = useState<UserSortKey | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [quickActionsMenuOpen, setQuickActionsMenuOpen] = useState(false);
+  const [calibrationMenuOpen, setCalibrationMenuOpen] = useState(false);
 
   const pushUserActivity = (tone: 'success' | 'error' | 'info', text: string) => {
     setUserActivityFeed((prev) => {
@@ -2401,14 +2403,36 @@ function AdminUsersPanel({
                   <Text style={styles.formTitle}>Quick Actions</Text>
                   <Text style={styles.metaRow}>Copy values for QA login/setup</Text>
                 </View>
-                <View style={styles.formActionsRow}>
-                  <TouchableOpacity style={styles.smallGhostButton} onPress={onCopyUserId}>
-                    <Text style={styles.smallGhostButtonText}>Copy User ID</Text>
+                <View style={styles.menuWrap}>
+                  <TouchableOpacity
+                    style={styles.smallGhostButton}
+                    onPress={() => setQuickActionsMenuOpen((prev) => !prev)}
+                  >
+                    <Text style={styles.smallGhostButtonText}>{quickActionsMenuOpen ? 'Hide Quick Actions' : 'Open Quick Actions'}</Text>
                   </TouchableOpacity>
-                  {selectedUserEmail ? (
-                    <TouchableOpacity style={styles.smallGhostButton} onPress={onCopyUserEmail}>
-                      <Text style={styles.smallGhostButtonText}>Copy Email</Text>
-                    </TouchableOpacity>
+                  {quickActionsMenuOpen ? (
+                    <View style={styles.menuList}>
+                      <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={() => {
+                          onCopyUserId();
+                          setQuickActionsMenuOpen(false);
+                        }}
+                      >
+                        <Text style={styles.menuItemText}>Copy user ID</Text>
+                      </TouchableOpacity>
+                      {selectedUserEmail ? (
+                        <TouchableOpacity
+                          style={styles.menuItem}
+                          onPress={() => {
+                            onCopyUserEmail();
+                            setQuickActionsMenuOpen(false);
+                          }}
+                        >
+                          <Text style={styles.menuItemText}>Copy user email</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
                   ) : null}
                 </View>
               </View>
@@ -2503,23 +2527,44 @@ function AdminUsersPanel({
                   <Text style={styles.formTitle}>Calibration Tools</Text>
                   <Text style={styles.metaRow}>Reset or reinitialize user-level calibration state</Text>
                 </View>
-              <View style={[styles.formActionsRow, { marginTop: 2 }]}>
+                <View style={[styles.menuWrap, { marginTop: 2 }]}>
                   <TouchableOpacity
                     style={styles.smallGhostButton}
-                    onPress={onResetCalibration}
+                    onPress={() => setCalibrationMenuOpen((prev) => !prev)}
                     disabled={calibrationActionLoading}
                   >
                     <Text style={styles.smallGhostButtonText}>
-                      {calibrationActionLoading ? 'Working...' : 'Reset Calibration'}
+                      {calibrationActionLoading
+                        ? 'Working...'
+                        : calibrationMenuOpen
+                          ? 'Hide Calibration Actions'
+                          : 'Open Calibration Actions'}
                     </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.smallGhostButton}
-                    onPress={onReinitializeCalibration}
-                    disabled={calibrationActionLoading}
-                  >
-                    <Text style={styles.smallGhostButtonText}>Reinitialize From Onboarding</Text>
-                  </TouchableOpacity>
+                  {calibrationMenuOpen ? (
+                    <View style={styles.menuList}>
+                      <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={() => {
+                          onResetCalibration();
+                          setCalibrationMenuOpen(false);
+                        }}
+                        disabled={calibrationActionLoading}
+                      >
+                        <Text style={styles.menuItemText}>Reset calibration</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={() => {
+                          onReinitializeCalibration();
+                          setCalibrationMenuOpen(false);
+                        }}
+                        disabled={calibrationActionLoading}
+                      >
+                        <Text style={styles.menuItemText}>Reinitialize from onboarding</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
                 </View>
                 <Text style={styles.fieldHelpText}>
                   Use these actions for QA resets when testing calibration behavior across repeated account changes.
@@ -3615,6 +3660,8 @@ function AdminReportsPanel({
 }) {
   const [expandedOverview, setExpandedOverview] = useState(false);
   const [expandedDetailed, setExpandedDetailed] = useState(false);
+  const [selectedEndpointKey, setSelectedEndpointKey] = useState<'overview' | 'detailed'>('overview');
+  const [reportsMenuOpen, setReportsMenuOpen] = useState(false);
   const [reportsCopyNotice, setReportsCopyNotice] = useState<string | null>(null);
   const overviewTone = getProbeTone(overviewStatus);
   const detailedTone = getProbeTone(detailedStatus);
@@ -3648,6 +3695,14 @@ function AdminReportsPanel({
       tone: detailedTone,
     },
   ] as const;
+  const selectedEndpoint = endpointOpsRows.find((row) => row.key === selectedEndpointKey) ?? endpointOpsRows[0];
+  const selectedStatus = selectedEndpoint.key === 'overview' ? overviewStatus : detailedStatus;
+  const selectedHasPreview = selectedEndpoint.key === 'overview' ? hasOverviewPreview : hasDetailedPreview;
+  const selectedExpanded = selectedEndpoint.key === 'overview' ? expandedOverview : expandedDetailed;
+  const selectedDescription =
+    selectedEndpoint.key === 'overview'
+      ? 'Checks live backend availability for the overview analytics endpoint.'
+      : 'Checks live backend availability for the detailed reports endpoint. Endpoint not available yet (404) is shown as an explicit unavailable state.';
   const operatorNextStep =
     loading || endpointOpsRows.some((row) => row.status.kind === 'loading')
       ? 'Wait for endpoint checks to complete.'
@@ -3672,6 +3727,21 @@ function AdminReportsPanel({
       .join('\n\n');
     const ok = await copyTextToClipboard(text);
     setReportsCopyNotice(ok ? 'Copied all probe statuses' : 'Could not copy probe statuses (clipboard unavailable)');
+  };
+  const runSelectedRecheck = () => {
+    if (selectedEndpoint.key === 'overview') {
+      onRefreshOverview?.() ?? onRefresh();
+      return;
+    }
+    onRefreshDetailed?.() ?? onRefresh();
+  };
+  const toggleSelectedPreview = () => {
+    if (!selectedHasPreview) return;
+    if (selectedEndpoint.key === 'overview') {
+      setExpandedOverview((prev) => !prev);
+      return;
+    }
+    setExpandedDetailed((prev) => !prev);
   };
 
   return (
@@ -3709,108 +3779,114 @@ function AdminReportsPanel({
         <TouchableOpacity style={styles.primaryButton} onPress={onRefresh} disabled={loading}>
           <Text style={styles.primaryButtonText}>{loading ? 'Checking...' : 'Recheck All Endpoints'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.smallGhostButton} onPress={() => void copyAllProbeSummary()}>
-          <Text style={styles.smallGhostButtonText}>Copy All Probe Status</Text>
-        </TouchableOpacity>
+        <View style={styles.menuWrap}>
+          <TouchableOpacity style={styles.smallGhostButton} onPress={() => setReportsMenuOpen((prev) => !prev)}>
+            <Text style={styles.smallGhostButtonText}>{reportsMenuOpen ? 'Hide Actions' : 'More Actions'}</Text>
+          </TouchableOpacity>
+          {reportsMenuOpen ? (
+            <View style={styles.menuList}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  runSelectedRecheck();
+                  setReportsMenuOpen(false);
+                }}
+                disabled={loading}
+              >
+                <Text style={styles.menuItemText}>Recheck selected endpoint</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  void copyProbeDetails(selectedEndpoint.path, selectedStatus);
+                  setReportsMenuOpen(false);
+                }}
+              >
+                <Text style={styles.menuItemText}>Copy selected endpoint details</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  void copyAllProbeSummary();
+                  setReportsMenuOpen(false);
+                }}
+              >
+                <Text style={styles.menuItemText}>Copy all endpoint statuses</Text>
+              </TouchableOpacity>
+              {selectedHasPreview ? (
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    toggleSelectedPreview();
+                    setReportsMenuOpen(false);
+                  }}
+                >
+                  <Text style={styles.menuItemText}>{selectedExpanded ? 'Collapse selected preview' : 'Expand selected preview'}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
       </View>
       <View style={styles.reportsOpsSummaryCard}>
         <View style={styles.formHeaderRow}>
           <Text style={styles.formTitle}>Operator Probe Summary</Text>
           <Text style={styles.metaRow}>{endpointOpsRows.filter((row) => row.status.kind === 'ready').length} ready</Text>
         </View>
-        {endpointOpsRows.map((row) => (
-          <View key={row.key} style={styles.reportsOpsSummaryRow}>
-            <View style={styles.reportsOpsSummaryCopy}>
-              <Text style={styles.reportsOpsSummaryLabel}>{row.label}</Text>
-              <Text style={styles.reportsOpsSummaryPath}>{row.path}</Text>
+        <View style={styles.tableWrap}>
+          <View style={styles.tableHeaderRow}>
+            <View style={styles.colWide}>
+              <Text style={styles.tableHeaderCell}>Endpoint</Text>
             </View>
-            <View style={[styles.statusChip, { backgroundColor: row.tone.bg, borderColor: row.tone.border }]}>
-              <Text style={[styles.statusChipText, { color: row.tone.text }]}>{row.tone.label}</Text>
+            <View style={styles.colWide}>
+              <Text style={styles.tableHeaderCell}>Path</Text>
+            </View>
+            <View style={styles.colSm}>
+              <Text style={styles.tableHeaderCell}>Status</Text>
             </View>
           </View>
-        ))}
+          {endpointOpsRows.map((row) => (
+            <Pressable
+              key={row.key}
+              style={[styles.tableDataRow, selectedEndpoint.key === row.key && styles.tableDataRowSelectedStrong]}
+              onPress={() => setSelectedEndpointKey(row.key)}
+            >
+              <View style={[styles.tableCell, styles.colWide]}>
+                <Text style={styles.tablePrimary}>{row.label}</Text>
+              </View>
+              <View style={[styles.tableCell, styles.colWide]}>
+                <Text style={styles.tableCellText}>{row.path}</Text>
+              </View>
+              <View style={[styles.tableCell, styles.colSm]}>
+                <View style={[styles.statusChip, { backgroundColor: row.tone.bg, borderColor: row.tone.border }]}>
+                  <Text style={[styles.statusChipText, { color: row.tone.text }]}>{row.tone.label}</Text>
+                </View>
+              </View>
+            </Pressable>
+          ))}
+        </View>
         <Text style={styles.fieldHelpText}>{operatorNextStep}</Text>
       </View>
       <View style={[styles.summaryRow, styles.summaryRowCompact]}>
         <View style={styles.summaryCard}>
           <View style={styles.endpointHeaderRow}>
-            <Text style={styles.summaryLabel}>GET /admin/analytics/overview</Text>
-            <View style={[styles.statusChip, { backgroundColor: overviewTone.bg, borderColor: overviewTone.border }]}>
-              <Text style={[styles.statusChipText, { color: overviewTone.text }]}>{overviewTone.label}</Text>
+            <Text style={styles.summaryLabel}>{selectedEndpoint.path}</Text>
+            <View style={[styles.statusChip, { backgroundColor: selectedEndpoint.tone.bg, borderColor: selectedEndpoint.tone.border }]}>
+              <Text style={[styles.statusChipText, { color: selectedEndpoint.tone.text }]}>{selectedEndpoint.tone.label}</Text>
             </View>
           </View>
-          <Text style={styles.summaryValue} selectable>{formatProbeStatus(overviewStatus)}</Text>
-          <View style={styles.formActionsRow}>
-            <TouchableOpacity style={styles.smallGhostButton} onPress={onRefreshOverview ?? onRefresh} disabled={loading}>
-              <Text style={styles.smallGhostButtonText}>Recheck</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.smallGhostButton}
-              onPress={() => {
-                void copyProbeDetails('GET /admin/analytics/overview', overviewStatus);
-              }}
-            >
-              <Text style={styles.smallGhostButtonText}>Copy Details</Text>
-            </TouchableOpacity>
-          </View>
-          {hasOverviewPreview ? (
+          <Text style={styles.summaryValue} selectable>{formatProbeStatus(selectedStatus)}</Text>
+          {selectedHasPreview ? (
             <>
-              <TouchableOpacity
-                style={styles.smallGhostButton}
-                onPress={() => setExpandedOverview((prev) => !prev)}
-              >
-                <Text style={styles.smallGhostButtonText}>{expandedOverview ? 'Collapse preview' : 'Expand preview'}</Text>
-              </TouchableOpacity>
               <View style={styles.codePreviewBox}>
-                <Text style={styles.codePreviewText} selectable numberOfLines={expandedOverview ? undefined : 8}>
-                  {overviewStatus.bodyPreview}
+                <Text style={styles.codePreviewText} selectable numberOfLines={selectedExpanded ? undefined : 8}>
+                  {selectedStatus.kind === 'ready' ? selectedStatus.bodyPreview : ''}
                 </Text>
               </View>
             </>
           ) : (
             <Text style={styles.summaryNote} selectable>
-              Checks live backend availability for the overview analytics endpoint.
-            </Text>
-          )}
-        </View>
-        <View style={styles.summaryCard}>
-          <View style={styles.endpointHeaderRow}>
-            <Text style={styles.summaryLabel}>GET /admin/analytics/detailed-reports</Text>
-            <View style={[styles.statusChip, { backgroundColor: detailedTone.bg, borderColor: detailedTone.border }]}>
-              <Text style={[styles.statusChipText, { color: detailedTone.text }]}>{detailedTone.label}</Text>
-            </View>
-          </View>
-          <Text style={styles.summaryValue} selectable>{formatProbeStatus(detailedStatus)}</Text>
-          <View style={styles.formActionsRow}>
-            <TouchableOpacity style={styles.smallGhostButton} onPress={onRefreshDetailed ?? onRefresh} disabled={loading}>
-              <Text style={styles.smallGhostButtonText}>Recheck</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.smallGhostButton}
-              onPress={() => {
-                void copyProbeDetails('GET /admin/analytics/detailed-reports', detailedStatus);
-              }}
-            >
-              <Text style={styles.smallGhostButtonText}>Copy Details</Text>
-            </TouchableOpacity>
-          </View>
-          {hasDetailedPreview ? (
-            <>
-              <TouchableOpacity
-                style={styles.smallGhostButton}
-                onPress={() => setExpandedDetailed((prev) => !prev)}
-              >
-                <Text style={styles.smallGhostButtonText}>{expandedDetailed ? 'Collapse preview' : 'Expand preview'}</Text>
-              </TouchableOpacity>
-              <View style={styles.codePreviewBox}>
-                <Text style={styles.codePreviewText} selectable numberOfLines={expandedDetailed ? undefined : 8}>
-                  {detailedStatus.bodyPreview}
-                </Text>
-              </View>
-            </>
-          ) : (
-            <Text style={styles.summaryNote} selectable>
-              Checks live backend availability for the detailed reports endpoint. Endpoint not available yet (404) is shown as an explicit unavailable state.
+              {selectedDescription}
             </Text>
           )}
         </View>
@@ -3869,6 +3945,217 @@ function UnauthorizedState({
           ))}
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function AdminAuthzPanel({
+  effectiveRoles,
+  backendRole,
+  backendRoleLoading,
+  backendRoleError,
+}: {
+  effectiveRoles: AdminRole[];
+  backendRole: string | null;
+  backendRoleLoading: boolean;
+  backendRoleError: string | null;
+}) {
+  type AuthzTab = 'route_access' | 'session_roles';
+  type AuthzSortKey = 'route' | 'required_roles' | 'access';
+  const [activeTab, setActiveTab] = useState<AuthzTab>('route_access');
+  const [selectedRouteKey, setSelectedRouteKey] = useState<AdminRouteKey>('authz');
+  const [sortKey, setSortKey] = useState<AuthzSortKey>('route');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const adminRoutes = useMemo(
+    () => ADMIN_ROUTES.filter((route) => route.path.startsWith('/admin')),
+    []
+  );
+  const sortedRows = useMemo(() => {
+    return [...adminRoutes].sort((a, b) => {
+      let result = 0;
+      switch (sortKey) {
+        case 'route':
+          result = compareStrings(a.path, b.path);
+          break;
+        case 'required_roles':
+          result = compareStrings(a.requiredRoles.join(','), b.requiredRoles.join(','));
+          break;
+        case 'access':
+          result = compareBooleans(
+            canAccessAdminRoute(effectiveRoles, a),
+            canAccessAdminRoute(effectiveRoles, b)
+          );
+          break;
+      }
+      return applySortDirection(result || compareStrings(a.path, b.path), sortDirection);
+    });
+  }, [adminRoutes, effectiveRoles, sortDirection, sortKey]);
+  const selectedRoute =
+    sortedRows.find((row) => row.key === selectedRouteKey) ??
+    sortedRows.find((row) => row.key === 'authz') ??
+    sortedRows[0] ??
+    null;
+  const routeSortLabel = (key: AuthzSortKey, label: string) =>
+    `${label}${sortKey === key ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''}`;
+
+  const onSortHeaderPress = (nextKey: AuthzSortKey) => {
+    if (nextKey === sortKey) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection(nextKey === 'access' ? 'desc' : 'asc');
+  };
+
+  return (
+    <View style={styles.panel}>
+      <View style={styles.panelTopRow}>
+        <View style={styles.panelTitleBlock}>
+          <Text style={styles.eyebrow}>/admin/authz</Text>
+          <Text style={styles.panelTitle}>Authorization Matrix</Text>
+        </View>
+        <View style={[styles.stagePill, { backgroundColor: '#EEF4FF', borderColor: '#CEDBFF' }]}>
+          <Text style={[styles.stagePillText, { color: '#204ECF' }]}>A1 Foundation</Text>
+        </View>
+      </View>
+      <Text style={styles.panelBody}>
+        Validate route access and role resolution with sortable route checks and session-role diagnostics.
+      </Text>
+      <View style={styles.sectionNavRow}>
+        <Pressable
+          style={[styles.sectionNavPill, activeTab === 'route_access' && styles.sectionNavPillSelected]}
+          onPress={() => setActiveTab('route_access')}
+        >
+          <Text style={[styles.sectionNavPillText, activeTab === 'route_access' && styles.sectionNavPillTextSelected]}>
+            Route Access
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.sectionNavPill, activeTab === 'session_roles' && styles.sectionNavPillSelected]}
+          onPress={() => setActiveTab('session_roles')}
+        >
+          <Text style={[styles.sectionNavPillText, activeTab === 'session_roles' && styles.sectionNavPillTextSelected]}>
+            Session Roles
+          </Text>
+        </Pressable>
+      </View>
+
+      {activeTab === 'route_access' ? (
+        <View style={styles.usersTopSplit}>
+          <View style={[styles.tableWrap, { flex: 1, minWidth: 360 }]}>
+            <Text style={[styles.tableFootnote, { backgroundColor: '#F5F8FF' }]}>
+              Select a route row to inspect role requirements and current access state.
+            </Text>
+            <View style={styles.tableHeaderRow}>
+              <Pressable style={styles.colWide} onPress={() => onSortHeaderPress('route')}>
+                <Text style={[styles.tableHeaderCell, sortKey === 'route' && styles.tableHeaderCellActive]}>
+                  {routeSortLabel('route', 'Route')}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.colWide} onPress={() => onSortHeaderPress('required_roles')}>
+                <Text style={[styles.tableHeaderCell, sortKey === 'required_roles' && styles.tableHeaderCellActive]}>
+                  {routeSortLabel('required_roles', 'Required Roles')}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('access')}>
+                <Text style={[styles.tableHeaderCell, sortKey === 'access' && styles.tableHeaderCellActive]}>
+                  {routeSortLabel('access', 'Access')}
+                </Text>
+              </Pressable>
+            </View>
+            {sortedRows.map((row) => {
+              const allowed = canAccessAdminRoute(effectiveRoles, row);
+              return (
+                <Pressable
+                  key={row.key}
+                  style={[styles.tableDataRow, selectedRoute?.key === row.key && styles.tableDataRowSelectedStrong]}
+                  onPress={() => setSelectedRouteKey(row.key)}
+                >
+                  <View style={[styles.tableCell, styles.colWide]}>
+                    <Text style={styles.tablePrimary}>{row.label}</Text>
+                    <Text style={styles.tableSecondary}>{row.path}</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.colWide]}>
+                    <Text style={styles.tableCellText}>{row.requiredRoles.join(', ')}</Text>
+                  </View>
+                  <View style={[styles.tableCell, styles.colSm]}>
+                    <View
+                      style={[
+                        styles.statusChip,
+                        allowed
+                          ? { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' }
+                          : { backgroundColor: '#FFF4F2', borderColor: '#F2C0B9' },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusChipText,
+                          { color: allowed ? '#1D7A4D' : '#B2483A' },
+                        ]}
+                      >
+                        {allowed ? 'allowed' : 'blocked'}
+                      </Text>
+                    </View>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+          <View style={[styles.formCard, styles.usersOpsCard]}>
+            <View style={styles.formHeaderRow}>
+              <Text style={styles.formTitle}>Selected Route Detail</Text>
+              <Text style={styles.metaRow}>{selectedRoute?.key ?? 'none'}</Text>
+            </View>
+            {selectedRoute ? (
+              <>
+                <Text style={styles.metaRow}>Path: {selectedRoute.path}</Text>
+                <Text style={styles.metaRow}>Description: {selectedRoute.description}</Text>
+                <Text style={styles.metaRow}>Required roles: {selectedRoute.requiredRoles.join(', ')}</Text>
+                <View
+                  style={[
+                    styles.statusChip,
+                    canAccessAdminRoute(effectiveRoles, selectedRoute)
+                      ? { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' }
+                      : { backgroundColor: '#FFF4F2', borderColor: '#F2C0B9' },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusChipText,
+                      {
+                        color: canAccessAdminRoute(effectiveRoles, selectedRoute)
+                          ? '#1D7A4D'
+                          : '#B2483A',
+                      },
+                    ]}
+                  >
+                    {canAccessAdminRoute(effectiveRoles, selectedRoute) ? 'session can access' : 'session cannot access'}
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <Text style={styles.metaRow}>No route selected.</Text>
+            )}
+          </View>
+        </View>
+      ) : (
+        <View style={styles.usersDiagnosticsGrid}>
+          <View style={[styles.summaryCard, { flex: 1 }]}>
+            <Text style={styles.summaryLabel}>Session Resolved Roles</Text>
+            <Text style={styles.summaryValue}>{effectiveRoles.length ? effectiveRoles.join(', ') : 'none'}</Text>
+          </View>
+          <View style={[styles.summaryCard, { flex: 1 }]}>
+            <Text style={styles.summaryLabel}>Backend Reported Role</Text>
+            {backendRoleLoading ? (
+              <Text style={styles.summaryValue}>Loading role...</Text>
+            ) : backendRoleError ? (
+              <Text style={[styles.summaryValue, styles.errorText]}>{backendRoleError}</Text>
+            ) : (
+              <Text style={styles.summaryValue}>{backendRole ?? 'none returned'}</Text>
+            )}
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -4990,6 +5277,13 @@ export default function AdminShellScreen() {
                     calibrationEvents={calibrationEvents}
                     calibrationActionLoading={calibrationActionLoading}
                   />
+                ) : activeRoute.key === 'authz' ? (
+                  <AdminAuthzPanel
+                    effectiveRoles={effectiveRoles}
+                    backendRole={backendRole}
+                    backendRoleLoading={backendRoleLoading}
+                    backendRoleError={backendRoleError}
+                  />
                 ) : activeRoute.key === 'reports' ? (
                   <AdminReportsPanel
                     overviewStatus={analyticsOverviewStatus}
@@ -6068,6 +6362,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  menuWrap: {
+    position: 'relative',
+    alignSelf: 'flex-start',
+  },
+  menuList: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#D8E4FA',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    minWidth: 220,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEF2F9',
+  },
+  menuItemText: {
+    color: '#314C7F',
+    fontSize: 12,
+    fontWeight: '600',
   },
   primaryButtonDisabled: {
     opacity: 0.65,
