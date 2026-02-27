@@ -220,6 +220,11 @@ Coach portal host recommendation (planning, manual-spec-driven):
 - near-term: `Admin Shell extension` (recommended)
 - later option: `hybrid coach portal` if route/workflow complexity justifies a separate shell (`decision needed` during implementation)
 
+W9 dedicated experience direction (planning lock):
+- final coach portal UX is a dedicated coach experience (outside admin-shell presentation patterns)
+- during migration, `/admin/coaching/*` remains transition-host foundation for capability continuity and authz controls
+- primary coach navigation should be planned toward dedicated coach workspace IA, with admin host routes treated as transitional infrastructure
+
 #### `coach_ops_authoring`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
 |---|---|---|---|---|
@@ -287,6 +292,8 @@ Challenge Sponsor is a distinct persona for sponsored challenge funding/campaign
 - Admin Web, Mobile Runtime, and Backend implementation-ready acceptance checklists for this portal package are defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
 - W8 package/flow sequencing for portal + runtime handoff is defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
 - Final W8 implementation acceptance pack (lane done/blocked/rollback criteria + owner checkpoint checklist) is defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
+- W9 dedicated coach portal IA/UX direction and migration path (from `/admin/coaching/*` transition host foundation to production dedicated coach experience) are defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
+- W9 sequencing preserves `/admin/coaching/*` as transition-host foundation only; dedicated coach experience presentation is the target production UX direction.
 - Team Leader access in this package is limited to team-scoped `content_upload`; no org-wide authoring ownership and no sponsor-scoped package authority.
 - `/admin/coaching/audit` remains secondary governance/troubleshooting only and is not part of primary coach/sponsor workflow routing.
 

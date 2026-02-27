@@ -215,6 +215,8 @@ W7/W8 checklist alignment:
 - Implementation-ready Admin Web, Mobile Runtime, and Backend acceptance checklists live in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
 - W8 package/flow sequencing for portal + runtime handoff is defined in the same addendum.
 - Final W8 implementation acceptance pack (lane done/blocked/rollback criteria + owner checkpoint checklist) is defined in the same addendum.
+- W9 dedicated coach portal IA/UX direction and migration path are defined in the same addendum; `/admin/coaching/*` remains transition-host foundation during migration.
+- W9 production-direction rule: dedicated coach portal experience is the target UX; admin-hosted routes are migration infrastructure, not final presentation model.
 - Team Leader role in this package is constrained to team-scoped `content_upload` only (no org-wide authoring ownership, no sponsor package authority).
 - `/admin/coaching/audit` remains secondary governance/troubleshooting and is not modeled as primary workflow routing.
 

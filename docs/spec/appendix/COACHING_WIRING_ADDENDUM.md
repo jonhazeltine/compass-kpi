@@ -435,6 +435,60 @@ This section is the final lane-by-lane acceptance gate for the coach portal + ru
 7. `Cross-lane contract sync confirmed`: no unresolved contract/read-model mismatch between admin/backend/mobile lanes.
 8. `Owner sign-off recorded`: explicit owner checkpoint approval before expanding scope beyond W8 pack.
 
+## W9 Coach Portal Experience Planning Pack (Dedicated UX Direction)
+
+### Dedicated portal IA/UX direction (outside admin-shell presentation)
+
+W9 introduces a dedicated coach portal experience direction that is separate from admin-shell presentation patterns. During transition, `/admin/coaching/*` remains the backend/admin host foundation, but the target IA/UX is a dedicated coach portal experience layer.
+
+Target IA pillars:
+1. Coach-first workspace navigation (content -> journeys -> cohorts -> channels -> publishing/packages).
+2. Role-tailored workspace states (Coach primary workflows, Team Leader scoped upload companion, Challenge Sponsor scoped tools).
+3. Runtime handoff visibility in-context (what is published/assigned/visible in runtime) without forcing admin-shell operational framing.
+4. Governance/troubleshooting remains secondary (`/admin/coaching/audit`) and does not become primary navigation.
+
+### Transition host rule (required during migration)
+
+- `/admin/coaching/*` routes are transition-host foundation routes only while dedicated portal UX is introduced.
+- Do not treat admin-shell presentation as final coach UX direction.
+- Maintain existing host routes for compatibility and role/authz enforcement until dedicated experience routing is approved for cutover.
+
+### Persona-specific visibility model (W9 planning lock)
+
+| Persona | Primary visibility in dedicated portal UX | Explicit non-visibility / blocked scope |
+|---|---|---|
+| Coach | Full portal workspace (`content_upload`, `content_library`, `journeys`, `cohorts`, `channels`, publishing/packages) with runtime handoff context | No direct KPI source mutation actions |
+| Team Leader | Companion visibility limited to team-scoped `content_upload` and optional own-team content references where approved | No org-wide authoring ownership; no sponsor-scoped package authority |
+| Challenge Sponsor | Sponsor-scoped tools (sponsor uploads/library refs, sponsor cohorts/channels, sponsor KPI visibility read-only) | No KPI logging/edit actions; no org-wide coach authoring governance |
+| Admin operator | Foundation host/governance visibility, approvals, policy controls, secondary audit/troubleshooting | Not primary coach workflow owner in dedicated portal UX |
+
+### Migration path from admin-hosted foundation to dedicated coach experience
+
+Phase 1 (`transition-host foundation`, current):
+- Keep `/admin/coaching/*` route host as system of execution.
+- Apply role-gated surface contracts and acceptance guardrails from W8 pack.
+
+Phase 2 (`experience shell overlay`):
+- Introduce dedicated coach portal IA layer (outside admin-shell presentation) that maps to existing foundation capabilities.
+- Preserve endpoint/authz boundaries; avoid structural API changes unless explicitly approved.
+
+Phase 3 (`progressive route migration`):
+- Route primary coach UX entry through dedicated experience shell.
+- Keep `/admin/coaching/*` as compatibility/fallback host during controlled cutover.
+- Continue to treat `/admin/coaching/audit` as secondary governance/troubleshooting.
+
+Phase 4 (`production coach experience`):
+- Dedicated coach portal UX becomes primary coach experience.
+- Foundation admin routes remain for governance/admin roles and controlled fallback paths only.
+
+### W9 -> production sequencing checklist (planning)
+
+1. Lock dedicated coach portal IA map and role-specific navigation model.
+2. Validate migration compatibility matrix for each foundation surface (`content_upload`, `content_library`, `journeys`, `cohorts`, `channels`).
+3. Confirm Team Leader team-scope upload guardrail and sponsor no-KPI-logging guardrail at each migration phase gate.
+4. Define cutover acceptance criteria for switching primary coach entry from admin-hosted to dedicated portal experience.
+5. Keep `/admin/coaching/audit` secondary-only through migration and post-cutover unless explicit owner policy changes.
+
 ## Coach Ops Touchpoint Workflow Sequences (Authoring -> Publishing -> Runtime)
 
 ### `coach_content_library`

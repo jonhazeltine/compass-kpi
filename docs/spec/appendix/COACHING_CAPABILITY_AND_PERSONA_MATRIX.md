@@ -133,10 +133,23 @@ No-sponsor-KPI-logging enforcement note (W7/W8):
 - Sponsor persona must not receive KPI logging/edit affordances in portal or runtime surfaces.
 - Any sponsor-facing KPI views are read-only and server-scoped to sponsored challenge/member contexts.
 
+## W9 Dedicated Coach Portal Visibility Model (Planning Lock)
+
+| Persona | Primary portal visibility | Disallowed authority (hard boundary) |
+|---|---|---|
+| Coach | primary workspace ownership across content, journeys, cohorts, channels, publishing/package handoff | KPI source mutation; audit-primary workflow dependency |
+| Team Leader | team-scoped companion upload visibility (`content_upload`) and optional own-team uploaded-asset references only | org-wide authoring ownership; sponsor-scoped package authority |
+| Challenge Sponsor | sponsor-scoped tools (uploads/library links/cohort-channel context + read-only sponsor KPI visibility) | KPI logging/edit actions; coach/global authoring governance |
+| Admin operator | transition-host governance/approval + secondary troubleshooting (`/admin/coaching/audit`) | primary coach experience ownership in dedicated portal UX |
+
+Transition-host rule:
+- `/admin/coaching/*` routes remain backend/admin host foundation during migration and should not be treated as final coach portal presentation.
+
 Implementation checklist anchor:
 - Admin, Mobile, and Backend lane implementation-ready checklists are defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` under `W7/W8 implementation-ready checklists`.
 - W8 package/flow sequencing for portal + runtime handoff is defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` under `W8 package/flow sequencing for portal + runtime handoff (control-plane)`.
 - Final W8 implementation acceptance pack (lane done/blocked/rollback criteria + owner checkpoint checklist) is defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` under `W8 Final Implementation Acceptance Pack (Control-Plane Closeout)`.
+- W9 dedicated coach portal IA/UX direction, transition-host migration path, and persona visibility model are defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md` under `W9 Coach Portal Experience Planning Pack (Dedicated UX Direction)`.
 
 ## Authoring vs Delivery Ownership Model (Canonical Planning Boundary)
 
