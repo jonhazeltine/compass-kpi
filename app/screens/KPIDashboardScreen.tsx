@@ -7873,11 +7873,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const teamLightKpis = teamSurfaceKpis.slice(0, 3);
               const teamFocusSelectedRows = teamSurfaceKpis.filter((kpi) => teamFocusSelectedKpiIds.includes(String(kpi.id)));
               const teamFocusKpisForDisplay = teamFocusSelectedRows.length > 0 ? teamFocusSelectedRows : teamSurfaceKpis.slice(0, 4);
-              const toggleTeamFocusKpi = (kpiId: string) => {
-                setTeamFocusSelectedKpiIds((prev) =>
-                  prev.includes(kpiId) ? prev.filter((id) => id !== kpiId) : [...prev, kpiId]
-                );
-              };
+              const teamMandatedKpiIdsOrdered = teamFocusKpisForDisplay.map((kpi) => String(kpi.id));
+              const selectableById = new Map(allSelectableKpis.map((kpi) => [String(kpi.id), kpi] as const));
+              const selectedPoolIds = Array.from(
+                new Set([
+                  ...managedKpiIds.map((id) => String(id)),
+                  ...favoriteKpiIds.map((id) => String(id)),
+                  ...teamMandatedKpiIdsOrdered,
+                ])
+              ).filter((id) => selectableById.has(id));
               const parsePercent = (value: string) => {
                 const normalized = Number(String(value).replace('%', '').trim());
                 return Number.isFinite(normalized) ? normalized : 0;
@@ -7896,6 +7900,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 if (kpis.PC < 75) concerns.push('Projection confidence trending low');
                 if (kpis.GP < 72) concerns.push('Growth KPIs under target cadence');
                 if (kpis.VP < 70) concerns.push('Vitality activity missing this cycle');
+                const memberSelectedCandidateIds =
+                  selectedPoolIds.length > 0
+                    ? [
+                        selectedPoolIds[idx % selectedPoolIds.length],
+                        selectedPoolIds[(idx + 2) % selectedPoolIds.length],
+                        selectedPoolIds[(idx + 4) % selectedPoolIds.length],
+                        teamMandatedKpiIdsOrdered[idx % Math.max(1, teamMandatedKpiIdsOrdered.length)] ?? null,
+                      ]
+                        .filter((id): id is string => Boolean(id))
+                        .filter((id, itemIdx, arr) => arr.indexOf(id) === itemIdx)
+                    : [];
                 return {
                   id: member.name.toLowerCase().replace(/\s+/g, '-'),
                   name: member.name,
@@ -7905,6 +7920,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   average,
                   status,
                   concerns,
+                  memberSelectedCandidateIds,
                 };
               });
               const teamLeaderEscrowDeals = teamPipelineRows.reduce((sum, row) => sum + Math.max(0, Number(row.pending ?? 0)), 0);
@@ -8426,53 +8442,98 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                   <Text style={styles.teamLeaderExpandedKpiRow}>
                                     Average KPI Health: {row.average}% (PC {row.kpis.PC}% • GP {row.kpis.GP}% • VP {row.kpis.VP}%)
                                   </Text>
-                                  {orderedKpiTypes.map((typeKey) => {
-                                    const kpisForType = allSelectableKpis
-                                      .filter((kpi) => kpi.type === typeKey)
-                                      .sort((a, b) => a.name.localeCompare(b.name));
-                                    return (
-                                      <View key={`${row.id}-${typeKey}`} style={styles.teamLeaderKpiTypeSection}>
-                                        <Text style={styles.teamLeaderKpiTypeSectionTitle}>
-                                          {typeKey === 'PC'
-                                            ? 'Projection (PC)'
-                                            : typeKey === 'GP'
-                                              ? 'Growth (GP)'
-                                              : 'Vitality (VP)'}
-                                        </Text>
-                                        {kpisForType.map((kpi) => {
-                                          const kpiId = String(kpi.id);
-                                          const selected = teamFocusSelectedKpiIds.includes(kpiId);
+                                  {(() => {
+                                    const teamMandatedSet = new Set(teamMandatedKpiIdsOrdered);
+                                    const memberSelectedSet = new Set(
+                                      row.memberSelectedCandidateIds.filter((id) => selectableById.has(id))
+                                    );
+                                    const personalOnlyIds = row.memberSelectedCandidateIds.filter(
+                                      (id, idx, arr) =>
+                                        !teamMandatedSet.has(id) &&
+                                        arr.indexOf(id) === idx &&
+                                        selectableById.has(id)
+                                    );
+                                    const resolveOrderedKpis = (ids: string[]) =>
+                                      ids
+                                        .map((id) => selectableById.get(id))
+                                        .filter((kpi): kpi is DashboardPayload['loggable_kpis'][number] => kpi != null)
+                                        .filter((kpi) => kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP');
+                                    const orderByTypeAndName = (ids: string[]) => {
+                                      const resolved = resolveOrderedKpis(ids);
+                                      return orderedKpiTypes.flatMap((typeKey) =>
+                                        resolved
+                                          .filter((kpi) => kpi.type === typeKey)
+                                          .sort((a, b) => a.name.localeCompare(b.name))
+                                      );
+                                    };
+                                    // active = ordered(team_mandated_kpis) + ordered(user_selected_kpis - team_mandated_kpis)
+                                    const teamFocusActive = orderByTypeAndName(teamMandatedKpiIdsOrdered);
+                                    const personalActive = orderByTypeAndName(personalOnlyIds);
+                                    const renderBlock = (
+                                      blockLabel: 'Team Focus' | 'Personal',
+                                      rows: DashboardPayload['loggable_kpis'],
+                                      options?: { overlapSet?: Set<string> }
+                                    ) => (
+                                      <View style={styles.teamLeaderKpiBlock}>
+                                        <Text style={styles.teamLeaderKpiBlockLabel}>{blockLabel}</Text>
+                                        {orderedKpiTypes.map((typeKey) => {
+                                          const kpisForType = rows.filter((kpi) => kpi.type === typeKey);
+                                          if (kpisForType.length === 0) return null;
                                           return (
-                                            <TouchableOpacity
-                                              key={`${row.id}-${kpiId}`}
-                                              style={styles.teamLeaderKpiSelectionRow}
-                                              onPress={() => {
-                                                toggleTeamFocusKpi(kpiId);
-                                                handoffTeamKpiToLog(kpi);
-                                              }}
-                                            >
-                                              <View style={styles.teamLeaderKpiSelectionRowCopy}>
-                                                <Text style={styles.teamLeaderKpiSelectionName}>{kpi.name}</Text>
-                                                <Text style={styles.teamLeaderKpiSelectionSub}>👥 Team context • tap to focus + log handoff</Text>
-                                              </View>
-                                              <View style={styles.teamLeaderKpiSelectionRowRight}>
-                                                <Text
-                                                  style={
-                                                    selected
-                                                      ? styles.teamLeaderKpiSelectionSelectedText
-                                                      : styles.teamLeaderKpiSelectionUnselectedText
-                                                  }
-                                                >
-                                                  {selected ? 'Focused' : 'Select'}
-                                                </Text>
-                                                <Text style={styles.teamLeaderKpiSelectionArrow}>›</Text>
-                                              </View>
-                                            </TouchableOpacity>
+                                            <View key={`${row.id}-${blockLabel}-${typeKey}`} style={styles.teamLeaderKpiTypeSection}>
+                                              <Text style={styles.teamLeaderKpiTypeSectionTitle}>
+                                                {typeKey === 'PC'
+                                                  ? 'Projection (PC)'
+                                                  : typeKey === 'GP'
+                                                    ? 'Growth (GP)'
+                                                    : 'Vitality (VP)'}
+                                              </Text>
+                                              {kpisForType.map((kpi) => {
+                                                const kpiId = String(kpi.id);
+                                                const isFocused = teamMandatedSet.has(kpiId);
+                                                const alsoPersonal = Boolean(options?.overlapSet?.has(kpiId));
+                                                return (
+                                                  <TouchableOpacity
+                                                    key={`${row.id}-${blockLabel}-${kpiId}`}
+                                                    style={styles.teamLeaderKpiSelectionRow}
+                                                    onPress={() => handoffTeamKpiToLog(kpi)}
+                                                  >
+                                                    <View style={styles.teamLeaderKpiSelectionRowCopy}>
+                                                      <Text style={styles.teamLeaderKpiSelectionName}>{kpi.name}</Text>
+                                                      <Text style={styles.teamLeaderKpiSelectionSub}>👥 Team context • tap for log handoff</Text>
+                                                    </View>
+                                                    <View style={styles.teamLeaderKpiSelectionRowRight}>
+                                                      <Text
+                                                        style={
+                                                          isFocused
+                                                            ? styles.teamLeaderKpiSelectionSelectedText
+                                                            : styles.teamLeaderKpiSelectionUnselectedText
+                                                        }
+                                                      >
+                                                        {isFocused ? 'Focused' : 'Tracked'}
+                                                      </Text>
+                                                      {alsoPersonal ? (
+                                                        <View style={styles.teamLeaderOverlapChip}>
+                                                          <Text style={styles.teamLeaderOverlapChipText}>also personal</Text>
+                                                        </View>
+                                                      ) : null}
+                                                      <Text style={styles.teamLeaderKpiSelectionArrow}>›</Text>
+                                                    </View>
+                                                  </TouchableOpacity>
+                                                );
+                                              })}
+                                            </View>
                                           );
                                         })}
                                       </View>
                                     );
-                                  })}
+                                    return (
+                                      <>
+                                        {renderBlock('Team Focus', teamFocusActive, { overlapSet: memberSelectedSet })}
+                                        {renderBlock('Personal', personalActive)}
+                                      </>
+                                    );
+                                  })()}
                                   {row.concerns.length === 0 ? (
                                     <Text style={styles.teamLeaderExpandedKpiRow}>No concern flags.</Text>
                                   ) : (
@@ -12862,6 +12923,16 @@ const styles = StyleSheet.create({
     color: '#516179',
     fontSize: 11,
   },
+  teamLeaderKpiBlock: {
+    gap: 6,
+  },
+  teamLeaderKpiBlockLabel: {
+    color: '#4a5c78',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.25,
+  },
   teamLeaderKpiTypeSection: {
     borderRadius: 8,
     borderWidth: 1,
@@ -12921,6 +12992,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 14,
+  },
+  teamLeaderOverlapChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d7deea',
+    backgroundColor: '#f4f7fc',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  teamLeaderOverlapChipText: {
+    color: '#607089',
+    fontSize: 9,
+    fontWeight: '700',
   },
   teamLeaderExpandedActionsRow: {
     marginTop: 4,
