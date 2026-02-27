@@ -228,7 +228,7 @@ W9 dedicated experience direction (planning lock):
 #### `coach_ops_authoring`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
 |---|---|---|---|---|
-| Content Upload | Upload/import coaching assets and sponsor-approved campaign media inputs | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal foundation surface (`content_upload`); Coach/Admin primary. Team Leader uploads are team-scoped only (no org-wide authoring ownership, no sponsor package authority). No KPI logging/edit actions. |
+| Library Upload Intake (within Coach Content Library) | Upload/import coaching assets and sponsor-approved campaign media from Library top-tab intake controls | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Upload capability is subsumed under `coach_content_library` (not a standalone coach tab). Coach/Admin primary; Team Leader upload actions remain team-scoped only (no org-wide authoring ownership, no sponsor package authority); no KPI logging/edit actions. |
 | Coach Content Library | Manage/categorize coaching content assets, journeys, lessons, and templates | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_content_library`); Coach/Admin primary with optional sponsor-scoped read/link access for sponsor campaign contexts only. Authoring/curation only, not member runtime delivery UI, and no sponsor KPI logging actions. |
 | Journey Authoring Studio | Compose/edit journey structure, lesson order, and draft lifecycle | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal/admin touchpoint (`coach_journey_authoring`); no runtime journey rendering ownership. |
 | Cohorts / Audience Segments | Manage targeting cohorts/segments (including non-team individuals) for coach/sponsor delivery planning | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Portal foundation surface (`cohorts`); complements runtime cohort-channel participation and targeting, not challenge participation ownership. |
@@ -240,7 +240,7 @@ W9 dedicated experience direction (planning lock):
 #### `coach_ops_authoring` route grouping (portal planning)
 | Route group (provisional) | Host surface | Persona access | Runtime status | Notes |
 |---|---|---|---|---|
-| `admin/coaching/uploads` | `Admin Shell extension` (recommended) | Coach, Admin operator, Team Leader (team-scoped uploads only), Challenge Sponsor (limited sponsor campaign uploads) | `⚪ missing` | W7 foundation surface for `content_upload`; Team Leader scope is own-team only (no org-wide authoring ownership, no sponsor package authority), sponsor access is sponsor-scoped and policy-gated. |
+| `admin/coaching/uploads` | `Admin Shell extension` (compatibility alias only) | Coach, Admin operator, Team Leader (team-scoped uploads only), Challenge Sponsor (limited sponsor campaign uploads) | `⚪ missing` | Not a first-class coach tab. Route should resolve to Library upload intake (`admin/coaching/library` or `/coach/library`) and preserve scope restrictions (Team Leader own-team only; sponsor sponsor-scoped only). |
 | `admin/coaching/library` | `Admin Shell extension` (recommended) | Coach, Admin operator, Challenge Sponsor (limited sponsor-scoped library access/linking only) | `⚪ missing` | Maps to `coach_content_library`; sponsor scope is campaign-limited and does not grant canonical authoring ownership or KPI logging actions. |
 | `admin/coaching/authoring` | `Admin Shell extension` (recommended) | Coach | `⚪ missing` | Maps to `coach_journey_authoring`. |
 | `admin/coaching/cohorts` | `Admin Shell extension` (recommended) | Coach, Admin operator, Challenge Sponsor (limited sponsor cohorts) | `⚪ missing` | W7 foundation surface for `cohorts`; supports non-team individual cohort targeting visibility. |
@@ -277,7 +277,7 @@ Challenge Sponsor is a distinct persona for sponsored challenge funding/campaign
 #### `sponsor_ops_portal`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
 |---|---|---|---|---|
-| Sponsor Content Upload (scoped) | Upload sponsor campaign assets/media for sponsored coaching/challenge experiences | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Sponsor-scoped `content_upload` subset only; approval/policy gated and no KPI logging/edit actions. |
+| Sponsor Content Upload (scoped, via Library) | Upload sponsor campaign assets/media for sponsored coaching/challenge experiences from sponsor-scoped Library intake | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Sponsor upload is a scoped Library capability, not a standalone uploads tab; approval/policy gated and no KPI logging/edit actions. |
 | Sponsor Content Library (scoped) | Access sponsor-scoped content assets/library entries for sponsored challenge campaigns | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Companion to coach portal `content_library`; sponsor-scoped access only, no canonical lesson authoring by default. |
 | Sponsor Cohorts / Audience Visibility | View sponsor-linked challenge cohorts/segments and eligibility views | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Sponsor-scoped cohort visibility only; no challenge participation state ownership transfer. |
 | Sponsor Channels (scoped) | Sponsor-scoped comms/channel tools for approved challenge/cohort communications | `manual-spec-driven (COACHING_* docs)` | `⚪ missing` | Uses sponsor/challenge/cohort channel contexts only; no team-admin channel controls. |
@@ -294,7 +294,7 @@ Challenge Sponsor is a distinct persona for sponsored challenge funding/campaign
 - Final W8 implementation acceptance pack (lane done/blocked/rollback criteria + owner checkpoint checklist) is defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
 - W9 dedicated coach portal IA/UX direction and migration path (from `/admin/coaching/*` transition host foundation to production dedicated coach experience) are defined in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
 - W9 sequencing preserves `/admin/coaching/*` as transition-host foundation only; dedicated coach experience presentation is the target production UX direction.
-- Team Leader access in this package is limited to team-scoped `content_upload`; no org-wide authoring ownership and no sponsor-scoped package authority.
+- Team Leader access in this package is limited to team-scoped upload actions inside `coach_content_library`; no org-wide authoring ownership and no sponsor-scoped package authority.
 - `/admin/coaching/audit` remains secondary governance/troubleshooting only and is not part of primary coach/sponsor workflow routing.
 
 ## Shared Runtime Router Map (Current Implementation Anchor)
@@ -306,6 +306,8 @@ Use this to map intended screens to current code constraints.
   - admin web extension routes (preferred near-term), or
   - hybrid portal routes sharing auth but separate from member `KPIDashboardScreen` state router.
 - Member runtime coaching destinations (`inbox*`, `coaching_journeys*`, `coach_broadcast_compose`) are delivery surfaces and must not absorb authoring/package-definition concerns.
+- Coach portal IA uses top-tab navigation only for primary sections (`library`, `journeys`, `cohorts`, `channels`); avoid sequential helper-button navigation patterns between these sections.
+- Drag `Library -> Journey` is the primary coach authoring interaction target for content composition.
 - If implementation adopts a hybrid portal route split, mark `decision needed` and log the structural boundary change in `/Users/jon/compass-kpi/architecture/DECISIONS_LOG.md` in that implementation change set.
 
 ### Challenge Sponsor persona routing note (planning boundary)

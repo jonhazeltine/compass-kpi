@@ -87,7 +87,9 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W11-MOBILE-PRODUCT-CLARITY-PASS-A` | `review` | `M6 W11 mobile product-clarity pass` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching / challenge / team UX clarity` (`replace diagnostic text walls`, `tight CTA intent copy`, `owner-evaluable screens`) | `KPIDashboardScreen` surfaces: `coaching_journeys*`, `coaching_journey_detail`, `coaching_lesson_detail`, `inbox*`, `channel_thread`, `Team Challenges`, `Challenge Details`, `Leaderboard/Results` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + accepted W10 route/data baseline | Review-ready: readability-first copy/state pass completed on in-scope mobile surfaces with stacked diagnostic/legalistic cards removed, concise state messaging, and clearer CTA intent hierarchy while preserving route continuity and sponsor/logging guardrails. |
 | `COACHING-W12-FOURTHREASON-CHAT-PARITY-MAP-A` | `committed` | `M6/W12 coaching parity planning (docs/control-plane)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `coaching / communication parity` (`Fourth Reason chat+journies UX pattern mapping`) | mobile runtime coaching/comms shells (`inbox*`, `channel_thread`, `coach_broadcast_compose`, `coaching_journeys*`) + `/coach/*` portal surfaces (`/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels`, `/coach/uploads`) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + Fourth Reason reference repo | Committed: W12 parity mapping package landed with implementation-ready mobile + `/coach/*` screen/flow specs mapped to existing Compass contract families (no new endpoint families). |
 | `COACHING-W12-DRAGDROP-LIBRARY-TO-JOURNEY-SPEC-A` | `committed` | `M6/W12 coach portal authoring parity planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance) | `coach portal content authoring` (`library -> journey drag/drop build map`) | `/coach/library`, `/coach/journeys`, `/coach/uploads` + runtime verification touchpoints `coaching_journeys*` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + Fourth Reason references + existing API contracts | Committed refinement pass: spec now includes full UX flow map, drag/hover/drop/reorder/remove/save interaction-state matrix, required frontend data model, existing API mapping, explicit in-family contract gaps, and phased MVP->polish build plan. |
+| `COACHING-W12-IA-SIMPLIFY-DOCS-SYNC-A` | `committed` | `M6/W12 coach portal IA simplification (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance) | `coach portal IA` (`library subsumes uploads`, `top-tab only`, `drag library->journey primary`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` + wiring/screenmap/parity docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W12 parity/dragdrop package | Committed docs-sync: Library now subsumes upload intake, Uploads removed as first-class coach tab, top-tab-only IA declared, and drag Library -> Journey is documented as primary authoring target across screenmap/wiring/parity docs. |
 | `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A` | `review` | `M6 W11 coach portal standalone UX pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`standalone look`, `de-admin chrome`, `coach-first content workflows`) | canonical `/coach/*` routes with standalone shell treatment and minimized admin framing | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W10 route baseline | Review-ready hard-correction+polish pass completed: canonical `/coach/*` now mounts dedicated `CoachPortalScreen` host (not `AdminShellScreen` chrome), `/admin/coaching/*` foundation paths stay compatibility redirects, DEC-0047 logged, and refreshed screenshot set captured under `app/test-results/w11-coach-portal-standalone-hard-correction/`. |
+| `COACHING-W12-COACH-PORTAL-IA-SIMPLIFY-A` | `review` | `M6 W12 coach portal IA simplify pass` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`simplify top-level IA`, `merge uploads into library`, `remove redundant progression actions`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ compatibility `/coach/uploads` redirect to `/coach/library`) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W11 host split baseline | Review-ready: Uploads merged into Library IA/copy, `/coach/uploads` removed from top tabs, `/coach/uploads` and `/admin/coaching/*` compatibility redirects preserved, and per-page next-tab progression actions removed in favor of top-tab navigation only. |
 | `COACHING-W9-COACH-PORTAL-EXPERIENCE-PLANNING-A` | `committed` | `W9 coach portal experience planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (host foundation only during transition) | `coach portal IA/UX` (`dedicated experience + migration path + production sequencing`) | dedicated coach portal IA/UX direction (outside admin-shell presentation), migration from `/admin/coaching/*` foundation routes, persona visibility model, production-experience sequencing | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W7/W8 acceptance pack | Committed W10 route-decoupling swath: dedicated `/coach/*` uploads/library/cohorts/channels routes + customer-facing shell/nav landed, coach-facing navigation migrated to `/coach/*`, and `/admin/coaching/*` retained as temporary compatibility redirect-only paths (no backend/schema/API changes). |
 | `COACHING-W7-SUPERADMIN-AI-TROUBLESHOOTING-AUDIT-A` | `queued` | `W7 optional hardening (super-admin AI troubleshooting only)` | `Super Admin` (primary), `Admin operator` (limited) | `AI troubleshooting / audit` (`exception-only`) | optional trimmed `/admin/coaching/audit` super-admin troubleshooting views | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package + explicit owner approval gate | Optional exception-only follow-on to repurpose or trim `/admin/coaching/audit` into super-admin AI troubleshooting/audit; not a coach notification or coach primary workflow surface. |
 
@@ -284,6 +286,35 @@ Produce an implementation-ready drag/drop authoring spec that maps library asset
 - Existing contract mapping + explicit in-family gap list
 - Persona/role-gate summary
 - Files/docs changed
+- Commit hash
+
+### `COACHING-W12-IA-SIMPLIFY-DOCS-SYNC-A`
+
+#### Snapshot
+- `Status:` `committed`
+- `Program status:` `M6/W12 coach portal IA simplification (docs/control-plane)`
+- `Persona:` `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped), `Admin operator` (governance)
+- `Flow:` `coach portal IA docs sync` (`library subsumes uploads`, `top-tab only`, `drag library->journey primary`)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred)
+- `Execution note (2026-02-27):` Board updated first and assignment activated before doc edits.
+- `Completion note (2026-02-27):` Updated `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_PERSONA_FLOW_SCREENMAP.md`, `/Users/jon/compass-kpi/docs/spec/appendix/INTENDED_WIRING_DIAGRAM.md`, and `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_W12_FOURTHREASON_CHAT_PARITY_MAP.md` to reflect IA simplification: Library subsumes upload intake, Uploads is compatibility alias only (not first-class coach tab), top-tab-only primary navigation, and drag `Library -> Journey` primary authoring target.
+- `Decision note (2026-02-27):` Added `DEC-0048` to `/Users/jon/compass-kpi/architecture/DECISIONS_LOG.md` to record the coach portal IA boundary simplification and compatibility-alias rule for uploads.
+- `Validation note (2026-02-27):` Cross-doc terminology/route sync verified for `content_upload` vs `coach_content_library` boundary and top-tab IA direction; no backend/API/schema changes made.
+- `Current blocker status (2026-02-27 completion):` `none`.
+
+#### Primary Objective
+Apply owner IA decisions across control-plane docs so coach portal authoring is centered on Library and Journey tabs, with uploads folded into Library and drag `Library -> Journey` established as the main composition interaction.
+
+#### Hard Constraints
+- Docs-only scope.
+- Preserve coach/team-leader/sponsor role boundaries and no-sponsor-KPI-logging rule.
+- No net-new endpoint family or schema change.
+
+#### Report-Back Requirements
+- Update board status/blocker/completion notes first
+- Exact docs changed
+- Decision-log update confirmation (if structural boundary changed)
 - Commit hash
 
 ### `TEAM-MEMBER-PARITY-A`
@@ -2980,6 +3011,54 @@ Make `/coach/*` feel like a distinct coach product area, not an admin surface wi
 - Program status + persona
 - Routes changed
 - Before/after UI framing summary
+- Files + line refs
+- Redirect behavior status
+- Validation summary
+- Screenshot paths
+- Commit hash
+
+### `COACHING-W12-COACH-PORTAL-IA-SIMPLIFY-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 W12 coach portal IA simplify pass`
+- `Persona:` `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools)
+- `Flow:` `coach portal IA/UX` (`merge uploads into library`, `simplify nav`, `remove redundant progression actions`)
+- `Owner:` `Admin-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred)
+- `Worker note (2026-02-27, Admin-1, start):` Board updated first. Starting W12 IA simplification pass to merge Uploads into Library, remove top-level `/coach/uploads` nav, preserve compatibility redirects, and remove per-page next-tab progression actions.
+
+#### Primary Objective
+Simplify coach portal top-level IA and action model while preserving existing host split, role gates, and compatibility route behavior.
+
+#### Hard Constraints
+- No backend/API/schema changes.
+- Keep role gates unchanged.
+- Keep sponsor no-KPI-logging rule unchanged.
+- Keep `/admin/coaching/*` compatibility redirects intact.
+
+#### Required Work
+1. Merge Uploads into Library ownership and UX copy.
+2. Remove `/coach/uploads` from top-level coach nav.
+3. Keep `/coach/uploads` path as compatibility redirect to `/coach/library`.
+4. Remove per-page “next tab” progression actions; keep top-tab navigation only.
+5. Preserve canonical coach routes for Library/Journeys/Cohorts/Channels.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz`
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Route checks:
+  - canonical `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels`
+  - compatibility `/coach/uploads` -> `/coach/library`
+  - compatibility `/admin/coaching/*` foundation aliases
+- Runtime screenshots:
+  - `/coach/library`
+  - `/coach/journeys`
+
+#### Report-Back
+- Update assignment row/block status first (`review`/`blocked`)
+- Program status + persona
+- IA delta summary
 - Files + line refs
 - Redirect behavior status
 - Validation summary

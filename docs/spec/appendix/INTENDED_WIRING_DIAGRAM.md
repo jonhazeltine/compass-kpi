@@ -185,7 +185,7 @@ flowchart LR
 
 | Authoring/ops surface | Persona(s) | Capability group(s) | Handoff target (runtime) | Status | Boundary note |
 |---|---|---|---|---|---|
-| Content Upload (`content_upload`) | Coach, Admin operator, Team Leader (team-scoped uploads only), Challenge Sponsor (limited sponsor campaign uploads) | `coaching_content`, sponsor campaign assets | `coach_content_library` ingestion -> runtime linked content/templates | `⚪ planned` | Foundation surface for asset intake only; Team Leader uploads are own-team scoped (no org-wide authoring ownership, no sponsor package authority); no KPI logging/edit actions. |
+| Library Upload Intake (`coach_content_library` capability) | Coach, Admin operator, Team Leader (team-scoped uploads only), Challenge Sponsor (limited sponsor campaign uploads) | `coaching_content`, sponsor campaign assets | `coach_content_library` ingestion -> runtime linked content/templates | `⚪ planned` | Upload intake is subsumed within Library and is not a first-class coach tab. Team Leader uploads are own-team scoped (no org-wide authoring ownership, no sponsor package authority); no KPI logging/edit actions. |
 | Coach Content Library (`coach_content_library`) | Coach, Admin operator, Challenge Sponsor (limited sponsor-scoped access/linking) | `coaching_content`, `communication` templates | `coaching_journeys*`, `inbox*` template usage | `⚪ planned` | Authoring/curation only; runtime delivery never edits canonical content here. Sponsor access is scope-limited to sponsor campaign contexts and does not grant KPI logging actions. |
 | Journey Authoring Studio (`coach_journey_authoring`) | Coach | `coaching_content` | `coaching_journeys*` published journey versions | `⚪ planned` | Draft/review/publish lifecycle is ops concern, not member runtime concern. |
 | Cohorts / Audience Segments (`cohorts`) | Coach, Admin operator, Challenge Sponsor (limited sponsor scopes) | targeting/visibility planning (`communication`, `sponsor_challenge_coaching`) | runtime cohort-based channels + package targeting inputs | `⚪ planned` | Cohort visibility/constraints only; no challenge participation ownership or KPI logging actions. |
@@ -200,7 +200,7 @@ Near-term recommendation: use `Admin Shell` as the host (role-gated extension ro
 
 | Route group (provisional) | Host | Touchpoint | Primary persona(s) | Status | Decision note |
 |---|---|---|---|---|---|
-| `admin/coaching/uploads` | `Admin Shell extension` | `content_upload` | Coach, Admin operator, Team Leader (team-scoped uploads only), Challenge Sponsor (limited sponsor uploads) | `⚪ planned` | W7 foundation intake surface; Team Leader uploads are team-scoped only (no org-wide authoring ownership, no sponsor package authority); sponsor uploads are sponsor-scope + policy-gated. |
+| `admin/coaching/uploads` | `Admin Shell extension` (compatibility alias only) | `coach_content_library` (upload intake mode) | Coach, Admin operator, Team Leader (team-scoped uploads only), Challenge Sponsor (limited sponsor uploads) | `⚪ planned` | Not a first-class coach tab; resolve to Library upload intake route while preserving team/sponsor scope boundaries and policy gates. |
 | `admin/coaching/library` | `Admin Shell extension` | `coach_content_library` | Coach, Admin operator, Challenge Sponsor (limited sponsor-scoped library access/linking) | `⚪ planned` | No structural split required; sponsor access is campaign-limited and does not grant canonical authoring ownership or KPI logging actions. |
 | `admin/coaching/authoring` | `Admin Shell extension` | `coach_journey_authoring` | Coach | `⚪ planned` | No structural split required. |
 | `admin/coaching/cohorts` | `Admin Shell extension` | `cohorts` | Coach, Admin operator, Challenge Sponsor (limited sponsor scopes) | `⚪ planned` | W7 foundation cohort targeting/visibility surface; supports non-team cohort contexts. |
@@ -217,7 +217,9 @@ W7/W8 checklist alignment:
 - Final W8 implementation acceptance pack (lane done/blocked/rollback criteria + owner checkpoint checklist) is defined in the same addendum.
 - W9 dedicated coach portal IA/UX direction and migration path are defined in the same addendum; `/admin/coaching/*` remains transition-host foundation during migration.
 - W9 production-direction rule: dedicated coach portal experience is the target UX; admin-hosted routes are migration infrastructure, not final presentation model.
-- Team Leader role in this package is constrained to team-scoped `content_upload` only (no org-wide authoring ownership, no sponsor package authority).
+- Team Leader role in this package is constrained to team-scoped upload actions inside `coach_content_library` only (no org-wide authoring ownership, no sponsor package authority).
+- Coach portal primary IA uses top-tab navigation only (`library`, `journeys`, `cohorts`, `channels`); sequential helper-button patterns are out of scope for primary navigation.
+- Drag `Library -> Journey` is the primary authoring interaction target for coach content composition.
 - `/admin/coaching/audit` remains secondary governance/troubleshooting and is not modeled as primary workflow routing.
 
 ## Authoring -> Runtime Publishing Handoff Rules (Planning Boundary)
