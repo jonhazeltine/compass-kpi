@@ -19,6 +19,7 @@ export type AdminRouteKey =
   | 'reports'
   | 'coachingUploads'
   | 'coachingLibrary'
+  | 'coachingJourneys'
   | 'coachingCohorts'
   | 'coachingChannels'
   | 'coachingAudit';
@@ -34,6 +35,7 @@ export type AdminRouteDefinition = {
 export const LEGACY_ADMIN_COACHING_PATH_BY_ROUTE_KEY: Partial<Record<AdminRouteKey, string>> = {
   coachingUploads: '/admin/coaching/uploads',
   coachingLibrary: '/admin/coaching/library',
+  coachingJourneys: '/admin/coaching/journeys',
   coachingCohorts: '/admin/coaching/cohorts',
   coachingChannels: '/admin/coaching/channels',
 };
@@ -157,6 +159,13 @@ export const ADMIN_ROUTES: AdminRouteDefinition[] = [
     path: '/coach/library',
     requiredRoles: ['platform_admin', 'super_admin', 'coach', 'challenge_sponsor'],
     description: 'W10 coach portal library shell for customer-facing coaching/sponsor scoped tools.',
+  },
+  {
+    key: 'coachingJourneys',
+    label: 'Coach Journeys',
+    path: '/coach/journeys',
+    requiredRoles: ['platform_admin', 'super_admin', 'coach'],
+    description: 'W10 coach portal journeys shell for coach-authored lesson paths and release readiness.',
   },
   {
     key: 'coachingCohorts',

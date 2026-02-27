@@ -23,6 +23,7 @@ export function getAdminRouteStage(routeKey: AdminRouteKey): AdminRouteStage {
     case 'reports':
     case 'coachingUploads':
     case 'coachingLibrary':
+    case 'coachingJourneys':
     case 'coachingCohorts':
     case 'coachingChannels':
     case 'coachingAudit':

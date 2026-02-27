@@ -2626,25 +2626,41 @@ function AdminUsersPanel({
   );
 }
 
-type CoachingPortalSurfaceKey = 'coachingUploads' | 'coachingLibrary' | 'coachingCohorts' | 'coachingChannels';
+type CoachingPortalSurfaceKey =
+  | 'coachingUploads'
+  | 'coachingLibrary'
+  | 'coachingJourneys'
+  | 'coachingCohorts'
+  | 'coachingChannels';
 const COACH_PORTAL_TRANSITION_ROUTE_KEYS: CoachingPortalSurfaceKey[] = [
   'coachingUploads',
   'coachingLibrary',
+  'coachingJourneys',
   'coachingCohorts',
   'coachingChannels',
+];
+const COACH_PORTAL_NAV_ITEMS: Array<{ key: CoachingPortalSurfaceKey; label: string }> = [
+  { key: 'coachingLibrary', label: 'Library' },
+  { key: 'coachingJourneys', label: 'Journeys' },
+  { key: 'coachingCohorts', label: 'Cohorts' },
+  { key: 'coachingChannels', label: 'Channels' },
+  { key: 'coachingUploads', label: 'Uploads' },
 ];
 
 function AdminCoachingPortalFoundationPanel({
   routeKey,
   effectiveRoles,
+  onNavigate,
 }: {
   routeKey: CoachingPortalSurfaceKey;
   effectiveRoles: AdminRole[];
+  onNavigate: (next: CoachingPortalSurfaceKey) => void;
 }) {
-  const isAdmin = effectiveRoles.includes('platform_admin') || effectiveRoles.includes('super_admin');
   const isCoach = effectiveRoles.includes('coach');
   const isTeamLeader = effectiveRoles.includes('team_leader');
   const isSponsor = effectiveRoles.includes('challenge_sponsor');
+
+  const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
 
   const config: Record<
     CoachingPortalSurfaceKey,
@@ -2652,109 +2668,227 @@ function AdminCoachingPortalFoundationPanel({
       path: string;
       title: string;
       summary: string;
-      scopeRules: string[];
-      runtimeCompanion: string;
+      subheader: string;
+      listTitle: string;
+      listColumns: string[];
+      listRows: { id: string; c1: string; c2: string; c3: string; c4: string }[];
+      detailTitle: string;
+      detailBody: string;
+      primaryActionLabel: string;
+      secondaryActionLabel: string;
     }
   > = {
     coachingUploads: {
       path: '/coach/uploads',
-      title: 'Coach Portal Foundation: Uploads',
-      summary: 'Foundation upload shell for coaching and sponsor campaign assets. Authoring and KPI logging remain out of scope.',
-      scopeRules: [
-        'Coach: full upload shell access for coaching assets (runtime companion only).',
-        'Team Leader: team-scoped uploads only; no org-wide authoring ownership and no sponsor package authority.',
-        'Challenge Sponsor: sponsor-scoped upload access only for sponsor campaign contexts.',
-        'No KPI logging or KPI edit actions are available in this surface.',
+      title: 'Content Uploads',
+      summary: 'Publish-ready upload intake for lessons, attachments, and campaign assets.',
+      subheader: 'Upload flow is scoped by role and connected to Library + Journeys release pipelines.',
+      listTitle: 'Recent Upload Batches',
+      listColumns: ['Batch', 'Owner', 'Scope', 'Status'],
+      listRows: [
+        { id: 'up-301', c1: 'Open House Scripts', c2: 'Coach Avery', c3: 'Coach shared', c4: 'Ready' },
+        { id: 'up-302', c1: 'Team Objection Cards', c2: 'Team Leader Jamie', c3: 'Team-scoped', c4: 'Review' },
+        { id: 'up-303', c1: 'Sponsor CTA Pack', c2: 'Sponsor North', c3: 'Sponsor-scoped', c4: 'Ready' },
       ],
-      runtimeCompanion: 'Feeds content references used by runtime coaching journeys/channels; does not replace runtime host flows.',
+      detailTitle: 'Upload Batch Detail',
+      detailBody: 'Review metadata, assign tags, and route approved assets into the coach library.',
+      primaryActionLabel: 'Start New Upload',
+      secondaryActionLabel: 'Open Library',
     },
     coachingLibrary: {
       path: '/coach/library',
-      title: 'Coach Portal Foundation: Library',
-      summary: 'Foundation library shell for scoped content lookup/linking and catalog visibility controls.',
-      scopeRules: [
-        'Coach: full library shell access for content operations.',
-        'Challenge Sponsor: sponsor-scoped read/link access only for sponsor campaign contexts.',
-        'Team Leader: no library authoring access in this pass.',
-        'No KPI logging or KPI edit actions are available in this surface.',
+      title: 'Content Library',
+      summary: 'Discover and package approved coaching assets by audience and delivery context.',
+      subheader: 'Library powers Journeys, Cohort programs, and Channel campaigns.',
+      listTitle: 'Library Collection',
+      listColumns: ['Asset', 'Category', 'Audience', 'Updated'],
+      listRows: [
+        { id: 'lib-410', c1: 'Buyer Follow-up Kit', c2: 'Lesson Pack', c3: 'All teams', c4: 'Today' },
+        { id: 'lib-411', c1: 'Sponsor Event Promo', c2: 'Campaign', c3: 'Sponsor cohort', c4: 'Yesterday' },
+        { id: 'lib-412', c1: 'New Agent Sprint', c2: 'Onboarding', c3: 'Cohort-based', c4: '2d ago' },
       ],
-      runtimeCompanion: 'Provides references for runtime surfaces/channels; runtime delivery remains in host surfaces.',
+      detailTitle: 'Asset Detail',
+      detailBody: 'Preview content metadata, active assignments, and linked journeys/channels.',
+      primaryActionLabel: 'Create Collection',
+      secondaryActionLabel: 'Open Journeys',
+    },
+    coachingJourneys: {
+      path: '/coach/journeys',
+      title: 'Journeys',
+      summary: 'Design member progression paths with staged modules and release checkpoints.',
+      subheader: 'Journeys consume library assets and target cohorts or channel segments.',
+      listTitle: 'Journey Programs',
+      listColumns: ['Journey', 'Audience', 'Modules', 'State'],
+      listRows: [
+        { id: 'jr-501', c1: '30-Day Listing Accelerator', c2: 'New listing cohort', c3: '8', c4: 'Live' },
+        { id: 'jr-502', c1: 'Team Production Sprint', c2: 'Team-scoped', c3: '6', c4: 'Draft' },
+        { id: 'jr-503', c1: 'Sponsor Lead Conversion', c2: 'Sponsor cohort', c3: '5', c4: 'Live' },
+      ],
+      detailTitle: 'Journey Detail',
+      detailBody: 'Inspect module flow, release pacing, and linked cohort/channel destinations.',
+      primaryActionLabel: 'Create Journey',
+      secondaryActionLabel: 'Open Cohorts',
     },
     coachingCohorts: {
       path: '/coach/cohorts',
-      title: 'Coach Portal Foundation: Cohorts',
-      summary: 'Foundation cohort shell for audience segmentation and sponsor-scoped visibility planning.',
-      scopeRules: [
-        'Coach: full cohort planning shell access.',
-        'Challenge Sponsor: sponsor-scoped cohort visibility/constraints only.',
-        'Team Leader: no cohort administration access in this pass.',
-        'No KPI logging or KPI edit actions are available in this surface.',
+      title: 'Cohorts',
+      summary: 'Plan audience segments for journey delivery, sponsor activations, and channel targeting.',
+      subheader: 'Cohorts support both team and non-team participant groupings.',
+      listTitle: 'Active Cohorts',
+      listColumns: ['Cohort', 'Owner', 'Members', 'Program'],
+      listRows: [
+        { id: 'co-610', c1: 'Q1 Rising Agents', c2: 'Coach Avery', c3: '24', c4: 'Listing Accelerator' },
+        { id: 'co-611', c1: 'Sponsor Elite Leads', c2: 'Sponsor North', c3: '19', c4: 'Lead Conversion' },
+        { id: 'co-612', c1: 'Team Velocity', c2: 'Team Leader Jamie', c3: '11', c4: 'Production Sprint' },
       ],
-      runtimeCompanion: 'Complements runtime cohort-channel targeting and does not replace runtime participation flows.',
+      detailTitle: 'Cohort Detail',
+      detailBody: 'Review cohort composition, assigned journeys, and active channel coverage.',
+      primaryActionLabel: 'Create Cohort',
+      secondaryActionLabel: 'Open Channels',
     },
     coachingChannels: {
       path: '/coach/channels',
-      title: 'Coach Portal Foundation: Channels',
-      summary: 'Foundation channel-ops shell for scoped communication context and template planning.',
-      scopeRules: [
-        'Coach: full channel-ops shell access in scoped contexts.',
-        'Challenge Sponsor: sponsor-scoped channel access only.',
-        'Team Leader: no channel-ops administration access in this pass.',
-        'No KPI logging or KPI edit actions are available in this surface.',
+      title: 'Channels',
+      summary: 'Run scoped communication streams for journeys, cohorts, and sponsor campaigns.',
+      subheader: 'Channel operations remain communication-only and do not expose KPI logging actions.',
+      listTitle: 'Channel Operations',
+      listColumns: ['Channel', 'Scope', 'Members', 'Last activity'],
+      listRows: [
+        { id: 'ch-720', c1: 'Listing Accelerator Hub', c2: 'Coach', c3: '42', c4: '2h ago' },
+        { id: 'ch-721', c1: 'Sponsor Lead Briefing', c2: 'Sponsor-scoped', c3: '19', c4: '4h ago' },
+        { id: 'ch-722', c1: 'Team Velocity Check-in', c2: 'Team-scoped', c3: '11', c4: '1d ago' },
       ],
-      runtimeCompanion: 'Companion to runtime inbox/channel-thread paths where communication execution occurs.',
+      detailTitle: 'Channel Detail',
+      detailBody: 'Inspect participant scope, message templates, and journey-linked prompts.',
+      primaryActionLabel: 'Create Channel',
+      secondaryActionLabel: 'Open Library',
     },
   };
 
   const surface = config[routeKey];
-  const accessSummary = isAdmin
-    ? 'Admin override active: can inspect all coaching portal foundation shells.'
-    : isCoach
-      ? 'Coach access active: primary operator scope enabled.'
-      : isTeamLeader
-        ? 'Team Leader scope active: upload-only boundary applies.'
-        : isSponsor
-          ? 'Challenge Sponsor scope active: sponsor-scoped access only.'
-          : 'Current role has no intended access for this surface.';
+  const accessSummary = isCoach
+    ? 'Coach workspace active: full section access enabled.'
+    : isTeamLeader
+      ? 'Team Leader scope active: uploads are team-scoped only.'
+      : isSponsor
+        ? 'Challenge Sponsor scope active: sponsor-scoped tools only.'
+        : 'Access is limited to currently authorized coach portal sections.';
+  const selectedRow = surface.listRows.find((row) => row.id === selectedDetailId) ?? surface.listRows[0] ?? null;
 
   return (
     <View style={styles.panel}>
       <View style={styles.panelTopRow}>
         <View style={styles.panelTitleBlock}>
           <Text style={styles.eyebrow}>{surface.path}</Text>
-          <Text style={styles.panelTitle}>{surface.title}</Text>
+          <Text style={styles.panelTitle}>Coach Portal • {surface.title}</Text>
         </View>
-        <View style={[styles.stagePill, { backgroundColor: '#EEF3FF', borderColor: '#CEDBFF' }]}>
-          <Text style={[styles.stagePillText, { color: '#204ECF' }]}>W7 Foundation</Text>
+        <View style={[styles.stagePill, { backgroundColor: '#E8FFF3', borderColor: '#B6E6CB' }]}>
+          <Text style={[styles.stagePillText, { color: '#146C43' }]}>Customer-facing W10</Text>
         </View>
       </View>
       <Text style={styles.panelBody}>{surface.summary}</Text>
+      <Text style={styles.metaRow}>{surface.subheader}</Text>
       <View style={styles.noticeBox}>
-        <Text style={styles.noticeTitle}>Role-scoped access boundary</Text>
+        <Text style={styles.noticeTitle}>Role scope</Text>
         <Text style={styles.noticeText}>{accessSummary}</Text>
       </View>
-      <View style={styles.usersDiagnosticsGrid}>
-        <View style={[styles.summaryCard, { flex: 1.1 }]}>
-          <View style={styles.formHeaderRow}>
-            <Text style={styles.summaryLabel}>Scope Rules</Text>
-            <Text style={styles.metaRow}>Foundation shell only</Text>
+      <View style={styles.sectionNavRow}>
+        {COACH_PORTAL_NAV_ITEMS.map((section) => {
+          const selected = section.key === routeKey;
+          return (
+            <Pressable
+              key={section.key}
+              style={[styles.sectionNavPill, selected && styles.sectionNavPillSelected]}
+              onPress={() => onNavigate(section.key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+            >
+              <Text style={[styles.sectionNavPillText, selected && styles.sectionNavPillTextSelected]}>{section.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <View style={styles.usersTopSplit}>
+        <View style={[styles.tableWrap, { flex: 1, minWidth: 380 }]}>
+          <View style={[styles.formHeaderRow, { paddingHorizontal: 12, paddingTop: 10 }]}>
+            <Text style={styles.formTitle}>{surface.listTitle}</Text>
+            <Text style={styles.metaRow}>{surface.listRows.length} items</Text>
           </View>
-          {surface.scopeRules.map((rule) => (
-            <Text key={rule} style={styles.metaRow}>{rule}</Text>
-          ))}
+          <View style={styles.tableHeaderRow}>
+            <View style={styles.colMd}><Text style={styles.tableHeaderCell}>{surface.listColumns[0]}</Text></View>
+            <View style={styles.colMd}><Text style={styles.tableHeaderCell}>{surface.listColumns[1]}</Text></View>
+            <View style={styles.colMd}><Text style={styles.tableHeaderCell}>{surface.listColumns[2]}</Text></View>
+            <View style={styles.colSm}><Text style={styles.tableHeaderCell}>{surface.listColumns[3]}</Text></View>
+          </View>
+          {surface.listRows.map((row) => {
+            const selected = selectedRow?.id === row.id;
+            return (
+              <Pressable
+                key={row.id}
+                style={[styles.tableDataRow, selected && styles.tableDataRowSelectedStrong]}
+                onPress={() => setSelectedDetailId(row.id)}
+              >
+                <View style={[styles.tableCell, styles.colMd]}>
+                  <Text style={styles.tablePrimary} numberOfLines={1}>{row.c1}</Text>
+                </View>
+                <View style={[styles.tableCell, styles.colMd]}>
+                  <Text style={styles.tableCellText} numberOfLines={1}>{row.c2}</Text>
+                </View>
+                <View style={[styles.tableCell, styles.colMd]}>
+                  <Text style={styles.tableCellText} numberOfLines={1}>{row.c3}</Text>
+                </View>
+                <View style={[styles.tableCell, styles.colSm]}>
+                  <Text style={styles.tableSecondary} numberOfLines={1}>{row.c4}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+          <Text style={styles.tableFootnote}>Select a row to view quick details and recommended next actions.</Text>
         </View>
-        <View style={[styles.summaryCard, { flex: 1 }]}>
+        <View style={[styles.formCard, styles.usersOpsCard]}>
           <View style={styles.formHeaderRow}>
-            <Text style={styles.summaryLabel}>Runtime Companion Mapping</Text>
-            <Text style={styles.metaRow}>Non-replacement</Text>
+            <Text style={styles.formTitle}>{surface.detailTitle}</Text>
+            <Text style={styles.metaRow}>{selectedRow?.id ?? 'No selection'}</Text>
           </View>
-          <Text style={styles.summaryNote}>{surface.runtimeCompanion}</Text>
-          <View style={styles.keyValueRow}>
-            <Text style={styles.keyValueLabel}>Secondary admin troubleshooting</Text>
-            <Text style={styles.keyValueValue}>`/admin/coaching/audit`</Text>
-          </View>
+          <Text style={styles.panelBody}>{surface.detailBody}</Text>
+          {selectedRow ? (
+            <>
+              <View style={styles.selectedUserSummaryCard}>
+                <Text style={styles.formTitle}>{selectedRow.c1}</Text>
+                <Text style={styles.metaRow}>{selectedRow.c2}</Text>
+                <Text style={styles.metaRow}>{selectedRow.c3}</Text>
+                <Text style={styles.metaRow}>Status: {selectedRow.c4}</Text>
+              </View>
+              <View style={styles.formActionsRow}>
+                <TouchableOpacity style={styles.primaryButton}>
+                  <Text style={styles.primaryButtonText}>{surface.primaryActionLabel}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.smallGhostButton}
+                  onPress={() =>
+                    onNavigate(
+                      routeKey === 'coachingUploads'
+                        ? 'coachingLibrary'
+                        : routeKey === 'coachingLibrary'
+                          ? 'coachingJourneys'
+                          : routeKey === 'coachingJourneys'
+                            ? 'coachingCohorts'
+                            : routeKey === 'coachingCohorts'
+                              ? 'coachingChannels'
+                              : 'coachingLibrary'
+                    )
+                  }
+                >
+                  <Text style={styles.smallGhostButtonText}>{surface.secondaryActionLabel}</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : null}
           <Text style={styles.fieldHelpText}>
-            Audit remains a secondary troubleshooting/governance surface. Legacy `/admin/coaching/*` paths are compatibility redirects to these `/coach/*` routes.
+            Sponsor access remains sponsor-scoped, Team Leader upload access remains team-scoped, and KPI logging actions are intentionally excluded.
+          </Text>
+          <Text style={styles.fieldHelpText}>
+            Legacy `/admin/coaching/*` routes remain compatibility redirects to canonical `/coach/*` paths.
           </Text>
         </View>
       </View>
@@ -4541,6 +4675,38 @@ export default function AdminShellScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+            {showCoachPortalExperience ? (
+              <View style={styles.coachTopNavCard}>
+                <View style={styles.formHeaderRow}>
+                  <Text style={styles.summaryLabel}>Coach Portal Navigation</Text>
+                  <Text style={styles.metaRow}>Canonical routes: /coach/*</Text>
+                </View>
+                <View style={styles.sectionNavRow}>
+                  {COACH_PORTAL_NAV_ITEMS.map((item) => {
+                    const selected = activeRoute.key === item.key;
+                    return (
+                      <Pressable
+                        key={item.key}
+                        style={[styles.sectionNavPill, selected && styles.sectionNavPillSelected]}
+                        onPress={() => {
+                          const nextRoute = getAdminRouteByKey(item.key);
+                          setUnknownAdminPath(null);
+                          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.pathname !== nextRoute.path) {
+                            window.history.pushState({}, '', nextRoute.path);
+                            setLastNavPushPath(nextRoute.path);
+                          }
+                          setActiveRouteKey(item.key);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                      >
+                        <Text style={[styles.sectionNavPillText, selected && styles.sectionNavPillTextSelected]}>{item.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
 
             {!showCoachPortalExperience ? (
               <>
@@ -4811,9 +4977,22 @@ export default function AdminShellScreen() {
                   <AdminCoachingAuditPanel />
                 ) : activeRoute.key === 'coachingUploads' ||
                   activeRoute.key === 'coachingLibrary' ||
+                  activeRoute.key === 'coachingJourneys' ||
                   activeRoute.key === 'coachingCohorts' ||
                   activeRoute.key === 'coachingChannels' ? (
-                  <AdminCoachingPortalFoundationPanel routeKey={activeRoute.key} effectiveRoles={effectiveRoles} />
+                  <AdminCoachingPortalFoundationPanel
+                    routeKey={activeRoute.key}
+                    effectiveRoles={effectiveRoles}
+                    onNavigate={(next) => {
+                      const nextRoute = getAdminRouteByKey(next);
+                      setUnknownAdminPath(null);
+                      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.pathname !== nextRoute.path) {
+                        window.history.pushState({}, '', nextRoute.path);
+                        setLastNavPushPath(nextRoute.path);
+                      }
+                      setActiveRouteKey(next);
+                    }}
+                  />
                 ) : (
                   <PlaceholderScreen route={activeRoute} rolesLabel={rolesLabel} />
                 )}
@@ -5637,6 +5816,32 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+  sectionNavRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  sectionNavPill: {
+    borderWidth: 1,
+    borderColor: '#D7E3FA',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#FFF',
+  },
+  sectionNavPillSelected: {
+    borderColor: '#8EB4FF',
+    backgroundColor: '#EAF1FF',
+  },
+  sectionNavPillText: {
+    color: '#3F5884',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  sectionNavPillTextSelected: {
+    color: '#1E4FBE',
+  },
   formChip: {
     borderWidth: 1,
     borderColor: '#D7E3FA',
@@ -5666,6 +5871,14 @@ const styles = StyleSheet.create({
     color: '#6F7D95',
     fontSize: 11,
     lineHeight: 16,
+  },
+  coachTopNavCard: {
+    borderWidth: 1,
+    borderColor: '#DDE8FA',
+    borderRadius: 12,
+    backgroundColor: '#F8FBFF',
+    padding: 12,
+    gap: 8,
   },
   filterBar: {
     borderWidth: 1,

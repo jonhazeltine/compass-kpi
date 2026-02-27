@@ -66,7 +66,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W5-UI-AI-ASSIST-SHELL-PROTO-A` | `committed+pushed` | `M6 coaching slice (W5 AI assist UI shell/proto; approval-first)` | `Team Leader`, `Coach`, `Admin operator` (review context), downstream `Member/Solo` limited | `coaching / AI assist` (`runtime insert-point shells + review UX`) | `channel_thread`, `coach_broadcast_compose`, `coaching_lesson_detail`, `coaching_journeys*`, embedded Team/Challenge coaching CTAs (approved insert points only) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree preferred) | manual-spec-driven + W5 AI boundary docs | Accepted and pushed (`6916f88`, `eb128e8`): approval-first AI assist shell/review modal plus backend `/api/ai/suggestions*` queue submit + queue status feedback integration; no autonomous send/publish and no KPI/forecast/challenge-state mutation paths. |
 | `COACHING-W5-BACKEND-AI-SUGGESTIONS-INFAMILY-QUEUE-A` | `committed+pushed` | `M6 coaching slice (W5 AI backend in-family approval queue shaping)` | `Coach`, `Admin operator`, downstream `Leader/Member/Solo` | `coaching / AI assist` (`/api/ai/suggestions*` additive shaping only) | Existing AI suggestion endpoints (`/api/ai/suggestions*`) + contract docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (backend worktree strongly preferred) | N/A (backend/contract; W5 boundary docs) | Accepted and pushed (`17478bb`): additive in-family AI suggestion queue/read-model shaping (`ai_queue_read_model`, list `queue_summary`) + contract doc updates + `DEC-0045`, with no schema/net-new endpoint-family changes. |
 | `COACHING-W5-OPS-AI-MODERATION-AUDIT-PASS-A` | `committed+pushed` | `M6 coaching slice (W5 AI moderation/audit ops surfaces; approval-first)` | `Coach`, `Admin operator`, `Sponsor ops` (limited review only) | `coaching / AI assist` (`approval queue`, `audit`, `policy visibility`) | `coach_ops_audit` admin extension touchpoints (`admin/coaching/audit` + AI queue/detail companion views) | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W5 AI boundary docs | Accepted and pushed (`1a0342f`): Admin Shell `/admin/coaching/audit` AI moderation/audit companion UI (queue/detail/history + approval-first workflows) with docs sync; manual browser spot-check still recommended. |
-| `COACHING-SAMPLE-CONTENT-SEED-A` | `review` | `M6 coaching slice (runtime realism / validation data)` | `Coach`, `Team Leader`, `Team Member`, `Solo User` | `coaching content delivery` (`journeys`, `lessons`, `assignments`, sample progress/messages`) | coaching journeys/lessons runtime surfaces + comms shells (`coaching_journeys*`, `inbox*`, Team/Challenge coaching modules) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree strongly preferred) | N/A (data/backend seed swath; no Figma requirement) | Review-ready role-visibility expansion: repeatable seed+smoke now covers coach, team-leader, challenge-sponsor, and member outcomes across coaching/channels/dashboard/sponsored endpoint families with sponsor/cohort fixture depth. |
+| `COACHING-SAMPLE-CONTENT-SEED-A` | `active` | `M6 coaching slice (runtime realism / validation data)` | `Coach`, `Team Leader`, `Team Member`, `Solo User` | `coaching content delivery` (`journeys`, `lessons`, `assignments`, sample progress/messages`) | coaching journeys/lessons runtime surfaces + comms shells (`coaching_journeys*`, `inbox*`, Team/Challenge coaching modules) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree strongly preferred) | N/A (data/backend seed swath; no Figma requirement) | Active execution (2026-02-27): M6 realism data pack swath in progress for deterministic multi-journey/lesson-status/channel-history/sponsor-context fixtures, runbook commands, and docs discoverability updates. |
 | `ADMIN-A3_5-USERS-LIST-PAGING-SORT-A` | `committed+pushed` | `A3.5 (parallel with M6 backend-prep implementation)` | `Admin operator` | `admin users list/search/sort/paging polish` | `/admin/users` (primary), `/admin/reports` regression check only | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated worktree strongly preferred) | N/A (admin web; preserve existing patterns) | Accepted and pushed (`5e59ad1`): `/admin/users` sorting/paging workflow polish (header asc/desc toggles, row-window clarity, reset-sort, show-more count labels, row-window reset on filter/sort changes). Manual browser spot-check remains recommended follow-up. |
 | `COACHING-W5-E2E-RUNTIME-VALIDATION-REFINEMENT-A` | `committed+pushed` | `M6 coaching slice (W5 AI assist end-to-end runtime validation/refinement)` | `Team Leader`, `Coach`, downstream `Member/Solo` spot-check | `coaching / AI assist` (`mobile seeded-data runtime validation + approval-first UX refinement`) | `inbox_channels`, `channel_thread`, `coach_broadcast_compose`, `coaching_journeys*`, `coaching_lesson_detail`, Team/Challenge coaching modules (approved AI insert points only) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred) | manual-spec-driven + accepted W5 boundary/docs + seeded data | Accepted and pushed (`cb3c92a`): seeded mobile runtime validation captured journeys/channels + AI review states and verified live `/api/ai/suggestions*` approval-first queue create/list (`pending_review`) with copy-only UX clarity refinements; no backend/schema/API boundary changes. |
 | `COACHING-W5-OPS-AI-AUDIT-RUNTIME-VALIDATION-REFINEMENT-A` | `blocked` | `M6 coaching slice (W5 AI moderation/audit runtime validation/refinement)` | `Admin operator`, `Coach` (reviewer), `Sponsor ops` limited | `coaching / AI assist` (`admin moderation/audit runtime validation + refinement`) | `/admin/coaching/audit` queue/detail/history views | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree preferred) | manual-spec-driven + accepted W5 boundary/docs | Blocked/deferred by owner direction: admin audit is not the primary coach AI workflow; pause runtime validation/refinement pending W5 AI coach-persona realignment. Do not continue dialog-copy refinements in this assignment. |
@@ -80,6 +80,9 @@ Only use long custom prompts when the board is missing required details or a one
 | `COACHING-W7-COACH-PORTAL-FOUNDATION-SURFACES-A` | `committed` | `W7/W8 coach portal implementation spec pack (docs-only; implementation-ready)` | `Coach`, `Team Leader` (team-scoped content upload only), `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (limited governance) | `coach portal / content operations` (`surface contracts + role gates + acceptance pack`) | coach web portal `content_upload`, `content_library`, `journeys`, `cohorts`, `channels` + final acceptance pack for admin/mobile/backend lanes (audit remains secondary-only) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package | Committed docs swath: finalized W7/W8 implementation spec pack with explicit surface contracts, role gates, sponsor constraints, Team Leader team-scoped upload limits, no-sponsor-KPI-logging enforcement, and final implementation acceptance pack for admin/mobile/backend lanes; `/admin/coaching/audit` remains secondary-only governance/troubleshooting. |
 | `COACHING-W7-RUNTIME-COACH-SPONSOR-VISIBILITY-A` | `committed` | `W7 runtime coaching visibility swath (mobile)` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching / notifications / participation visibility` (`coach+sponsor runtime modules + cohort-channel context`) | `KPIDashboardScreen` host/runtime surfaces: `Home`, `Team`, `Challenge`, `coaching_journeys*`, `inbox*`, `channel_thread` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred) | manual-spec-driven + accepted W6/W7 rescope package + existing read-model outputs | Completed: W7 runtime coach+sponsor visibility modules added across Home/Team/Challenge/Journeys/Inbox surfaces using existing read-model outputs + safe fallbacks; cohort channel context surfaced; team-leader creator+participant behavior enabled in challenge create flow; no backend/schema/API changes and sponsor KPI logging actions remain prohibited. |
 | `COACHING-W8-RUNTIME-STATE-HARDENING-A` | `committed` | `W8 runtime hardening (coach/sponsor/team-leader state resilience)` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching runtime states` (`loading/empty/error/permission-denied/partial-read-model`) | `KPIDashboardScreen` runtime surfaces: `Home`, `Team`, `Challenge`, `coaching_journeys*`, `inbox*`, `channel_thread` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred) | manual-spec-driven + accepted W6/W7 runtime stack | W8 runtime polish+proof continuation completed: route-clarity copy/state transitions finalized and screenshot evidence matrix captured for loading/empty/error/permission-denied/partial-read-model/read-model-ready states; no backend/schema/API changes. |
+| `COACHING-W10-MOBILE-UI-EVALUATION-READINESS-A` | `active` | `M6 W10 mobile UI evaluation readiness` | `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User` | `coaching / team / challenge evaluability` (`CTA integrity`, `connected screens`, `compact state UI`) | `KPIDashboardScreen` surfaces: `Team`, `Team Challenges`, `Challenge Details`, `Leaderboard/Results`, `coaching_journeys*`, `coaching_journey_detail`, `coaching_lesson_detail`, `inbox*`, `channel_thread` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree preferred) | manual-spec-driven + accepted W6/W7/W8 runtime stack | Active: large-swatch W10 evaluation readiness pass in mobile runtime surface only; remove/relabel misleading CTAs, ensure live destinations/actions, condense diagnostic wall text into concise product-state cards/chips, and keep team/challenge/coaching routes evaluable end-to-end without backend/schema/API changes. |
+| `COACHING-W10-COACH-PORTAL-CUSTOMER-SHELL-A` | `committed` | `M6 W10 coach portal customer-facing shell` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools) | `coach portal IA/UX` (`customer-facing shell`, `route connectivity`, `copy cleanup`) | `/coach/library`, `/coach/journeys`, `/coach/cohorts`, `/coach/channels` (+ existing detail drill-ins where scaffolded) | `Admin-1` | `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred) | manual-spec-driven + accepted W9/W10 direction | Committed: upgraded `/coach/*` to a coach-product-facing shell baseline with connected route flow, customer-facing copy, actionable Library/Journeys/Cohorts/Channels surfaces, and preserved `/admin/coaching/*` compatibility redirects for transition. |
+| `COACHING-W10-REALISM-DATA-PACK-A` | `active` | `M6 W10 realism data for UI evaluation` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `coaching content realism` (`journeys`, `lessons`, `cohorts`, `channels`, `messages`) | Seeded runtime data feeding `coaching_journeys*`, `coaching_lesson_detail`, `inbox*`, team/challenge coaching modules, and `/coach/*` list/detail surfaces | `Coach-1` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (seed/data/docs swath) | Active: add deterministic realistic seed fixtures and smoke checks so owner can evaluate real product behavior, not placeholder-heavy shells. |
 | `COACHING-W9-COACH-PORTAL-EXPERIENCE-PLANNING-A` | `committed` | `W9 coach portal experience planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (host foundation only during transition) | `coach portal IA/UX` (`dedicated experience + migration path + production sequencing`) | dedicated coach portal IA/UX direction (outside admin-shell presentation), migration from `/admin/coaching/*` foundation routes, persona visibility model, production-experience sequencing | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W7/W8 acceptance pack | Committed W10 route-decoupling swath: dedicated `/coach/*` uploads/library/cohorts/channels routes + customer-facing shell/nav landed, coach-facing navigation migrated to `/coach/*`, and `/admin/coaching/*` retained as temporary compatibility redirect-only paths (no backend/schema/API changes). |
 | `COACHING-W7-SUPERADMIN-AI-TROUBLESHOOTING-AUDIT-A` | `queued` | `W7 optional hardening (super-admin AI troubleshooting only)` | `Super Admin` (primary), `Admin operator` (limited) | `AI troubleshooting / audit` (`exception-only`) | optional trimmed `/admin/coaching/audit` super-admin troubleshooting views | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package + explicit owner approval gate | Optional exception-only follow-on to repurpose or trim `/admin/coaching/audit` into super-admin AI troubleshooting/audit; not a coach notification or coach primary workflow surface. |
 
@@ -120,6 +123,81 @@ Every worker report should include:
 - `Commit hash(es)` (if committed)
 
 ## Assignment Specs (Execute from here)
+
+### `COACHING-W10-COACH-PORTAL-CUSTOMER-SHELL-A`
+
+#### Snapshot
+- `Status:` `committed`
+- `Program status:` `M6 W10 coach portal customer-facing shell`
+- `Persona:` `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools)
+- `Flow:` `coach portal IA/UX`
+- `Owner:` `Admin-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (coach/admin web worktree preferred)
+- `Controller launch note (2026-02-27):` Improve `/coach/*` into a customer-facing experience and stop relying on admin-shell presentation for coach workflow validation.
+- `Worker note (2026-02-27, Admin-1 start):` Board status updated first. Executing large-swatch W10 customer-facing shell pass for `/coach/*` with top-nav + section-nav IA, route connectivity polish, customer-facing copy cleanup, and reduced diagnostic density while preserving role gates and `/admin/coaching/*` compatibility redirects.
+- `Current blocker status (2026-02-27, Admin-1 start):` `none` for scoped frontend shell/routes pass (no backend/schema/API changes).
+- `Completion note (2026-02-27, Admin-1 completion):` Completed customer-facing coach shell pass: added canonical `/coach/journeys` route, strengthened `/coach/*` IA with top nav + section nav, converted coach surfaces to product wording, and implemented actionable table/card + lightweight detail drill-ins for Library/Journeys/Cohorts/Channels/Uploads. Dense admin diagnostics remain removed from coach-facing viewport.
+- `Validation note (2026-02-27, Admin-1 completion):` `cd app && npm run test:unit -- adminAuthz` passed. `cd app && npx tsc --noEmit` reports unrelated pre-existing `KPIDashboardScreen.tsx` style-key errors (`knownLimitedDataChip`, `knownLimitedDataChipText`) outside this swath. Route screenshots captured for touched `/coach/*` pages in `app/test-results/w10-coach-portal-shell-pass/`.
+- `Current blocker status (2026-02-27, Admin-1 completion):` `none` for committed W10 shell swath; manual browser spot-check for legacy `/admin/coaching/*` redirect behavior remains recommended before push.
+
+#### Primary Objective
+Deliver a basic polished coach-facing shell on `/coach/*`:
+- clear nav/header structure
+- connected routes across library/journeys/cohorts/channels
+- coach-product wording (remove admin-ops heavy copy)
+- maintain temporary `/admin/coaching/*` compatibility redirects
+
+#### Hard Constraints
+- No backend/API/schema changes.
+- Do not expand `/admin/coaching/audit` as primary coach workflow.
+- Preserve role boundaries and no sponsor KPI logging.
+
+#### Required Validation
+- Run existing web/app typecheck checks used in this repo.
+- Route click-through map for `/coach/*` surfaces.
+- Runtime screenshots for each touched `/coach/*` route.
+
+#### Report-Back Requirements
+- Update this assignment row/block status first
+- Program status + persona
+- Routes/screens changed
+- Route map before/after
+- Files changed with line refs
+- `/admin/coaching/*` compatibility redirect status
+- Validation summary
+- Screenshot paths
+- Commit hash
+
+### `COACHING-W10-REALISM-DATA-PACK-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 W10 realism data for UI evaluation`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`
+- `Flow:` `coaching content realism`
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (backend/data worktree preferred)
+- `Controller launch note (2026-02-27):` Improve runtime realism for owner review with deterministic data across journeys/lessons/cohorts/channels/messages.
+
+#### Primary Objective
+Provide realistic, repeatable seeded data so mobile + `/coach/*` evaluate as product behavior rather than placeholder-only flows.
+
+#### Hard Constraints
+- No net-new endpoint family.
+- No schema-breaking changes without migration/docs.
+- Preserve persona boundaries (coach primary, sponsor scoped visibility, no sponsor KPI logging).
+
+#### Required Validation
+- Seed/reset command sequence runs successfully.
+- Smoke-check command verifies expected records per persona context.
+- Docs updated with seed scenario discoverability and run commands.
+
+#### Report-Back Requirements
+- Update this assignment row/block status first
+- Datasets added (entities/counts)
+- Seed/reset/smoke commands
+- Files/docs changed
+- Commit hash
 
 ### `TEAM-MEMBER-PARITY-A`
 
@@ -1673,7 +1751,7 @@ Implement coach/admin AI approval queue and audit detail ops surfaces (admin ext
 ### `COACHING-SAMPLE-CONTENT-SEED-A`
 
 #### Snapshot
-- `Status:` `committed+pushed`
+- `Status:` `active`
 - `Program status:` `M6 coaching slice (runtime realism / validation data)`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching content delivery` (`journeys`, `lessons`, `assignments`, sample progress/messages`)
@@ -1690,6 +1768,8 @@ Implement coach/admin AI approval queue and audit detail ops surfaces (admin ext
 - `Completion note (2026-02-26 visibility follow-up):` Extended `backend/scripts/coaching_sample_content_seed.js` persona coverage to include explicit `coach`, `team_leader`, `challenge_sponsor`, and `member` visibility outcomes. Added role-scoped assertions for coaching journey visibility, channel visibility/membership, sponsored challenge tier gating, dashboard KPI visibility (active/inactive), and coaching broadcast permission outcomes (allowed/blocked) using existing endpoint families only.
 - `Execution note (2026-02-26 W8 validation swath):` Started deterministic backend validation expansion focused on seeded persona visibility outcomes and contract mismatch diagnostics for existing coaching/channel/sponsor endpoint families.
 - `Completion note (2026-02-26 W8 validation swath):` Enhanced `backend/scripts/coaching_sample_content_seed.js` with structured endpoint snapshots + check logs and failure diagnostics output for contract mismatches; added deterministic visibility assertions for coach/team-leader/challenge-sponsor/member outcomes including cohort channels and sponsor-scoped KPI visibility on `/dashboard`.
+- `Execution note (2026-02-27 realism data pack swath):` Board status updated first for large realism data-pack execution. Expanding deterministic/repeatable seed fixtures for multi-journey coach content, mixed lesson statuses, deeper cohort/channel history, and sponsor-scoped challenge/coaching visibility scenarios with explicit run/reset/smoke command sequence docs for owner/dev UI evaluation use.
+- `Current blocker status (2026-02-27 realism data pack swath start):` `none` for backend/data/docs scope. This pass is seed/test-data + docs alignment only (no UI layout edits, no net-new endpoint families).
 
 #### Primary Objective
 Seed realistic coaching content and assignment/progress data (using existing schema and endpoint families only) so M6 coaching runtime UI reviews are materially useful:
@@ -2618,6 +2698,19 @@ Prepare/advance an implementation-guiding W7 docs-first foundation package for c
   - `/var/folders/zb/9w69k6j97x5dltcvt6pw91500000gn/T/w8-matrix-all-states.png`
 - `Current blocker status (2026-02-27, Mobile-1, continuation completion):` `none`.
 
+### `COACHING-W10-MOBILE-UI-EVALUATION-READINESS-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 W10 mobile UI evaluation readiness`
+- `Persona:` `Coach`, `Challenge Sponsor`, `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `coaching / team / challenge evaluability`
+- `Owner:` `Mobile-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass`
+- `Figma refs:` `manual-spec-driven` (runtime evaluation readiness swath)
+- `Worker note (2026-02-27, Mobile-1, start):` Board status updated first. Starting large-swatch evaluation-readiness pass in `KPIDashboardScreen.tsx` to tighten CTA integrity, condense diagnostic/placeholder wall text, add compact known-limited-data labels, and preserve end-to-end route continuity for Team/Challenge and Coaching/Journeys surfaces.
+- `Current blocker status (2026-02-27, Mobile-1, start):` `none`.
+
 ### `COACHING-W9-COACH-PORTAL-EXPERIENCE-PLANNING-A`
 
 #### Snapshot
@@ -2644,3 +2737,6 @@ Prepare/advance an implementation-guiding W7 docs-first foundation package for c
 - `Completion note (2026-02-27, Coach-1 W10 route-decoupling swath completion):` Implemented dedicated `/coach/*` canonical routes for coach portal surfaces (`/coach/uploads`, `/coach/library`, `/coach/cohorts`, `/coach/channels`) and migrated coach-facing shell/navigation copy to customer-facing `/coach/*` experience. Legacy `/admin/coaching/*` foundation routes now resolve as compatibility aliases and redirect to canonical `/coach/*` paths through existing path-sync routing behavior.
 - `Validation note (2026-02-27, Coach-1 W10 route-decoupling swath completion):` Route contract + alias updates compile and unit tests pass (`cd app && npx tsc --noEmit`, `cd app && npm run test:unit -- adminAuthz`). No backend/schema/API files changed.
 - `Current blocker status (2026-02-27, Coach-1 W10 route-decoupling swath completion):` `none` for committed route decoupling swath. Manual browser validation for legacy-path redirects (`/admin/coaching/*` -> `/coach/*`) is recommended before push.
+- `Worker note (2026-02-27, Coach-1 W10 customer-facing shell pass start):` Board updated first. Executing large-swatch customer-facing shell pass on canonical `/coach/*` routes: stronger top-nav + section-nav IA, coach-product copy (not admin-ops wording), actionable table/card surfaces for Library/Journeys/Cohorts/Channels, and lightweight detail drill-ins while preserving role boundaries and legacy compatibility redirects.
+- `Completion note (2026-02-27, Coach-1 W10 customer-facing shell pass completion):` Delivered customer-facing coach portal shell baseline with canonical `/coach/*` IA connectivity across Library/Journeys/Cohorts/Channels/Uploads. Added `/coach/journeys` + legacy `/admin/coaching/journeys` compatibility alias, customer-facing top nav and section nav, consistent page header/subheader treatment, actionable table-style list cards, and in-panel detail drill-ins for each major section. Dense admin diagnostics remain removed from coach-facing main viewport.
+- `Validation note (2026-02-27, Coach-1 W10 customer-facing shell pass completion):` `adminAuthz` unit tests pass; repo-wide app typecheck still reports pre-existing unrelated `KPIDashboardScreen.tsx` style-key errors (`knownLimitedDataChip`, `knownLimitedDataChipText`) outside this swath. Captured route screenshots for each touched `/coach/*` page under `app/test-results/w10-coach-portal-shell-pass/`.
