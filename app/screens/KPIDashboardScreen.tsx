@@ -126,7 +126,7 @@ type MePayload = {
 type LoadState = 'loading' | 'empty' | 'error' | 'ready';
 type Segment = 'PC' | 'GP' | 'VP';
 type ViewMode = 'home' | 'log';
-type BottomTab = 'home' | 'challenge' | 'newkpi' | 'team' | 'user';
+type BottomTab = 'home' | 'challenge' | 'newkpi' | 'team' | 'comms';
 type DrawerFilter = 'Quick' | 'PC' | 'GP' | 'VP';
 type HomePanel = 'Quick' | 'PC' | 'GP' | 'VP';
 type ChallengeMemberListTab = 'all' | 'completed';
@@ -2098,7 +2098,7 @@ const bottomTabIconSvgByKey = {
   challenge: TabChallengesIcon,
   newkpi: TabLogsIcon,
   team: TabTeamIcon,
-  user: TabCoachIcon,
+  comms: TabCoachIcon,
 } as const;
 
 const homePanelPillSvgBg = {
@@ -2113,7 +2113,7 @@ const bottomTabIconStyleByKey: Record<BottomTab, any> = {
   challenge: null,
   newkpi: null,
   team: { transform: [{ translateY: -6 }] },
-  user: { transform: [{ translateY: -3 }] },
+  comms: { transform: [{ translateY: -3 }] },
 };
 
 type Props = {
@@ -4735,7 +4735,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setViewMode('log');
       return;
     }
-    if (tab === 'user') {
+    if (tab === 'comms') {
       setViewMode('log');
       setCoachingShellScreen('inbox');
       setCoachingShellContext({
@@ -5930,7 +5930,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         ...contextPatch,
       }));
     }
-    setActiveTab('user');
+    setActiveTab('comms');
     setViewMode('log');
   }, []);
 
@@ -6816,7 +6816,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   );
 
   useEffect(() => {
-    if (activeTab !== 'user') return;
+    if (activeTab !== 'comms') return;
     if (
       coachingShellScreen === 'coaching_journeys' ||
       coachingShellScreen === 'coaching_journey_detail' ||
@@ -6841,7 +6841,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   ]);
 
   useEffect(() => {
-    if (activeTab !== 'user') return;
+    if (activeTab !== 'comms') return;
     if (coachingShellScreen !== 'coaching_journey_detail' && coachingShellScreen !== 'coaching_lesson_detail') return;
     const desiredJourneyId =
       coachingShellContext.selectedJourneyId ??
@@ -6859,7 +6859,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   ]);
 
   useEffect(() => {
-    if (activeTab !== 'user') return;
+    if (activeTab !== 'comms') return;
     if (
       coachingShellScreen === 'inbox_channels' ||
       coachingShellScreen === 'channel_thread' ||
@@ -6872,7 +6872,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   }, [activeTab, channelsApiRows, channelsLoading, coachingShellScreen, fetchChannels]);
 
   useEffect(() => {
-    if (activeTab !== 'user') return;
+    if (activeTab !== 'comms') return;
     if (!Array.isArray(channelsApiRows) || channelsApiRows.length === 0) return;
     const rows = channelsApiRows;
     const preferredScope = coachingShellContext.preferredChannelScope;
@@ -6891,7 +6891,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   }, [activeTab, channelsApiRows, coachingShellContext.preferredChannelScope, selectedChannelId]);
 
   useEffect(() => {
-    if (activeTab !== 'user') return;
+    if (activeTab !== 'comms') return;
     if (coachingShellScreen !== 'channel_thread') return;
     if (!selectedChannelId) return;
     void fetchChannelMessages(selectedChannelId);
@@ -8574,7 +8574,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               );
             })()}
           </View>
-        ) : activeTab === 'user' ? (
+        ) : activeTab === 'comms' ? (
           <View style={styles.coachingShellWrap}>
             {(() => {
               const sourceLabelByKey: Record<CoachingShellEntrySource, string> = {
@@ -8582,12 +8582,32 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 challenge_details: 'Challenge Details',
                 team_leader_dashboard: 'Team Dashboard (Leader)',
                 team_member_dashboard: 'Team Dashboard (Member)',
-                user_tab: 'User Tab',
+                user_tab: 'Comms Hub',
                 unknown: 'Direct Shell',
               };
               const preferredChannelScope = coachingShellContext.preferredChannelScope;
               const sourceLabel = sourceLabelByKey[coachingShellContext.source];
               const roleCanOpenBroadcast = teamPersonaVariant === 'leader' || coachingShellContext.broadcastRoleAllowed;
+              const commsPersonaVariant: 'coach' | 'team_leader' | 'sponsor' | 'member' | 'solo' = isCoachRuntimeOperator
+                ? 'coach'
+                : isChallengeSponsorRuntime
+                  ? 'sponsor'
+                  : teamPersonaVariant === 'leader'
+                    ? 'team_leader'
+                    : runtimeRoleSignals.some((signal) => signal.includes('solo'))
+                      ? 'solo'
+                      : 'member';
+              const commsPersonaBadgeLabel = commsPersonaVariant.replace('_', ' ');
+              const commsPersonaSummary =
+                commsPersonaVariant === 'coach'
+                  ? 'Coach layout: monitor channels, keep journeys active, and draft guidance with approval-first controls.'
+                  : commsPersonaVariant === 'team_leader'
+                    ? 'Team Leader layout: run team communications, keep journeys moving, and publish reviewed broadcasts.'
+                    : commsPersonaVariant === 'sponsor'
+                      ? 'Sponsor layout: monitor sponsor-scoped channels and journey progress visibility. KPI logging stays disabled.'
+                      : commsPersonaVariant === 'solo'
+                        ? 'Solo layout: focus on your journey milestones and direct channel updates.'
+                        : 'Member layout: keep up with team/challenge updates and journey lesson progress.';
               const allChannelApiRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
               const filteredChannelApiRows = (coachingShellContext.preferredChannelScope
                 ? allChannelApiRows.filter((row) => {
@@ -8749,41 +8769,47 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 <>
                   <View style={styles.coachingShellCard}>
                     <View style={styles.coachingShellTopRow}>
-                      <Text style={styles.coachingShellTitle}>{meta.title}</Text>
+                      <Text style={styles.coachingShellTitle}>Comms Hub</Text>
                       <View style={styles.coachingShellBadge}>
-                        <Text style={styles.coachingShellBadgeText}>{meta.badge}</Text>
+                        <Text style={styles.coachingShellBadgeText}>{commsPersonaBadgeLabel}</Text>
                       </View>
                     </View>
-                    <Text style={styles.coachingShellSub}>{meta.sub}</Text>
+                    <Text style={styles.coachingShellSub}>{commsPersonaSummary}</Text>
+                    <View style={styles.coachingShellActionRow}>
+                      <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('coaching_journeys')}>
+                        <Text style={styles.coachingShellActionBtnText}>Journeys</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('inbox_channels')}>
+                        <Text style={styles.coachingShellActionBtnText}>Channels</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.coachingShellActionBtn}
+                        onPress={() =>
+                          openCoachingShell('inbox', {
+                            source: 'user_tab',
+                            preferredChannelScope: null,
+                            preferredChannelLabel: null,
+                            threadTitle: null,
+                            threadSub: null,
+                            broadcastAudienceLabel: null,
+                            broadcastRoleAllowed: false,
+                          })
+                        }
+                      >
+                        <Text style={styles.coachingShellActionBtnText}>Inbox</Text>
+                      </TouchableOpacity>
+                      {roleCanOpenBroadcast ? (
+                        <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('coach_broadcast_compose')}>
+                          <Text style={styles.coachingShellActionBtnText}>Broadcast</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    <Text style={styles.coachingShellSub}>Current: {meta.title} · {meta.sub}</Text>
                     {renderCoachingPackageGateBanner(meta.title, shellPackageOutcome, { compact: true })}
                     {shellPackageGateBlocksActions ? (
                       renderKnownLimitedDataChip('coaching package access')
                     ) : (
                       <>
-                        <View style={styles.coachingShellActionRow}>
-                          <TouchableOpacity
-                            style={styles.coachingShellActionBtn}
-                            onPress={() =>
-                              openCoachingShell('inbox', {
-                                source: 'user_tab',
-                                preferredChannelScope: null,
-                                preferredChannelLabel: null,
-                                threadTitle: null,
-                                threadSub: null,
-                                broadcastAudienceLabel: null,
-                                broadcastRoleAllowed: false,
-                              })
-                            }
-                          >
-                            <Text style={styles.coachingShellActionBtnText}>Inbox</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('inbox_channels')}>
-                            <Text style={styles.coachingShellActionBtnText}>Channels</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('coaching_journeys')}>
-                            <Text style={styles.coachingShellActionBtnText}>Journeys</Text>
-                          </TouchableOpacity>
-                        </View>
                         {meta.primary?.map((action) => (
                           <TouchableOpacity
                             key={`${coachingShellScreen}-${action.to}`}
@@ -9609,37 +9635,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
                   </View>
 
-                  <View style={styles.coachingShellCard}>
-                    <Text style={styles.coachingShellTitle}>Profile / Settings Coaching Allocation</Text>
-                    <Text style={styles.coachingShellSub}>
-                      Coaching preferences and notifications.
-                    </Text>
-                    {renderCoachingPackageGateBanner('Profile / Settings coaching allocation', null, { compact: true })}
-                    <View style={styles.coachingEntryButtonRow}>
-                      <TouchableOpacity
-                        style={styles.coachingEntrySecondaryBtn}
-                        onPress={() =>
-                          openCoachingShell('inbox', {
-                            source: 'user_tab',
-                            preferredChannelScope: null,
-                            preferredChannelLabel: null,
-                            threadTitle: null,
-                            threadSub: null,
-                            broadcastAudienceLabel: null,
-                            broadcastRoleAllowed: false,
-                          })
-                        }
-                      >
-                        <Text style={styles.coachingEntrySecondaryBtnText}>Notifications / Inbox</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.coachingEntrySecondaryBtn}
-                        onPress={() => openCoachingShell('coaching_journeys')}
-                      >
-                        <Text style={styles.coachingEntrySecondaryBtnText}>Coaching Preferences</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
                 </>
               );
             })()}
@@ -10102,7 +10097,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           { key: 'challenge' },
           { key: 'newkpi' },
           { key: 'team' },
-          { key: 'user' },
+          { key: 'comms' },
         ] as const).map((tab) => (
           <TouchableOpacity
             key={tab.key}

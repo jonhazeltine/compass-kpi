@@ -3038,7 +3038,7 @@ Make journey/lesson navigation evaluable and intuitive by removing redundant dee
 ### `COACHING-W12-COMMS-HUB-REORG-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `M6 W12 mobile comms hub IA reorg`
 - `Persona:` `Coach`, `Team Leader`, `Challenge Sponsor`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication hub` (`bottom-tab comms semantics`, `single hub entry`, `persona-specific in-hub layout`)
@@ -3080,6 +3080,10 @@ Make communication access intuitive via a single Comms hub entry with role-aware
 - Guardrail confirmation (Home/Priority logging + sponsor no-KPI-logging + endpoint families unchanged)
 - Validation result
 - Commit hash
+- `Completion note (2026-02-27, Mobile-1):` Completed Comms hub IA reorg in `KPIDashboardScreen.tsx`: bottom nav key/semantics changed from user/coaching tab treatment to `comms`, in-hub experience now opens as a single Comms hub with persona-specific summary layout (coach/team-leader/sponsor/member/solo), and hub quick actions keep Journeys first-class while preserving existing channel/thread/broadcast/journey route contracts.
+- `Guardrail note (2026-02-27, Mobile-1):` No backend/API/schema changes. Existing endpoint families (`/api/channels*`, `/api/messages*`, `/api/coaching*`, `/api/ai/suggestions*`) remain unchanged. Sponsor no-KPI-logging and role-gated broadcast behavior remain intact.
+- `Validation note (2026-02-27, Mobile-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed.
+- `Current blocker status (2026-02-27, Mobile-1, completion):` `none`.
 
 ### `COACHING-W11-COACH-PORTAL-STANDALONE-UX-PASS-A`
 
