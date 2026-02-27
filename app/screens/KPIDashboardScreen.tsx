@@ -331,6 +331,19 @@ type RuntimeNotificationSummaryReadModel = {
   read_model_status?: string | null;
   notes?: string[] | null;
 };
+type RuntimeSurfaceState =
+  | 'loading'
+  | 'empty'
+  | 'error'
+  | 'permission_denied'
+  | 'partial_read_model'
+  | 'ready';
+type RuntimeSurfaceStateModel = {
+  state: RuntimeSurfaceState;
+  title: string;
+  detail: string;
+  transitionHint: string;
+};
 type RuntimePackageVisibilityOutcome = {
   package_type?: string | null;
   package_id?: string | null;
@@ -1015,6 +1028,89 @@ function summarizeNotificationRows(
     badge_label: badgeCount > 0 ? String(badgeCount) : null,
     read_model_status: fallback?.readModelStatus ?? null,
     notes: fallback?.sourceLabel ? [`source:${fallback.sourceLabel}`] : null,
+  };
+}
+
+function isPartialReadModelStatus(status?: string | null) {
+  const normalized = String(status ?? '').toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes('partial') ||
+    normalized.includes('inferred') ||
+    normalized.includes('unknown') ||
+    normalized.includes('not_evaluated')
+  );
+}
+
+function deriveRuntimeSurfaceStateModel(params: {
+  surfaceLabel: string;
+  loading?: boolean;
+  errorText?: string | null;
+  hasRows?: boolean;
+  gateTone?: CoachingPackageGateTone | null;
+  readModelStatus?: string | null;
+}): RuntimeSurfaceStateModel {
+  const loading = Boolean(params.loading);
+  const errorText = String(params.errorText ?? '').trim();
+  const hasRows = Boolean(params.hasRows);
+  const gateTone = params.gateTone ?? null;
+  const readModelStatus = params.readModelStatus ?? null;
+  const lowerError = errorText.toLowerCase();
+  const permissionDenied =
+    gateTone === 'blocked' ||
+    gateTone === 'gated' ||
+    lowerError.includes('403') ||
+    lowerError.includes('forbidden') ||
+    lowerError.includes('permission') ||
+    lowerError.includes('not allowed') ||
+    lowerError.includes('policy');
+  if (loading) {
+    return {
+      state: 'loading',
+      title: `${params.surfaceLabel}: Loading`,
+      detail: 'Fetching runtime coaching context and route-ready signals.',
+      transitionHint: 'Transitions to ready, partial-read-model, empty, or error after payload resolution.',
+    };
+  }
+  if (permissionDenied) {
+    return {
+      state: 'permission_denied',
+      title: `${params.surfaceLabel}: Permission denied`,
+      detail:
+        'Access is restricted by role/package policy. Display remains informational; no logging or send actions are escalated.',
+      transitionHint: 'Transitions to ready when entitlement/policy outcome changes.',
+    };
+  }
+  if (errorText) {
+    return {
+      state: 'error',
+      title: `${params.surfaceLabel}: Load error`,
+      detail: errorText,
+      transitionHint: 'Retry keeps the user on the same runtime surface until successful.',
+    };
+  }
+  if (isPartialReadModelStatus(readModelStatus)) {
+    return {
+      state: 'partial_read_model',
+      title: `${params.surfaceLabel}: Partial read-model`,
+      detail:
+        'Runtime is using inferred/partial visibility outputs. Route targets stay scoped and conservative.',
+      transitionHint: 'Transitions to ready when full read-model outputs become available.',
+    };
+  }
+  if (!hasRows) {
+    return {
+      state: 'empty',
+      title: `${params.surfaceLabel}: Empty`,
+      detail: 'No visible runtime rows for this context yet. This is not an error.',
+      transitionHint: 'Transitions to ready as notifications/channels/journeys become available.',
+    };
+  }
+  return {
+    state: 'ready',
+    title: `${params.surfaceLabel}: Ready`,
+    detail: 'Runtime context is available and route-target actions are active within current policy boundaries.',
+    transitionHint: 'Transitions continuously as loading, read-model, and permission outcomes update.',
   };
 }
 
@@ -5671,6 +5767,115 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       ),
     [runtimeCoachSponsorVisibilityRows]
   );
+  const homeRuntimeStateModel = useMemo(
+    () =>
+      deriveRuntimeSurfaceStateModel({
+        surfaceLabel: 'Home',
+        hasRows: homeNotificationRows.length > 0 || homeRuntimeVisibilityRows.length > 0,
+        readModelStatus: coachingProgressNotificationSummary?.read_model_status ?? null,
+      }),
+    [coachingProgressNotificationSummary?.read_model_status, homeNotificationRows.length, homeRuntimeVisibilityRows.length]
+  );
+  const teamRuntimeStateModel = useMemo(
+    () =>
+      deriveRuntimeSurfaceStateModel({
+        surfaceLabel: 'Team',
+        hasRows: teamNotificationRows.length > 0 || teamRuntimeVisibilityRows.length > 0,
+        readModelStatus:
+          channelsNotificationSummary?.read_model_status ??
+          coachingProgressNotificationSummary?.read_model_status ??
+          null,
+      }),
+    [
+      channelsNotificationSummary?.read_model_status,
+      coachingProgressNotificationSummary?.read_model_status,
+      teamNotificationRows.length,
+      teamRuntimeVisibilityRows.length,
+    ]
+  );
+  const challengeRuntimeStateModel = useMemo(
+    () =>
+      deriveRuntimeSurfaceStateModel({
+        surfaceLabel: 'Challenge',
+        hasRows: challengeSurfaceNotificationRows.length > 0 || challengeRuntimeVisibilityRows.length > 0,
+        gateTone: challengeCoachingGatePresentation.tone,
+        readModelStatus:
+          challengeCoachingPackageOutcome?.read_model_status ??
+          channelsNotificationSummary?.read_model_status ??
+          null,
+      }),
+    [
+      challengeCoachingGatePresentation.tone,
+      challengeCoachingPackageOutcome?.read_model_status,
+      challengeRuntimeVisibilityRows.length,
+      challengeSurfaceNotificationRows.length,
+      channelsNotificationSummary?.read_model_status,
+    ]
+  );
+  const journeysRuntimeStateModel = useMemo(
+    () =>
+      deriveRuntimeSurfaceStateModel({
+        surfaceLabel: 'Journeys',
+        loading: coachingJourneysLoading || coachingProgressLoading,
+        errorText: coachingJourneysError ?? coachingProgressError,
+        hasRows: journeysNotificationRows.length > 0 || journeysRuntimeVisibilityRows.length > 0,
+        gateTone:
+          coachingJourneysPackageVisibility?.entitlement_result &&
+          String(coachingJourneysPackageVisibility.entitlement_result).startsWith('blocked')
+            ? 'blocked'
+            : null,
+        readModelStatus: journeysNotificationSummaryEffective?.read_model_status ?? null,
+      }),
+    [
+      coachingJourneysError,
+      coachingJourneysLoading,
+      coachingJourneysPackageVisibility?.entitlement_result,
+      coachingProgressError,
+      coachingProgressLoading,
+      journeysNotificationRows.length,
+      journeysNotificationSummaryEffective?.read_model_status,
+      journeysRuntimeVisibilityRows.length,
+    ]
+  );
+  const inboxRuntimeStateModel = useMemo(
+    () =>
+      deriveRuntimeSurfaceStateModel({
+        surfaceLabel: 'Inbox',
+        loading: channelsLoading,
+        errorText: channelsError,
+        hasRows: inboxNotificationRows.length > 0 || inboxRuntimeVisibilityRows.length > 0,
+        readModelStatus: inboxNotificationSummaryEffective?.read_model_status ?? null,
+      }),
+    [
+      channelsError,
+      channelsLoading,
+      inboxNotificationRows.length,
+      inboxNotificationSummaryEffective?.read_model_status,
+      inboxRuntimeVisibilityRows.length,
+    ]
+  );
+  const channelThreadRuntimeStateModel = useMemo(
+    () =>
+      deriveRuntimeSurfaceStateModel({
+        surfaceLabel: 'Channel Thread',
+        loading: channelMessagesLoading,
+        errorText: channelMessagesError,
+        hasRows: channelThreadNotificationItems.length > 0,
+        gateTone:
+          channelThreadPackageVisibility?.entitlement_result &&
+          String(channelThreadPackageVisibility.entitlement_result).startsWith('blocked')
+            ? 'blocked'
+            : null,
+        readModelStatus: channelThreadNotificationSummary?.read_model_status ?? null,
+      }),
+    [
+      channelMessagesError,
+      channelMessagesLoading,
+      channelThreadNotificationItems.length,
+      channelThreadNotificationSummary?.read_model_status,
+      channelThreadPackageVisibility?.entitlement_result,
+    ]
+  );
   const challengeDaysLeft =
     challengeSelected?.bucket === 'active' && challengeSelected?.endAtIso
       ? Math.max(0, Math.ceil((new Date(challengeSelected.endAtIso).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
@@ -5917,6 +6122,31 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     [openCoachingNotificationTarget]
   );
 
+  const renderRuntimeStateBanner = useCallback((model: RuntimeSurfaceStateModel, opts?: { compact?: boolean }) => {
+    const toneStyle =
+      model.state === 'ready'
+        ? styles.runtimeStateBannerReady
+        : model.state === 'loading'
+          ? styles.runtimeStateBannerLoading
+          : model.state === 'empty'
+            ? styles.runtimeStateBannerEmpty
+            : model.state === 'permission_denied'
+              ? styles.runtimeStateBannerDenied
+              : model.state === 'partial_read_model'
+                ? styles.runtimeStateBannerPartial
+                : styles.runtimeStateBannerError;
+    return (
+      <View style={[styles.runtimeStateBanner, toneStyle, opts?.compact ? styles.runtimeStateBannerCompact : null]}>
+        <View style={styles.runtimeStateBannerTopRow}>
+          <Text style={styles.runtimeStateBannerTitle}>{model.title}</Text>
+          <Text style={styles.runtimeStateBannerStateText}>{model.state.replace(/_/g, ' ')}</Text>
+        </View>
+        <Text style={styles.runtimeStateBannerDetail}>{model.detail}</Text>
+        <Text style={styles.runtimeStateBannerTransition}>{model.transitionHint}</Text>
+      </View>
+    );
+  }, []);
+
   const renderCoachingPackageGateBanner = useCallback(
     (
       surfaceLabel: string,
@@ -6144,7 +6374,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       });
       const body = (await response.json().catch(() => ({}))) as CoachingJourneyListResponse;
       if (!response.ok) {
-        setCoachingJourneysError(String(body.error ?? `Journeys request failed (${response.status})`));
+        setCoachingJourneysError(
+          response.status === 403
+            ? 'Permission denied for coaching journeys in this scope (403).'
+            : String(body.error ?? `Journeys request failed (${response.status})`)
+        );
         setCoachingJourneys([]);
         setCoachingJourneysPackageVisibility(
           pickRuntimePackageVisibility(
@@ -6204,7 +6438,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       });
       const body = (await response.json().catch(() => ({}))) as CoachingProgressSummaryResponse;
       if (!response.ok) {
-        setCoachingProgressError(String(body.error ?? `Progress request failed (${response.status})`));
+        setCoachingProgressError(
+          response.status === 403
+            ? 'Permission denied for coaching progress in this scope (403).'
+            : String(body.error ?? `Progress request failed (${response.status})`)
+        );
         setCoachingProgressSummary(null);
         setCoachingProgressNotificationItems(normalizeRuntimeNotificationItems(body.notification_items, 'coaching_progress'));
         setCoachingProgressNotificationSummary(
@@ -6255,7 +6493,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         });
         const body = (await response.json().catch(() => ({}))) as CoachingJourneyDetailResponse;
         if (!response.ok) {
-          setCoachingJourneyDetailError(String(body.error ?? `Journey detail request failed (${response.status})`));
+          setCoachingJourneyDetailError(
+            response.status === 403
+              ? 'Permission denied for this journey detail in current scope (403).'
+              : String(body.error ?? `Journey detail request failed (${response.status})`)
+          );
           setCoachingJourneyDetail(null);
           return;
         }
@@ -6332,7 +6574,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       });
       const body = (await response.json().catch(() => ({}))) as ChannelsListResponse;
       if (!response.ok) {
-        setChannelsError(String(body.error ?? `Channels request failed (${response.status})`));
+        setChannelsError(
+          response.status === 403
+            ? 'Permission denied for channel visibility in this scope (403).'
+            : String(body.error ?? `Channels request failed (${response.status})`)
+        );
         setChannelsApiRows([]);
         setChannelsPackageVisibility(
           pickRuntimePackageVisibility(
@@ -6404,7 +6650,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         });
         const body = (await response.json().catch(() => ({}))) as ChannelMessagesResponse;
         if (!response.ok) {
-          setChannelMessagesError(String(body.error ?? `Channel messages request failed (${response.status})`));
+          setChannelMessagesError(
+            response.status === 403
+              ? 'Permission denied for this channel thread in current scope (403).'
+              : String(body.error ?? `Channel messages request failed (${response.status})`)
+          );
           setChannelMessages([]);
           setChannelThreadPackageVisibility(
             pickRuntimePackageVisibility(
@@ -6495,7 +6745,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         });
         const payload = (await response.json().catch(() => ({}))) as ChannelMessageWriteResponse;
         if (!response.ok) {
-          setChannelMessageSubmitError(String(payload.error ?? `Send failed (${response.status})`));
+          setChannelMessageSubmitError(
+            response.status === 403
+              ? 'Permission denied to send messages in this channel (403).'
+              : String(payload.error ?? `Send failed (${response.status})`)
+          );
           return;
         }
         setChannelMessageDraft('');
@@ -6539,7 +6793,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         });
         const payload = (await response.json().catch(() => ({}))) as ChannelBroadcastWriteResponse;
         if (!response.ok) {
-          setBroadcastError(String(payload.error ?? `Broadcast failed (${response.status})`));
+          setBroadcastError(
+            response.status === 403
+              ? 'Permission denied to broadcast in this channel (403).'
+              : String(payload.error ?? `Broadcast failed (${response.status})`)
+          );
           return;
         }
         setBroadcastDraft('');
@@ -7321,6 +7579,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <Text style={styles.coachingEntrySub}>
                       Manual-spec-driven comms entry wiring for challenge/sponsor updates plus coaching prompts. Challenge progress/results ownership stays on this screen.
                     </Text>
+                    {renderRuntimeStateBanner(challengeRuntimeStateModel, { compact: true })}
                     {renderCoachingPackageGateBanner('Challenge coaching and updates', challengeCoachingPackageOutcome, {
                       compact: true,
                     })}
@@ -7987,6 +8246,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         <Text style={styles.coachingEntrySub}>
                           Team Member coaching progress shell plus team updates channel entry routing (W2 comms entry point pass).
                         </Text>
+                        {renderRuntimeStateBanner(teamRuntimeStateModel, { compact: true })}
                         {renderCoachingPackageGateBanner('Team member coaching module', null, { compact: true })}
                         {renderCoachingNotificationSurface(
                           'Team coaching notifications',
@@ -8243,6 +8503,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <Text style={styles.coachingEntrySub}>
                         Leader coaching summary with team updates channel entry and role-gated broadcast composer entry. Broadcast send/write remains deferred pending API wiring.
                       </Text>
+                      {renderRuntimeStateBanner(teamRuntimeStateModel, { compact: true })}
                       {renderCoachingPackageGateBanner('Team leader coaching module', null, { compact: true })}
                       {renderCoachingNotificationSurface(
                         'Team coaching notifications',
@@ -8599,6 +8860,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           }
                         )
                       : null}
+                    {coachingShellScreen === 'inbox' || coachingShellScreen === 'inbox_channels'
+                      ? renderRuntimeStateBanner(inboxRuntimeStateModel, { compact: true })
+                      : null}
                     {coachingShellScreen === 'inbox' ||
                     coachingShellScreen === 'inbox_channels' ||
                     coachingShellScreen === 'channel_thread'
@@ -8732,6 +8996,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
                     {coachingShellScreen === 'channel_thread' ? (
                       <View style={styles.coachingShellComposeCard}>
+                        {renderRuntimeStateBanner(channelThreadRuntimeStateModel, { compact: true })}
                         <Text style={styles.coachingShellComposeTitle}>
                           {selectedChannelResolvedName ?? contextualThreadTitle}
                         </Text>
@@ -8960,6 +9225,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
                     {coachingShellScreen === 'coaching_journeys' ? (
                       <View style={styles.coachingJourneyModule}>
+                        {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
                         {renderCoachingNotificationSurface(
                           'Coaching journey notifications',
                           journeysNotificationRows,
@@ -9108,6 +9374,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
                     {coachingShellScreen === 'coaching_journey_detail' ? (
                       <View style={styles.coachingJourneyModule}>
+                        {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
                         {renderCoachingNotificationSurface(
                           'Journey detail notifications',
                           journeysNotificationRows,
@@ -9257,6 +9524,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     ) : null}
                     {coachingShellScreen === 'coaching_lesson_detail' ? (
                       <View style={styles.coachingJourneyModule}>
+                        {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
                         {renderCoachingNotificationSurface(
                           'W7 runtime visibility',
                           journeysRuntimeVisibilityRows,
@@ -9526,6 +9794,29 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               <Text style={styles.coachingEntrySub}>
                 Placeholder Home / Priority coaching entry. KPI logging behavior remains unchanged; this only reserves CTA placement and route shell intent.
               </Text>
+              {renderRuntimeStateBanner(homeRuntimeStateModel, { compact: true })}
+              {__DEV__ ? (
+                <View style={styles.coachingStateEvidenceCard}>
+                  <Text style={styles.coachingStateEvidenceTitle}>W8 Runtime State Evidence (Dev)</Text>
+                  {([
+                    deriveRuntimeSurfaceStateModel({ surfaceLabel: 'Evidence', loading: true }),
+                    deriveRuntimeSurfaceStateModel({ surfaceLabel: 'Evidence', hasRows: false }),
+                    deriveRuntimeSurfaceStateModel({
+                      surfaceLabel: 'Evidence',
+                      errorText: 'Synthetic fetch failure for evidence capture.',
+                    }),
+                    deriveRuntimeSurfaceStateModel({ surfaceLabel: 'Evidence', gateTone: 'blocked' }),
+                    deriveRuntimeSurfaceStateModel({
+                      surfaceLabel: 'Evidence',
+                      hasRows: true,
+                      readModelStatus: 'partial_inferred',
+                    }),
+                    deriveRuntimeSurfaceStateModel({ surfaceLabel: 'Evidence', hasRows: true }),
+                  ] as RuntimeSurfaceStateModel[]).map((model) => (
+                    <View key={`w8-evidence-${model.state}`}>{renderRuntimeStateBanner(model, { compact: true })}</View>
+                  ))}
+                </View>
+              ) : null}
               {renderCoachingPackageGateBanner('Home / Priority coaching nudge', null, { compact: true })}
               {renderCoachingNotificationSurface(
                 'Coaching notifications',
@@ -9854,6 +10145,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           </>
         )}
       </ScrollView>
+
+      {__DEV__ && activeTab === 'home' && viewMode === 'home' ? (
+        <View style={styles.runtimeStateEvidenceOverlay}>
+          <Text style={styles.runtimeStateEvidenceOverlayTitle}>W8 State Evidence</Text>
+          {(['loading', 'empty', 'error', 'permission_denied', 'partial_read_model', 'ready'] as RuntimeSurfaceState[]).map(
+            (state) => (
+              <Text key={`runtime-evidence-chip-${state}`} style={styles.runtimeStateEvidenceOverlayChip}>
+                {state.replace(/_/g, ' ')}
+              </Text>
+            )
+          )}
+        </View>
+      ) : null}
 
       {activeFlightFx.map((flightFx) => (
         <React.Fragment key={flightFx.key}>
@@ -13063,6 +13367,99 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
   },
+  runtimeStateBanner: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+  },
+  runtimeStateBannerCompact: {
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  runtimeStateBannerReady: {
+    backgroundColor: '#eefaf1',
+    borderColor: '#c7ead0',
+  },
+  runtimeStateBannerLoading: {
+    backgroundColor: '#eef4ff',
+    borderColor: '#cdddf8',
+  },
+  runtimeStateBannerEmpty: {
+    backgroundColor: '#f6f8fc',
+    borderColor: '#dbe2ec',
+  },
+  runtimeStateBannerError: {
+    backgroundColor: '#fff2f2',
+    borderColor: '#efc9c9',
+  },
+  runtimeStateBannerDenied: {
+    backgroundColor: '#fff7e8',
+    borderColor: '#edd398',
+  },
+  runtimeStateBannerPartial: {
+    backgroundColor: '#f4f1ff',
+    borderColor: '#ddd5ff',
+  },
+  runtimeStateBannerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  runtimeStateBannerTitle: {
+    color: '#2f3d52',
+    fontSize: 10,
+    fontWeight: '800',
+    flex: 1,
+  },
+  runtimeStateBannerStateText: {
+    color: '#607089',
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  runtimeStateBannerDetail: {
+    color: '#5f6f86',
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  runtimeStateBannerTransition: {
+    color: '#71829a',
+    fontSize: 9,
+    lineHeight: 12,
+  },
+  runtimeStateEvidenceOverlay: {
+    position: 'absolute',
+    top: 96,
+    right: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dce5f2',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    gap: 3,
+    zIndex: 20,
+    shadowColor: '#1d2c44',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  runtimeStateEvidenceOverlayTitle: {
+    color: '#324663',
+    fontSize: 9,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+  runtimeStateEvidenceOverlayChip: {
+    color: '#4f5f75',
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'lowercase',
+  },
   coachingNotificationCard: {
     borderRadius: 10,
     borderWidth: 1,
@@ -13657,6 +14054,20 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '800',
+  },
+  coachingStateEvidenceCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dce4f1',
+    backgroundColor: '#f8fbff',
+    padding: 8,
+    gap: 6,
+  },
+  coachingStateEvidenceTitle: {
+    color: '#384b67',
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
   },
   coachingShellList: {
     gap: 8,
