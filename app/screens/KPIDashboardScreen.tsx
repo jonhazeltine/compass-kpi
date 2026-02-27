@@ -8721,21 +8721,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   title: 'Inbox',
                   sub: 'Review coaching updates and next actions.',
                   badge: 'communication',
-                  primary: [
-                    { label: 'Open Channels', to: 'inbox_channels' },
-                    { label: 'Coaching Journeys', to: 'coaching_journeys' },
-                  ],
+                  primary: [{ label: 'Open Channels', to: 'inbox_channels' }],
                 },
                 inbox_channels: {
                   title: 'Inbox / Channels',
                   sub: contextualChannelSub,
                   badge: 'communication',
-                  primary: [
-                    {
-                      label: preferredChannelScope ? `Open ${coachingShellContext.preferredChannelLabel ?? 'Context'} Thread` : 'Open Channel Thread',
-                      to: 'channel_thread',
-                    },
-                  ],
                 },
                 channel_thread: {
                   title: contextualThreadTitle,
@@ -8928,14 +8919,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       placeholderTextColor="#9aa3b0"
                       style={styles.coachingShellSearchInput}
                     />
-                    <View style={styles.coachingShellActionRow}>
-                      <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('coaching_journeys')}>
-                        <Text style={styles.coachingShellActionBtnText}>Journeys</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.coachingShellActionBtn} onPress={() => openCoachingShell('channel_thread')}>
-                        <Text style={styles.coachingShellActionBtnText}>Open Thread</Text>
-                      </TouchableOpacity>
-                    </View>
                     <Text style={styles.coachingShellSub}>Current: {meta.title} · {meta.sub}</Text>
                     {renderCoachingPackageGateBanner(meta.title, shellPackageOutcome, { compact: true })}
                     {shellPackageGateBlocksActions ? (
@@ -8970,17 +8953,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       : null}
                     {coachingShellScreen === 'inbox_channels' ? (
                       <View style={styles.coachingShellList}>
-                        {renderCoachingNotificationSurface(
-                          'Channel notification rows',
-                          fallbackChannelsNotificationRows,
-                          channelsNotificationSummary ?? summarizeNotificationRows(fallbackChannelsNotificationRows, { sourceLabel: 'channels:effective' }),
-                          {
-                            compact: true,
-                            maxRows: 3,
-                            mode: 'list',
-                            emptyHint: 'No channel notification rows yet.',
-                          }
-                        )}
+                        {(fallbackChannelsNotificationRows.length > 0 ||
+                          Number(channelsNotificationSummary?.total_count ?? 0) > 0 ||
+                          Number(channelsNotificationSummary?.unread_count ?? 0) > 0)
+                          ? renderCoachingNotificationSurface(
+                              'Channel notification rows',
+                              fallbackChannelsNotificationRows,
+                              channelsNotificationSummary ??
+                                summarizeNotificationRows(fallbackChannelsNotificationRows, { sourceLabel: 'channels:effective' }),
+                              {
+                                compact: true,
+                                maxRows: 3,
+                                mode: 'list',
+                                emptyHint: 'No channel notification rows yet.',
+                              }
+                            )
+                          : null}
                         {channelsLoading ? (
                           <View style={styles.coachingJourneyEmptyCard}>
                             <ActivityIndicator size="small" />
