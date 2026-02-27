@@ -247,6 +247,29 @@ type TeamFlowScreen =
   | 'kpi_settings'
   | 'pipeline'
   | 'team_challenges';
+type TeamLogContextSource = 'team_leader_member_detail';
+type TeamLogContext = {
+  member_id: string;
+  member_name: string;
+  kpi_id: string;
+  source: TeamLogContextSource;
+};
+type TeamDirectoryMember = {
+  id: string;
+  name: string;
+  metric: string;
+  sub: string;
+  roleLabel: string;
+  avatarTone: string;
+  email: string;
+  phone: string;
+  coachingGoals: string[];
+  kpiGoals: string[];
+  cohorts: string[];
+  journeys: string[];
+  onboardingKpiGoals?: Partial<Record<'PC' | 'GP' | 'VP', number>>;
+  profileKpiGoals?: Partial<Record<'PC' | 'GP' | 'VP', number>>;
+};
 type CoachingShellScreen =
   | 'inbox'
   | 'inbox_channels'
@@ -2170,8 +2193,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [teamFocusSelectedKpiIds, setTeamFocusSelectedKpiIds] = useState<string[]>([]);
   const [teamFocusEditorOpen, setTeamFocusEditorOpen] = useState(false);
   const [teamProfileMemberId, setTeamProfileMemberId] = useState<string | null>(null);
-  const [teamLeaderKpiDetailMemberId, setTeamLeaderKpiDetailMemberId] = useState<string | null>(null);
-  const [teamLogContextKpiId, setTeamLogContextKpiId] = useState<string | null>(null);
+  const [teamLogContext, setTeamLogContext] = useState<TeamLogContext | null>(null);
   const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox');
   const [commsHubPrimaryTab, setCommsHubPrimaryTab] = useState<CommsHubPrimaryTab>('all');
   const [commsHubScopeFilter, setCommsHubScopeFilter] = useState<CommsHubScopeFilter>('all');
@@ -4586,11 +4608,27 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   );
 
   const handoffTeamKpiToLog = useCallback(
-    (kpi: DashboardPayload['loggable_kpis'][number]) => {
+    (
+      kpi: DashboardPayload['loggable_kpis'][number],
+      options?: {
+        memberId?: string;
+        memberName?: string;
+        source?: TeamLogContextSource;
+      }
+    ) => {
       const kpiId = String(kpi.id ?? '');
       if (!kpiId) return;
       ensureManagedKpiForLog(kpiId);
-      setTeamLogContextKpiId(kpiId);
+      if (options?.memberId && options?.memberName && options?.source) {
+        setTeamLogContext({
+          member_id: options.memberId,
+          member_name: options.memberName,
+          kpi_id: kpiId,
+          source: options.source,
+        });
+      } else {
+        setTeamLogContext(null);
+      }
       setSegment(kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP' ? kpi.type : 'PC');
       setActiveTab('logs');
       setViewMode('log');
@@ -5393,6 +5431,59 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         challengeMemberListTab === 'all' ? true : item.bucket === 'completed'
       ),
     [challengeListItems, challengeMemberListTab]
+  );
+  const teamMemberDirectory = useMemo<TeamDirectoryMember[]>(
+    () => [
+      {
+        id: 'member-sarah-johnson',
+        name: 'Sarah Johnson',
+        metric: '98%',
+        sub: '8 KPIs logged',
+        roleLabel: 'Team Lead',
+        avatarTone: '#e8dfcc',
+        email: 'sarah@company.com',
+        phone: '(616) 555-0139',
+        coachingGoals: ['Lead weekly role-play session', 'Coach 2 listing scripts this week'],
+        kpiGoals: ['PC: 12 appointments', 'GP: 8 nurture touches', 'VP: 5 follow-up reviews'],
+        cohorts: ['Q1 Acceleration Cohort'],
+        journeys: ['Listing Mastery Sprint'],
+        onboardingKpiGoals: { PC: 82, GP: 78, VP: 74 },
+        profileKpiGoals: { PC: 88, GP: 84, VP: 80 },
+      },
+      {
+        id: 'member-alex-rodriguez',
+        name: 'Alex Rodriguez',
+        metric: '92%',
+        sub: '8 KPIs logged',
+        roleLabel: 'Member',
+        avatarTone: '#f1cb66',
+        email: 'alex@company.com',
+        phone: '(616) 555-0144',
+        coachingGoals: ['Finish objection handling lesson', 'Post 3 accountability updates'],
+        kpiGoals: ['PC: 9 appointments', 'GP: 12 prospecting calls', 'VP: 4 open house follow-ups'],
+        cohorts: ['Q1 Acceleration Cohort'],
+        journeys: ['Prospecting Fundamentals'],
+        onboardingKpiGoals: { PC: 76, GP: 74 },
+        profileKpiGoals: { PC: 83, GP: 81, VP: 78 },
+      },
+      {
+        id: 'member-james-mateo',
+        name: 'James Mateo',
+        metric: '90%',
+        sub: 'sarah@company.com',
+        roleLabel: 'Team Lead',
+        avatarTone: '#dfc2a4',
+        email: 'james@company.com',
+        phone: '(616) 555-0191',
+        coachingGoals: ['Run pipeline checkpoint', 'Complete sponsor channel recap'],
+        kpiGoals: ['PC: 7 closings', 'GP: 10 nurture touches', 'VP: 6 reactivation outreaches'],
+        cohorts: ['Listing Ops Cohort'],
+        journeys: ['Pipeline Confidence Builder'],
+        onboardingKpiGoals: { PC: 74, VP: 70 },
+        profileKpiGoals: { PC: 81, GP: 79, VP: 76 },
+      },
+    ],
+    []
   );
   const challengeSelected =
     challengeListItems.find((item) => item.id === challengeSelectedId) ?? challengeListItems[0];
@@ -6915,9 +7006,45 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('') || 'U';
-  const teamLogContextKpi = teamLogContextKpiId
-    ? allSelectableKpis.find((row) => String(row.id) === String(teamLogContextKpiId)) ?? null
+  const teamLogContextKpi = teamLogContext?.kpi_id
+    ? allSelectableKpis.find((row) => String(row.id) === String(teamLogContext.kpi_id)) ?? null
     : null;
+  const teamLogContextMember = teamLogContext
+    ? teamMemberDirectory.find((row) => row.id === teamLogContext.member_id) ?? null
+    : null;
+  const teamLogContextKpiType =
+    teamLogContextKpi && (teamLogContextKpi.type === 'PC' || teamLogContextKpi.type === 'GP' || teamLogContextKpi.type === 'VP')
+      ? teamLogContextKpi.type
+      : null;
+  const parseMemberMetricPercent = (value: string | null | undefined) => {
+    const parsed = Number(String(value ?? '').replace('%', '').trim());
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : null;
+  };
+  const teamLogActualPercent = parseMemberMetricPercent(teamLogContextMember?.metric);
+  const onboardingGoal =
+    teamLogContextMember && teamLogContextKpiType ? teamLogContextMember.onboardingKpiGoals?.[teamLogContextKpiType] ?? null : null;
+  const profileGoal =
+    teamLogContextMember && teamLogContextKpiType ? teamLogContextMember.profileKpiGoals?.[teamLogContextKpiType] ?? null : null;
+  const teamLogGoalValue = onboardingGoal ?? profileGoal ?? null;
+  const teamLogGoalSourceLabel = onboardingGoal != null ? 'onboarding goal' : profileGoal != null ? 'profile goal' : 'fallback target';
+  const sevenDayCutoffMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const teamLogLast7Rows =
+    teamLogContextKpi == null
+      ? []
+      : recentLogEntries.filter((row) => {
+          if (String(row.kpi_id) !== String(teamLogContextKpi.id)) return false;
+          const timestamp = new Date(row.event_timestamp).getTime();
+          return Number.isFinite(timestamp) && timestamp >= sevenDayCutoffMs;
+        });
+  const teamLogLast7Summary = {
+    count: teamLogLast7Rows.length,
+    points: teamLogLast7Rows.reduce((sum, row) => sum + Math.max(0, Number(row.points_generated ?? 0)), 0),
+  };
+  const teamLogPeriodLabel = selectedLogDate === isoTodayLocal() ? 'Today' : formatLogDateHeading(selectedLogDate);
+  const teamLogProgressRatio =
+    teamLogActualPercent != null && teamLogGoalValue != null && teamLogGoalValue > 0
+      ? Math.max(0, Math.min(1, teamLogActualPercent / teamLogGoalValue))
+      : null;
 
   return (
     <View
@@ -7817,50 +7944,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 },
               };
 
-              const teamMembers = [
-                {
-                  id: 'member-sarah-johnson',
-                  name: 'Sarah Johnson',
-                  metric: '98%',
-                  sub: '8 KPIs logged',
-                  roleLabel: 'Team Lead',
-                  avatarTone: '#e8dfcc',
-                  email: 'sarah@company.com',
-                  phone: '(616) 555-0139',
-                  coachingGoals: ['Lead weekly role-play session', 'Coach 2 listing scripts this week'],
-                  kpiGoals: ['PC: 12 appointments', 'GP: 8 nurture touches', 'VP: 5 follow-up reviews'],
-                  cohorts: ['Q1 Acceleration Cohort'],
-                  journeys: ['Listing Mastery Sprint'],
-                },
-                {
-                  id: 'member-alex-rodriguez',
-                  name: 'Alex Rodriguez',
-                  metric: '92%',
-                  sub: '8 KPIs logged',
-                  roleLabel: 'Member',
-                  avatarTone: '#f1cb66',
-                  email: 'alex@company.com',
-                  phone: '(616) 555-0144',
-                  coachingGoals: ['Finish objection handling lesson', 'Post 3 accountability updates'],
-                  kpiGoals: ['PC: 9 appointments', 'GP: 12 prospecting calls', 'VP: 4 open house follow-ups'],
-                  cohorts: ['Q1 Acceleration Cohort'],
-                  journeys: ['Prospecting Fundamentals'],
-                },
-                {
-                  id: 'member-james-mateo',
-                  name: 'James Mateo',
-                  metric: '90%',
-                  sub: 'sarah@company.com',
-                  roleLabel: 'Team Lead',
-                  avatarTone: '#dfc2a4',
-                  email: 'james@company.com',
-                  phone: '(616) 555-0191',
-                  coachingGoals: ['Run pipeline checkpoint', 'Complete sponsor channel recap'],
-                  kpiGoals: ['PC: 7 closings', 'GP: 10 nurture touches', 'VP: 6 reactivation outreaches'],
-                  cohorts: ['Listing Ops Cohort'],
-                  journeys: ['Pipeline Confidence Builder'],
-                },
-              ] as const;
+              const teamMembers = teamMemberDirectory;
 
               const teamInviteHistory = [
                 { name: 'Sarah Johnson', status: 'Pending', statusTone: 'pending', action: 'send' },
@@ -7966,7 +8050,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 };
               });
               const selectedTeamProfile = teamMembers.find((row) => row.id === teamProfileMemberId) ?? null;
-              const selectedTeamLeaderDetail = teamLeaderRows.find((row) => row.id === teamLeaderKpiDetailMemberId) ?? null;
               const openTeamDirectThread = (member: (typeof teamMembers)[number], source: CoachingShellEntrySource) => {
                 openCoachingShell('channel_thread', {
                   source,
@@ -8563,21 +8646,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           ) : null}
                         </View>
                       ) : null}
-                      {selectedTeamLeaderDetail ? (
-                        <View style={styles.teamLeaderKpiDetailCard}>
-                          <View style={styles.teamMemberChallengeTopRow}>
-                            <Text style={styles.teamMemberChallengeLabel}>KPI Performance Detail</Text>
-                            <TouchableOpacity onPress={() => setTeamLeaderKpiDetailMemberId(null)}>
-                              <Text style={styles.teamMemberChallengeLink}>Close</Text>
-                            </TouchableOpacity>
-                          </View>
-                          <Text style={styles.teamPersonProfileName}>{selectedTeamLeaderDetail.name}</Text>
-                          <Text style={styles.teamLeaderExpandedKpiRow}>
-                            Current: PC {selectedTeamLeaderDetail.kpis.PC}% • GP {selectedTeamLeaderDetail.kpis.GP}% • VP {selectedTeamLeaderDetail.kpis.VP}%
-                          </Text>
-                        </View>
-                      ) : null}
-
                       <View style={styles.teamLeaderExpandableList}>
                         {teamLeaderRows.map((row) => {
                           const isExpanded = teamLeaderExpandedMemberId === row.id;
@@ -8600,7 +8668,20 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                   style={styles.teamParityMemberCopy}
-                                  onPress={() => setTeamLeaderKpiDetailMemberId(row.id)}
+                                  onPress={() => {
+                                    const preferredKpiId =
+                                      row.memberSelectedCandidateIds.find((id) => selectableById.has(id)) ??
+                                      teamMandatedKpiIdsOrdered.find((id) => selectableById.has(id)) ??
+                                      null;
+                                    if (!preferredKpiId) return;
+                                    const preferredKpi = selectableById.get(preferredKpiId);
+                                    if (!preferredKpi) return;
+                                    handoffTeamKpiToLog(preferredKpi, {
+                                      memberId: row.id,
+                                      memberName: row.name,
+                                      source: 'team_leader_member_detail',
+                                    });
+                                  }}
                                 >
                                   <Text style={styles.teamParityMemberName}>{row.name}</Text>
                                   <Text style={styles.teamParityMemberSub}>{row.sub}</Text>
@@ -8672,7 +8753,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                                   <TouchableOpacity
                                                     key={`${row.id}-${blockLabel}-${kpiId}`}
                                                     style={styles.teamLeaderKpiSelectionRow}
-                                                    onPress={() => handoffTeamKpiToLog(kpi)}
+                                                    onPress={() =>
+                                                      handoffTeamKpiToLog(kpi, {
+                                                        memberId: row.id,
+                                                        memberName: row.name,
+                                                        source: 'team_leader_member_detail',
+                                                      })
+                                                    }
                                                   >
                                                     <View style={styles.teamLeaderKpiSelectionRowCopy}>
                                                       <Text style={styles.teamLeaderKpiSelectionName}>{kpi.name}</Text>
@@ -10218,7 +10305,36 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             {teamLogContextKpi ? (
               <View style={styles.teamLogContextBanner}>
                 <Text style={styles.teamLogContextBannerEyebrow}>Team handoff</Text>
-                <Text style={styles.teamLogContextBannerText}>👥 {teamLogContextKpi.name} selected from Team Leader view</Text>
+                <Text style={styles.teamLogContextBannerText}>
+                  👥 {teamLogContextMember?.name ?? teamLogContext?.member_name ?? 'Member'} • {teamLogContextKpi.name} • {teamLogPeriodLabel}
+                </Text>
+                <Text style={styles.teamLogContextBannerMeta}>
+                  source={teamLogContext?.source ?? 'team_leader_member_detail'} • member_id={teamLogContext?.member_id ?? 'n/a'} • kpi_id={teamLogContextKpi.id}
+                </Text>
+                {teamLogGoalValue != null && teamLogProgressRatio != null ? (
+                  <View style={styles.teamLogProgressCard}>
+                    <View style={styles.teamLogProgressTopRow}>
+                      <Text style={styles.teamLogProgressTitle}>KPI progress context</Text>
+                      <Text style={styles.teamLogProgressValue}>
+                        {fmtNum(teamLogActualPercent ?? 0)} / {fmtNum(teamLogGoalValue)}
+                      </Text>
+                    </View>
+                    <View style={styles.teamLogProgressTrack}>
+                      <View style={[styles.teamLogProgressFill, { width: `${Math.round(teamLogProgressRatio * 100)}%` }]} />
+                    </View>
+                    <Text style={styles.teamLogProgressMeta}>
+                      Using {teamLogGoalSourceLabel}. {Math.round(teamLogProgressRatio * 100)}% of goal.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.teamLogFallbackCard}>
+                    <Text style={styles.teamLogFallbackTitle}>7-day KPI summary fallback</Text>
+                    <Text style={styles.teamLogFallbackMeta}>
+                      {fmtNum(teamLogLast7Summary.count)} logs • {fmtNum(teamLogLast7Summary.points)} points (last 7 days)
+                    </Text>
+                    <Text style={styles.teamLogFallbackMeta}>Fallback target: set in onboarding/profile to unlock progress meter.</Text>
+                  </View>
+                )}
               </View>
             ) : null}
             <View style={styles.activityDateCard}>
@@ -10372,7 +10488,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 <View style={styles.gridWrap}>
                   {quickLogKpis.map((kpi) => {
                     const successAnim = getKpiTileSuccessAnim(kpi.id);
-                    const isTeamContextTarget = teamLogContextKpiId === String(kpi.id);
+                    const isTeamContextTarget = teamLogContext?.kpi_id === String(kpi.id);
                     const successOpacity = successAnim.interpolate({
                       inputRange: [0, 0.12, 1],
                       outputRange: [0, 1, 0],
@@ -16644,6 +16760,77 @@ const styles = StyleSheet.create({
     color: '#2f4779',
     fontSize: 12,
     fontWeight: '700',
+  },
+  teamLogContextBannerMeta: {
+    color: '#4f628c',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  teamLogProgressCard: {
+    marginTop: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cfe1ff',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  teamLogProgressTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  teamLogProgressTitle: {
+    color: '#334872',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  teamLogProgressValue: {
+    color: '#2f4779',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamLogProgressTrack: {
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: '#e8efff',
+    overflow: 'hidden',
+  },
+  teamLogProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#2f7dff',
+  },
+  teamLogProgressMeta: {
+    color: '#4f628c',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  teamLogFallbackCard: {
+    marginTop: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d8e2f2',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 3,
+  },
+  teamLogFallbackTitle: {
+    color: '#334872',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  teamLogFallbackMeta: {
+    color: '#4f628c',
+    fontSize: 11,
+    fontWeight: '600',
   },
   logsReportsSwitchBtn: {
     flex: 1,
