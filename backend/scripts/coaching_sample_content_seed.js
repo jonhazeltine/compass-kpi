@@ -292,7 +292,7 @@ async function main() {
 
     await db.query(
       `insert into public.users (id, role)
-       values ($1,'admin'), ($2,'agent'), ($3,'agent'), ($4,'agent'), ($5,'agent')
+       values ($1,'admin'), ($2,'team_leader'), ($3,'agent'), ($4,'agent'), ($5,'agent')
        on conflict (id) do update set role = excluded.role`,
       [ids.coachUserId, ids.leaderUserId, ids.memberUserId, ids.soloUserId, ids.sponsorUserId]
     );

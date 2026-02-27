@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { createClient } from '@supabase/supabase-js';
+import { Platform } from 'react-native';
 
 const extra = Constants.expoConfig?.extra ?? {};
 const supabaseUrl = extra.supabaseUrl ?? process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -38,6 +39,8 @@ const resolveApiUrl = (): string => {
   const usesLocalhost =
     raw.includes('://localhost:') || raw.includes('://127.0.0.1:') || raw.startsWith('http://localhost') || raw.startsWith('http://127.0.0.1');
   if (!usesLocalhost) return raw;
+  // iOS simulator can reach host services on localhost directly; do not rewrite to LAN IP.
+  if (Platform.OS === 'ios') return raw;
   const expoHostIp = getExpoHostIp();
   if (!expoHostIp) return raw;
   return raw.replace('://localhost', `://${expoHostIp}`).replace('://127.0.0.1', `://${expoHostIp}`);

@@ -165,7 +165,7 @@ type TeamKpiGroups = {
   VP: DashboardPayload['loggable_kpis'];
 };
 type TeamLeaderKpiStatusFilter = 'all' | 'on_track' | 'watch' | 'at_risk';
-type TeamLeaderKpiSortOrder = 'pc_gp_vp' | 'gp_vp_pc' | 'vp_pc_gp';
+type TeamFocusEditorFilter = 'PC' | 'GP' | 'VP';
 type ChallengeApiLeaderboardRow = {
   user_id: string;
   activity_count: number;
@@ -1868,6 +1868,33 @@ function groupChallengeKpisByType(kpis: DashboardPayload['loggable_kpis']): Chal
   return grouped;
 }
 
+function deriveChallengeScopedKpis(
+  challenge: ChallengeFlowItem | null | undefined,
+  kpis: DashboardPayload['loggable_kpis']
+): DashboardPayload['loggable_kpis'] {
+  const base = dedupeKpisById(kpis).filter((kpi) => kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP');
+  if (!challenge || base.length <= 8) return base;
+  const tokenSource = `${challenge.title} ${challenge.subtitle} ${challenge.challengeModeLabel}`.toLowerCase();
+  const tokens = Array.from(
+    new Set(
+      tokenSource
+        .split(/[^a-z0-9]+/g)
+        .map((t) => t.trim())
+        .filter((t) => t.length >= 4)
+    )
+  );
+  const scored = base
+    .map((kpi, idx) => {
+      const name = String(kpi.name ?? '').toLowerCase();
+      const score = tokens.reduce((sum, token) => (name.includes(token) ? sum + 1 : sum), 0);
+      return { kpi, score, idx };
+    })
+    .sort((a, b) => (b.score !== a.score ? b.score - a.score : a.idx - b.idx));
+  const withMatches = scored.filter((row) => row.score > 0).map((row) => row.kpi);
+  const fallback = scored.map((row) => row.kpi);
+  return (withMatches.length > 0 ? withMatches : fallback).slice(0, 8);
+}
+
 function deriveTeamSurfaceKpis(params: {
   managedKpis: DashboardPayload['loggable_kpis'];
   favoriteKpiIds: string[];
@@ -2191,9 +2218,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [challengeMemberCreateMode, setChallengeMemberCreateMode] = useState<'public' | 'team'>('team');
   const [teamFlowScreen, setTeamFlowScreen] = useState<TeamFlowScreen>('dashboard');
   const [teamLeaderExpandedMemberId, setTeamLeaderExpandedMemberId] = useState<string | null>(null);
-  const [teamLeaderKpiSortOrder, setTeamLeaderKpiSortOrder] = useState<TeamLeaderKpiSortOrder>('pc_gp_vp');
   const [teamFocusSelectedKpiIds, setTeamFocusSelectedKpiIds] = useState<string[]>([]);
   const [teamFocusEditorOpen, setTeamFocusEditorOpen] = useState(false);
+  const [teamFocusEditorFilter, setTeamFocusEditorFilter] = useState<TeamFocusEditorFilter>('PC');
   const [teamProfileMemberId, setTeamProfileMemberId] = useState<string | null>(null);
   const [teamLogContext, setTeamLogContext] = useState<TeamLogContext | null>(null);
   const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox');
@@ -5525,6 +5552,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   );
   const challengeSelected =
     challengeListItems.find((item) => item.id === challengeSelectedId) ?? challengeListItems[0];
+  const challengeScopedKpis = useMemo(
+    () => deriveChallengeScopedKpis(challengeSelected, challengeSurfaceKpis),
+    [challengeSelected, challengeSurfaceKpis]
+  );
+  const challengeScopedKpiGroups = useMemo(
+    () => groupChallengeKpisByType(challengeScopedKpis),
+    [challengeScopedKpis]
+  );
   useEffect(() => {
     if (challengeStateRows[challengeStateTab].length > 0) return;
     if (challengeDefaultStateTab !== challengeStateTab) setChallengeStateTab(challengeDefaultStateTab);
@@ -7020,6 +7055,27 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     void fetchChannelMessages(selectedChannelId);
   }, [activeTab, coachingShellScreen, fetchChannelMessages, selectedChannelId]);
 
+  const forcedQuickLogIdsBySegment = useMemo(() => {
+    const bySegment: Record<Segment, string[]> = { PC: [], GP: [], VP: [] };
+    const addIds = (kpis: DashboardPayload['loggable_kpis']) => {
+      for (const kpi of kpis) {
+        if (kpi.type !== 'PC' && kpi.type !== 'GP' && kpi.type !== 'VP') continue;
+        const id = String(kpi.id);
+        if (!bySegment[kpi.type].includes(id)) bySegment[kpi.type].push(id);
+      }
+    };
+    addIds(teamSurfaceKpis.filter((kpi) => teamFocusSelectedKpiIds.includes(String(kpi.id))));
+    addIds(challengeScopedKpis);
+    return bySegment;
+  }, [challengeScopedKpis, teamFocusSelectedKpiIds, teamSurfaceKpis]);
+
+  const prioritizedQuickLogKpis = useMemo(() => {
+    const byId = new Map(managedKpis.map((kpi) => [String(kpi.id), kpi] as const));
+    const forced = forcedQuickLogIdsBySegment[segment].map((id) => byId.get(id)).filter(Boolean) as DashboardPayload['loggable_kpis'];
+    const rest = quickLogKpis.filter((kpi) => !forced.some((f) => String(f.id) === String(kpi.id)));
+    return [...forced, ...rest].slice(0, 6);
+  }, [forcedQuickLogIdsBySegment, managedKpis, quickLogKpis, segment]);
+
   if (state === 'loading') {
     return (
       <View style={styles.centered}>
@@ -7094,7 +7150,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     teamLogActualPercent != null && teamLogGoalValue != null && teamLogGoalValue > 0
       ? Math.max(0, Math.min(1, teamLogActualPercent / teamLogGoalValue))
       : null;
-
   return (
     <View
       ref={(node) => {
@@ -7126,6 +7181,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         </View>
         {activeTab === 'challenge' ? (
           <View style={styles.challengeSurfaceWrap}>
+            <View style={styles.teamChallengeTopTabsRow}>
+              <TouchableOpacity style={styles.teamChallengeTopTab} onPress={() => setActiveTab('team')}>
+                <Text style={styles.teamChallengeTopTabText}>Team</Text>
+              </TouchableOpacity>
+              <View style={[styles.teamChallengeTopTab, styles.teamChallengeTopTabActive]}>
+                <Text style={[styles.teamChallengeTopTabText, styles.teamChallengeTopTabTextActive]}>Challenges</Text>
+              </View>
+            </View>
             {challengeFlowScreen === 'list' ? (
               <>
                 <View style={styles.challengeListShell}>
@@ -8044,9 +8107,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         Log challenge-related KPIs below while keeping this screen focused on challenge details and progress.
                       </Text>
                     </View>
-                    {renderChallengeKpiSection('PC', 'Projections (PC)', challengeKpiGroups.PC)}
-                    {renderChallengeKpiSection('GP', 'Growth (GP)', challengeKpiGroups.GP)}
-                    {renderChallengeKpiSection('VP', 'Vitality (VP)', challengeKpiGroups.VP)}
+                    {renderChallengeKpiSection('PC', 'Projections (PC)', challengeScopedKpiGroups.PC)}
+                    {renderChallengeKpiSection('GP', 'Growth (GP)', challengeScopedKpiGroups.GP)}
+                    {renderChallengeKpiSection('VP', 'Vitality (VP)', challengeScopedKpiGroups.VP)}
                   </View>
                 )}
               </>
@@ -8054,6 +8117,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           </View>
         ) : activeTab === 'team' ? (
           <View style={styles.challengeSurfaceWrap}>
+            <View style={styles.teamChallengeTopTabsRow}>
+              <View style={[styles.teamChallengeTopTab, styles.teamChallengeTopTabActive]}>
+                <Text style={[styles.teamChallengeTopTabText, styles.teamChallengeTopTabTextActive]}>Team</Text>
+              </View>
+              <TouchableOpacity style={styles.teamChallengeTopTab} onPress={() => setActiveTab('challenge')}>
+                <Text style={styles.teamChallengeTopTabText}>Challenges</Text>
+              </TouchableOpacity>
+            </View>
             {(() => {
               const teamRouteMeta: Record<Exclude<TeamFlowScreen, 'dashboard'>, { title: string; figmaNode: string }> = {
                 invite_member: { title: 'Invite Member', figmaNode: '173-4448' },
@@ -8171,6 +8242,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   memberSelectedCandidateIds,
                 };
               });
+              const teamOverallProgressPct =
+                teamLeaderRows.length > 0
+                  ? Math.max(
+                      0,
+                      Math.min(
+                        100,
+                        Math.round(teamLeaderRows.reduce((sum, row) => sum + row.average, 0) / teamLeaderRows.length)
+                      )
+                    )
+                  : 0;
               const selectedTeamProfile = teamMembers.find((row) => row.id === teamProfileMemberId) ?? null;
               const openTeamDirectThread = (member: (typeof teamMembers)[number], source: CoachingShellEntrySource) => {
                 openCoachingShell('channel_thread', {
@@ -8188,32 +8269,92 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const teamLeaderConcernRows = teamLeaderRows
                 .flatMap((row) => row.concerns.map((concern) => ({ member: row.name, concern, critical: row.status === 'at_risk' })))
                 .slice(0, 6);
-              const teamLeaderSortOrderMap: Record<TeamLeaderKpiSortOrder, Segment[]> = {
-                pc_gp_vp: ['PC', 'GP', 'VP'],
-                gp_vp_pc: ['GP', 'VP', 'PC'],
-                vp_pc_gp: ['VP', 'PC', 'GP'],
-              };
-              const teamLeaderSortOrderLabelMap: Record<TeamLeaderKpiSortOrder, string> = {
-                pc_gp_vp: 'PC → GP → VP',
-                gp_vp_pc: 'GP → VP → PC',
-                vp_pc_gp: 'VP → PC → GP',
-              };
-              const cycleTeamLeaderSortOrder = () => {
-                setTeamLeaderKpiSortOrder((prev) =>
-                  prev === 'pc_gp_vp' ? 'gp_vp_pc' : prev === 'gp_vp_pc' ? 'vp_pc_gp' : 'pc_gp_vp'
-                );
-              };
+              const orderedKpiTypes: Segment[] = ['PC', 'GP', 'VP'];
 
               const teamLoggingBlock = (
                 <View style={styles.challengeSectionsWrap}>
-                  <View style={styles.challengeLoggingHeaderCard}>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    style={styles.challengeLoggingHeaderCard}
+                    onPress={() => {
+                      if (teamPersonaVariant === 'leader') setTeamFocusEditorOpen((prev) => !prev);
+                    }}
+                  >
                     <Text style={styles.challengeLoggingHeaderTitle}>Team Focus KPIs</Text>
                     <Text style={styles.challengeLoggingHeaderSub}>
-                      Selected focus KPIs only. Shared KPI logging mechanics stay unchanged.
+                      {teamPersonaVariant === 'leader'
+                        ? 'Tap header to edit Team Focus KPIs.'
+                        : 'Selected focus KPIs only. Shared KPI logging mechanics stay unchanged.'}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                   {teamPersonaVariant === 'member' ? (
                     <Text style={styles.teamFocusReadOnlyLabel}>Read-only focus KPIs</Text>
+                  ) : null}
+                  {teamPersonaVariant === 'leader' && teamFocusEditorOpen ? (
+                    <View style={styles.teamFocusEditorPanel}>
+                      <Text style={styles.teamFocusEditorTitle}>Edit Team Focus KPIs</Text>
+                      <View style={styles.teamFocusEditorFilterRow}>
+                        {([
+                          { key: 'PC', label: 'Projection' },
+                          { key: 'GP', label: 'Business' },
+                          { key: 'VP', label: 'Vitality' },
+                        ] as const).map((chip) => {
+                          const active = teamFocusEditorFilter === chip.key;
+                          return (
+                            <TouchableOpacity
+                              key={`team-focus-filter-${chip.key}`}
+                              style={[styles.teamFocusEditorFilterChip, active && styles.teamFocusEditorFilterChipActive]}
+                              onPress={() => setTeamFocusEditorFilter(chip.key)}
+                            >
+                              <Text
+                                style={[
+                                  styles.teamFocusEditorFilterChipText,
+                                  active && styles.teamFocusEditorFilterChipTextActive,
+                                ]}
+                              >
+                                {chip.label}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      {orderedKpiTypes
+                        .filter((typeKey) => typeKey === teamFocusEditorFilter)
+                        .map((typeKey) => {
+                          const rows = teamSurfaceKpis
+                            .filter((kpi) => kpi.type === typeKey)
+                            .slice()
+                            .sort((a, b) => a.name.localeCompare(b.name));
+                          if (rows.length === 0) return null;
+                          return (
+                            <View key={`team-focus-editor-group-${typeKey}`} style={styles.teamLeaderKpiTypeSection}>
+                              <Text style={styles.teamLeaderKpiTypeSectionTitle}>
+                                {typeKey === 'PC' ? 'Projection (PC)' : typeKey === 'GP' ? 'Business (GP)' : 'Vitality (VP)'}
+                              </Text>
+                              {rows.map((kpi) => {
+                                const kpiId = String(kpi.id);
+                                const selected = teamFocusSelectedKpiIds.includes(kpiId);
+                                return (
+                                  <TouchableOpacity
+                                    key={`team-focus-editor-${kpiId}`}
+                                    style={styles.teamFocusEditorRow}
+                                    onPress={() =>
+                                      setTeamFocusSelectedKpiIds((prev) =>
+                                        prev.includes(kpiId) ? prev.filter((id) => id !== kpiId) : [...prev, kpiId]
+                                      )
+                                    }
+                                  >
+                                    <Text style={styles.teamFocusEditorRowName}>{kpi.name}</Text>
+                                    <Text style={selected ? styles.teamFocusEditorSelectedText : styles.teamFocusEditorUnselectedText}>
+                                      {selected ? 'Selected' : 'Select'}
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                          );
+                        })}
+                    </View>
                   ) : null}
 
                   {teamTileCount === 0 ? (
@@ -8241,15 +8382,45 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       {teamFocusKpisForDisplay.length === 0 ? (
                         <Text style={styles.teamFocusSummaryEmpty}>No focus KPIs selected yet.</Text>
                       ) : (
-                        teamFocusKpisForDisplay.map((kpi) => (
-                          <View key={`team-focus-kpi-${kpi.id}`} style={styles.teamFocusSummaryRow}>
-                              <Text style={styles.teamFocusSummaryName}>{kpi.name}</Text>
-                              <Text style={styles.teamFocusSummaryValue}>
-                                {fmtNum(Number(kpi.vp_value ?? kpi.gp_value ?? kpi.pc_weight ?? 0))}
-                              </Text>
-                            </View>
-                          ))
+                        <>
+                          <View style={styles.teamFocusQuickLogRow}>
+                            {teamFocusKpisForDisplay.slice(0, 6).map((kpi) => (
+                              <TouchableOpacity
+                                key={`team-focus-kpi-quicklog-${kpi.id}`}
+                                style={styles.teamFocusQuickLogBtn}
+                                onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
+                              >
+                                <Text style={styles.teamFocusQuickLogBtnText} numberOfLines={1}>
+                                  {kpi.name}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                          {teamFocusKpisForDisplay.map((kpi) => (
+                            <View key={`team-focus-kpi-${kpi.id}`} style={styles.teamFocusSummaryRow}>
+                                <Text style={styles.teamFocusSummaryName}>{kpi.name}</Text>
+                                <Text style={styles.teamFocusSummaryValue}>
+                                  {fmtNum(Number(kpi.vp_value ?? kpi.gp_value ?? kpi.pc_weight ?? 0))}
+                                </Text>
+                              </View>
+                            ))}
+                        </>
                         )}
+                        <View style={styles.teamHealthMeterSummaryRow}>
+                          <View style={styles.teamHealthMeterTrack}>
+                            <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentRed]} />
+                            <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentOrange]} />
+                            <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentYellow]} />
+                            <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentGreen]} />
+                            <View
+                              style={[
+                                styles.teamHealthMeterRemainingMask,
+                                { left: `${Math.max(0, Math.min(100, teamOverallProgressPct))}%` },
+                              ]}
+                            />
+                          </View>
+                          <Text style={styles.teamHealthMeterSummaryText}>{teamOverallProgressPct}% overall team KPI progress</Text>
+                        </View>
                       </View>
                     </>
                   )}
@@ -8600,58 +8771,34 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </View>
 
                       <Text style={styles.teamMemberSectionLabel}>Team Members</Text>
-                      <View style={styles.teamMemberRowsCard}>
-                        {teamMembers.map((member, idx) => (
-                          <View key={member.id} style={[styles.teamMemberRow, idx > 0 && styles.teamParityDividerTop]}>
-                            <TouchableOpacity
-                              style={[styles.teamMemberRowAvatar, { backgroundColor: member.avatarTone }]}
-                              activeOpacity={0.9}
-                              onPress={() => setTeamProfileMemberId(member.id)}
-                            >
-                              <Text style={styles.teamMemberRowAvatarText}>
-                                {member.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}
-                              </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={styles.teamMemberRowCopy}
-                              activeOpacity={0.92}
-                              onPress={() => setTeamProfileMemberId(member.id)}
-                            >
-                              <Text style={styles.teamMemberRowName}>{member.name}</Text>
-                              <Text style={styles.teamMemberRowSub}>{member.roleLabel}</Text>
-                            </TouchableOpacity>
-                            <Text style={styles.teamMemberRowMenu}>Profile</Text>
+                      <View style={styles.teamLeaderExpandableList}>
+                        {teamLeaderRows.map((row) => (
+                          <View key={`member-card-${row.id}`} style={styles.teamLeaderMemberCard}>
+                            <View style={styles.teamLeaderMemberHeader}>
+                              <TouchableOpacity
+                                style={styles.teamParityMemberAvatar}
+                                onPress={() => setTeamProfileMemberId(row.id)}
+                              >
+                                <Text style={styles.teamParityMemberAvatarText}>
+                                  {row.name
+                                    .split(' ')
+                                    .map((part) => part[0])
+                                    .join('')
+                                    .slice(0, 2)
+                                    .toUpperCase()}
+                                </Text>
+                              </TouchableOpacity>
+                              <View style={styles.teamParityMemberCopy}>
+                                <Text style={styles.teamParityMemberName}>{row.name}</Text>
+                                <Text style={styles.teamParityMemberSub}>{row.sub}</Text>
+                              </View>
+                              <TouchableOpacity style={styles.teamProfileLinkBtn} onPress={() => setTeamProfileMemberId(row.id)}>
+                                <Text style={styles.teamProfileLinkBtnText}>Profile</Text>
+                              </TouchableOpacity>
+                            </View>
                           </View>
                         ))}
                       </View>
-                      {selectedTeamProfile ? (
-                        <View style={styles.teamPersonProfileCard}>
-                          <View style={styles.teamMemberChallengeTopRow}>
-                            <Text style={styles.teamMemberChallengeLabel}>Person Profile</Text>
-                            <TouchableOpacity onPress={() => setTeamProfileMemberId(null)}>
-                              <Text style={styles.teamMemberChallengeLink}>Close</Text>
-                            </TouchableOpacity>
-                          </View>
-                          <Text style={styles.teamPersonProfileName}>{selectedTeamProfile.name}</Text>
-                          <Text style={styles.teamPersonProfileRole}>{selectedTeamProfile.roleLabel}</Text>
-                          <Text style={styles.teamPersonProfileContact}>✉ {selectedTeamProfile.email} • ☎ {selectedTeamProfile.phone}</Text>
-                          <TouchableOpacity
-                            style={styles.teamPersonProfileDmBtn}
-                            onPress={() => openTeamDirectThread(selectedTeamProfile, 'team_member_dashboard')}
-                          >
-                            <Text style={styles.teamPersonProfileDmBtnText}>DM in Comms</Text>
-                          </TouchableOpacity>
-                          <Text style={styles.teamPersonProfileSection}>Coaching goals</Text>
-                          {selectedTeamProfile.coachingGoals.map((goal) => (
-                            <Text key={`${selectedTeamProfile.id}-member-goal-${goal}`} style={styles.teamPersonProfileBullet}>• {goal}</Text>
-                          ))}
-                          <Text style={styles.teamPersonProfileSection}>KPI goals</Text>
-                          {selectedTeamProfile.kpiGoals.map((goal) => (
-                            <Text key={`${selectedTeamProfile.id}-member-kpi-${goal}`} style={styles.teamPersonProfileBullet}>• {goal}</Text>
-                          ))}
-                        </View>
-                      ) : null}
-
                       <View style={styles.teamMemberFooterButtonsRow}>
                         <TouchableOpacity
                           style={[styles.teamMemberFooterBtn, styles.teamMemberFooterBtnPrimary]}
@@ -8690,88 +8837,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </TouchableOpacity>
                       </View>
 
-                      <View style={styles.teamLeaderSortRow}>
-                        <Text style={styles.teamLeaderSortLabel}>Expanded KPI order</Text>
-                        <View style={styles.teamLeaderSortActions}>
-                          <TouchableOpacity style={styles.teamLeaderSortToggleBtn} onPress={cycleTeamLeaderSortOrder}>
-                            <Text style={styles.teamLeaderSortToggleBtnText}>{teamLeaderSortOrderLabelMap[teamLeaderKpiSortOrder]}</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.teamLeaderSortToggleBtn}
-                            onPress={() => setTeamFocusEditorOpen((prev) => !prev)}
-                          >
-                            <Text style={styles.teamLeaderSortToggleBtnText}>
-                              {teamFocusEditorOpen ? 'Close Focus Editor' : 'Edit Team Focus KPIs'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                      {teamFocusEditorOpen ? (
-                        <View style={styles.teamFocusEditorPanel}>
-                          <Text style={styles.teamFocusEditorTitle}>Edit Team Focus KPIs</Text>
-                          {teamSurfaceKpis
-                            .slice()
-                            .sort((a, b) => a.name.localeCompare(b.name))
-                            .map((kpi) => {
-                              const kpiId = String(kpi.id);
-                              const selected = teamFocusSelectedKpiIds.includes(kpiId);
-                              return (
-                                <TouchableOpacity
-                                  key={`team-focus-editor-${kpiId}`}
-                                  style={styles.teamFocusEditorRow}
-                                  onPress={() =>
-                                    setTeamFocusSelectedKpiIds((prev) =>
-                                      prev.includes(kpiId) ? prev.filter((id) => id !== kpiId) : [...prev, kpiId]
-                                    )
-                                  }
-                                >
-                                  <Text style={styles.teamFocusEditorRowName}>{kpi.name}</Text>
-                                  <Text style={selected ? styles.teamFocusEditorSelectedText : styles.teamFocusEditorUnselectedText}>
-                                    {selected ? 'Selected' : 'Select'}
-                                  </Text>
-                                </TouchableOpacity>
-                              );
-                            })}
-                        </View>
-                      ) : null}
-                      {selectedTeamProfile ? (
-                        <View style={styles.teamPersonProfileCard}>
-                          <View style={styles.teamMemberChallengeTopRow}>
-                            <Text style={styles.teamMemberChallengeLabel}>Person Profile</Text>
-                            <TouchableOpacity onPress={() => setTeamProfileMemberId(null)}>
-                              <Text style={styles.teamMemberChallengeLink}>Close</Text>
-                            </TouchableOpacity>
-                          </View>
-                          <Text style={styles.teamPersonProfileName}>{selectedTeamProfile.name}</Text>
-                          <Text style={styles.teamPersonProfileRole}>{selectedTeamProfile.roleLabel}</Text>
-                          <Text style={styles.teamPersonProfileContact}>✉ {selectedTeamProfile.email} • ☎ {selectedTeamProfile.phone}</Text>
-                          <TouchableOpacity
-                            style={styles.teamPersonProfileDmBtn}
-                            onPress={() => openTeamDirectThread(selectedTeamProfile, 'team_leader_dashboard')}
-                          >
-                            <Text style={styles.teamPersonProfileDmBtnText}>DM in Comms</Text>
-                          </TouchableOpacity>
-                          <Text style={styles.teamPersonProfileSection}>Coaching goals</Text>
-                          {selectedTeamProfile.coachingGoals.map((goal) => (
-                            <Text key={`${selectedTeamProfile.id}-goal-${goal}`} style={styles.teamPersonProfileBullet}>• {goal}</Text>
-                          ))}
-                          <Text style={styles.teamPersonProfileSection}>KPI goals</Text>
-                          {selectedTeamProfile.kpiGoals.map((goal) => (
-                            <Text key={`${selectedTeamProfile.id}-kpi-${goal}`} style={styles.teamPersonProfileBullet}>• {goal}</Text>
-                          ))}
-                          {teamPersonaVariant === 'leader' ? (
-                            <>
-                              <Text style={styles.teamPersonProfileSection}>Enrollments</Text>
-                              <Text style={styles.teamPersonProfileBullet}>Cohorts: {selectedTeamProfile.cohorts.join(', ')}</Text>
-                              <Text style={styles.teamPersonProfileBullet}>Journeys: {selectedTeamProfile.journeys.join(', ')}</Text>
-                            </>
-                          ) : null}
-                        </View>
-                      ) : null}
                       <View style={styles.teamLeaderExpandableList}>
                         {teamLeaderRows.map((row) => {
                           const isExpanded = teamLeaderExpandedMemberId === row.id;
-                          const orderedKpiTypes = teamLeaderSortOrderMap[teamLeaderKpiSortOrder];
                           return (
                             <View key={row.id} style={styles.teamLeaderMemberCard}>
                               <View style={styles.teamLeaderMemberHeader}>
@@ -8788,26 +8856,25 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                       .toUpperCase()}
                                   </Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.teamParityMemberCopy}
-                                  onPress={() => {
-                                    const preferredKpiId =
-                                      row.memberSelectedCandidateIds.find((id) => selectableById.has(id)) ??
-                                      teamMandatedKpiIdsOrdered.find((id) => selectableById.has(id)) ??
-                                      null;
-                                    if (!preferredKpiId) return;
-                                    const preferredKpi = selectableById.get(preferredKpiId);
-                                    if (!preferredKpi) return;
-                                    handoffTeamKpiToLog(preferredKpi, {
-                                      memberId: row.id,
-                                      memberName: row.name,
-                                      source: 'team_leader_member_detail',
-                                    });
-                                  }}
-                                >
+                                <View style={styles.teamParityMemberCopy}>
                                   <Text style={styles.teamParityMemberName}>{row.name}</Text>
                                   <Text style={styles.teamParityMemberSub}>{row.sub}</Text>
-                                </TouchableOpacity>
+                                  <View style={styles.teamHealthMeterRow}>
+                                    <View style={styles.teamHealthMeterTrack}>
+                                      <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentRed]} />
+                                      <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentOrange]} />
+                                      <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentYellow]} />
+                                      <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentGreen]} />
+                                      <View
+                                        style={[
+                                          styles.teamHealthMeterRemainingMask,
+                                          { left: `${Math.max(0, Math.min(100, row.average))}%` },
+                                        ]}
+                                      />
+                                    </View>
+                                    <Text style={styles.teamHealthMeterPercentText}>{row.average}%</Text>
+                                  </View>
+                                </View>
                                 <Text style={styles.teamLeaderMemberStatus}>{row.status.replace('_', ' ')}</Text>
                                 <TouchableOpacity
                                   style={styles.teamLeaderRowExpandBtn}
@@ -8871,21 +8938,34 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                                 const kpiId = String(kpi.id);
                                                 const isFocused = teamMandatedSet.has(kpiId);
                                                 const alsoPersonal = Boolean(options?.overlapSet?.has(kpiId));
+                                                const kpiTypeBase =
+                                                  typeKey === 'PC' ? row.kpis.PC : typeKey === 'GP' ? row.kpis.GP : row.kpis.VP;
+                                                const kpiVariance =
+                                                  (kpiId.split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 9) - 4;
+                                                const kpiProgress = Math.max(0, Math.min(100, Math.round(kpiTypeBase + kpiVariance)));
                                                 return (
-                                                  <TouchableOpacity
+                                                  <View
                                                     key={`${row.id}-${blockLabel}-${kpiId}`}
                                                     style={styles.teamLeaderKpiSelectionRow}
-                                                    onPress={() =>
-                                                      handoffTeamKpiToLog(kpi, {
-                                                        memberId: row.id,
-                                                        memberName: row.name,
-                                                        source: 'team_leader_member_detail',
-                                                      })
-                                                    }
                                                   >
                                                     <View style={styles.teamLeaderKpiSelectionRowCopy}>
                                                       <Text style={styles.teamLeaderKpiSelectionName}>{kpi.name}</Text>
-                                                      <Text style={styles.teamLeaderKpiSelectionSub}>👥 Team context • tap for log handoff</Text>
+                                                      <Text style={styles.teamLeaderKpiSelectionSub}>👥 Team context</Text>
+                                                      <View style={styles.teamKpiMiniMeterRow}>
+                                                        <View style={styles.teamHealthMeterTrack}>
+                                                          <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentRed]} />
+                                                          <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentOrange]} />
+                                                          <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentYellow]} />
+                                                          <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentGreen]} />
+                                                          <View
+                                                            style={[
+                                                              styles.teamHealthMeterRemainingMask,
+                                                              { left: `${kpiProgress}%` },
+                                                            ]}
+                                                          />
+                                                        </View>
+                                                        <Text style={styles.teamHealthMeterPercentText}>{kpiProgress}%</Text>
+                                                      </View>
                                                     </View>
                                                     <View style={styles.teamLeaderKpiSelectionRowRight}>
                                                       <Text
@@ -8902,9 +8982,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                                           <Text style={styles.teamLeaderOverlapChipText}>also personal</Text>
                                                         </View>
                                                       ) : null}
-                                                      <Text style={styles.teamLeaderKpiSelectionArrow}>›</Text>
+                                                      <Text style={styles.teamLeaderKpiSelectionArrow}>•</Text>
                                                     </View>
-                                                  </TouchableOpacity>
+                                                  </View>
                                                 );
                                               })}
                                             </View>
@@ -8940,6 +9020,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           );
                         })}
                       </View>
+                      {teamLoggingBlock}
 
                       <View style={styles.teamLeaderConcernCard}>
                         <View style={styles.teamMemberChallengeTopRow}>
@@ -8958,8 +9039,52 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </View>
                     </View>
                   )}
-
-                  {teamLoggingBlock}
+                  <Modal
+                    visible={Boolean(selectedTeamProfile)}
+                    transparent
+                    animationType="slide"
+                    onRequestClose={() => setTeamProfileMemberId(null)}
+                  >
+                    <Pressable style={styles.teamProfileModalBackdrop} onPress={() => setTeamProfileMemberId(null)}>
+                      <Pressable style={styles.teamProfileModalCard} onPress={() => {}}>
+                        {selectedTeamProfile ? (
+                          <>
+                            <View style={styles.teamProfileModalHeaderRow}>
+                              <Text style={styles.teamMemberChallengeLabel}>Person Profile</Text>
+                              <TouchableOpacity onPress={() => setTeamProfileMemberId(null)}>
+                                <Text style={styles.teamMemberChallengeLink}>Back</Text>
+                              </TouchableOpacity>
+                            </View>
+                            <Text style={styles.teamPersonProfileName}>{selectedTeamProfile.name}</Text>
+                            <Text style={styles.teamPersonProfileRole}>{selectedTeamProfile.roleLabel}</Text>
+                            <Text style={styles.teamPersonProfileContact}>✉ {selectedTeamProfile.email} • ☎ {selectedTeamProfile.phone}</Text>
+                            <TouchableOpacity
+                              style={styles.teamPersonProfileDmBtn}
+                              onPress={() =>
+                                openTeamDirectThread(
+                                  selectedTeamProfile,
+                                  teamPersonaVariant === 'leader' ? 'team_leader_dashboard' : 'team_member_dashboard'
+                                )
+                              }
+                            >
+                              <Text style={styles.teamPersonProfileDmBtnText}>DM in Comms</Text>
+                            </TouchableOpacity>
+                            <Text style={styles.teamPersonProfileSection}>Coaching goals</Text>
+                            {selectedTeamProfile.coachingGoals.map((goal) => (
+                              <Text key={`${selectedTeamProfile.id}-profile-goal-${goal}`} style={styles.teamPersonProfileBullet}>• {goal}</Text>
+                            ))}
+                            <Text style={styles.teamPersonProfileSection}>KPI goals</Text>
+                            {selectedTeamProfile.kpiGoals.map((goal) => (
+                              <Text key={`${selectedTeamProfile.id}-profile-kpi-${goal}`} style={styles.teamPersonProfileBullet}>• {goal}</Text>
+                            ))}
+                            <Text style={styles.teamPersonProfileSection}>Enrollments</Text>
+                            <Text style={styles.teamPersonProfileBullet}>Cohorts: {selectedTeamProfile.cohorts.join(', ')}</Text>
+                            <Text style={styles.teamPersonProfileBullet}>Journeys: {selectedTeamProfile.journeys.join(', ')}</Text>
+                          </>
+                        ) : null}
+                      </Pressable>
+                    </Pressable>
+                  </Modal>
                 </>
               );
             })()}
@@ -10608,7 +10733,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 </View>
               ) : (
                 <View style={styles.gridWrap}>
-                  {quickLogKpis.map((kpi) => {
+                  {prioritizedQuickLogKpis.map((kpi) => {
                     const successAnim = getKpiTileSuccessAnim(kpi.id);
                     const isTeamContextTarget = teamLogContext?.kpi_id === String(kpi.id);
                     const successOpacity = successAnim.interpolate({
@@ -13915,6 +14040,171 @@ const styles = StyleSheet.create({
   teamParityMemberSub: {
     color: '#8d97a6',
     fontSize: 11,
+  },
+  teamHealthMeterRow: {
+    marginTop: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  teamHealthMeterTrack: {
+    flex: 1,
+    height: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    position: 'relative',
+    backgroundColor: '#f2f4f8',
+  },
+  teamHealthMeterSegment: {
+    flex: 1,
+    height: '100%',
+  },
+  teamHealthMeterSegmentRed: {
+    backgroundColor: '#dd524d',
+  },
+  teamHealthMeterSegmentOrange: {
+    backgroundColor: '#ea8a3d',
+  },
+  teamHealthMeterSegmentYellow: {
+    backgroundColor: '#e5c54d',
+  },
+  teamHealthMeterSegmentGreen: {
+    backgroundColor: '#55b867',
+  },
+  teamHealthMeterRemainingMask: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#e9edf3',
+  },
+  teamHealthMeterPercentText: {
+    color: '#6e7787',
+    fontSize: 10,
+    fontWeight: '700',
+    minWidth: 34,
+    textAlign: 'right',
+  },
+  teamHealthMeterSummaryRow: {
+    marginTop: 8,
+    gap: 6,
+  },
+  teamHealthMeterSummaryText: {
+    color: '#6d7789',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  teamFocusEditorFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  teamFocusEditorFilterChip: {
+    borderWidth: 1,
+    borderColor: '#d5dfef',
+    backgroundColor: '#f6f8fc',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  teamFocusEditorFilterChipActive: {
+    borderColor: '#2f67da',
+    backgroundColor: '#2f67da',
+  },
+  teamFocusEditorFilterChipText: {
+    color: '#5f6f89',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamFocusEditorFilterChipTextActive: {
+    color: '#fff',
+  },
+  teamFocusQuickLogRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  teamFocusQuickLogBtn: {
+    borderWidth: 1,
+    borderColor: '#d6e0f0',
+    backgroundColor: '#f8fbff',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minWidth: 120,
+    maxWidth: '48%',
+  },
+  teamFocusQuickLogBtnText: {
+    color: '#31568f',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamKpiMiniMeterRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  teamChallengeTopTabsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  teamChallengeTopTab: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#d7e0ef',
+    borderRadius: 999,
+    backgroundColor: '#f7f9fd',
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  teamChallengeTopTabActive: {
+    backgroundColor: '#2f67da',
+    borderColor: '#2f67da',
+  },
+  teamChallengeTopTabText: {
+    color: '#57709a',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  teamChallengeTopTabTextActive: {
+    color: '#fff',
+  },
+  teamProfileModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(30, 39, 56, 0.45)',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  teamProfileModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dfe7f2',
+    padding: 14,
+    gap: 8,
+    maxHeight: '78%',
+  },
+  teamProfileModalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  teamProfileLinkBtn: {
+    borderWidth: 1,
+    borderColor: '#d3ddec',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#f7f9fd',
+  },
+  teamProfileLinkBtnText: {
+    color: '#3f5f94',
+    fontSize: 12,
+    fontWeight: '700',
   },
   teamParityMemberMetric: {
     color: '#3a4250',

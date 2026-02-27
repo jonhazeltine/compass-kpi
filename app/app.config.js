@@ -20,7 +20,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 module.exports = ({ config }) => ({
   ...config,
-  name: 'CompassKPI',
+  name: 'Compass KPI Dev',
   slug: 'compass-kpi',
   plugins: Array.from(new Set([...(config.plugins || []), 'expo-audio'])),
   extra: {
