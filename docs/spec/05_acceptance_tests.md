@@ -362,6 +362,36 @@
   - no Stream token/sync path can mutate KPI log totals, forecast base values, confidence base calculation inputs, challenge score totals, or leaderboard rank data
   - no Mux upload/playback/webhook path can mutate KPI log totals, forecast base values, confidence base calculation inputs, challenge score totals, or leaderboard rank data
 
+### 36) Message-Linked Task Card Create (M6)
+- Given a member in `channel_thread` with message write access
+- When member posts `POST /api/channels/{id}/messages` with `message_kind=personal_task`, `task_action=create`, and `task_card_draft.assignee_id` equal to caller
+- Then API returns `201` with `linked_task_card` payload on the created message
+- And task card fields include canonical shape (`task_id`, `task_type`, `status`, `assignee`, `source_message_id`, `channel_id`, `rights`)
+- And `GET /api/coaching/assignments/me` includes the same task with `source=message_linked` and matching `source_message_id`
+
+### 37) Role Rights Matrix Enforcement for Self vs Coach Task (M6)
+- Given a non-coach member and an assigned coach in the same authorized thread context
+- When non-coach attempts `task_action=create` with `task_type=coach_task`
+- Then API returns `403` with no task-card write
+- Given assigned coach creates `coach_task` for the member
+- When member attempts to edit task title/assignee fields
+- Then API returns `403`
+- And member can still submit `task_action=complete` or status-only update for their assigned task
+
+### 38) Inline Task Update/Complete Sync Across Thread and Assignments Feed (M6)
+- Given an existing message-linked task card in a thread
+- When authorized actor posts `POST /api/channels/{id}/messages` with `task_action=update` or `task_action=complete` and matching `task_id`
+- Then thread response reflects updated `linked_task_card.status` and task metadata
+- And `GET /api/coaching/assignments/me` reflects the same status in the corresponding `message_linked` item
+- And sync metadata (`last_thread_event_at`, `source_message_id`) stays consistent across both responses
+
+### 39) Thread Read-State Sync for Message-Linked Tasks (M6)
+- Given unread message-linked task activity in a channel
+- When assignee marks thread seen via `POST /api/messages/mark-seen`
+- Then unread counts update per scenario #13
+- And subsequent `GET /api/coaching/assignments/me` returns `thread_read_state=read` (or `unknown` when unread derivation is not available in family baseline)
+- And task completion state is unaffected by read-state transitions
+
 ### W13 Planned Contract Behavior Coverage Map (Dependency-Gated)
 - Mapping is `planned only`; runnable only after `DEP-002`, `DEP-004`, and `DEP-005` close.
 

@@ -1071,3 +1071,175 @@ Before approving coaching-related UI work, confirm:
 4. KPI/forecast non-negotiables are not violated
 5. Role/tier gating assumptions are stated
 6. Figma-backed vs manual-spec-driven status is stated
+
+## Coach Experience Plan (Compass-Native, Fourth Reason-Informed) — C-Series
+
+### Purpose
+
+Define the full Coach flow for two audiences:
+
+1. **Client runtime (mobile Coach tab)** — members, leaders, solo users.
+2. **Coach operator workspace (`/coach/*`)** — cohorts, client lists, content upload, journey operations.
+
+### Locked Defaults
+
+- Pre-engagement Coach tab default: **Coach Marketplace** (`coach_marketplace`).
+- Task/goals model: **message-linked assignments + existing goals** (no new DB tables).
+- Coach operator primary surface: **`/coach/*`** (existing `CoachPortalScreen.tsx`).
+- Subscription phase 1: **entitlement shell** (no full checkout flow; gated by `DEP-001`).
+- Reuse existing contracts/read models with additive fields only.
+
+### Scope Boundaries
+
+#### In Scope
+
+- Coach tab IA and screen routing states.
+- Marketplace discovery, subscription shell, engagement state transitions.
+- Engaged hub with video, content, direct comms, goals/tasks destinations.
+- `/coach/*` operator refinements (cohorts, client ops, upload/journey polish).
+- Profile-level goals/tasks visibility.
+
+#### Out of Scope
+
+- Full billing transaction implementation (`DEP-001`).
+- New table creation/migrations.
+- Stream/Mux runtime activation before `DEP-002`/`DEP-004`/`DEP-005`.
+- KPI engine/source-of-truth changes.
+
+### Coach Tab IA — Client Runtime Destinations
+
+#### Pre-engagement state
+
+| Screen ID | Purpose | Entry condition |
+|---|---|---|
+| `coach_marketplace` | Coach cards, specialties, filters, engagement CTA | Default when no active engagement exists |
+| `coach_subscription_shell` | Entitlement gate with states: `allowed`, `pending`, `blocked`, `fallback`. Plan UI and next-step CTA only (no phase-1 checkout). | Triggered from marketplace CTA or hub access attempt |
+
+#### Post-engagement state
+
+| Screen ID | Purpose | Entry condition |
+|---|---|---|
+| `coach_hub_primary` | Next action, unread coach comms, session status, pending goals/tasks | Default when active engagement exists |
+| `coach_video_session` | Video session placeholder (provider-gated) | Hub destination; fallback until `DEP-005` |
+| `coach_content_library` | Coach-curated content for engaged client | Hub destination |
+| `coach_direct_comms` | Direct messaging with assigned coach | Hub destination; provider-gated |
+| `coach_goals_tasks` | Unified goals/tasks feed with 5 categories | Hub destination + profile-level visibility |
+
+#### Goals/Tasks Unified Feed Categories (Taxonomy Lock)
+
+| Category | Source | Create/edit authority |
+|---|---|---|
+| `personal_goal` | Existing goals system | Self |
+| `team_leader_goal` | Existing goals system | Team leader (assigned to member) |
+| `coach_goal` | Existing goals system | Coach (assigned to client) |
+| `personal_task` | Message-linked assignment | Self |
+| `coach_task` | Message-linked assignment | Assigned coach (self status-update only for client) |
+
+### Coach Operator Runtime (`/coach/*`)
+
+Existing `CoachPortalScreen.tsx` surfaces remain canonical:
+
+- `/coach/library` — content asset catalog
+- `/coach/journeys` — journey composition and management
+- `/coach/cohorts` — cohort/audience targeting
+- `/coach/channels` — channel management and broadcast ops
+
+Mobile coach-role users receive deep-link into `/coach/*`.
+
+### Additive API Endpoints (No New Endpoint Families)
+
+#### Marketplace + Engagement
+
+- `GET /api/coaching/coaches` — list available coaches with specialties and engagement availability.
+- `POST /api/coaching/engagements` — create engagement request between client and coach.
+- `GET /api/coaching/engagements/me` — return caller's active engagement(s) and state.
+
+#### Subscription Shell (Additive Fields)
+
+Additive entitlement fields in coaching engagement payloads:
+
+- `entitlement_state`: `allowed | pending | blocked | fallback`
+- `plan_tier_label`: display label for subscription tier
+- `status_reason`: human-readable reason for current state
+- `next_step_cta`: action label/route for next step
+
+#### Goals/Tasks Aggregation (No New Table)
+
+Message metadata fields (additive to existing message schema):
+
+- `message_kind`: `text | coach_task | coach_goal_link | personal_task`
+- `assignment_ref`: `{ id, type, status, due_at, assignee_id, source }`
+
+Canonical message-linked task card payload (thread/channel surfaces):
+
+- `linked_task_card`:
+  - `task_id`
+  - `task_type`: `personal_task | coach_task`
+  - `title`
+  - `description` (nullable)
+  - `status`: `pending | in_progress | completed`
+  - `due_at` (nullable)
+  - `assignee`: `{ id, display_name }`
+  - `created_by`: `{ id, role }`
+  - `source`: `message_linked`
+  - `source_message_id`
+  - `channel_id`
+  - `thread_sync`: `{ included_in_assignments_feed, last_synced_at }`
+  - `rights`: `{ can_edit_fields, can_update_status, can_mark_complete, can_reassign }`
+
+Read endpoint:
+
+- `GET /api/coaching/assignments/me` — returns merged feed from existing goals + message-linked tasks, categorized by the five-category taxonomy above.
+
+### Data and Permission Rules
+
+- No new tables. All persistence reuses existing structures with additive metadata fields.
+- KPI model rules unchanged (non-negotiables #1–#4 preserved).
+- `personal_task` can be created/edited by self only.
+- `coach_task` can be created/edited by assigned coach; client may update status only.
+- Team leaders can assign `team_leader_goal` but do not gain `coach_task` authoring unless they hold the coach role.
+- Sponsor persona remains no-KPI-logging.
+
+Role rights matrix (message-linked task cards):
+
+| Actor | `personal_task` create/edit | `personal_task` complete | `coach_task` create/edit | `coach_task` complete/status | Reassign task |
+|---|---|---|---|---|---|
+| Self member (assignee) | allowed (self only) | allowed | denied | allowed (status/complete only when assignee) | denied |
+| Assigned coach | denied unless self-assignee | denied unless self-assignee | allowed (in assigned coach scope) | allowed | limited to allowed coach scope only |
+| Team leader (non-coach) | allowed for own self-task only | allowed for own self-task only | denied | denied | denied |
+| Sponsor persona | denied | denied | denied | denied | denied |
+| Platform admin | policy-bound override only (ops/manual policy use) | policy-bound override only | policy-bound override only | policy-bound override only | policy-bound override only |
+
+Inline task action mapping (no new endpoint family):
+
+- `POST /api/channels/{id}/messages` with:
+  - `task_action=create` for new task card
+  - `task_action=update` for title/description/due-date/status edits
+  - `task_action=complete` for explicit completion transition
+- `GET /api/coaching/assignments/me` must reflect the same record via `source_message_id` + `channel_id` sync linkage.
+
+### C-Series Build Sequence
+
+| Phase | Scope | Dependencies |
+|---|---|---|
+| **C0** | Docs lock — update flow/wiring/coaching docs + decisions log entries. Include `personal_task` in category taxonomy. | None |
+| **C1** | Mobile IA shell — Coach tab routing states: marketplace → subscription → hub → goals/tasks. | C0 |
+| **C2** | Marketplace + engagement — Coach list/discovery + engagement state transitions. | C1 |
+| **C3** | Goals/tasks MVP — Unified feed rendering, message-linked assignment cards, profile goals/tasks section. | C1 |
+| **C4** | `/coach/*` hardening — Cohort/client operations and upload/journey polish. | C1 |
+| **C5** | Provider activation (post gates) — Stream/Mux runtime enablement and fallback handling. | `DEP-002`, `DEP-004`, `DEP-005` |
+
+### Test Cases and Scenarios (C-Series Acceptance)
+
+1. Pre-engagement users land on `coach_marketplace`.
+2. Post-engagement users land on `coach_hub_primary`.
+3. Entitlement shell renders all four states (`allowed`, `pending`, `blocked`, `fallback`) correctly.
+4. Hub destinations route correctly from `coach_hub_primary`.
+5. Unified feed includes all five categories, including `personal_task`.
+6. `personal_task` create/edit is allowed for self only.
+7. `coach_task` authoring is restricted to coach scope; client can only update status.
+8. Message-linked assignment sync appears in both chat and unified feed.
+9. Profile goals/tasks reflects merged assigned items.
+10. `/coach/*` access and role restrictions hold.
+11. Provider-gated fallback behavior holds pre-activation.
+12. Regression remains green for `inbox*`, `channel_thread`, `coach_broadcast_compose`, `coaching_journeys*`.

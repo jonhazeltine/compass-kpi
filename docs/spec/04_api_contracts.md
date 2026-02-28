@@ -76,6 +76,14 @@
   - Purpose: return caller coaching progress aggregates.
 - `POST /api/coaching/broadcast` (implemented baseline)
   - Purpose: role-gated coaching broadcast write with scope audit trail.
+- `GET /api/coaching/coaches` (planned — C2)
+  - Purpose: list available coaches with specialties, engagement availability, and profile metadata for marketplace discovery.
+- `POST /api/coaching/engagements` (planned — C2)
+  - Purpose: create engagement request between client and coach. Returns engagement state and entitlement context.
+- `GET /api/coaching/engagements/me` (planned — C2)
+  - Purpose: return caller's active engagement(s), state, and entitlement fields (`entitlement_state`, `plan_tier_label`, `status_reason`, `next_step_cta`).
+- `GET /api/coaching/assignments/me` (planned — C3)
+  - Purpose: return merged goals/tasks feed for caller, categorized by unified taxonomy (`personal_goal`, `team_leader_goal`, `coach_goal`, `personal_task`, `coach_task`). Sources from existing goals system + message-linked assignments. No new tables.
 - `POST /api/ai/suggestions` (implemented baseline)
   - Purpose: create approval-gated AI suggestion (advisory only).
 - `GET /api/ai/suggestions` (implemented baseline)
@@ -302,6 +310,23 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
 | `MUX-WEBHOOK-VERIFY-VOCAB` deterministic verification/lifecycle vocabulary for webhook processing | `POST /api/webhooks/mux` + media read-model fields | `#32`, `#33`, `#34`, `#35` |
 | `KPI-NO-SIDE-EFFECT-GUARD` explicit no KPI/forecast mutation side effects from provider paths | Stream/Mux planned runtime surfaces | `#35` |
 
+### M6 Fourth Reason Messaging Pattern Mapping Notes (Additive, Docs-Only)
+
+Source mapping reference:
+- `/Users/jon/compass-kpi/docs/spec/appendix/FOURTH_REASON_INTEGRATION_MATRIX.md` (`M6 Messaging Pattern Matrix`)
+
+These notes are additive contract guidance only. They do not introduce a new endpoint family and do not require new table families.
+
+| Fourth Reason messaging pattern | Compass contract surface | Build state | No new table adaptation note |
+|---|---|---|---|
+| Inbox segmentation (`All/Channels/DM/Broadcast`) | `GET /api/channels`, `GET /api/messages/unread-count` | build now | Segment by existing channel/message metadata and filters; no inbox aggregate table. |
+| Channel thread read/write | `GET /api/channels/{id}/messages`, `POST /api/channels/{id}/messages` | build now | Thread payload remains existing channel message model; no parallel thread table. |
+| Direct messaging lane | Existing `/api/channels*` with `direct` channel type | build now | 1:1 modeled as normal channel membership (`2` members); no `dm_threads` family/table. |
+| Broadcast send | `POST /api/channels/{id}/broadcast` | build now | Broadcast is role-gated message flow on existing channel primitives; no broadcast content table. |
+| Unread reset flow | `POST /api/messages/mark-seen` | build now | Reuse existing unread read model/counters; no new read-receipt table in M6. |
+| Typing/read-presence indicators | Provider-backed real-time layer (`POST /api/channels/token` planned) | blocked by DEP | Hold until `DEP-002`, `DEP-004`, `DEP-005`; do not add presence schema in this slice. |
+| Rich media in message flow | `POST /api/coaching/media/upload-url` + `POST /api/coaching/media/playback-token` (planned) | blocked by DEP | Reuse planned coaching/media contracts once dependencies close; no comms-specific attachment table. |
+
 ## Payload Notes (Initial)
 - KPI log payload should include:
   - `kpi_id`
@@ -437,8 +462,38 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
   - Additive response fields (W6 notification read-model shaping baseline):
     - top-level `notification_items[]` (thread/message-derived rows; `read_state` may be `unknown` in this family)
     - top-level `notification_summary_read_model` (thread-scoped message-derived summary)
+  - Additive response fields (M6 message-linked task cards):
+    - `messages[].message_kind` includes `text | coach_task | coach_goal_link | personal_task`
+    - `messages[].linked_task_card` (present when `message_kind` is `coach_task` or `personal_task`) with canonical shape:
+      - `task_id`
+      - `task_type` (`personal_task | coach_task`)
+      - `title`
+      - `description` (nullable)
+      - `status` (`pending | in_progress | completed`)
+      - `due_at` (nullable)
+      - `assignee` (`id`, `display_name`)
+      - `created_by` (`id`, `role`)
+      - `source` (`message_linked`)
+      - `source_message_id`
+      - `channel_id`
+      - `thread_sync` (`included_in_assignments_feed`, `last_synced_at`)
+      - `rights` (`can_edit_fields`, `can_update_status`, `can_mark_complete`, `can_reassign`)
 - `POST /api/channels/{id}/messages`
   - Enforces membership checks and updates unread counters for other members.
+  - Additive request fields (M6 inline task actions; same endpoint family):
+    - `message_kind` allows `coach_task` and `personal_task` for task-card events.
+    - `task_action` (`create | update | complete`) when message is task-linked.
+    - `task_card_draft` (required for `create`, optional for `update`) with:
+      - `task_type` (`personal_task | coach_task`)
+      - `title`
+      - `description` (nullable)
+      - `due_at` (nullable)
+      - `assignee_id`
+      - `status` (`pending | in_progress | completed`)
+      - `task_id` (required for `update` and `complete`)
+  - Role constraints for task actions:
+    - `personal_task`: caller may create/update/complete only when `assignee_id` equals caller.
+    - `coach_task`: create/update allowed for assigned coach scope; assignee can update status/complete; no cross-scope reassignment.
 - `POST /api/channels/{id}/broadcast`
   - Requires channel admin, team leader, or platform admin permissions.
   - Enforces baseline 24h throttle and writes `broadcast_log` audit records.
@@ -468,6 +523,29 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
     - `team`: team leader or platform admin
     - `journey`: requires `scope_id`
     - `global`: platform admin only
+- `GET /api/coaching/coaches` (planned — C2)
+  - Returns array of coach profiles with: `id`, `name`, `avatar_url`, `specialties[]`, `bio`, `engagement_availability` (`available | waitlist | unavailable`).
+  - Filters: `specialty`, `availability`.
+  - No role restriction (any authenticated user can browse marketplace).
+- `POST /api/coaching/engagements` (planned — C2)
+  - Request: `{ coach_id }`.
+  - Creates engagement record; returns engagement object with `id`, `coach_id`, `client_id`, `status` (`pending | active | ended`), entitlement fields.
+  - Entitlement fields: `entitlement_state` (`allowed | pending | blocked | fallback`), `plan_tier_label`, `status_reason`, `next_step_cta`.
+  - Restricted to authenticated users with valid subscription entitlement (phase 1: shell check only).
+- `GET /api/coaching/engagements/me` (planned — C2)
+  - Returns caller's engagement(s) with full state and entitlement context.
+  - Used by Coach tab to determine pre-engagement vs post-engagement routing.
+- `GET /api/coaching/assignments/me` (planned — C3)
+  - Returns unified feed of goals + message-linked tasks for caller.
+  - Each item includes: `id`, `type` (`personal_goal | team_leader_goal | coach_goal | personal_task | coach_task`), `title`, `status` (`pending | in_progress | completed`), `due_at`, `assignee_id`, `source` (`goals | message_linked`), `created_at`.
+  - Additive sync fields for message-linked task parity:
+    - `channel_id` (nullable)
+    - `source_message_id` (nullable)
+    - `last_thread_event_at` (nullable)
+    - `thread_read_state` (`unread | read | unknown`) for message-linked records
+    - `rights` (`can_edit_fields`, `can_update_status`, `can_mark_complete`, `can_reassign`)
+  - Merges from existing goals table + messages with `message_kind` metadata. No new tables.
+  - Sorted by `due_at` ascending (nulls last), then `created_at` descending.
 - `POST /api/ai/suggestions`
   - Always creates records in `pending` status; no outbound send side effects.
   - Cross-user creation is restricted to platform admins or team leaders targeting users on their own team.
