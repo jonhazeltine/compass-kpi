@@ -2417,6 +2417,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [pipelineCheckinReasonPromptVisible, setPipelineCheckinReasonPromptVisible] = useState(false);
   const [pipelineCheckinDecreaseFields, setPipelineCheckinDecreaseFields] = useState<PipelineCheckinFieldKey[]>([]);
   const [pipelineCheckinReason, setPipelineCheckinReason] = useState<PipelineCheckinReason | null>(null);
+  const [pipelineForceGciEntryField, setPipelineForceGciEntryField] = useState<PipelineCheckinFieldKey | null>(null);
   const [pipelineCloseDateInput, setPipelineCloseDateInput] = useState('');
   const [pipelineCloseGciInput, setPipelineCloseGciInput] = useState('');
   const [pipelineLostEncouragement, setPipelineLostEncouragement] = useState('');
@@ -5034,11 +5035,28 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     setPipelineCheckinReasonPromptVisible(false);
     setPipelineCheckinDecreaseFields([]);
     setPipelineCheckinReason(null);
+    setPipelineForceGciEntryField(null);
     setPipelineCloseDateInput(isoTodayLocal());
     setPipelineCloseGciInput('');
     setPipelineLostEncouragement('');
     setPipelineCheckinVisible(true);
   }, [pipelineAnchorCounts.buyers, pipelineAnchorCounts.listings]);
+
+  const openPipelineDecreaseCloseFlow = useCallback(
+    (field: PipelineCheckinFieldKey) => {
+      setPipelineCheckinListings(Math.max(0, pipelineAnchorCounts.listings - (field === 'listings' ? 1 : 0)));
+      setPipelineCheckinBuyers(Math.max(0, pipelineAnchorCounts.buyers - (field === 'buyers' ? 1 : 0)));
+      setPipelineCheckinDecreaseFields([field]);
+      setPipelineCheckinReasonPromptVisible(false);
+      setPipelineCheckinReason('deal_closed');
+      setPipelineForceGciEntryField(field);
+      setPipelineCloseDateInput(isoTodayLocal());
+      setPipelineCloseGciInput('');
+      setPipelineLostEncouragement('');
+      setPipelineCheckinVisible(true);
+    },
+    [pipelineAnchorCounts.buyers, pipelineAnchorCounts.listings]
+  );
 
   useEffect(() => {
     if (pipelineCheckinVisible) return;
@@ -5088,6 +5106,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     void persistPipelineDismissedDay(today);
     setPipelineCheckinReasonPromptVisible(false);
     setPipelineCheckinReason(null);
+    setPipelineForceGciEntryField(null);
     setPipelineCheckinVisible(false);
   }, [persistPipelineDismissedDay]);
 
@@ -5239,6 +5258,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         void persistPipelineDismissedDay(today);
         setPipelineCheckinVisible(false);
         setPipelineCheckinReasonPromptVisible(false);
+        setPipelineForceGciEntryField(null);
 
         if (reason === 'deal_lost' && pipelineLostEncouragement) {
           Alert.alert('Keep going', pipelineLostEncouragement);
@@ -5264,6 +5284,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       pipelineCheckinListings,
       pipelineCloseDateInput,
       pipelineCloseGciInput,
+      pipelineForceGciEntryField,
       pipelineLostEncouragement,
       persistPipelineDismissedDay,
       sendLog,
@@ -11054,7 +11075,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <TouchableOpacity
                       style={styles.activityPipelineInlineStepBtn}
                       disabled={inlinePipelineSubmitting}
-                      onPress={openPipelineCheckinOverlay}
+                      onPress={() => openPipelineDecreaseCloseFlow('listings')}
                     >
                       <Text style={styles.activityPipelineInlineStepBtnText}>−</Text>
                     </TouchableOpacity>
@@ -11074,7 +11095,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <TouchableOpacity
                       style={styles.activityPipelineInlineStepBtn}
                       disabled={inlinePipelineSubmitting}
-                      onPress={openPipelineCheckinOverlay}
+                      onPress={() => openPipelineDecreaseCloseFlow('buyers')}
                     >
                       <Text style={styles.activityPipelineInlineStepBtnText}>−</Text>
                     </TouchableOpacity>
@@ -11823,9 +11844,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             >
               <View style={styles.pipelineCheckinHeader}>
                 <View style={styles.pipelineCheckinHeaderCopy}>
-                  <Text style={styles.pipelineCheckinTitle}>Update your pipeline</Text>
+                  <Text style={styles.pipelineCheckinTitle}>
+                    {pipelineForceGciEntryField ? 'Log closed deal details' : 'Update your pipeline'}
+                  </Text>
                   <Text style={styles.pipelineCheckinHelp}>
-                    Keep your forecast accurate with current pipeline counts.
+                    {pipelineForceGciEntryField
+                      ? 'A downward pipeline change requires a close date and GCI entry.'
+                      : 'Keep your forecast accurate with current pipeline counts.'}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -11837,49 +11862,53 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.pipelineCheckinFieldCard}>
-                <Text style={styles.pipelineCheckinFieldLabel}>Pending listings</Text>
-                <View style={styles.pipelineCheckinStepperRow}>
-                  <TouchableOpacity
-                    style={styles.pipelineStepperBtn}
-                    disabled={pipelineCheckinSubmitting}
-                    onPress={() => setPipelineCheckinListings((v) => Math.max(0, v - 1))}
-                  >
-                    <Text style={styles.pipelineStepperBtnText}>−</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.pipelineCheckinCountValue}>{fmtNum(pipelineCheckinListings)}</Text>
-                  <TouchableOpacity
-                    style={styles.pipelineStepperBtn}
-                    disabled={pipelineCheckinSubmitting}
-                    onPress={() => setPipelineCheckinListings((v) => Math.max(0, v + 1))}
-                  >
-                    <Text style={styles.pipelineStepperBtnText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+              {!pipelineForceGciEntryField ? (
+                <>
+                  <View style={styles.pipelineCheckinFieldCard}>
+                    <Text style={styles.pipelineCheckinFieldLabel}>Pending listings</Text>
+                    <View style={styles.pipelineCheckinStepperRow}>
+                      <TouchableOpacity
+                        style={styles.pipelineStepperBtn}
+                        disabled={pipelineCheckinSubmitting}
+                        onPress={() => setPipelineCheckinListings((v) => Math.max(0, v - 1))}
+                      >
+                        <Text style={styles.pipelineStepperBtnText}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.pipelineCheckinCountValue}>{fmtNum(pipelineCheckinListings)}</Text>
+                      <TouchableOpacity
+                        style={styles.pipelineStepperBtn}
+                        disabled={pipelineCheckinSubmitting}
+                        onPress={() => setPipelineCheckinListings((v) => Math.max(0, v + 1))}
+                      >
+                        <Text style={styles.pipelineStepperBtnText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
 
-              <View style={styles.pipelineCheckinFieldCard}>
-                <Text style={styles.pipelineCheckinFieldLabel}>Buyers under contract</Text>
-                <View style={styles.pipelineCheckinStepperRow}>
-                  <TouchableOpacity
-                    style={styles.pipelineStepperBtn}
-                    disabled={pipelineCheckinSubmitting}
-                    onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v - 1))}
-                  >
-                    <Text style={styles.pipelineStepperBtnText}>−</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.pipelineCheckinCountValue}>{fmtNum(pipelineCheckinBuyers)}</Text>
-                  <TouchableOpacity
-                    style={styles.pipelineStepperBtn}
-                    disabled={pipelineCheckinSubmitting}
-                    onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v + 1))}
-                  >
-                    <Text style={styles.pipelineStepperBtnText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+                  <View style={styles.pipelineCheckinFieldCard}>
+                    <Text style={styles.pipelineCheckinFieldLabel}>Buyers under contract</Text>
+                    <View style={styles.pipelineCheckinStepperRow}>
+                      <TouchableOpacity
+                        style={styles.pipelineStepperBtn}
+                        disabled={pipelineCheckinSubmitting}
+                        onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v - 1))}
+                      >
+                        <Text style={styles.pipelineStepperBtnText}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.pipelineCheckinCountValue}>{fmtNum(pipelineCheckinBuyers)}</Text>
+                      <TouchableOpacity
+                        style={styles.pipelineStepperBtn}
+                        disabled={pipelineCheckinSubmitting}
+                        onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v + 1))}
+                      >
+                        <Text style={styles.pipelineStepperBtnText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              ) : null}
 
-              {pipelineCheckinReasonPromptVisible ? (
+              {pipelineCheckinReasonPromptVisible && !pipelineForceGciEntryField ? (
                 <View style={styles.pipelineCheckinBranchCard}>
                   <Text style={styles.pipelineCheckinBranchTitle}>Your pipeline count went down. What happened?</Text>
                   {pipelineCheckinDecreaseFields.length > 0 ? (
@@ -11980,7 +12009,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 >
                   <Text style={styles.pipelineCheckinSecondaryBtnText}>Dismiss for today</Text>
                 </TouchableOpacity>
-                {pipelineCheckinReason !== 'deal_closed' && pipelineCheckinReason !== 'deal_lost' ? (
+                {pipelineCheckinReason !== 'deal_closed' &&
+                pipelineCheckinReason !== 'deal_lost' &&
+                !pipelineForceGciEntryField ? (
                   <TouchableOpacity
                     style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
                     disabled={pipelineCheckinSubmitting || pipelineCheckinReasonPromptVisible}
