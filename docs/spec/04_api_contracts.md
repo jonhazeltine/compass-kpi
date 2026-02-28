@@ -156,18 +156,82 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
 ### Video Provider (Compass Facade + Mux Adapter)
 - `POST /api/coaching/media/upload-url` (planned)
   - Purpose: create provider-backed direct upload session/url with Compass-owned authorization and metadata context.
+  - Planned request envelope (dependency-gated):
+    - `journey_id` or `lesson_id` context reference (exact one required)
+    - `filename`
+    - `content_type`
+    - `content_length_bytes`
+    - `idempotency_key` (required for retry-safe upload session creation)
+  - Planned success envelope (dependency-gated):
+    - `upload_id` (Compass correlation id)
+    - `provider` = `mux`
+    - `provider_upload_id`
+    - `upload_url`
+    - `upload_url_expires_at`
+    - initial lifecycle state (`queued_for_upload`)
+  - Planned failure envelope (dependency-gated):
+    - deterministic `error.code` values for `unauthorized_scope`, `unsupported_content_type`, `size_limit_exceeded`, `provider_unavailable`
 - `POST /api/coaching/media/playback-token` (planned)
   - Purpose: issue signed playback token for authorized viewer/session.
+  - Planned request envelope (dependency-gated):
+    - `media_id` (Compass media record id)
+    - optional `viewer_context` (`coach`, `team_leader`, `member`, `sponsor`) for policy-bound claims
+  - Planned success envelope (dependency-gated):
+    - `token`
+    - `token_expires_at`
+    - `playback_id`
+    - policy metadata (`watermark_required`, `allow_download=false` when policy requires)
+  - Planned failure envelope (dependency-gated):
+    - deterministic `error.code` values for `media_not_ready`, `media_failed_processing`, `viewer_not_authorized`, `token_issue_failed`
 - `POST /api/webhooks/mux` (planned)
   - Purpose: verified webhook receiver for Mux asset lifecycle state transitions.
+  - Planned verification constraints (dependency-gated):
+    - verify signed webhook headers before parsing event payload
+    - reject stale timestamps outside replay window
+    - idempotently ignore duplicate delivery ids
+    - persist verification result with audit metadata (`received_at`, `provider_event_id`, `verification_status`)
+  - Planned lifecycle events consumed (dependency-gated):
+    - upload accepted
+    - asset created
+    - asset ready
+    - asset errored
+    - asset deleted
 - Existing coaching/journey payloads (planned additive fields):
   - media status/read-model fields (`provider`, `provider_asset_id`, `processing_status`, `playback_ready`, `last_provider_event_at`)
+  - Planned lifecycle read-model status vocabulary (dependency-gated):
+    - `queued_for_upload`
+    - `uploaded_pending_asset`
+    - `processing`
+    - `ready`
+    - `failed`
+    - `deleted`
+  - Planned failure detail fields (dependency-gated):
+    - `provider_error_code`
+    - `provider_error_message_safe` (sanitized; no raw provider internals leaked to client)
+    - `retryable` (`true|false`)
+    - `last_failure_at`
 
 ### Observability/Admin Extensions (Planned)
 - Provider operational diagnostics through existing ops/admin families:
   - queue/backlog failure summary
   - webhook lag/verification failure counts
   - token issuance/sync error counters
+  - Mux-specific planned diagnostics (dependency-gated):
+    - upload session creation latency buckets
+    - processing duration buckets (`uploaded` -> `ready`)
+    - failure-rate slices by `provider_error_code`
+    - dead-letter/retry queue counts for webhook processing
+
+### Planned Rollout Constraints (Mux Only, Dependency-Gated)
+- Status: `planned only`.
+- Runtime rollout is explicitly blocked until `DEP-002`, `DEP-004`, and `DEP-005` are closed and implementation wave approval is granted.
+- Planned rollout phases:
+  - Phase B1: internal/staff upload + playback only, webhook verification mandatory, no sponsor-facing exposure.
+  - Phase B2: coach/team-leader scoped rollout with fallback UI for `processing` and `failed` states.
+  - Phase B3: sponsor-scoped visibility where policy permits, still no sponsor KPI logging side effects.
+- Planned rollback guardrails:
+  - feature-flagged provider path can be disabled without losing Compass media metadata records.
+  - fallback response for disabled provider path returns deterministic `provider_disabled` envelope.
 
 ## Payload Notes (Initial)
 - KPI log payload should include:

@@ -115,6 +115,21 @@ Map the communication + coaching capabilities from `references/the fourth reason
    - Stream token issuance, channel sync mapping, audit trail.
 4. Wave B:
    - Mux upload/playback tokenization, webhook verification, media lifecycle mapping.
+   - Planned contract depth (dependency-gated):
+     - upload session contract includes Compass correlation id + idempotency key handling.
+     - playback token contract includes role-scoped authorization claims and bounded TTL.
+     - webhook contract enforces signature verification, replay protection, and duplicate delivery idempotency.
+   - Planned lifecycle model (dependency-gated):
+     - `queued_for_upload` -> `uploaded_pending_asset` -> `processing` -> `ready|failed` -> `deleted`.
+     - lifecycle state is read-model only and additive to coaching/journey payloads.
+   - Planned failure handling (dependency-gated):
+     - deterministic Compass error envelopes for upload/playback/webhook failure classes.
+     - failed-processing and invalid-signature events are auditable and visible in admin diagnostics.
+     - fallback behavior must keep journey/coaching navigation functional when media is not ready.
+   - Rollout constraints (dependency-gated):
+     - no runtime activation before `DEP-002`, `DEP-004`, and `DEP-005` close.
+     - staged rollout: internal/staff -> coach/team-leader scoped -> sponsor-scoped visibility where policy permits.
+     - rollback path keeps Compass media metadata intact while disabling provider token issuance.
 5. Wave C:
    - mobile + `/coach/*` parity, fallback states, moderation/audit hardening.
 6. Wave D:

@@ -295,6 +295,11 @@
 - Then signature verification gates event acceptance
 - And asset status transitions follow upload -> processing -> ready/failed
 - And coaching/journey payload read-model fields reflect latest valid lifecycle state
+- Planned validation detail (gated by `DEP-002` / `DEP-004` / `DEP-005`):
+  - verify replay-window rejection for stale webhook timestamps
+  - verify idempotent handling of duplicate webhook deliveries
+  - verify lifecycle ordering tolerance (out-of-order events do not regress `ready` to earlier states)
+  - verify `deleted` event removes playback eligibility while preserving audit record
 
 ### 33) Provider Failure Path Handling (Planned W13)
 - Given provider timeout/token error/sync failure/webhook signature mismatch
@@ -302,6 +307,11 @@
 - Then API returns deterministic error envelopes with request tracing
 - And failure counters are visible in ops/admin diagnostics
 - And client-facing fallback states can be rendered without blocking unrelated KPI flows
+- Planned Mux-focused failure assertions (gated by `DEP-002` / `DEP-004` / `DEP-005`):
+  - upload-url failure returns stable typed code (`provider_unavailable` / `size_limit_exceeded` / `unsupported_content_type`)
+  - playback-token call for non-ready media returns `media_not_ready` and no token
+  - webhook signature mismatch increments verification-failure counters and does not mutate lifecycle state
+  - processing-timeout path marks media `failed` with sanitized provider failure detail
 
 ### 34) Compliance Retention and Deletion Policy Enforcement (Planned W13)
 - Given approved retention/deletion policy under `DEP-004`
@@ -309,12 +319,22 @@
 - Then lifecycle behavior matches approved retention matrix
 - And audit trail captures policy actor/time/reason
 - And provider-side deletion/retention sync outcomes are recorded
+- Planned video-specific compliance assertions (gated by `DEP-002` / `DEP-004` / `DEP-005`):
+  - retention TTL enforcement removes expired playback eligibility
+  - deletion request persists legal/audit reason and actor metadata
+  - provider deletion reconciliation state is exposed as read-model status (`pending_delete`, `deleted`, `delete_failed`)
+  - retry policy for failed provider deletion is auditable and bounded
 
 ### 35) Regression Guardrail for Existing Communication/Coaching Paths (Planned W13)
 - Given Stream/Mux adapter paths are enabled
 - When regression suite runs on existing endpoint families
 - Then `inbox*`, `channel_thread`, `coach_broadcast_compose`, and `coaching_journeys*` paths remain green
 - And KPI engine behavior remains unchanged (no provider side-effect mutation)
+- Planned rollout/regression assertions (gated by `DEP-002` / `DEP-004` / `DEP-005`):
+  - Mux feature flag OFF path preserves existing coaching/journey payload contract shape (fields may be null/absent per planned additive contract)
+  - Mux feature flag ON path adds media lifecycle fields without breaking existing clients
+  - fallback copy/state for `processing` and `failed` media does not block lesson/journey navigation
+  - no provider webhook event can mutate KPI log totals, forecast base values, or confidence base calculation inputs
 
 ## Edge Cases
 
