@@ -140,9 +140,15 @@
 - And no message write occurs
 
 ### 12) Broadcast Permission and Throttle
-- Given a channel with a non-admin/non-leader member
+- Given a `team_member` caller
 - When member posts to `POST /api/channels/{id}/broadcast`
 - Then API returns `403`
+- Given a `challenge_sponsor` caller with out-of-scope target
+- When sponsor posts to `POST /api/channels/{id}/broadcast`
+- Then API returns `403`
+- Given an authorized broadcaster (`coach`, `team_leader` in active team scope, `challenge_sponsor` in sponsor/challenge scope, or platform admin)
+- When broadcaster posts to `POST /api/channels/{id}/broadcast`
+- Then API returns success and writes audit rows
 - Given an authorized broadcaster exceeds 24h cap
 - When broadcaster posts to `POST /api/channels/{id}/broadcast`
 - Then API returns `429`
@@ -154,6 +160,60 @@
 - Then member B unread count increases on `GET /api/messages/unread-count`
 - When member B posts `POST /api/messages/mark-seen`
 - Then unread count resets for that channel/member
+
+### 13A) Recipient Picker Scope Enforcement by Persona (M6 UX Policy)
+- Given `inbox_channels` or `coach_broadcast_compose` recipient pickers are loaded
+- When persona is `team_member`
+- Then selectable DM recipients are limited to same active-team members
+- And cross-team recipients are non-selectable with copy `Direct messages are limited to members of your active team.`
+- When persona is `team_leader`
+- Then selectable recipients/targets are limited to active-team scope
+- And out-of-team targets are non-selectable with copy `You can only broadcast to channels within your authorized scope.`
+- When persona is `coach`
+- Then selectable recipients/targets include full authorized scope only
+- And targets outside backend-authorized set are blocked
+- When persona is `challenge_sponsor`
+- Then selectable recipients/targets are limited to sponsor/challenge scope only
+- And team/global out-of-scope targets are blocked with copy `You can only broadcast to channels within your authorized scope.`
+
+### 13B) Challenge Thread Participant Access Model
+- Given a challenge-linked thread in `channel_thread`
+- When caller is a challenge participant and a channel member
+- Then thread read/write is allowed
+- When caller is not a challenge participant for participant-gated challenge chat
+- Then thread read is blocked with copy `You need to join this challenge to view participant chat.`
+- And message composer actions are disabled
+- And send attempts are blocked with copy `Only challenge participants can post in this thread.`
+
+### 13D) Team Leader Messaging Parity with Coach in Team Scope
+- Given equivalent in-scope team messaging actions (`DM`, channel send, broadcast)
+- When action is executed by `coach` and by `team_leader` inside active team scope
+- Then allowed/denied outcomes are the same for both personas within that team scope
+- And `team_leader` is denied for out-of-team targets even where `coach` may be allowed by broader authorized relationships
+
+### 13E) Segment/Cohort Channel Authoring Authority Lock
+- Given a request to create or reconfigure segment/cohort messaging channels
+- When caller is `coach`
+- Then API allows authoring within authorized scope
+- Given caller is `team_leader`, `team_member`, or `challenge_sponsor`
+- When caller attempts segment/cohort authoring actions
+- Then API returns `403`
+- And admin visibility remains oversight/governance only (not primary runtime channel authoring path)
+
+### 13F) Messaging Surfaces Do Not Expand KPI Rights
+- Given a `challenge_sponsor` or `team_member` caller in any messaging surface flow
+- When caller sends messages, DMs, or broadcasts in authorized scope
+- Then no KPI logging or KPI edit action becomes available through messaging payloads or routes
+- And KPI authority boundaries remain unchanged from existing non-messaging contracts
+
+### 13C) Scope-Blocked UX Copy Consistency
+- Given blocked actions are triggered on Comms surfaces (`inbox_channels`, `channel_thread`, `coach_broadcast_compose`)
+- When blocked reason is cross-team DM
+- Then UI displays exact copy `Direct messages are limited to members of your active team.`
+- When blocked reason is non-participant challenge thread access
+- Then UI displays exact copy `You need to join this challenge to view participant chat.`
+- When blocked reason is out-of-scope broadcast target
+- Then UI displays exact copy `You can only broadcast to channels within your authorized scope.`
 
 ### 14) Coaching Journey and Lesson Progress
 - Given an authenticated user and active coaching journey with milestones/lessons

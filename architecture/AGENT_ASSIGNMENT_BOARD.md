@@ -137,6 +137,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B` | `committed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges validation` (`hero/list/drawer/join-open route regression`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer behavior | `Mobile-2` | `codex/a2-admin-list-usability-pass` (QA-only; no code edits) | manual-spec-driven (owner-directed design pass) | Accepted QA pass: leader/member challenge list behavior verified with screenshot evidence matrix; no regressions found and no code edits required. |
 | `M6-COMMS-UX-REDESIGN-SHELL-B` | `review` | `M6 UI MVP polish (provider-ready shell, no Stream runtime switch)` | `Team Leader`, `Team Member`, `Coach`, `Solo User`, `Challenge Sponsor` | `comms shell UX redesign` (`inbox`, `channels list`, `thread readability`, `broadcast compose`) | `KPIDashboardScreen` comms surfaces only (`inbox`, `inbox_channels`, `channel_thread`, `coach_broadcast_compose`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (messaging-first visual polish) | Review-ready: messaging-first visual hierarchy pass landed for Comms Hub tabs/search/channel rows/thread bubbles/composer actions while keeping existing route/API calls and role-gated broadcast behavior unchanged. |
 | `M6-COMMS-FR-PATTERN-MATRIX-B` | `review` | `M6 comms integration planning (docs-only)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `comms architecture mapping` (`Fourth Reason behavior -> Compass adaptation matrix`) | docs-only: `FOURTH_REASON_INTEGRATION_MATRIX`, additive mapping notes in `04_api_contracts`, assignment note in board | `Mobile-2` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Completed docs pass: landed pattern-by-pattern Fourth Reason messaging matrix with `build now / defer / blocked by DEP` statuses and explicit no-new-table adaptation notes, plus additive API mapping guidance. |
+| `COMMS-RECIPIENT-SCOPE-UX-SPEC-D` | `review` | `M6 comms scope UX prep (docs-only)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `comms recipient scope UX` (`recipient picker rules`, `challenge thread scope`, `blocked-state copy`) | docs-only: `COACHING_WIRING_ADDENDUM`, `05_acceptance_tests`, board notes | `Mobile-2` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Completed docs pass: recipient/target scope matrix, challenge participant chat policy, and canonical blocked-copy states landed with matching acceptance scenarios for allowed/blocked Comms paths. |
 | `W13-DEP-TRACKER-EVIDENCE-SYNC-B` | `committed` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency governance` (`closeout evidence linking + status normalization`) | docs-only: `PROJECT_CONTROL_PLANE`, `W13_DEP_SIGNOFF_BRIEF` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed docs pass: placeholder evidence link removed, DEP-002/004/005 evidence references normalized across control-plane + signoff brief, and Wave A GO/NO-GO language preserved. |
 | `A3-W12-SPOTCHECK-CLOSEOUT-DOC-SYNC-B` | `committed` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach QA governance` (`closeout packaging + board/doc alignment`) | docs-only: `AGENT_ASSIGNMENT_BOARD` A3/W12 spotcheck sections | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Accepted docs closeout sync: A3/W12 rows/specs now use accepted lifecycle status language with explicit determinism dependency chain, final pass counts (`36/36`), evidence paths, and commit references (`5dca5dc`). |
 | `M6-CHALLENGE-DETAIL-GOALS-LEADERBOARD-MVP-A` | `committed` | `M6 challenge detail UI cleanup` | `Team Leader`, `Team Member` | `challenge detail goals redesign` (`team goals`, `individual goals`, `leaderboard hero`, `kpi contribution drill-in`) | `KPIDashboardScreen` Challenge detail screen only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted: challenge detail goals/leaderboard MVP keeps leaderboard hero first, explicit Goals hierarchy, KPI-row drill-in behavior, and cumulative team-contribution meter semantics (safe fallback under thin payloads); no backend/schema/API changes (`4d67832`, `72242bb`). |
@@ -146,6 +147,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team identity card` (`leader edit controls`, `member read-only rendering`) | `KPIDashboardScreen` Team tab top card only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed: polished role-aware Team identity card landed with leader-only edit flow (avatar/background picker modal + save/cancel) and member read-only rendering. TypeScript clean. |
 | `M6-TEAM-FOCUS-CARD-MERGE-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team focus cards` (`merge projection+focus cards`, `leader edit trigger`, `remove focus pills`) | `KPIDashboardScreen` Team tab Team Focus section only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed (owner-approved scope fold-in): Team Focus KPI card + Team Focus projections merged into one section with compact leader edit control; legacy focus pill block removed. |
 | `M6-TEAM-LEADER-HEALTH-SUMMARY-RESTORE-A` | `committed` | `M6 team UI cleanup` | `Team Leader` | `team leader dashboard` (`team health summary restore`) | `KPIDashboardScreen` Team tab leader view (`above Team Members list`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted: Team Health Summary restored above Team Members and KPI Concern Flags removed in committed follow-on (`a45c0bd`, `2f5f1d6`). |
+| `MESSAGING-AUTHZ-MATRIX-LOCK-D` | `active` | `M6 messaging authority lock (docs/control-plane)` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`, `Admin operator` (oversight) | `messaging authority policy lock` (`coach/team-leader scope`, `challenge/sponsor/DM boundaries`, `segment/cohort authoring`) | docs-only (`04_api_contracts`, `05_acceptance_tests`, `COACHING_CAPABILITY_AND_PERSONA_MATRIX`, `COACHING_WIRING_ADDENDUM`) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (policy/control-plane lock) | Active: lock final messaging authority policy language across contracts/tests/wiring/persona docs with no endpoint family or schema changes; preserve W13 dependency-gated wording and sponsor/team-member no-KPI-logging boundary. |
 
 ## Blocked Assignments
 
@@ -184,6 +186,54 @@ Every worker report should include:
 - `Commit hash(es)` (if committed)
 
 ## Assignment Specs (Execute from here)
+
+### `MESSAGING-AUTHZ-MATRIX-LOCK-D`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 messaging authority lock (docs/control-plane)`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`, `Admin operator` (oversight)
+- `Flow:` `messaging authority policy lock` (`coach/team-leader scope`, `challenge/sponsor/DM boundaries`, `segment/cohort authoring`)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred)
+- `Worker note (2026-02-28, Coach-1, start):` Board updated first. Executing docs-only authority lock across contracts/tests/persona/wiring docs so messaging permissions are deterministic and unambiguous.
+- `Current blocker status (2026-02-28, Coach-1, start):` `none`
+
+#### Objective
+Lock final messaging authority policy across docs/contracts/tests with no ambiguity.
+
+Authoritative policy to encode:
+1. Coach: full messaging authority across authorized relationships.
+2. Team Leader: same feature set as Coach, but only in active team scope.
+3. Challenge group chat: all challenge participants can access.
+4. Challenge Sponsor: can message challenge group, broadcast, and DM individuals in sponsor/challenge scope only.
+5. Team Member DM: same-team only (active team context).
+6. Segment/cohort authoring: Coach-only (Admin oversight).
+7. Sponsor and Team Member: no KPI logging/edit expansion via messaging surfaces.
+
+#### Scope
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_CAPABILITY_AND_PERSONA_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md` (status/evidence notes only)
+
+#### Hard Constraints
+- Docs-only.
+- No runtime code edits.
+- No schema/table changes.
+- Preserve W13 dependency-gated language.
+
+#### Validation
+- Contract/tests/docs policy language is consistent.
+- No contradictions with `/architecture/CURRENT_SPRINT.md` or `/architecture/NON_NEGOTIABLES.md`.
+
+#### Report-Back Requirements
+- Program status
+- Files changed
+- Policy matrix delta summary
+- Validation summary
+- Commit hash
 
 ### `COACHING-W10-COACH-PORTAL-CUSTOMER-SHELL-A`
 
@@ -5511,3 +5561,50 @@ Create a Compass implementation matrix from Fourth Reason messaging behavior:
 - Updated files + line refs.
 - Pattern matrix summary (`build now`, `defer`, `blocked by DEP`).
 - Commit hash.
+
+### `COMMS-RECIPIENT-SCOPE-UX-SPEC-D`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 comms scope UX prep (docs-only)`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`
+- `Flow:` `comms recipient scope UX` (`recipient picker`, `challenge scope`, `blocked-state copy`)
+- `Owner:` `Mobile-2`
+- `Current blocker status (2026-02-28, launch):` `none` (docs-only).
+- `Execution note (2026-02-28, Mobile-2):` Assignment activated from owner directive. Executing docs-only recipient/target scope UX specification pass for comms surfaces.
+- `Completion note (2026-02-28, Mobile-2):` Added implementation-ready recipient picker rules by persona, challenge participant access model, canonical blocked-action copy strings, and screen-by-screen behavior mapping for `inbox`, `inbox_channels`, `channel_thread`, and `coach_broadcast_compose`.
+- `Validation note (2026-02-28, Mobile-2):` Added acceptance scenarios for allowed/blocked recipient and target scope cases, and ensured UX states map 1:1 to policy rules with no endpoint-family additions.
+- `Current blocker status (2026-02-28, review):` `none`.
+
+#### Primary Objective
+Produce implementation-ready UX spec for recipient/target scope behavior in Comms:
+1. Recipient picker rules by persona
+2. Challenge chat access behavior and restricted-action copy
+3. Disabled/error UX copy for blocked scope actions
+4. Screen mapping for `inbox`, `inbox_channels`, `channel_thread`, `coach_broadcast_compose`
+
+#### Scope In
+- `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`
+- `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md` (status/evidence notes only)
+
+#### Scope Out
+- App/backend code changes
+- Endpoint family additions
+- Schema/table design changes
+
+#### Hard Constraints
+- Docs-only.
+- No app/backend edits.
+- No endpoint-family additions.
+
+#### Required Validation
+- Acceptance scenarios added/updated for each blocked/allowed case.
+- UX states map 1:1 to policy rules.
+
+#### Report-Back
+- Program status
+- Files changed
+- UX rule matrix
+- Acceptance scenario mapping
+- Commit hash

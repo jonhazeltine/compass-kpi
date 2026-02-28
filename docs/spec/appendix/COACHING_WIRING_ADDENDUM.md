@@ -48,6 +48,54 @@ Docs are synchronized to current landed runtime baselines:
 
 This sync does not introduce backend/schema/API changes and does not change role boundaries.
 
+## M6 Recipient/Target Scope UX Spec (Implementation-Ready)
+
+This section defines recipient picker policy and blocked-state UX for Comms surfaces without adding endpoint families or schema tables.
+
+### Policy Matrix (Source of Truth)
+
+| Persona | Recipient picker rule | Allowed target scope | Blocked target scope |
+|---|---|---|---|
+| Team Member | DM recipients must be same-team only | same active team members | cross-team users |
+| Team Leader | recipient targets limited to active team scope | active team members + team channels/challenge channels where participant | users/channels outside active team scope |
+| Coach | full authorized recipient scope from backend authz | all authorized channels/recipients returned by server | any target not returned by authorized scope set |
+| Challenge Sponsor | sponsor/challenge scope only | sponsor channels + sponsor-linked challenge participant recipients | team/global recipients outside sponsor/challenge scope |
+
+### Challenge Chat Behavior
+
+- Participant access model:
+  - challenge thread visibility and message actions are participant-gated.
+  - users who are not challenge participants can see challenge context metadata only when server allows, but cannot open or post into participant-only thread contexts.
+- Restricted action copy for out-of-scope users:
+  - thread access blocked: `You need to join this challenge to view participant chat.`
+  - message send blocked: `Only challenge participants can post in this thread.`
+
+### Disabled/Error UX Copy (Canonical Strings)
+
+Use these exact strings for blocked scope actions:
+
+- Blocked cross-team DM:
+  - `Direct messages are limited to members of your active team.`
+- Blocked non-participant challenge thread access:
+  - `You need to join this challenge to view participant chat.`
+- Blocked out-of-scope broadcast target:
+  - `You can only broadcast to channels within your authorized scope.`
+
+### Screen Mapping (Policy -> UX State)
+
+| Screen | Required scope UX behavior |
+|---|---|
+| `inbox` | Show only conversations/channels in authorized scope. If none, render neutral empty state (no blocked error). |
+| `inbox_channels` | Recipient/scope filters must hide out-of-scope targets by default; blocked selections show canonical blocked copy inline. |
+| `channel_thread` | Enforce participant/member gate for read/write; blocked read/write actions show canonical challenge/non-scope copy and disable composer actions. |
+| `coach_broadcast_compose` | Target picker must be scope-filtered by role; out-of-scope target selection is disabled and renders canonical broadcast blocked copy. |
+
+### No-New-Table Adaptation Rule
+
+- Recipient and scope behavior is derived from existing role + membership + channel context payloads.
+- Do not introduce a recipient cache table, DM target table, or broadcast-target table for this UX policy.
+- Server authz remains source of truth; client state mirrors allowed/blocked outcomes and copy only.
+
 ## New/Expanded Destinations (Intended)
 
 ### Authoring / ops surfaces (admin-web extension or hybrid portal; manual-spec-driven)
