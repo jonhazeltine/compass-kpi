@@ -372,6 +372,25 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
   - Returns `404` when the caller is not currently a participant in the specified challenge.
 - `GET /challenges`
   - Returns challenge list with caller participation summary and leaderboard baseline payload.
+- M6 challenge detail MVP data-contract inventory (existing endpoint families only):
+  - Scope: `GET /challenges` + `POST /challenge-participants` response payloads only. No new endpoint families in this inventory pass.
+  - Supported vs fallback matrix:
+
+    | UI block (challenge detail MVP) | Existing contract source | Currently supported | Existing payload fields | Fallback rendering rule (required) |
+    |---|---|---|---|---|
+    | Team-goal progress | `GET /challenges` | `partial` | `my_participation.progress_percent` (caller only), `leaderboard_top[].progress_percent` (top participants only) | Render team-goal section with caller percent and "team aggregate not available yet" helper copy; do not fabricate team-total percent. |
+    | Individual-goal progress (current viewer) | `GET /challenges`, `POST /challenge-participants` | `supported (caller-only)` | `my_participation.progress_percent`, `my_participation.joined_at`, `my_participation.effective_start_at` | If `my_participation` is null (not joined), show "Join challenge to start progress tracking" empty state + join CTA; do not show 0% as completed context. |
+    | Leaderboard ranking | `GET /challenges`, `POST /challenge-participants` | `partial` | `leaderboard_top[]` rows with `user_id`, `activity_count`, `progress_percent` (already sorted server-side) | Derive rank client-side by row index; if name is unavailable, show deterministic member fallback label from `user_id`; if no rows, show "No leaderboard activity yet". |
+    | KPI-level contribution drill-in | existing challenge families | `not supported` | none in current challenge payload families | Render KPI contribution panel as unavailable state ("KPI contribution breakdown is not yet available"); keep challenge overview and leaderboard usable. |
+  - Payload inventory detail (for runtime/UI mapping):
+    - Challenge row fields currently returned by `GET /challenges`:
+      - `id`, `name`, `description`, `mode`, `team_id`, `start_at`, `end_at`, `late_join_includes_history`, `is_active`, `created_at`
+      - `my_participation` object: `challenge_id`, `user_id`, `joined_at`, `effective_start_at`, `progress_percent`
+      - `leaderboard_top[]` rows: `user_id`, `activity_count`, `progress_percent`
+    - Join response fields currently returned by `POST /challenge-participants`:
+      - `participant`: `id`, `challenge_id`, `user_id`, `team_id`, `joined_at`, `effective_start_at`, `progress_percent`
+      - `leaderboard_top[]` rows: `user_id`, `activity_count`, `progress_percent`
+      - `late_join_policy.include_prior_logs`
 - `GET /api/channels`
   - Returns only channels where caller is a member.
   - Additive response fields (package read-model shaping baseline):

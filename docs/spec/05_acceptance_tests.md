@@ -105,6 +105,15 @@
 - Then challenge participation record exists
 - And `% complete` reflects only challenge-mapped KPI activity
 
+### 7A) Challenge Detail MVP Data Fallback Safety (Docs-First Inventory)
+- Given challenge detail UI consumes existing challenge families only (`GET /challenges`, `POST /challenge-participants`)
+- When team-goal aggregate or KPI-level contribution fields are absent
+- Then challenge detail renders explicit fallback states (no fabricated aggregate values)
+- And individual progress uses `my_participation.progress_percent` when present
+- And leaderboard rank is derived from server-ordered `leaderboard_top[]` rows
+- And missing leaderboard display names fall back to deterministic member labels
+- And non-joined users see join-first empty state rather than misleading progress completion
+
 ### 8) Team Leader Permissions
 - Given a user with `team_leader` role
 - When user creates a team challenge and marks mandatory KPI(s)
@@ -461,6 +470,7 @@
 - Team role checks still prevent non-leaders from leader-only actions.
 - Tier checks still block restricted features with predictable `403` responses.
 - Sponsored challenge endpoints return correct metadata and join behavior.
+- Challenge detail fallback rendering remains safe when team aggregate/KPI drill-in fields are unavailable in current challenge payload families.
 - Admin CRUD endpoints remain role-restricted and auditable.
 - Error responses continue to follow documented status codes (`400/401/403/404/409/422/500`).
 
@@ -489,7 +499,7 @@ This section defines UI/API integration validation for the frontend sprint roadm
 | M1 | #1, E2 | Auth shell, login parity, session-expired recovery, protected-route loading/error states |
 | M2 | scenario #1 extension, #6A, #6B, and onboarding/profile state validation | Onboarding form validation, recommended KPI pick UX, KPI value read-only behavior, full catalog visibility, locked-tier affordances, profile/goal persistence UX, empty/error treatment |
 | M3 | #2, #3, #4, #5, #6, E3 | KPI log UX, dashboard projection/actual split, confidence overlay behavior, pipeline anchor update UI |
-| M4 | #7, #8, #9, E6 | Challenge discovery/join/progress UX, leader permissions affordances, tier-lock upgrade routing |
+| M4 | #7, #7A, #8, #9, E6 | Challenge discovery/join/progress UX, detail fallback safety, leader permissions affordances, tier-lock upgrade routing |
 | M5 | #11, #12, #13 | Messaging/channel membership enforcement UX, unread/mark-seen flows, broadcast role gating |
 | M6 | #14, #15, #16, #17, #18, #20, E1 | Coaching and AI workflows, notifications UX, offline queueing/sync visibility and retry handling |
 | M7 | #10, #19, E8 | Sponsored challenge list/detail/join UX, CTA open flow, tier restrictions and sponsor metadata rendering |
