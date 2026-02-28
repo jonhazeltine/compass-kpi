@@ -4606,8 +4606,8 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 | Order | Assignment ID | Status | Owner | Depends On | Notes |
 |---|---|---|---|---|---|
 | 1 | `W13-CHAT-VIDEO-ARCH-RFC-A` | `review` | `Controller` | none | Docs/control-plane planning slice implemented on 2026-02-28; runtime code explicitly out-of-scope. |
-| 2 | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | `queued` | `Unassigned` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Stream-backed chat facade. |
-| 3 | `W13-MUX-CONTRACTS-AND-TESTS-A` | `queued` | `Unassigned` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Mux-backed video facade/webhooks. |
+| 2 | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | `active` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Stream-backed chat facade. |
+| 3 | `W13-MUX-CONTRACTS-AND-TESTS-A` | `active` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Mux-backed video facade/webhooks. |
 | 4 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
 | 5 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation block. |
 | 6 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. |
@@ -4647,3 +4647,91 @@ Lock architecture/spec/test/board source-of-truth for Stream Chat + Mux integrat
 - No runtime implementation before dependency closure.
 - Preserve Compass backend as provider authority/facade.
 - Preserve KPI non-negotiable boundaries.
+
+### `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `W13 docs/control-plane exception`
+- `Persona:` `backend/platform contracts`, `QA`
+- `Flow:` `Stream Chat contract hardening`
+- `Owner:` `Coach-1`
+- `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
+
+#### Primary Objective
+Deepen Stream Chat planned contracts + acceptance scenarios while preserving current endpoint-family discipline and dependency gates.
+
+#### Scope In
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md` (Stream sections only)
+- `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md` (chat scenarios only)
+
+#### Scope Out
+- Mux endpoint/test edits
+- Runtime/backend implementation
+- Board/dependency status changes
+
+#### Hard Constraints
+- Do not edit Mux sections.
+- Keep all additions explicitly marked `planned`.
+- Preserve blocked gate references (`DEP-002`, `DEP-004`, `DEP-005`).
+
+### `W13-MUX-CONTRACTS-AND-TESTS-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `W13 docs/control-plane exception`
+- `Persona:` `backend/platform contracts`, `QA`
+- `Flow:` `Mux video contract hardening`
+- `Owner:` `Admin-1`
+- `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
+
+#### Primary Objective
+Deepen Mux planned contracts + acceptance scenarios and provider rollout constraints without changing chat contract sections.
+
+#### Scope In
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md` (Mux sections only)
+- `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md` (video scenarios only)
+- `/Users/jon/compass-kpi/docs/spec/appendix/FOURTH_REASON_INTEGRATION_MATRIX.md` (Wave B details only)
+
+#### Scope Out
+- Stream token/channel-sync edits
+- Runtime/backend implementation
+- Board/dependency status changes
+
+#### Hard Constraints
+- Do not edit Stream sections.
+- Keep all additions explicitly marked `planned`.
+- Preserve blocked gate references (`DEP-002`, `DEP-004`, `DEP-005`).
+
+### `M6-TEAM-FOCUS-KPI-CARD-DENSITY-REDUCE-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 team UI cleanup`
+- `Persona:` `Team Leader`, `Team Member`
+- `Flow:` `Team tab Team Focus KPI card density reduction`
+- `Owner:` `Mobile-1`
+- `Current blocker status (2026-02-28, launch):` `none`.
+- `Execution note (2026-02-28, Mobile-1):` Board checked first; executing localized Team Focus KPI card density pass (tile/container spacing + typography only) with no Team identity/health/API changes.
+- `Completion note (2026-02-28, Mobile-1):` Reduced Team Focus KPI card footprint by tightening compact card paddings/gaps, shrinking compact tile/circle plate dimensions, and reducing compact label typography while preserving existing edit-trigger and role-gating behavior.
+- `Validation note (2026-02-28, Mobile-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed.
+- `Validation note (2026-02-28, Mobile-1):` Runtime evidence captured in `/Users/jon/compass-kpi/app/test-results/m6-team-focus-kpi-card-density-reduce-a/` (`team-focus-leader-before.png`, `team-focus-member-before.png`, `team-focus-after-runtime.png`).
+- `Owner correction note (2026-02-28):` Replaced compact square KPI tile treatment with Log-screen icon treatment for Team Focus KPI card: removed square background plate, increased icon scale to Log parity, retained 4-up row, and aligned label positioning/sizing to Log-style geometry.
+- `Controller validation note (2026-02-28):` Typecheck re-run passed after owner correction (`cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`).
+- `Current blocker status (2026-02-28, completion):` `none`.
+
+#### Primary Objective
+Reduce Team Focus KPI visual footprint by shrinking KPI tile containers and card spacing so the section is less obtrusive.
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (Team tab Team Focus KPI card layout only)
+
+#### Scope Out
+- Team identity card logic
+- Team summary/member row logic
+- Backend/schema/API changes
+
+#### Hard Constraints
+- Preserve existing edit-button behavior and role gating.
+- Do not rename routes/API calls.
+- Keep changes localized to Team Focus KPI card dimensions/spacing/typography.

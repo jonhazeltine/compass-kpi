@@ -5261,14 +5261,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           ? 'Business growth behaviors connected to challenge progress.'
           : 'Vitality habits that support consistency and energy.';
     return (
-      <View style={styles.challengeSectionCard}>
-        <View style={styles.challengeSectionHeader}>
-          <View style={styles.challengeSectionHeaderCopy}>
+      <View style={[styles.challengeSectionCard, options?.compactIcons && styles.challengeSectionCardCompact]}>
+        <View style={[styles.challengeSectionHeader, options?.compactIcons && styles.challengeSectionHeaderCompact]}>
+          <View style={[styles.challengeSectionHeaderCopy, options?.compactIcons && styles.challengeSectionHeaderCopyCompact]}>
             <View style={styles.challengeSectionTitleRow}>
-              <Text style={styles.challengeSectionTitle}>{title}</Text>
-              <Text style={styles.challengeSectionCount}>{typeCountLabel}</Text>
+              <Text style={[styles.challengeSectionTitle, options?.compactIcons && styles.challengeSectionTitleCompact]}>{title}</Text>
+              <Text style={[styles.challengeSectionCount, options?.compactIcons && styles.challengeSectionCountCompact]}>{typeCountLabel}</Text>
             </View>
-            <Text style={styles.challengeSectionSub}>{sectionSub}</Text>
+            <Text style={[styles.challengeSectionSub, options?.compactIcons && styles.challengeSectionSubCompact]}>{sectionSub}</Text>
           </View>
           {options?.trailingControl ?? (
             options?.hideTypePill ? null : (
@@ -5288,7 +5288,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             </Text>
           </View>
         ) : (
-          <View style={[styles.gridWrap, styles.challengeGridWrap]}>
+          <View style={[styles.gridWrap, styles.challengeGridWrap, options?.compactIcons && styles.challengeGridWrapCompact]}>
             {kpis.map((kpi) => {
               const successAnim = getKpiTileSuccessAnim(kpi.id);
               const successOpacity = successAnim.interpolate({
@@ -5324,18 +5324,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       { transform: [{ scale: getKpiTileScale(kpi.id) }] },
                     ]}
                   >
-                    <View style={[styles.gridCircleWrap, options?.compactIcons && styles.challengeGridCircleWrapCompact]}>
-                      <View style={[styles.challengeTilePlate, options?.compactIcons && styles.challengeTilePlateCompact]} />
+                    <View style={styles.gridCircleWrap}>
+                      {!options?.compactIcons ? <View style={styles.challengeTilePlate} /> : null}
                       <View
                         style={[
                           styles.gridCircle,
-                          options?.compactIcons && styles.challengeGridCircleCompact,
                           confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed,
                         ]}
                       >
-                        <View style={options?.compactIcons ? styles.challengeCompactIconScale : undefined}>
-                          {renderKpiIcon(kpi)}
-                        </View>
+                        {renderKpiIcon(kpi)}
                       </View>
                       <Animated.View
                         pointerEvents="none"
@@ -5356,8 +5353,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <Text
                       style={[
                         styles.gridLabel,
-                        styles.challengeGridLabel,
-                        options?.compactIcons && styles.challengeGridLabelCompact,
+                        !options?.compactIcons && styles.challengeGridLabel,
                         confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed,
                       ]}
                     >
@@ -16815,15 +16811,27 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 1,
   },
+  challengeSectionCardCompact: {
+    borderRadius: 11,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+    gap: 7,
+  },
   challengeSectionHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 8,
   },
+  challengeSectionHeaderCompact: {
+    gap: 6,
+  },
   challengeSectionHeaderCopy: {
     flex: 1,
     gap: 4,
+  },
+  challengeSectionHeaderCopyCompact: {
+    gap: 3,
   },
   challengeSectionTitleRow: {
     flexDirection: 'row',
@@ -16836,15 +16844,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
   },
+  challengeSectionTitleCompact: {
+    fontSize: 13,
+  },
   challengeSectionCount: {
     color: '#7a879a',
     fontSize: 11,
     fontWeight: '700',
   },
+  challengeSectionCountCompact: {
+    fontSize: 10,
+  },
   challengeSectionSub: {
     color: '#798496',
     fontSize: 11,
     lineHeight: 14,
+  },
+  challengeSectionSubCompact: {
+    fontSize: 10,
+    lineHeight: 12,
   },
   challengeSectionTypePill: {
     borderRadius: 999,
@@ -16866,11 +16884,17 @@ const styles = StyleSheet.create({
     rowGap: 10,
     paddingTop: 2,
   },
+  challengeGridWrapCompact: {
+    rowGap: 6,
+    justifyContent: 'space-between',
+    columnGap: 0,
+  },
   challengeGridItem: {
     gap: 4,
   },
   challengeGridItemCompact: {
     gap: 2,
+    width: '24%',
   },
   challengeGridTileAnimatedWrap: {
     paddingTop: 1,
@@ -16896,26 +16920,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   challengeGridLabelCompact: {
-    fontSize: 10,
-    lineHeight: 12,
-    marginTop: -4,
+    fontSize: 8.5,
+    lineHeight: 10,
+    marginTop: -7,
   },
   challengeTilePlateCompact: {
-    width: 84,
-    height: 84,
-    borderRadius: 22,
+    width: 58,
+    height: 58,
+    borderRadius: 16,
   },
   challengeGridCircleWrapCompact: {
-    width: 82,
-    height: 82,
+    width: 56,
+    height: 56,
   },
   challengeGridCircleCompact: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
   challengeCompactIconScale: {
-    transform: [{ scale: 0.62 }],
+    transform: [{ scale: 0.46 }],
   },
   challengeEmptyCard: {
     backgroundColor: '#fff',
@@ -18436,7 +18460,7 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
   },
   gridItem: {
-    width: '31%',
+    width: '24%',
     alignItems: 'center',
     gap: 2,
   },
@@ -18446,18 +18470,18 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   gridCircle: {
-    width: 96,
-    height: 96,
+    width: 80,
+    height: 80,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
-    borderRadius: 48,
+    borderRadius: 40,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   gridCircleWrap: {
-    width: 96,
-    height: 96,
+    width: 80,
+    height: 80,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -18504,16 +18528,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 208, 108, 0.07)',
   },
   gridIcon: {
-    fontSize: 38,
+    fontSize: 30,
   },
   gridIconImage: {
-    width: 86,
-    height: 86,
+    width: 72,
+    height: 72,
   },
   gridIconImageClip: {
-    width: 86,
-    height: 86,
-    borderRadius: 43,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
