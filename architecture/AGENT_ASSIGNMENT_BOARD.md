@@ -4322,7 +4322,7 @@ Run a mobile regression sweep across critical routes and personas, capture pass/
 ### `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A`
 
 #### Snapshot
-- `Status:` `blocked`
+- `Status:` `review`
 - `Program status:` `A3/W12 admin+coach hardening`
 - `Persona:` `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor`
 - `Flow:` `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`)
