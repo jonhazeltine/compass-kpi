@@ -125,8 +125,8 @@ Only use long custom prompts when the board is missing required details or a one
 | `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `blocked` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Blocked on persona-role validation determinism: runtime account resolves backend `/me` role=`super_admin`, and `resolvedRoles` unions backend + session metadata, so local metadata overrides cannot faithfully simulate `coach/team_leader/challenge_sponsor` gates in-browser for canonical proof. Route alias/shell checks and super-admin baseline pass evidence captured under `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/`; persona-gate mismatch list reflects this blocker. |
 | `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `committed+pushed` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Accepted and pushed: FE-00 checkpoint moved from pending to concrete complete state in sprint gate, and frontend acceptance harness now includes explicit FE-00 pass/fail closeout criteria with traceability consistency checks. |
 | `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `committed+pushed` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Accepted and pushed: reset + seed + smoke sequence passed against current deterministic realism runbook; no command/output drift found; logs captured under `app/test-results/m8-seed-data-smoke-verification-a/`. |
-| `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` | `active` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team identity card` (`leader edit controls`, `member read-only rendering`) | `KPIDashboardScreen` Team tab top card only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Active owner assignment: design-heavy Team identity card refactor where Team Leader gets explicit edit flow (avatar + background options) and Team Member sees final configured result only. |
-| `M6-TEAM-FOCUS-CARD-MERGE-A` | `queued` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team focus cards` (`merge projection+focus cards`, `leader edit trigger`, `remove focus pills`) | `KPIDashboardScreen` Team tab Team Focus section only | `TBD (post Claude-1)` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Queued follow-on with hard dependency on `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` completion to avoid collisions in `app/screens/KPIDashboardScreen.tsx`. Do not start until controller flips to `active`. |
+| `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team identity card` (`leader edit controls`, `member read-only rendering`) | `KPIDashboardScreen` Team tab top card only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed: polished role-aware Team identity card landed with leader-only edit flow (avatar/background picker modal + save/cancel) and member read-only rendering. TypeScript clean. |
+| `M6-TEAM-FOCUS-CARD-MERGE-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team focus cards` (`merge projection+focus cards`, `leader edit trigger`, `remove focus pills`) | `KPIDashboardScreen` Team tab Team Focus section only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed (owner-approved scope fold-in): Team Focus KPI card + Team Focus projections merged into one section with compact leader edit control; legacy focus pill block removed. |
 
 ## Blocked Assignments
 
@@ -4445,7 +4445,7 @@ Re-run deterministic seed and smoke flows, verify expected dataset outcomes, and
 ### `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 team UI cleanup`
 - `Persona:` `Team Leader`, `Team Member`
 - `Flow:` `team identity card` (`leader edit controls`, `member read-only rendering`)
@@ -4453,7 +4453,8 @@ Re-run deterministic seed and smoke flows, verify expected dataset outcomes, and
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required)
 - `Scope:` `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (Team tab top identity card only)
 - `Execution note (2026-02-28, Controller):` Owner-directed design-heavy pass launched. Team Leader must have explicit edit affordance and controlled edit mode; Team Member must see read-only result only.
-- `Current blocker status (2026-02-28, launch):` `none`.
+- `Completion note (2026-02-28, Worker+Controller):` Implementation complete and accepted. Team identity card is now polished and role-aware: leader-only edit control opens a modal sheet with avatar/background options (with preview, cancel, save); member sees read-only configured result; team chat appears on both leader/member identity card; Invite Member remains leader-only. TypeScript clean (`npx tsc --noEmit --pretty false` = 0 errors).
+- `Current blocker status (2026-02-28, complete):` `none`.
 
 #### Primary Objective
 Implement a polished role-aware Team identity card:
@@ -4478,7 +4479,7 @@ Implement a polished role-aware Team identity card:
 #### Validation
 - `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
 - Runtime checks:
-  - Team Leader sees `Edit Team`, can open/close editor, save/cancel changes.
+  - Team Leader sees edit control, can open/close editor, save/cancel changes.
   - Team Member cannot edit and only sees final configured card.
 - Screenshot evidence for both roles.
 
@@ -4492,15 +4493,16 @@ Implement a polished role-aware Team identity card:
 ### `M6-TEAM-FOCUS-CARD-MERGE-A`
 
 #### Snapshot
-- `Status:` `queued`
+- `Status:` `committed+pushed`
 - `Program status:` `M6 team UI cleanup`
 - `Persona:` `Team Leader`, `Team Member`
 - `Flow:` `team focus cards` (`merge projection+focus cards`, `leader edit trigger`, `remove focus pills`)
-- `Owner:` `TBD (post Claude-1)`
+- `Owner:` `Claude-1`
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required)
 - `Dependency note:` `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` must be `committed`/`review` and controller-accepted before activation.
-- `Execution note (2026-02-28, Controller):` Queued by owner direction; kept non-active to prevent collisions on `KPIDashboardScreen.tsx`.
-- `Current blocker status (2026-02-28, queue):` `waiting_on_dependency`.
+- `Execution note (2026-02-28, Controller):` Owner approved expanded scope fold-in after identity-card pass; merge completed in same safe handoff window with no ownership collision.
+- `Completion note (2026-02-28, Worker+Controller):` Team Focus KPI + Team Focus projections are now combined into one section for leader/member, legacy focus pill-only block removed, and leader uses compact explicit edit control to manage selected focus KPIs.
+- `Current blocker status (2026-02-28, complete):` `none`.
 
 #### Primary Objective
 Merge Team Focus KPI card + Team Focus projection card into one combined section for Team Leader with a compact edit affordance; remove legacy Team Focus pill-only treatment.

@@ -2186,6 +2186,14 @@ type Props = {
   onOpenProfile?: () => void;
 };
 
+const isLightColor = (hex: string): boolean => {
+  const c = hex.replace('#', '');
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 155;
+};
+
 export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const { session } = useAuth();
   const insets = useSafeAreaInsets();
@@ -2222,6 +2230,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [teamFocusEditorOpen, setTeamFocusEditorOpen] = useState(false);
   const [teamFocusEditorFilter, setTeamFocusEditorFilter] = useState<TeamFocusEditorFilter>('PC');
   const [teamProfileMemberId, setTeamProfileMemberId] = useState<string | null>(null);
+  const [teamIdentityAvatar, setTeamIdentityAvatar] = useState('🛡️');
+  const [teamIdentityBackground, setTeamIdentityBackground] = useState('#dff0da');
+  const [teamIdentityEditOpen, setTeamIdentityEditOpen] = useState(false);
+  const [teamIdentityDraftAvatar, setTeamIdentityDraftAvatar] = useState('🛡️');
+  const [teamIdentityDraftBackground, setTeamIdentityDraftBackground] = useState('#dff0da');
+  const [teamIdentityAvatarCategory, setTeamIdentityAvatarCategory] = useState<'power' | 'animals' | 'nature' | 'sports' | 'symbols'>('power');
   const [teamLogContext, setTeamLogContext] = useState<TeamLogContext | null>(null);
   const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox');
   const [commsHubPrimaryTab, setCommsHubPrimaryTab] = useState<CommsHubPrimaryTab>('all');
@@ -7165,20 +7179,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         showsVerticalScrollIndicator={!isHomeGameplaySurface}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <View style={styles.homeHeaderRow}>
-          <View>
-            <Text style={styles.hello}>Hi, {greetingFirstName}</Text>
-            <Text style={styles.welcomeBack}>Welcome back</Text>
+        {activeTab === 'home' ? (
+          <View style={styles.homeHeaderRow}>
+            <View>
+              <Text style={styles.hello}>Hi, {greetingFirstName}</Text>
+              <Text style={styles.welcomeBack}>Welcome back</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.avatarBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Open profile and settings"
+              onPress={handleOpenProfileFromAvatar}
+            >
+              <Text style={styles.avatarText}>{profileInitials}</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={styles.avatarBtn}
-            accessibilityRole="button"
-            accessibilityLabel="Open profile and settings"
-            onPress={handleOpenProfileFromAvatar}
-          >
-            <Text style={styles.avatarText}>{profileInitials}</Text>
-          </TouchableOpacity>
-        </View>
+        ) : null}
         {activeTab === 'challenge' ? (
           <View style={styles.challengeSurfaceWrap}>
             <View style={styles.teamChallengeTopTabsRow}>
@@ -8189,7 +8205,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               };
               const teamPrimaryChallenge =
                 challengeListItems.find((item) => item.challengeModeLabel === 'Team') ?? challengeListItems[0] ?? null;
-              const teamLightKpis = teamSurfaceKpis.slice(0, 3);
               const teamFocusSelectedRows = teamSurfaceKpis.filter((kpi) => teamFocusSelectedKpiIds.includes(String(kpi.id)));
               const teamFocusKpisForDisplay = teamFocusSelectedRows.length > 0 ? teamFocusSelectedRows : teamSurfaceKpis.slice(0, 4);
               const teamMandatedKpiIdsOrdered = teamFocusKpisForDisplay.map((kpi) => String(kpi.id));
@@ -8270,23 +8285,195 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 .flatMap((row) => row.concerns.map((concern) => ({ member: row.name, concern, critical: row.status === 'at_risk' })))
                 .slice(0, 6);
               const orderedKpiTypes: Segment[] = ['PC', 'GP', 'VP'];
+              const teamFocusKpiGroups = {
+                PC: teamFocusKpisForDisplay.filter((kpi) => kpi.type === 'PC'),
+                GP: teamFocusKpisForDisplay.filter((kpi) => kpi.type === 'GP'),
+                VP: teamFocusKpisForDisplay.filter((kpi) => kpi.type === 'VP'),
+              };
+              const teamAvatarCategories: Record<string, { label: string; emojis: string[] }> = {
+                power: { label: 'Power', emojis: ['🏆', '🎯', '🚀', '⚡', '🔥', '💎', '👑', '⭐', '💪', '🌟', '✨', '🎖️'] },
+                animals: { label: 'Animals', emojis: ['🦁', '🐺', '🦅', '🐉', '🦈', '🐝', '🦋', '🐬', '🦊', '🐻', '🦉', '🐘'] },
+                nature: { label: 'Nature', emojis: ['🏔️', '🌊', '🌈', '🌸', '🍀', '🌻', '🌙', '☀️', '🌴', '🌵', '❄️', '🔮'] },
+                sports: { label: 'Sports', emojis: ['⚽', '🏀', '🏈', '🎾', '🥊', '🏋️', '🚴', '🏄', '⛷️', '🏑', '🎳', '🏐'] },
+                symbols: { label: 'Symbols', emojis: ['🛡️', '⚔️', '🧭', '🗺️', '🎪', '🎭', '🏴', '🔱', '⚓', '🪁', '🎬', '🎵'] },
+              };
+              const teamColorPalette = [
+                // Row 1: Pastels / light
+                '#fce4ec', '#f3e5f5', '#e8eaf6', '#e3f2fd', '#e0f7fa', '#e0f2f1',
+                '#e8f5e9', '#f1f8e9', '#fffde7', '#fff8e1', '#fff3e0', '#fbe9e7',
+                // Row 2: Vivid mid
+                '#ef9a9a', '#ce93d8', '#9fa8da', '#90caf9', '#80deea', '#80cbc4',
+                '#a5d6a7', '#c5e1a5', '#fff176', '#ffd54f', '#ffb74d', '#ff8a65',
+                // Row 3: Rich saturated
+                '#e53935', '#8e24aa', '#3949ab', '#1e88e5', '#00acc1', '#00897b',
+                '#43a047', '#7cb342', '#fdd835', '#ffb300', '#fb8c00', '#f4511e',
+                // Row 4: Deep / dark
+                '#b71c1c', '#4a148c', '#1a237e', '#0d47a1', '#006064', '#004d40',
+                '#1b5e20', '#33691e', '#f57f17', '#ff6f00', '#e65100', '#bf360c',
+                // Row 5: Neutrals
+                '#fafafa', '#f5f5f5', '#e0e0e0', '#bdbdbd', '#9e9e9e', '#757575',
+                '#616161', '#424242', '#212121', '#263238', '#37474f', '#455a64',
+              ];
+              const currentCategoryEmojis = teamAvatarCategories[teamIdentityAvatarCategory]?.emojis ?? teamAvatarCategories.power.emojis;
+
+              const openTeamIdentityEditor = () => {
+                setTeamIdentityDraftAvatar(teamIdentityAvatar);
+                setTeamIdentityDraftBackground(teamIdentityBackground);
+                setTeamIdentityAvatarCategory('power');
+                setTeamIdentityEditOpen(true);
+              };
+              const saveTeamIdentityEdits = () => {
+                setTeamIdentityAvatar(teamIdentityDraftAvatar);
+                setTeamIdentityBackground(teamIdentityDraftBackground);
+                setTeamIdentityEditOpen(false);
+              };
+              const cancelTeamIdentityEdits = () => {
+                setTeamIdentityEditOpen(false);
+              };
+
+              const teamIdentityCard = (
+                <View style={[styles.teamIdentityCard, { backgroundColor: teamIdentityBackground }]}>
+                  {teamPersonaVariant === 'leader' ? (
+                    <TouchableOpacity style={styles.teamIdentityEditIcon} onPress={openTeamIdentityEditor}>
+                      <Text style={styles.teamIdentityEditIconText}>✎</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <View style={styles.teamIdentityTopRow}>
+                    <View style={styles.teamIdentityIconCircle}>
+                      <Text style={styles.teamIdentityIconText}>{teamIdentityAvatar}</Text>
+                    </View>
+                    <View style={styles.teamIdentityCopy}>
+                      <Text style={styles.teamIdentityName}>The Elite Group</Text>
+                      <Text style={styles.teamIdentitySub}>3 Members | 2 Ongoing challenges</Text>
+                    </View>
+                  </View>
+                  <View style={styles.teamIdentityCardActions}>
+                    <TouchableOpacity
+                      style={styles.teamIdentityCardChatBtn}
+                      onPress={() => openTeamCommsHandoff(teamPersonaVariant === 'leader' ? 'team_leader_dashboard' : 'team_member_dashboard')}
+                    >
+                      <Text style={styles.teamIdentityCardChatBtnText}>💬  Team Chat</Text>
+                    </TouchableOpacity>
+                    {teamPersonaVariant === 'leader' ? (
+                      <TouchableOpacity style={styles.teamIdentityCardInviteBtn} onPress={() => setTeamFlowScreen('invite_member')}>
+                        <Text style={styles.teamIdentityCardInviteBtnText}>⊕</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                  <Modal
+                    visible={teamIdentityEditOpen}
+                    transparent
+                    animationType="slide"
+                    onRequestClose={cancelTeamIdentityEdits}
+                  >
+                    <View style={styles.teamIdentityEditOverlay}>
+                      <View style={styles.teamIdentityEditSheet}>
+                        <View style={styles.teamIdentityEditSheetHandle} />
+                        <Text style={styles.teamIdentityEditSheetTitle}>Edit Team Identity</Text>
+
+                        <View style={[styles.teamIdentityEditPreview, { backgroundColor: teamIdentityDraftBackground }]}>
+                          <View style={styles.teamIdentityEditPreviewCircle}>
+                            <Text style={styles.teamIdentityEditPreviewGlyph}>{teamIdentityDraftAvatar}</Text>
+                          </View>
+                          <Text style={styles.teamIdentityEditPreviewName}>The Elite Group</Text>
+                        </View>
+
+                        <ScrollView style={styles.teamIdentityEditScrollArea} showsVerticalScrollIndicator={false}>
+                          <Text style={styles.teamIdentityEditSectionLabel}>Choose Avatar</Text>
+                          <View style={styles.teamIdentityEditCategoryRow}>
+                            {Object.entries(teamAvatarCategories).map(([catKey, cat]) => {
+                              const isActive = teamIdentityAvatarCategory === catKey;
+                              return (
+                                <TouchableOpacity
+                                  key={`avatar-cat-${catKey}`}
+                                  style={[styles.teamIdentityEditCategoryChip, isActive && styles.teamIdentityEditCategoryChipActive]}
+                                  onPress={() => setTeamIdentityAvatarCategory(catKey as typeof teamIdentityAvatarCategory)}
+                                >
+                                  <Text style={[styles.teamIdentityEditCategoryChipText, isActive && styles.teamIdentityEditCategoryChipTextActive]}>{cat.label}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                          <View style={styles.teamIdentityEditAvatarGrid}>
+                            {currentCategoryEmojis.map((emoji) => {
+                              const isSelected = teamIdentityDraftAvatar === emoji;
+                              return (
+                                <TouchableOpacity
+                                  key={`av-${emoji}`}
+                                  style={[styles.teamIdentityEditAvatarCell, isSelected && styles.teamIdentityEditAvatarCellActive]}
+                                  onPress={() => setTeamIdentityDraftAvatar(emoji)}
+                                >
+                                  <Text style={styles.teamIdentityEditAvatarEmoji}>{emoji}</Text>
+                                  {isSelected ? (
+                                    <View style={styles.teamIdentityEditChoiceCheck}>
+                                      <Text style={styles.teamIdentityEditChoiceCheckText}>✓</Text>
+                                    </View>
+                                  ) : null}
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+
+                          <Text style={[styles.teamIdentityEditSectionLabel, { marginTop: 16 }]}>Background Color</Text>
+                          <View style={styles.teamIdentityEditColorGrid}>
+                            {teamColorPalette.map((hex) => {
+                              const isSelected = teamIdentityDraftBackground === hex;
+                              return (
+                                <TouchableOpacity
+                                  key={`clr-${hex}`}
+                                  style={[
+                                    styles.teamIdentityEditColorSwatch,
+                                    { backgroundColor: hex },
+                                    isSelected && styles.teamIdentityEditColorSwatchActive,
+                                  ]}
+                                  onPress={() => setTeamIdentityDraftBackground(hex)}
+                                >
+                                  {isSelected ? (
+                                    <Text style={[
+                                      styles.teamIdentityEditColorSwatchCheck,
+                                      { color: isLightColor(hex) ? '#2a3140' : '#ffffff' },
+                                    ]}>✓</Text>
+                                  ) : null}
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </ScrollView>
+
+                        <View style={styles.teamIdentityEditActions}>
+                          <TouchableOpacity style={styles.teamIdentityEditCancelBtn} onPress={cancelTeamIdentityEdits}>
+                            <Text style={styles.teamIdentityEditCancelBtnText}>Cancel</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.teamIdentityEditSaveBtn} onPress={saveTeamIdentityEdits}>
+                            <Text style={styles.teamIdentityEditSaveBtnText}>Save</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  </Modal>
+                </View>
+              );
 
               const teamLoggingBlock = (
                 <View style={styles.challengeSectionsWrap}>
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    style={styles.challengeLoggingHeaderCard}
-                    onPress={() => {
-                      if (teamPersonaVariant === 'leader') setTeamFocusEditorOpen((prev) => !prev);
-                    }}
-                  >
-                    <Text style={styles.challengeLoggingHeaderTitle}>Team Focus KPIs</Text>
+                  <View style={styles.challengeLoggingHeaderCard}>
+                    <View style={styles.teamFocusHeaderRow}>
+                      <Text style={styles.challengeLoggingHeaderTitle}>Team Focus KPIs + Projections</Text>
+                      {teamPersonaVariant === 'leader' ? (
+                        <TouchableOpacity
+                          style={styles.teamFocusHeaderEditBtn}
+                          onPress={() => setTeamFocusEditorOpen((prev) => !prev)}
+                        >
+                          <Text style={styles.teamFocusHeaderEditBtnText}>{teamFocusEditorOpen ? 'Done' : 'Edit'}</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
                     <Text style={styles.challengeLoggingHeaderSub}>
                       {teamPersonaVariant === 'leader'
-                        ? 'Tap header to edit Team Focus KPIs.'
+                        ? 'Use edit to manage Team Focus KPI selections.'
                         : 'Selected focus KPIs only. Shared KPI logging mechanics stay unchanged.'}
                     </Text>
-                  </TouchableOpacity>
+                  </View>
                   {teamPersonaVariant === 'member' ? (
                     <Text style={styles.teamFocusReadOnlyLabel}>Read-only focus KPIs</Text>
                   ) : null}
@@ -8377,52 +8564,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </TouchableOpacity>
                     </View>
                   ) : (
-                    <>
-                      <View style={styles.teamFocusSummaryCard}>
-                      {teamFocusKpisForDisplay.length === 0 ? (
-                        <Text style={styles.teamFocusSummaryEmpty}>No focus KPIs selected yet.</Text>
-                      ) : (
-                        <>
-                          <View style={styles.teamFocusQuickLogRow}>
-                            {teamFocusKpisForDisplay.slice(0, 6).map((kpi) => (
-                              <TouchableOpacity
-                                key={`team-focus-kpi-quicklog-${kpi.id}`}
-                                style={styles.teamFocusQuickLogBtn}
-                                onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
-                              >
-                                <Text style={styles.teamFocusQuickLogBtnText} numberOfLines={1}>
-                                  {kpi.name}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                          {teamFocusKpisForDisplay.map((kpi) => (
-                            <View key={`team-focus-kpi-${kpi.id}`} style={styles.teamFocusSummaryRow}>
-                                <Text style={styles.teamFocusSummaryName}>{kpi.name}</Text>
-                                <Text style={styles.teamFocusSummaryValue}>
-                                  {fmtNum(Number(kpi.vp_value ?? kpi.gp_value ?? kpi.pc_weight ?? 0))}
-                                </Text>
-                              </View>
-                            ))}
-                        </>
-                        )}
-                        <View style={styles.teamHealthMeterSummaryRow}>
-                          <View style={styles.teamHealthMeterTrack}>
-                            <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentRed]} />
-                            <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentOrange]} />
-                            <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentYellow]} />
-                            <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentGreen]} />
-                            <View
-                              style={[
-                                styles.teamHealthMeterRemainingMask,
-                                { left: `${Math.max(0, Math.min(100, teamOverallProgressPct))}%` },
-                              ]}
-                            />
-                          </View>
-                          <Text style={styles.teamHealthMeterSummaryText}>{teamOverallProgressPct}% overall team KPI progress</Text>
-                        </View>
-                      </View>
-                    </>
+                    <View style={styles.challengeSectionsWrap}>
+                      {renderChallengeKpiSection('PC', 'Team Focus Projections (PC)', teamFocusKpiGroups.PC)}
+                      {renderChallengeKpiSection('GP', 'Team Focus Growth (GP)', teamFocusKpiGroups.GP)}
+                      {renderChallengeKpiSection('VP', 'Team Focus Vitality (VP)', teamFocusKpiGroups.VP)}
+                    </View>
                   )}
                 </View>
               );
@@ -8723,22 +8869,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 <>
                   {teamPersonaVariant === 'member' ? (
                     <View style={styles.teamMemberDashboardWrap}>
-                      <Text style={styles.teamMemberDashTitle}>Team</Text>
-
-                      <View style={styles.teamMemberGroupCard}>
-                        <View style={styles.teamMemberGroupRow}>
-                          <View style={styles.teamMemberGroupIcon}>
-                            <Text style={styles.teamMemberGroupIconText}>👥</Text>
-                          </View>
-                          <View style={styles.teamMemberGroupCopy}>
-                            <Text style={styles.teamMemberGroupName}>The Elite Group</Text>
-                            <Text style={styles.teamMemberGroupSub}>3 Members | 2 Ongoing challenges</Text>
-                          </View>
-                        </View>
-                        <TouchableOpacity style={styles.teamMemberInviteBtn} onPress={() => setTeamFlowScreen('invite_member')}>
-                          <Text style={styles.teamMemberInviteBtnText}>⊕ Invite Member</Text>
-                        </TouchableOpacity>
-                      </View>
+                      {teamIdentityCard}
 
                       <TouchableOpacity style={styles.teamMemberChallengeCard} activeOpacity={0.92} onPress={() => openChallengeFlowFromTeam('details')}>
                         <View style={styles.teamMemberChallengeTopRow}>
@@ -8750,25 +8881,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           {teamPrimaryChallenge?.daysLabel ?? 'Open team challenge details and leaderboard.'}
                         </Text>
                       </TouchableOpacity>
-
-                      <View style={styles.teamMemberLightKpiCard}>
-                        <View style={styles.teamMemberLightKpiHeader}>
-                          <Text style={styles.teamMemberSectionLabel}>Team KPIs</Text>
-                          {renderKnownLimitedDataChip('team KPI relevance')}
-                        </View>
-                        {teamLightKpis.length === 0 ? (
-                          <Text style={styles.teamMemberLightKpiEmpty}>No team KPI rows yet.</Text>
-                        ) : (
-                          teamLightKpis.map((kpi) => (
-                            <View key={`team-member-kpi-${kpi.id}`} style={styles.teamMemberLightKpiRow}>
-                              <Text style={styles.teamMemberLightKpiName}>{kpi.name}</Text>
-                              <Text style={styles.teamMemberLightKpiValue}>
-                                {fmtNum(Number(kpi.vp_value ?? kpi.gp_value ?? kpi.pc_weight ?? 0))}
-                              </Text>
-                            </View>
-                          ))
-                        )}
-                      </View>
 
                       <Text style={styles.teamMemberSectionLabel}>Team Members</Text>
                       <View style={styles.teamLeaderExpandableList}>
@@ -8799,26 +8911,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           </View>
                         ))}
                       </View>
-                      <View style={styles.teamMemberFooterButtonsRow}>
-                        <TouchableOpacity
-                          style={[styles.teamMemberFooterBtn, styles.teamMemberFooterBtnPrimary]}
-                          onPress={() => openTeamCommsHandoff('team_member_dashboard')}
-                        >
-                          <Text style={styles.teamMemberFooterBtnTextPrimary}>Team Chat</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.teamMemberFooterBtn, styles.teamMemberFooterBtnDark]}
-                          onPress={() => openChallengeFlowFromTeam('details')}
-                        >
-                          <Text style={styles.teamMemberFooterBtnTextDark}>Challenge Details</Text>
-                        </TouchableOpacity>
-                      </View>
-                      <TouchableOpacity style={styles.teamMemberViewChallengesBtn} onPress={() => setTeamFlowScreen('team_challenges')}>
-                        <Text style={styles.teamMemberViewChallengesBtnText}>View Team Challenges</Text>
-                      </TouchableOpacity>
+                      {teamLoggingBlock}
                     </View>
                   ) : (
                     <View style={styles.teamLeaderOpsWrap}>
+                      {teamIdentityCard}
                       <View style={styles.teamLeaderOpsHeader}>
                         <Text style={styles.teamParityNavTitle}>Team Leader Ops</Text>
                         {renderKnownLimitedDataChip('member KPI contracts')}
@@ -9020,8 +9117,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           );
                         })}
                       </View>
-                      {teamLoggingBlock}
-
                       <View style={styles.teamLeaderConcernCard}>
                         <View style={styles.teamMemberChallengeTopRow}>
                           <Text style={styles.teamMemberChallengeLabel}>KPI Concern Flags</Text>
@@ -9037,6 +9132,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           ))
                         )}
                       </View>
+                      {teamLoggingBlock}
                     </View>
                   )}
                   <Modal
@@ -9045,21 +9141,33 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     animationType="slide"
                     onRequestClose={() => setTeamProfileMemberId(null)}
                   >
-                    <Pressable style={styles.teamProfileModalBackdrop} onPress={() => setTeamProfileMemberId(null)}>
-                      <Pressable style={styles.teamProfileModalCard} onPress={() => {}}>
+                    <Pressable style={styles.teamProfileDrawerOverlay} onPress={() => setTeamProfileMemberId(null)}>
+                      <Pressable style={styles.teamProfileDrawerSheet} onPress={() => {}}>
+                        <View style={styles.teamProfileDrawerHandle} />
                         {selectedTeamProfile ? (
                           <>
-                            <View style={styles.teamProfileModalHeaderRow}>
-                              <Text style={styles.teamMemberChallengeLabel}>Person Profile</Text>
-                              <TouchableOpacity onPress={() => setTeamProfileMemberId(null)}>
-                                <Text style={styles.teamMemberChallengeLink}>Back</Text>
+                            <View style={styles.teamProfileDrawerHeader}>
+                              <View style={[styles.teamProfileDrawerAvatarCircle, { backgroundColor: selectedTeamProfile.avatarTone }]}>
+                                <Text style={styles.teamProfileDrawerAvatarText}>
+                                  {selectedTeamProfile.name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()}
+                                </Text>
+                              </View>
+                              <View style={styles.teamProfileDrawerHeaderCopy}>
+                                <Text style={styles.teamProfileDrawerName}>{selectedTeamProfile.name}</Text>
+                                <Text style={styles.teamProfileDrawerRole}>{selectedTeamProfile.roleLabel}</Text>
+                              </View>
+                              <TouchableOpacity style={styles.teamProfileDrawerCloseBtn} onPress={() => setTeamProfileMemberId(null)}>
+                                <Text style={styles.teamProfileDrawerCloseBtnText}>✕</Text>
                               </TouchableOpacity>
                             </View>
-                            <Text style={styles.teamPersonProfileName}>{selectedTeamProfile.name}</Text>
-                            <Text style={styles.teamPersonProfileRole}>{selectedTeamProfile.roleLabel}</Text>
-                            <Text style={styles.teamPersonProfileContact}>✉ {selectedTeamProfile.email} • ☎ {selectedTeamProfile.phone}</Text>
+
+                            <View style={styles.teamProfileDrawerContactRow}>
+                              <Text style={styles.teamProfileDrawerContactText}>✉ {selectedTeamProfile.email}</Text>
+                              <Text style={styles.teamProfileDrawerContactText}>☎ {selectedTeamProfile.phone}</Text>
+                            </View>
+
                             <TouchableOpacity
-                              style={styles.teamPersonProfileDmBtn}
+                              style={styles.teamProfileDrawerDmBtn}
                               onPress={() =>
                                 openTeamDirectThread(
                                   selectedTeamProfile,
@@ -9067,19 +9175,36 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 )
                               }
                             >
-                              <Text style={styles.teamPersonProfileDmBtnText}>DM in Comms</Text>
+                              <Text style={styles.teamProfileDrawerDmBtnText}>💬  Message</Text>
                             </TouchableOpacity>
-                            <Text style={styles.teamPersonProfileSection}>Coaching goals</Text>
-                            {selectedTeamProfile.coachingGoals.map((goal) => (
-                              <Text key={`${selectedTeamProfile.id}-profile-goal-${goal}`} style={styles.teamPersonProfileBullet}>• {goal}</Text>
-                            ))}
-                            <Text style={styles.teamPersonProfileSection}>KPI goals</Text>
-                            {selectedTeamProfile.kpiGoals.map((goal) => (
-                              <Text key={`${selectedTeamProfile.id}-profile-kpi-${goal}`} style={styles.teamPersonProfileBullet}>• {goal}</Text>
-                            ))}
-                            <Text style={styles.teamPersonProfileSection}>Enrollments</Text>
-                            <Text style={styles.teamPersonProfileBullet}>Cohorts: {selectedTeamProfile.cohorts.join(', ')}</Text>
-                            <Text style={styles.teamPersonProfileBullet}>Journeys: {selectedTeamProfile.journeys.join(', ')}</Text>
+
+                            <ScrollView style={styles.teamProfileDrawerScrollArea} showsVerticalScrollIndicator={false}>
+                              <Text style={styles.teamProfileDrawerSectionLabel}>Coaching Goals</Text>
+                              {selectedTeamProfile.coachingGoals.map((goal) => (
+                                <View key={`${selectedTeamProfile.id}-goal-${goal}`} style={styles.teamProfileDrawerBulletRow}>
+                                  <View style={styles.teamProfileDrawerBulletDot} />
+                                  <Text style={styles.teamProfileDrawerBulletText}>{goal}</Text>
+                                </View>
+                              ))}
+
+                              <Text style={styles.teamProfileDrawerSectionLabel}>KPI Goals</Text>
+                              {selectedTeamProfile.kpiGoals.map((goal) => (
+                                <View key={`${selectedTeamProfile.id}-kpi-${goal}`} style={styles.teamProfileDrawerBulletRow}>
+                                  <View style={styles.teamProfileDrawerBulletDot} />
+                                  <Text style={styles.teamProfileDrawerBulletText}>{goal}</Text>
+                                </View>
+                              ))}
+
+                              <Text style={styles.teamProfileDrawerSectionLabel}>Enrollments</Text>
+                              <View style={styles.teamProfileDrawerEnrollmentRow}>
+                                <Text style={styles.teamProfileDrawerEnrollmentLabel}>Cohorts</Text>
+                                <Text style={styles.teamProfileDrawerEnrollmentValue}>{selectedTeamProfile.cohorts.join(', ')}</Text>
+                              </View>
+                              <View style={styles.teamProfileDrawerEnrollmentRow}>
+                                <Text style={styles.teamProfileDrawerEnrollmentLabel}>Journeys</Text>
+                                <Text style={styles.teamProfileDrawerEnrollmentValue}>{selectedTeamProfile.journeys.join(', ')}</Text>
+                              </View>
+                            </ScrollView>
                           </>
                         ) : null}
                       </Pressable>
@@ -13089,6 +13214,296 @@ const styles = StyleSheet.create({
   teamMemberDashboardWrap: {
     gap: 12,
   },
+  teamIdentityCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#d9e3f1',
+    padding: 14,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  teamIdentityTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  teamIdentityIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#ffffffcc',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamIdentityIconText: {
+    fontSize: 18,
+  },
+  teamIdentityCopy: {
+    flex: 1,
+  },
+  teamIdentityName: {
+    color: '#2a3140',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  teamIdentitySub: {
+    color: '#677487',
+    fontSize: 11,
+    marginTop: 1,
+  },
+  teamIdentityEditIcon: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  teamIdentityEditIconText: {
+    color: '#4d5a6c',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  teamIdentityCardActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 2,
+  },
+  teamIdentityCardChatBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: 10,
+    paddingVertical: 9,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  teamIdentityCardChatBtnText: {
+    color: '#2a3140',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  teamIdentityCardInviteBtn: {
+    width: 38,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  teamIdentityCardInviteBtnText: {
+    color: '#2a3140',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  teamIdentityEditOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  teamIdentityEditSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 36,
+    maxHeight: '88%',
+  },
+  teamIdentityEditSheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#d0d5dd',
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  teamIdentityEditSheetTitle: {
+    color: '#2a3140',
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  teamIdentityEditPreview: {
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  teamIdentityEditPreviewCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#ffffffcc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  teamIdentityEditPreviewGlyph: {
+    fontSize: 30,
+  },
+  teamIdentityEditPreviewName: {
+    color: '#3d4655',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  teamIdentityEditScrollArea: {
+    maxHeight: 340,
+    marginBottom: 8,
+  },
+  teamIdentityEditSectionLabel: {
+    color: '#4d5a6c',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  teamIdentityEditCategoryRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 10,
+    flexWrap: 'wrap',
+  },
+  teamIdentityEditCategoryChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#f2f4f7',
+    borderWidth: 1,
+    borderColor: '#e0e5ec',
+  },
+  teamIdentityEditCategoryChipActive: {
+    backgroundColor: '#2f67da',
+    borderColor: '#2f67da',
+  },
+  teamIdentityEditCategoryChipText: {
+    color: '#4d5a6c',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  teamIdentityEditCategoryChipTextActive: {
+    color: '#ffffff',
+  },
+  teamIdentityEditAvatarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  teamIdentityEditAvatarCell: {
+    width: 50,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: '#f7f8fa',
+    borderWidth: 2,
+    borderColor: '#e8ecf0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamIdentityEditAvatarCellActive: {
+    borderColor: '#2f67da',
+    backgroundColor: '#eaf0ff',
+    shadowColor: '#2f67da',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  teamIdentityEditAvatarEmoji: {
+    fontSize: 22,
+  },
+  teamIdentityEditChoiceCheck: {
+    position: 'absolute',
+    bottom: -3,
+    right: -3,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#2f67da',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  teamIdentityEditChoiceCheckText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  teamIdentityEditColorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 4,
+  },
+  teamIdentityEditColorSwatch: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  teamIdentityEditColorSwatchActive: {
+    borderWidth: 3,
+    borderColor: '#2f67da',
+    shadowColor: '#2f67da',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  teamIdentityEditColorSwatchCheck: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  teamIdentityEditActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  teamIdentityEditCancelBtn: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#c8d5ea',
+    backgroundColor: '#f8fbff',
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  teamIdentityEditCancelBtnText: {
+    color: '#4d5a6c',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  teamIdentityEditSaveBtn: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: '#2f67da',
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  teamIdentityEditSaveBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   teamMemberDashTitle: {
     color: '#3a4250',
     fontSize: 16,
@@ -13596,56 +14011,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fbff',
     padding: 10,
     gap: 6,
-  },
-  teamPersonProfileCard: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#dce5f4',
-    backgroundColor: '#fcfdff',
-    padding: 10,
-    gap: 5,
-  },
-  teamPersonProfileName: {
-    color: '#33445e',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  teamPersonProfileRole: {
-    color: '#62728c',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  teamPersonProfileContact: {
-    color: '#5d6d86',
-    fontSize: 11,
-  },
-  teamPersonProfileDmBtn: {
-    alignSelf: 'flex-start',
-    marginTop: 2,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#cfe0f8',
-    backgroundColor: '#eef5ff',
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-  },
-  teamPersonProfileDmBtnText: {
-    color: '#2c5db5',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  teamPersonProfileSection: {
-    color: '#455875',
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.2,
-    marginTop: 2,
-  },
-  teamPersonProfileBullet: {
-    color: '#5d6f89',
-    fontSize: 11,
-    lineHeight: 15,
   },
   teamFocusEditorToggleBtn: {
     alignSelf: 'flex-start',
@@ -14173,25 +14538,154 @@ const styles = StyleSheet.create({
   teamChallengeTopTabTextActive: {
     color: '#fff',
   },
-  teamProfileModalBackdrop: {
+  teamProfileDrawerOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(30, 39, 56, 0.45)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  teamProfileDrawerSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 36,
+    maxHeight: '80%',
+  },
+  teamProfileDrawerHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#d0d5dd',
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+  teamProfileDrawerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 10,
+  },
+  teamProfileDrawerAvatarCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  teamProfileModalCard: {
-    backgroundColor: '#fff',
+  teamProfileDrawerAvatarText: {
+    color: '#3d4655',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  teamProfileDrawerHeaderCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  teamProfileDrawerName: {
+    color: '#2a3140',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  teamProfileDrawerRole: {
+    color: '#62728c',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  teamProfileDrawerCloseBtn: {
+    width: 32,
+    height: 32,
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#dfe7f2',
-    padding: 14,
-    gap: 8,
-    maxHeight: '78%',
+    backgroundColor: '#f2f4f7',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  teamProfileModalHeaderRow: {
+  teamProfileDrawerCloseBtnText: {
+    color: '#6b7a90',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  teamProfileDrawerContactRow: {
+    flexDirection: 'row',
+    gap: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f2f5',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f2f5',
+    marginBottom: 10,
+  },
+  teamProfileDrawerContactText: {
+    color: '#5d6d86',
+    fontSize: 12,
+  },
+  teamProfileDrawerDmBtn: {
+    backgroundColor: '#2f67da',
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  teamProfileDrawerDmBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  teamProfileDrawerScrollArea: {
+    maxHeight: 240,
+  },
+  teamProfileDrawerSectionLabel: {
+    color: '#455875',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  teamProfileDrawerBulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 5,
+  },
+  teamProfileDrawerBulletDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#2f67da',
+    marginTop: 5,
+  },
+  teamProfileDrawerBulletText: {
+    color: '#4d5a6c',
+    fontSize: 13,
+    lineHeight: 18,
+    flex: 1,
+  },
+  teamProfileDrawerEnrollmentRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f2f5',
+  },
+  teamProfileDrawerEnrollmentLabel: {
+    color: '#6b7a90',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  teamProfileDrawerEnrollmentValue: {
+    color: '#3d4655',
+    fontSize: 12,
+    flex: 1,
+    textAlign: 'right',
+    marginLeft: 12,
   },
   teamProfileLinkBtn: {
     borderWidth: 1,
@@ -16065,6 +16559,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 4,
+  },
+  teamFocusHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  teamFocusHeaderEditBtn: {
+    borderWidth: 1,
+    borderColor: '#d0dcf0',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#f6f9ff',
+  },
+  teamFocusHeaderEditBtnText: {
+    color: '#2f67da',
+    fontSize: 11,
+    fontWeight: '800',
   },
   challengeLoggingHeaderTitle: {
     color: '#2f3442',
