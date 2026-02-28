@@ -9597,6 +9597,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   : commsHubPrimaryTab === 'channels'
                     ? scopeFilteredChannelRows
                     : filteredChannelApiRows;
+              const sortByReadAndActivity = (a: ChannelApiRow, b: ChannelApiRow) => {
+                const unreadDelta = Number(b.unread_count ?? 0) - Number(a.unread_count ?? 0);
+                if (unreadDelta !== 0) return unreadDelta;
+                const aTime = new Date(String(a.last_seen_at ?? a.created_at ?? 0)).getTime();
+                const bTime = new Date(String(b.last_seen_at ?? b.created_at ?? 0)).getTime();
+                return bTime - aTime;
+              };
+              const sortedPrimaryTabRows = [...primaryTabRows].sort(sortByReadAndActivity);
+              const sortedBroadcastCandidateRows = [...broadcastCandidateRows].sort(sortByReadAndActivity);
               const searchPlaceholder =
                 commsHubPrimaryTab === 'channels'
                   ? commsHubScopeFilter === 'all'
@@ -9758,7 +9767,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </View>
                     </View>
                     <Text style={styles.coachingShellSub}>{commsPersonaSummary}</Text>
-                    <View style={styles.coachingShellActionRow}>
+                    <View style={styles.commsHubTabRow}>
                       {([
                         { key: 'all' as const, label: 'All' },
                         { key: 'channels' as const, label: 'Channels' },
@@ -9768,8 +9777,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         <TouchableOpacity
                           key={`comms-tab-${tab.key}`}
                           style={[
-                            styles.coachingLessonActionBtn,
-                            commsHubPrimaryTab === tab.key ? styles.coachingLessonActionBtnActive : null,
+                            styles.commsHubTabBtn,
+                            commsHubPrimaryTab === tab.key ? styles.commsHubTabBtnActive : null,
                           ]}
                           onPress={() => {
                             setCommsHubPrimaryTab(tab.key);
@@ -9802,8 +9811,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         >
                           <Text
                             style={[
-                              styles.coachingLessonActionBtnText,
-                              commsHubPrimaryTab === tab.key ? styles.coachingLessonActionBtnTextActive : null,
+                              styles.commsHubTabBtnText,
+                              commsHubPrimaryTab === tab.key ? styles.commsHubTabBtnTextActive : null,
                             ]}
                           >
                             {tab.label}
@@ -9812,7 +9821,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       ))}
                     </View>
                     {commsHubPrimaryTab === 'channels' ? (
-                      <View style={styles.coachingShellActionRow}>
+                      <View style={styles.commsHubFilterRow}>
                         {([
                           { key: 'all' as const, label: 'All Types' },
                           { key: 'team' as const, label: 'Team' },
@@ -9823,15 +9832,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           <TouchableOpacity
                             key={`comms-scope-${filter.key}`}
                             style={[
-                              styles.coachingLessonActionBtn,
-                              commsHubScopeFilter === filter.key ? styles.coachingLessonActionBtnActive : null,
+                              styles.commsHubFilterBtn,
+                              commsHubScopeFilter === filter.key ? styles.commsHubFilterBtnActive : null,
                             ]}
                             onPress={() => setCommsHubScopeFilter(filter.key)}
                           >
                             <Text
                               style={[
-                                styles.coachingLessonActionBtnText,
-                                commsHubScopeFilter === filter.key ? styles.coachingLessonActionBtnTextActive : null,
+                                styles.commsHubFilterBtnText,
+                                commsHubScopeFilter === filter.key ? styles.commsHubFilterBtnTextActive : null,
                               ]}
                             >
                               {filter.label}
@@ -9840,13 +9849,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         ))}
                       </View>
                     ) : null}
-                    <TextInput
-                      value={commsHubSearchQuery}
-                      onChangeText={setCommsHubSearchQuery}
-                      placeholder={searchPlaceholder}
-                      placeholderTextColor="#9aa3b0"
-                      style={styles.coachingShellSearchInput}
-                    />
+                    <View style={styles.commsHubSearchWrap}>
+                      <Text style={styles.commsHubSearchIcon}>⌕</Text>
+                      <TextInput
+                        value={commsHubSearchQuery}
+                        onChangeText={setCommsHubSearchQuery}
+                        placeholder={searchPlaceholder}
+                        placeholderTextColor="#9aa3b0"
+                        style={styles.coachingShellSearchInput}
+                      />
+                    </View>
                     <Text style={styles.coachingShellSub}>Current: {meta.title} · {meta.sub}</Text>
                     {renderCoachingPackageGateBanner(meta.title, shellPackageOutcome, { compact: true })}
                     {shellPackageGateBlocksActions ? (
@@ -9910,8 +9922,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               <Text style={styles.coachingJourneyRetryBtnText}>Retry Channels</Text>
                             </TouchableOpacity>
                           </View>
-                        ) : primaryTabRows.length > 0 ? (
-                          primaryTabRows.map((row) => {
+                        ) : sortedPrimaryTabRows.length > 0 ? (
+                          sortedPrimaryTabRows.map((row) => {
                             const rowScope = normalizeChannelTypeToScope(row.type) ?? 'community';
                             const isSelected = String(row.id) === String(selectedChannelResolvedId ?? '');
                             const typeLabel = String(row.type ?? 'channel');
@@ -9959,7 +9971,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                   <Text style={styles.coachingShellListIconText}>#</Text>
                                 </View>
                                 <View style={styles.coachingShellListCopy}>
-                                  <Text style={styles.coachingShellListTitle}>{row.name}</Text>
+                                  <View style={styles.commsChannelRowTitleWrap}>
+                                    <Text numberOfLines={1} style={styles.coachingShellListTitle}>{row.name}</Text>
+                                    {Number(row.unread_count ?? 0) > 0 ? (
+                                      <View style={styles.commsUnreadBadge}>
+                                        <Text style={styles.commsUnreadBadgeText}>{Math.max(0, Number(row.unread_count ?? 0))}</Text>
+                                      </View>
+                                    ) : null}
+                                  </View>
                                   <View style={styles.coachingShellChipRow}>
                                     <View style={styles.coachingShellChip}>
                                       <Text style={styles.coachingShellChipText}>{scopeLabel}</Text>
@@ -9973,9 +9992,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                       </View>
                                     ) : null}
                                   </View>
-                                  <Text style={styles.coachingShellListSubText}>
-                                    {lastActivityPreview} • unread: {Math.max(0, Number(row.unread_count ?? 0))}
-                                  </Text>
+                                  <Text numberOfLines={1} style={styles.coachingShellListSubText}>{lastActivityPreview}</Text>
                                 </View>
                                 <Text style={styles.coachingShellListChevron}>›</Text>
                               </TouchableOpacity>
@@ -10040,8 +10057,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                     <Text style={styles.coachingShellListIconText}>#</Text>
                                   </View>
                                   <View style={styles.coachingShellListCopy}>
-                                    <Text style={styles.coachingShellListTitle}>{row.label}</Text>
-                                    <Text style={styles.coachingShellListSubText}>{row.context}</Text>
+                                    <View style={styles.commsChannelRowTitleWrap}>
+                                      <Text style={styles.coachingShellListTitle}>{row.label}</Text>
+                                    </View>
+                                    <Text numberOfLines={1} style={styles.coachingShellListSubText}>{row.context}</Text>
                                   </View>
                                   <Text style={styles.coachingShellListChevron}>›</Text>
                                 </TouchableOpacity>
@@ -10116,19 +10135,26 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           </View>
                         ) : Array.isArray(channelMessages) && channelMessages.length > 0 ? (
                           <View style={styles.coachingThreadMessagesList}>
-                            {channelMessages.map((message) => {
+                            {channelMessages.map((message, index) => {
                               const isMine = String(message.sender_user_id ?? '') === String(session?.user?.id ?? '');
                               const isBroadcast = String(message.message_type ?? '') === 'broadcast';
+                              const previous = index > 0 ? channelMessages[index - 1] : null;
+                              const startsGroup =
+                                !previous || String(previous.sender_user_id ?? '') !== String(message.sender_user_id ?? '');
+                              const metaLabel = startsGroup
+                                ? `${isBroadcast ? 'Broadcast' : 'Message'} • ${fmtMonthDayTime(message.created_at ?? null)}`
+                                : fmtMonthDayTime(message.created_at ?? null);
                               return (
                                 <View
                                   key={`channel-message-${message.id}`}
                                   style={[
                                     styles.coachingThreadMessageBubble,
                                     isMine ? styles.coachingThreadMessageBubbleMine : null,
+                                    startsGroup ? styles.coachingThreadMessageBubbleStart : styles.coachingThreadMessageBubbleFollow,
                                   ]}
                                 >
-                                  <Text style={styles.coachingThreadMessageMeta}>
-                                    {isBroadcast ? 'Broadcast' : 'Message'} • {fmtMonthDayTime(message.created_at ?? null)}
+                                  <Text style={[styles.coachingThreadMessageMeta, !startsGroup ? styles.coachingThreadMessageMetaFollow : null]}>
+                                    {metaLabel}
                                   </Text>
                                   <Text style={styles.coachingThreadMessageBody}>{message.body}</Text>
                                 </View>
@@ -10162,9 +10188,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           {channelMessageSubmitError ? (
                             <Text style={styles.coachingJourneyInlineError}>{channelMessageSubmitError}</Text>
                           ) : null}
-                          <View style={styles.coachingLessonActionRow}>
+                          <View style={styles.commsComposerActionRow}>
                             <TouchableOpacity
-                              style={[styles.coachingLessonActionBtn, channelMessageSubmitting ? styles.disabled : null]}
+                              style={[styles.commsComposerGhostBtn, channelMessageSubmitting ? styles.disabled : null]}
                               disabled={channelMessageSubmitting}
                               onPress={() => {
                                 if (selectedChannelResolvedId) {
@@ -10172,12 +10198,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 }
                               }}
                             >
-                              <Text style={styles.coachingLessonActionBtnText}>Refresh</Text>
+                              <Text style={styles.commsComposerGhostBtnText}>Refresh</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                               style={[
-                                styles.coachingLessonActionBtn,
-                                styles.coachingLessonActionBtnActive,
+                                styles.commsComposerSendBtn,
                                 (!selectedChannelResolvedId || channelMessageSubmitting || shellPackageGateBlocksActions)
                                   ? styles.disabled
                                   : null,
@@ -10187,7 +10212,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 if (selectedChannelResolvedId) void sendChannelMessage(selectedChannelResolvedId);
                               }}
                             >
-                              <Text style={[styles.coachingLessonActionBtnText, styles.coachingLessonActionBtnTextActive]}>
+                              <Text style={styles.commsComposerSendBtnText}>
                                 {channelMessageSubmitting ? 'Sending…' : 'Send'}
                               </Text>
                             </TouchableOpacity>
@@ -10232,13 +10257,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         )}
                         {roleCanOpenBroadcast ? (
                           <>
-                            <View style={styles.coachingLessonActionRow}>
+                            <View style={styles.commsHubTabRow}>
                               {broadcastTargetOptions.map((target) => (
                                 <TouchableOpacity
                                   key={`broadcast-target-${target}`}
                                   style={[
-                                    styles.coachingLessonActionBtn,
-                                    effectiveBroadcastTargetScope === target ? styles.coachingLessonActionBtnActive : null,
+                                    styles.commsHubFilterBtn,
+                                    effectiveBroadcastTargetScope === target ? styles.commsHubFilterBtnActive : null,
                                   ]}
                                   onPress={() => {
                                     setBroadcastTargetScope(target);
@@ -10248,8 +10273,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 >
                                   <Text
                                     style={[
-                                      styles.coachingLessonActionBtnText,
-                                      effectiveBroadcastTargetScope === target ? styles.coachingLessonActionBtnTextActive : null,
+                                      styles.commsHubFilterBtnText,
+                                      effectiveBroadcastTargetScope === target ? styles.commsHubFilterBtnTextActive : null,
                                     ]}
                                   >
                                     {target === 'team' ? 'Team' : target === 'cohort' ? 'Cohort' : 'Channel'}
@@ -10258,8 +10283,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               ))}
                             </View>
                             <View style={styles.coachingShellList}>
-                              {broadcastCandidateRows.length > 0 ? (
-                                broadcastCandidateRows.slice(0, 8).map((row) => {
+                              {sortedBroadcastCandidateRows.length > 0 ? (
+                                sortedBroadcastCandidateRows.slice(0, 8).map((row) => {
                                   const isActive = String(row.id) === String(selectedChannelResolvedId ?? '');
                                   const scope = normalizeChannelTypeToScope(row.type) ?? 'community';
                                   return (
@@ -10275,8 +10300,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                         <Text style={styles.coachingShellListIconText}>#</Text>
                                       </View>
                                       <View style={styles.coachingShellListCopy}>
-                                        <Text style={styles.coachingShellListTitle}>{row.name}</Text>
-                                        <Text style={styles.coachingShellListSubText}>
+                                        <View style={styles.commsChannelRowTitleWrap}>
+                                          <Text style={styles.coachingShellListTitle}>{row.name}</Text>
+                                          {Number(row.unread_count ?? 0) > 0 ? (
+                                            <View style={styles.commsUnreadBadge}>
+                                              <Text style={styles.commsUnreadBadgeText}>{Math.max(0, Number(row.unread_count ?? 0))}</Text>
+                                            </View>
+                                          ) : null}
+                                        </View>
+                                        <Text numberOfLines={1} style={styles.coachingShellListSubText}>
                                           {scope} • {String(row.type ?? 'channel')}
                                         </Text>
                                       </View>
@@ -10316,18 +10348,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         />
                         {broadcastError ? <Text style={styles.coachingJourneyInlineError}>{broadcastError}</Text> : null}
                         {broadcastSuccessNote ? <Text style={styles.coachingThreadSuccessText}>{broadcastSuccessNote}</Text> : null}
-                        <View style={styles.coachingLessonActionRow}>
+                        <View style={styles.commsComposerActionRow}>
                           <TouchableOpacity
-                            style={[styles.coachingLessonActionBtn, channelsLoading ? styles.disabled : null]}
+                            style={[styles.commsComposerGhostBtn, channelsLoading ? styles.disabled : null]}
                             disabled={channelsLoading}
                             onPress={() => void fetchChannels()}
                           >
-                            <Text style={styles.coachingLessonActionBtnText}>Refresh Channels</Text>
+                            <Text style={styles.commsComposerGhostBtnText}>Refresh Channels</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={[
-                              styles.coachingLessonActionBtn,
-                              styles.coachingLessonActionBtnActive,
+                              styles.commsComposerSendBtn,
                               (!roleCanOpenBroadcast || !selectedChannelResolvedId || broadcastSubmitting || shellPackageGateBlocksActions)
                                 ? styles.disabled
                                 : null,
@@ -10337,7 +10368,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               if (selectedChannelResolvedId) void sendChannelBroadcast(selectedChannelResolvedId);
                             }}
                           >
-                            <Text style={[styles.coachingLessonActionBtnText, styles.coachingLessonActionBtnTextActive]}>
+                            <Text style={styles.commsComposerSendBtnText}>
                               {shellPackageGateBlocksActions
                                 ? 'Package Gated'
                                 : broadcastSubmitting
@@ -17125,6 +17156,59 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
   },
+  commsHubTabRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  commsHubTabBtn: {
+    flex: 1,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d7e0ee',
+    backgroundColor: '#fff',
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commsHubTabBtnActive: {
+    borderColor: '#1f5fe2',
+    backgroundColor: '#1f5fe2',
+  },
+  commsHubTabBtnText: {
+    color: '#55647a',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  commsHubTabBtnTextActive: {
+    color: '#fff',
+  },
+  commsHubFilterRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  commsHubFilterBtn: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#dbe3f0',
+    backgroundColor: '#f8fbff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commsHubFilterBtnActive: {
+    borderColor: '#2a4f9f',
+    backgroundColor: '#eaf1ff',
+  },
+  commsHubFilterBtnText: {
+    color: '#51627b',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  commsHubFilterBtnTextActive: {
+    color: '#2a4f9f',
+  },
   coachingShellActionRow: {
     flexDirection: 'row',
     gap: 8,
@@ -17203,32 +17287,67 @@ const styles = StyleSheet.create({
   coachingShellListCopy: {
     flex: 1,
     minWidth: 0,
+    gap: 1,
+  },
+  commsChannelRowTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   coachingShellListTitle: {
     color: '#404858',
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '800',
+    flexShrink: 1,
+  },
+  commsUnreadBadge: {
+    minWidth: 18,
+    borderRadius: 999,
+    backgroundColor: '#1f5fe2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commsUnreadBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
   },
   coachingShellListSubText: {
-    color: '#858f9d',
-    fontSize: 10,
-    lineHeight: 13,
+    color: '#6f7e93',
+    fontSize: 11,
+    lineHeight: 14,
     marginTop: 1,
   },
   coachingShellSearchInput: {
-    borderRadius: 10,
+    flex: 1,
+    backgroundColor: 'transparent',
+    color: '#2f3442',
+    fontSize: 12,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  commsHubSearchWrap: {
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#dfe5ef',
     backgroundColor: '#fff',
-    color: '#2f3442',
-    fontSize: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 9,
+  },
+  commsHubSearchIcon: {
+    color: '#7b889a',
+    fontSize: 12,
+    fontWeight: '700',
   },
   coachingShellChipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 4,
+    gap: 5,
     marginTop: 3,
   },
   coachingShellChip: {
@@ -17252,10 +17371,12 @@ const styles = StyleSheet.create({
     marginTop: -1,
   },
   coachingShellComposeCard: {
-    borderRadius: 10,
-    backgroundColor: '#eef0f4',
-    padding: 10,
-    gap: 8,
+    borderRadius: 12,
+    backgroundColor: '#f6f8fc',
+    borderWidth: 1,
+    borderColor: '#e2e8f2',
+    padding: 12,
+    gap: 10,
   },
   coachingShellComposeTitle: {
     color: '#404858',
@@ -17286,51 +17407,98 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   coachingThreadMessagesList: {
-    gap: 8,
-    maxHeight: 240,
+    gap: 5,
+    maxHeight: 260,
   },
   coachingThreadMessageBubble: {
-    borderRadius: 10,
+    borderRadius: 14,
     backgroundColor: '#f4f6fa',
     borderWidth: 1,
     borderColor: '#e1e7f0',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 3,
-    alignSelf: 'stretch',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    gap: 4,
+    alignSelf: 'flex-start',
+    maxWidth: '86%',
   },
   coachingThreadMessageBubbleMine: {
     backgroundColor: '#edf4ff',
     borderColor: '#cfe0ff',
+    alignSelf: 'flex-end',
+  },
+  coachingThreadMessageBubbleStart: {
+    marginTop: 4,
+  },
+  coachingThreadMessageBubbleFollow: {
+    marginTop: 1,
   },
   coachingThreadMessageMeta: {
     color: '#6d7b91',
     fontSize: 10,
     fontWeight: '700',
   },
+  coachingThreadMessageMetaFollow: {
+    fontSize: 9,
+    color: '#8b96a8',
+    fontWeight: '600',
+  },
   coachingThreadMessageBody: {
     color: '#384456',
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 12,
+    lineHeight: 17,
   },
   coachingThreadComposerWrap: {
-    gap: 8,
+    gap: 9,
   },
   coachingThreadComposerInput: {
-    minHeight: 62,
-    borderRadius: 8,
+    minHeight: 58,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#dfe5ef',
     backgroundColor: '#fff',
     color: '#2f3442',
     fontSize: 12,
-    lineHeight: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    lineHeight: 17,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     textAlignVertical: 'top',
   },
   coachingThreadComposerInputTall: {
-    minHeight: 84,
+    minHeight: 94,
+  },
+  commsComposerActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  commsComposerGhostBtn: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d7e0ee',
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commsComposerGhostBtnText: {
+    color: '#55647a',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  commsComposerSendBtn: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#1f5fe2',
+    backgroundColor: '#1f5fe2',
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commsComposerSendBtnText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
   },
   coachingThreadSuccessText: {
     color: '#2f7d42',
