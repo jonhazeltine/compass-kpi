@@ -130,7 +130,9 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A` | `closed` | `M6 / W12` | `Team Leader`, `Team Member`, `Solo User` | `challenge surface` (`team-pattern interaction alignment`) | `KPIDashboardScreen` Challenge surface only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + wiring pass) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
 | `M8-MOBILE-RUNTIME-REGRESSION-MATRIX-A` | `committed+pushed` | `M8 mobile hardening` | `Team Leader`, `Team Member`, `Solo User`, `Coach`, `Challenge Sponsor` | `mobile runtime QA` (`critical-route regression matrix + screenshot proof`) | `Home`, `Team`, `Challenge`, `Comms`, `Journeys/Lessons`, `Log` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | N/A (runtime validation swath) | Accepted and pushed: runtime matrix completed (30/30 pass, 0 blockers) with consolidated evidence in `app/test-results/m8-mobile-regression-matrix-a/`; assignment remained QA-only with no app/backend code edits. |
 | `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `blocked` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Blocked on persona-role validation determinism: runtime account resolves backend `/me` role=`super_admin`, and `resolvedRoles` unions backend + session metadata, so local metadata overrides cannot faithfully simulate `coach/team_leader/challenge_sponsor` gates in-browser for canonical proof. Route alias/shell checks and super-admin baseline pass evidence captured under `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/`; persona-gate mismatch list reflects this blocker. |
-| `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A` | `blocked` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach runtime test harness` (`deterministic role-switch validation without super_admin bleed`) | app runtime/test harness only (`AdminAuthzContext`, spotcheck harness scripts/evidence) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (app/runtime harness scope only) | N/A (runtime harness determinism) | Blocked: deterministic override code is landed locally but refreshed role-matrix evidence/screenshots and assignment commit/report are still missing. |
+| `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A` | `active` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach runtime test harness` (`deterministic role-switch validation without super_admin bleed`) | app runtime/test harness only (`AdminAuthzContext`, spotcheck harness scripts/evidence) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (app/runtime harness scope only) | N/A (runtime harness determinism) | Relaunched: finalize commit + refreshed role-matrix evidence/screenshots and close blocker recommendation for `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A`. |
+| `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A` | `active` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `backend/platform` | `retention/compliance governance` (`chat/video metadata policy packet`) | docs-only: retention/deletion policy packet + control-plane dependency linkage | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | New: produce owner sign-off decision packet for DEP-004 with explicit retention/deletion matrix and provider reconciliation rules for Stream/Mux metadata. |
+| `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | `active` | `W13 docs/control-plane exception` | `Controller`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency closure tracking` (`DEP-002/004/005 closeout board + go/no-go criteria`) | docs-only: project control plane + assignment board closeout table | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | New: consolidate dependency gate closure criteria/status into one control-plane tracker so Wave A runtime can start immediately after owner sign-off. |
 | `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `committed+pushed` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Accepted and pushed: FE-00 checkpoint moved from pending to concrete complete state in sprint gate, and frontend acceptance harness now includes explicit FE-00 pass/fail closeout criteria with traceability consistency checks. |
 | `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `committed+pushed` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Accepted and pushed: reset + seed + smoke sequence passed against current deterministic realism runbook; no command/output drift found; logs captured under `app/test-results/m8-seed-data-smoke-verification-a/`. |
 | `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team identity card` (`leader edit controls`, `member read-only rendering`) | `KPIDashboardScreen` Team tab top card only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed: polished role-aware Team identity card landed with leader-only edit flow (avatar/background picker modal + save/cancel) and member read-only rendering. TypeScript clean. |
@@ -4366,7 +4368,7 @@ Validate admin + coach route/runtime integrity and role gating after recent W11/
 ### `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A`
 
 #### Snapshot
-- `Status:` `blocked`
+- `Status:` `active`
 - `Program status:` `A3/W12 admin+coach hardening`
 - `Persona:` `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor`
 - `Flow:` `admin/coach runtime test harness` (`deterministic role-switch validation without super_admin bleed`)
@@ -4376,7 +4378,8 @@ Validate admin + coach route/runtime integrity and role gating after recent W11/
 - `Current blocker status (2026-02-28, launch):` `none`.
 - `Completion note (2026-02-28, Mobile-2 partial):` Added deterministic dev-only runtime role override plumbing in `AdminAuthzContext` (`authz_roles` / `authz_mode`, strict|merge, localStorage persistence) to prevent backend `super_admin` bleed-through during role-gate verification.
 - `Validation note (2026-02-28, Controller):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed; `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz` passed.
-- `Current blocker status (2026-02-28, review):` `blocked` pending updated evidence matrix/screenshots + committed assignment report for `coach`, `team_leader`, and `challenge_sponsor` route outcomes.
+- `Controller relaunch note (2026-02-28):` Complete the partial by committing the runtime override change and refreshing role-matrix evidence bundle for deterministic persona verification.
+- `Current blocker status (2026-02-28, review):` `pending` evidence refresh + assignment commit/report for `coach`, `team_leader`, and `challenge_sponsor` route outcomes.
 
 #### Primary Objective
 Provide a deterministic role-switch runtime/test method that validates `coach`, `team_leader`, and `challenge_sponsor` route outcomes without backend `super_admin` role bleed-through.
@@ -4832,6 +4835,81 @@ Create a single source-of-truth checklist for DEP-005 closure (`Stream` + `Mux`)
 - Files changed.
 - Checklist gate summary.
 - Validation command output summary.
+- Commit hash.
+
+### `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `W13 docs/control-plane exception`
+- `Persona:` `Product`, `Legal`, `Architecture`, `backend/platform`
+- `Flow:` `retention/compliance governance` (`chat/video metadata policy packet`)
+- `Owner:` `Coach-1`
+- `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
+
+#### Primary Objective
+Create an owner sign-off packet for `DEP-004` that defines retention/deletion policy for chat/video metadata and provider reconciliation rules.
+
+#### Scope In
+- `/Users/jon/compass-kpi/architecture/W13_DEP004_RETENTION_COMPLIANCE_DECISION_PACKET.md` (new)
+- `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` (`DEP-004` notes linkage only)
+
+#### Scope Out
+- Runtime code changes
+- API/schema implementation
+- Provider adapter implementation
+
+#### Hard Constraints
+- Include explicit retention matrix by data class (`message`, `channel metadata`, `media metadata`, `webhook/audit events`).
+- Include deletion workflow with legal hold edge cases.
+- Include Stream/Mux provider reconciliation semantics and failure handling.
+- Include owner sign-off section with unresolved decisions explicitly listed.
+
+#### Validation
+- Docs-only diff.
+- No app/backend runtime files changed.
+
+#### Report-Back
+- Update board status first (`active` -> `committed`/`blocked`).
+- Files changed.
+- Policy decision summary.
+- Commit hash.
+
+### `W13-DEP-GATES-CLOSEOUT-TRACKER-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `W13 docs/control-plane exception`
+- `Persona:` `Controller`, `Architecture`, `Security/Legal`, `backend/platform`
+- `Flow:` `dependency closure tracking` (`DEP-002/004/005 go/no-go tracker`)
+- `Owner:` `Admin-1`
+- `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
+
+#### Primary Objective
+Create a single control-plane gate tracker that shows closure criteria, status, owners, and evidence for `DEP-002`, `DEP-004`, and `DEP-005`, with a clear go/no-go line for starting Wave A runtime work.
+
+#### Scope In
+- `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` (gate tracker table)
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md` (W13 queue note linkage only)
+
+#### Scope Out
+- Runtime implementation
+- Endpoint/schema changes
+- Non-W13 roadmap edits
+
+#### Hard Constraints
+- Keep FE-00/M6 current sprint scope unchanged.
+- Tracker must include objective closure evidence per dependency.
+- Tracker must include explicit `Wave A Ready` boolean rule.
+
+#### Validation
+- Docs-only diff.
+- Dependency IDs/owners/statuses remain consistent with existing control-plane register.
+
+#### Report-Back
+- Update board status first (`active` -> `committed`/`blocked`).
+- Files changed.
+- Gate tracker summary.
 - Commit hash.
 
 ### `M6-TEAM-FOCUS-KPI-CARD-DENSITY-REDUCE-A`
