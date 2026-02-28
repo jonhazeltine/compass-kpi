@@ -7730,19 +7730,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   {/* ── Leaderboard Hero Card ── */}
                   <TouchableOpacity
                     style={styles.cdLbHeroCard}
-                    activeOpacity={0.9}
+                    activeOpacity={0.92}
                     onPress={() => setChallengeFlowScreen('leaderboard')}
                   >
+                    <View style={styles.cdLbHeroAccent} />
                     <View style={styles.cdLbHeroHeader}>
                       <Text style={styles.cdLbHeroTitle}>
-                        {challengeIsCompleted ? 'Results & Standings' : 'Leaderboard'}
+                        {challengeIsCompleted ? '🏆 Results & Standings' : '🏆 Leaderboard'}
                       </Text>
                       <View
                         style={[
                           styles.challengeDetailsStatusPill,
                           challengeSelected.bucket === 'completed' && styles.challengeDetailsStatusPillCompleted,
                           challengeSelected.bucket === 'upcoming' && styles.challengeDetailsStatusPillUpcoming,
-                          { backgroundColor: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.35)' },
                         ]}
                       >
                         <Text
@@ -7750,7 +7750,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             styles.challengeDetailsStatusPillText,
                             challengeSelected.bucket === 'completed' && styles.challengeDetailsStatusPillTextCompleted,
                             challengeSelected.bucket === 'upcoming' && styles.challengeDetailsStatusPillTextUpcoming,
-                            { color: '#dde5ff' },
                           ]}
                         >
                           {challengeSelected.status}
@@ -7761,10 +7760,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <>
                         {(() => {
                           const top3 = challengeLeaderboardPreview.slice(0, 3);
-                          const medalData: Record<number, { emoji: string; bgColor: string; size: number; isFirst: boolean }> = {
-                            1: { emoji: '🥇', bgColor: '#c8991a', size: 48, isFirst: true },
-                            2: { emoji: '🥈', bgColor: '#7c8ba1', size: 38, isFirst: false },
-                            3: { emoji: '🥉', bgColor: '#a07040', size: 34, isFirst: false },
+                          const medalData: Record<number, { emoji: string; bgColor: string; ringColor: string; size: number; isFirst: boolean }> = {
+                            1: { emoji: '🥇', bgColor: '#4361c2', ringColor: '#c8d6f0', size: 50, isFirst: true },
+                            2: { emoji: '🥈', bgColor: '#647ba3', ringColor: '#dce3f0', size: 40, isFirst: false },
+                            3: { emoji: '🥉', bgColor: '#8a93a6', ringColor: '#e4e9f0', size: 36, isFirst: false },
                           };
                           // Always show all 3 slots — placeholder if no data yet
                           const podiumSlots: Array<{ rank: number; entry: (typeof top3)[0] | undefined }> = [
@@ -7775,12 +7774,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           return (
                             <View style={styles.cdLbHeroTop3}>
                               {podiumSlots.map(({ rank, entry }) => {
-                                const m = medalData[rank] ?? { emoji: `#${rank}`, bgColor: '#4361c2', size: 36, isFirst: false };
+                                const m = medalData[rank] ?? { emoji: `#${rank}`, bgColor: '#4361c2', ringColor: '#dce3f0', size: 36, isFirst: false };
                                 if (!entry) {
                                   return (
-                                    <View key={`cdlb-empty-${rank}`} style={[styles.cdLbHeroTopCard, m.isFirst && styles.cdLbHeroTopCardFirst, { opacity: 0.35 }]}>
+                                    <View key={`cdlb-empty-${rank}`} style={[styles.cdLbHeroTopCard, m.isFirst && styles.cdLbHeroTopCardFirst, { opacity: 0.3 }]}>
                                       <Text style={styles.cdLbHeroMedal}>{m.emoji}</Text>
-                                      <View style={[styles.cdLbHeroAvatar, { width: m.size, height: m.size, borderRadius: m.size / 2, backgroundColor: '#b0b8cc' }]}>
+                                      <View style={[styles.cdLbHeroAvatar, { width: m.size, height: m.size, borderRadius: m.size / 2, backgroundColor: '#c5cde0', borderColor: m.ringColor }]}>
                                         <Text style={[styles.cdLbHeroAvatarText, m.isFirst && styles.cdLbHeroAvatarTextFirst]}>—</Text>
                                       </View>
                                       <Text style={styles.cdLbHeroName}>Open</Text>
@@ -7791,7 +7790,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 return (
                                   <View key={`cdlb-top-${entry.rank}`} style={[styles.cdLbHeroTopCard, m.isFirst && styles.cdLbHeroTopCardFirst]}>
                                     <Text style={styles.cdLbHeroMedal}>{m.emoji}</Text>
-                                    <View style={[styles.cdLbHeroAvatar, { width: m.size, height: m.size, borderRadius: m.size / 2, backgroundColor: m.bgColor }]}>
+                                    <View style={[styles.cdLbHeroAvatar, { width: m.size, height: m.size, borderRadius: m.size / 2, backgroundColor: m.bgColor, borderColor: m.ringColor }]}>
                                       <Text style={[styles.cdLbHeroAvatarText, m.isFirst && styles.cdLbHeroAvatarTextFirst]}>
                                         {entry.name.split(' ').map((p: string) => p[0]).join('').slice(0, 2).toUpperCase()}
                                       </Text>
@@ -13165,15 +13164,19 @@ const styles = StyleSheet.create({
   cdLbHeroCard: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#c5d0ee',
+    borderColor: '#c8d6f0',
     backgroundColor: '#fff',
     marginBottom: 12,
     overflow: 'hidden',
-    shadowColor: '#3a4fc4',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
+    shadowColor: '#1f355f',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
+  },
+  cdLbHeroAccent: {
+    height: 5,
+    backgroundColor: '#4361c2',
   },
   cdLbHeroHeader: {
     flexDirection: 'row',
@@ -13182,21 +13185,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 10,
-    backgroundColor: '#2d3d8e',
+    backgroundColor: '#f0f4ff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2eaf8',
   },
   cdLbHeroTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#fff',
+    color: '#1a2540',
   },
   cdLbHeroTop3: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'flex-end',
-    paddingTop: 20,
-    paddingBottom: 16,
+    paddingTop: 22,
+    paddingBottom: 18,
     paddingHorizontal: 8,
-    backgroundColor: '#eef1ff',
+    backgroundColor: '#fff',
     gap: 4,
   },
   cdLbHeroTopCard: {
@@ -13205,11 +13210,11 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   cdLbHeroTopCardFirst: {
-    marginBottom: 10,
+    marginBottom: 12,
   },
   cdLbHeroMedal: {
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 24,
+    lineHeight: 30,
   },
   cdLbHeroRank: {
     fontSize: 11,
@@ -13219,8 +13224,13 @@ const styles = StyleSheet.create({
   cdLbHeroAvatar: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.55)',
+    borderWidth: 2.5,
+    borderColor: '#c8d6f0',
+    shadowColor: '#1f355f',
+    shadowOpacity: 0.10,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   cdLbHeroAvatarText: {
     color: '#fff',
@@ -13228,7 +13238,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   cdLbHeroAvatarTextFirst: {
-    fontSize: 17,
+    fontSize: 18,
   },
   cdLbHeroName: {
     fontSize: 11,
@@ -13243,14 +13253,17 @@ const styles = StyleSheet.create({
     color: '#4361c2',
   },
   cdLbHeroPctFirst: {
-    fontSize: 16,
-    color: '#c8991a',
+    fontSize: 17,
+    color: '#4361c2',
+    fontWeight: '900',
   },
   cdLbHeroRows: {
     paddingHorizontal: 14,
     paddingTop: 6,
     paddingBottom: 8,
     gap: 0,
+    borderTopWidth: 1,
+    borderTopColor: '#eef1f8',
   },
   cdLbHeroRow: {
     flexDirection: 'row',
@@ -13263,17 +13276,17 @@ const styles = StyleSheet.create({
   },
   cdLbHeroRowGold: {
     borderLeftWidth: 3,
-    borderLeftColor: '#c8991a',
+    borderLeftColor: '#4361c2',
     paddingLeft: 8,
   },
   cdLbHeroRowSilver: {
     borderLeftWidth: 3,
-    borderLeftColor: '#7c8ba1',
+    borderLeftColor: '#647ba3',
     paddingLeft: 8,
   },
   cdLbHeroRowBronze: {
     borderLeftWidth: 3,
-    borderLeftColor: '#a07040',
+    borderLeftColor: '#8a93a6',
     paddingLeft: 8,
   },
   cdLbHeroRowRank: {
@@ -13318,11 +13331,13 @@ const styles = StyleSheet.create({
   },
   cdLbHeroHint: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.85)',
+    color: '#4361c2',
     textAlign: 'center',
     paddingVertical: 10,
     fontWeight: '600',
-    backgroundColor: '#2d3d8e',
+    backgroundColor: '#f0f4ff',
+    borderTopWidth: 1,
+    borderTopColor: '#e2eaf8',
   },
   // ── Challenge Detail Goals Section ──────────────────────────────────────
   cdGoalsSection: {
