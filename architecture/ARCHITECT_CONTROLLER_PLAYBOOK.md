@@ -149,3 +149,42 @@ At the end of each controller check/update include:
 - `Committed:` yes/no (hash if yes)
 - `Pushed:` yes/no (branch if yes)
 - `Requires review:` yes/no (what specifically, if yes)
+
+## Session Closeout Protocol (Thread Handoff)
+Use this sequence when closing a chat/thread so future architect threads restart cleanly.
+
+1. Board Reconciliation
+- Read `/architecture/AGENT_ASSIGNMENT_BOARD.md`.
+- Reconcile worker-reported status vs actual git state (commits/pushes).
+- Move accepted rows from `review` to `committed` or `committed+pushed`.
+- Mark truly finished assignments as `closed` when they should not be relaunched.
+
+2. Collision Check
+- Identify open assignments touching high-conflict files/surfaces (especially `/app/screens/KPIDashboardScreen.tsx`).
+- If completed broad swaths still target same surface, freeze them (`closed (frozen)`).
+- Ensure active QA assignments are explicitly `QA-only` when overwrite risk exists.
+- If regressions remain, require new targeted bugfix assignment IDs; do not reopen legacy broad-swatch IDs.
+
+3. Working Tree Hygiene
+- Run `git status --short --branch`.
+- Separate intended closeout commits from unrelated dirty files.
+- Remove local temp artifacts/scratch files from tracked scope.
+- Leave external reference/submodule dirties untouched unless explicitly requested.
+
+4. Closeout Notes for Next Thread
+- Record current program/sprint/wave status.
+- List active assignments that remain in progress.
+- List frozen assignments that must not be relaunched.
+- Capture any known runtime issues, blockers, or pending owner review gates.
+- Confirm token/config references needed at startup (paths only; no secret values in chat).
+
+5. Final Closeout Output (Required)
+- Provide concise handoff summary with:
+  - `Program status`
+  - `Persona affected`
+  - `Screens changed/frozen`
+  - exact next startup instruction for the next architect thread
+- End with:
+  - `Committed:` yes/no (hash if yes)
+  - `Pushed:` yes/no (branch if yes)
+  - `Requires review:` yes/no (what specifically, if yes)
