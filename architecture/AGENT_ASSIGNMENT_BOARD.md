@@ -129,8 +129,8 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-W12-TEAM-PERSON-PROFILE-CARD-AND-FOCUS-EDITOR-A` | `closed` | `M6 / W12 (team leader ops + person profile UX)` | `Team Leader` (primary), `Team Member` (limited profile-only behavior) | `team interaction refinement` (`focus editor usability`, `avatar/profile split`, `leader KPI detail`, `DM handoff`) | `KPIDashboardScreen` Team surface + person profile card surface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + persona-gated card UX) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
 | `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A` | `closed` | `M6 / W12` | `Team Leader`, `Team Member`, `Solo User` | `challenge surface` (`team-pattern interaction alignment`) | `KPIDashboardScreen` Challenge surface only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + wiring pass) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
 | `M8-MOBILE-RUNTIME-REGRESSION-MATRIX-A` | `committed+pushed` | `M8 mobile hardening` | `Team Leader`, `Team Member`, `Solo User`, `Coach`, `Challenge Sponsor` | `mobile runtime QA` (`critical-route regression matrix + screenshot proof`) | `Home`, `Team`, `Challenge`, `Comms`, `Journeys/Lessons`, `Log` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | N/A (runtime validation swath) | Accepted and pushed: runtime matrix completed (30/30 pass, 0 blockers) with consolidated evidence in `app/test-results/m8-mobile-regression-matrix-a/`; assignment remained QA-only with no app/backend code edits. |
-| `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `blocked` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Blocked on persona-role validation determinism: runtime account resolves backend `/me` role=`super_admin`, and `resolvedRoles` unions backend + session metadata, so local metadata overrides cannot faithfully simulate `coach/team_leader/challenge_sponsor` gates in-browser for canonical proof. Route alias/shell checks and super-admin baseline pass evidence captured under `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/`; persona-gate mismatch list reflects this blocker. |
-| `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A` | `active` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach runtime test harness` (`deterministic role-switch validation without super_admin bleed`) | app runtime/test harness only (`AdminAuthzContext`, spotcheck harness scripts/evidence) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (app/runtime harness scope only) | N/A (runtime harness determinism) | Relaunched: finalize commit + refreshed role-matrix evidence/screenshots and close blocker recommendation for `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A`. |
+| `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `review` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Determinism blocker cleared by `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A`: dev-only strict role override plus refreshed deterministic matrix evidence now validates `coach`, `team_leader`, and `challenge_sponsor` route outcomes (`36/36` pass) under `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/`. |
+| `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A` | `review` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach runtime test harness` (`deterministic role-switch validation without super_admin bleed`) | app runtime/test harness only (`AdminAuthzContext`, spotcheck harness scripts/evidence) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (app/runtime harness scope only) | N/A (runtime harness determinism) | Completed: deterministic dev-only role override finalized/validated and runtime role matrix evidence refreshed (`coach`, `team_leader`, `challenge_sponsor`, 36 checks, 0 failures). |
 | `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A` | `active` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `backend/platform` | `retention/compliance governance` (`chat/video metadata policy packet`) | docs-only: retention/deletion policy packet + control-plane dependency linkage | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | New: produce owner sign-off decision packet for DEP-004 with explicit retention/deletion matrix and provider reconciliation rules for Stream/Mux metadata. |
 | `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | `active` | `W13 docs/control-plane exception` | `Controller`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency closure tracking` (`DEP-002/004/005 closeout board + go/no-go criteria`) | docs-only: project control plane + assignment board closeout table | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | New: consolidate dependency gate closure criteria/status into one control-plane tracker so Wave A runtime can start immediately after owner sign-off. |
 | `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `committed+pushed` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Accepted and pushed: FE-00 checkpoint moved from pending to concrete complete state in sprint gate, and frontend acceptance harness now includes explicit FE-00 pass/fail closeout criteria with traceability consistency checks. |
@@ -1046,7 +1046,7 @@ Produce the first implementation-ready coaching integration planning package (ma
 ### `COACHING-UI-W1-ALLOCATION-SHELLS`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `blocked`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W1 allocation + route shells`)
@@ -2529,7 +2529,7 @@ Run a high-value end-to-end runtime validation/refinement pass for W5 AI assist 
 ### `COACHING-W5-OPS-AI-AUDIT-RUNTIME-VALIDATION-REFINEMENT-A`
 
 #### Snapshot
-- `Status:` `blocked`
+- `Status:` `review`
 - `Program status:` `M6 coaching slice (W5 AI moderation/audit runtime validation/refinement)`
 - `Persona:` `Admin operator`, `Coach` (reviewer), `Sponsor ops` limited
 - `Flow:` `coaching / AI assist` (`admin moderation/audit runtime validation + refinement`)
@@ -4333,6 +4333,8 @@ Run a mobile regression sweep across critical routes and personas, capture pass/
 - `Completion note (2026-02-28, Admin-1):` Route alias/shell checks completed with screenshot evidence for `/admin/*`, `/coach/*`, and compatibility `/admin/coaching/*` paths. Super-admin baseline pathing passed.
 - `Validation note (2026-02-28, Admin-1):` Persona simulation mismatch report captured in `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/mismatches.json` and summary matrix under `summary.txt`.
 - `Current blocker status (2026-02-28, completion):` `blocked` on persona-role validation determinism: runtime session resolves as `super_admin` and effective role resolution (`resolvedRoles`) cannot cleanly isolate coach/team_leader/challenge_sponsor gate behavior for canonical in-browser proof.
+- `Blocker resolution note (2026-02-28, Mobile-2):` Deterministic dev-only role override path finalized in `AdminAuthzContext` and runtime matrix rerun shows clean persona isolation: `runtime-role-determinism-summary.txt` reports `36/36` pass for `coach`, `team_leader`, `challenge_sponsor` with zero mismatches.
+- `Current blocker status (2026-02-28, latest):` `resolved`; assignment promoted to `review`.
 
 #### Primary Objective
 Validate admin + coach route/runtime integrity and role gating after recent W11/W12 merges, then fix only scoped regressions.
@@ -4368,7 +4370,7 @@ Validate admin + coach route/runtime integrity and role gating after recent W11/
 ### `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `A3/W12 admin+coach hardening`
 - `Persona:` `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor`
 - `Flow:` `admin/coach runtime test harness` (`deterministic role-switch validation without super_admin bleed`)
@@ -4379,7 +4381,10 @@ Validate admin + coach route/runtime integrity and role gating after recent W11/
 - `Completion note (2026-02-28, Mobile-2 partial):` Added deterministic dev-only runtime role override plumbing in `AdminAuthzContext` (`authz_roles` / `authz_mode`, strict|merge, localStorage persistence) to prevent backend `super_admin` bleed-through during role-gate verification.
 - `Validation note (2026-02-28, Controller):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed; `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz` passed.
 - `Controller relaunch note (2026-02-28):` Complete the partial by committing the runtime override change and refreshing role-matrix evidence bundle for deterministic persona verification.
-- `Current blocker status (2026-02-28, review):` `pending` evidence refresh + assignment commit/report for `coach`, `team_leader`, and `challenge_sponsor` route outcomes.
+- `Completion note (2026-02-28, Mobile-2 final):` Re-ran deterministic runtime harness with strict localStorage role override for `coach`, `team_leader`, and `challenge_sponsor`; refreshed matrix artifacts and screenshots now report `total_checks=36`, `pass=36`, `fail=0`.
+- `Validation note (2026-02-28, Mobile-2 final):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed and `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz` passed after final evidence refresh.
+- `Recommendation note (2026-02-28, Mobile-2 final):` Parent assignment `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` can move from `blocked` to `review`; deterministic persona-role blocker is resolved.
+- `Current blocker status (2026-02-28, review):` `none`.
 
 #### Primary Objective
 Provide a deterministic role-switch runtime/test method that validates `coach`, `team_leader`, and `challenge_sponsor` route outcomes without backend `super_admin` role bleed-through.
