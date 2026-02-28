@@ -2948,19 +2948,12 @@ function AdminCoachingPortalFoundationPanel({
   );
 }
 
-function AdminCoachingAuditPanel() {
+function AdminCoachingAuditPanel({
+  effectiveRoles,
+}: {
+  effectiveRoles: AdminRole[];
+}) {
   type AuditSortKey = 'status' | 'requester' | 'scope' | 'surface' | 'updated';
-  type NotificationChannelKey = 'in_app_list' | 'badge' | 'banner' | 'push_placeholder' | 'email_placeholder';
-  type NotificationClassKey =
-    | 'coaching_assignment'
-    | 'coaching_reminder'
-    | 'coaching_progress'
-    | 'channel_message'
-    | 'broadcast_outcome'
-    | 'ai_review_queue'
-    | 'ai_approval_outcome'
-    | 'package_access_change'
-    | 'policy_alert';
   const [rows, setRows] = useState<AdminAiSuggestionQueueItem[]>(() => buildStubAiSuggestionQueue());
   const [statusFilter, setStatusFilter] = useState<'all' | AiSuggestionStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -2969,25 +2962,8 @@ function AdminCoachingAuditPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [visibleRowCount, setVisibleRowCount] = useState(12);
   const [notice, setNotice] = useState<string | null>(null);
-  const [prefsPersona, setPrefsPersona] = useState<'team_leader' | 'team_member' | 'solo_user' | 'coach' | 'admin_operator'>('team_leader');
-  const [prefsChannels, setPrefsChannels] = useState<Record<NotificationChannelKey, boolean>>({
-    in_app_list: true,
-    badge: true,
-    banner: true,
-    push_placeholder: false,
-    email_placeholder: false,
-  });
-  const [prefsClasses, setPrefsClasses] = useState<Record<NotificationClassKey, boolean>>({
-    coaching_assignment: true,
-    coaching_reminder: true,
-    coaching_progress: true,
-    channel_message: true,
-    broadcast_outcome: true,
-    ai_review_queue: true,
-    ai_approval_outcome: true,
-    package_access_change: true,
-    policy_alert: true,
-  });
+  const isSuperAdmin = effectiveRoles.includes('super_admin');
+  const canModerateQueue = isSuperAdmin;
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -3080,12 +3056,16 @@ function AdminCoachingAuditPanel() {
 
   const handleApprove = async () => {
     if (!selectedRow) return;
+    if (!canModerateQueue) {
+      setNotice('Queue state changes are limited to super admin for this troubleshooting surface.');
+      return;
+    }
     const confirmed = await confirmDangerAction(`Approve AI suggestion ${selectedRow.id}? Human send/publish remains required.`);
     if (!confirmed) return;
     const note = promptForAuditNote('Approve');
     if (note === null) return;
     appendAuditEvent(selectedRow.id, {
-      actorLabel: 'Admin operator (local UI)',
+      actorLabel: 'Super admin (local UI troubleshooting)',
       action: 'approved',
       note: note || 'Approved in UI queue. Execution remains human-triggered via existing runtime paths.',
     }, 'approved');
@@ -3094,12 +3074,16 @@ function AdminCoachingAuditPanel() {
 
   const handleReject = async () => {
     if (!selectedRow) return;
+    if (!canModerateQueue) {
+      setNotice('Queue state changes are limited to super admin for this troubleshooting surface.');
+      return;
+    }
     const confirmed = await confirmDangerAction(`Reject AI suggestion ${selectedRow.id}?`);
     if (!confirmed) return;
     const note = promptForAuditNote('Reject');
     if (note === null) return;
     appendAuditEvent(selectedRow.id, {
-      actorLabel: 'Admin operator (local UI)',
+      actorLabel: 'Super admin (local UI troubleshooting)',
       action: 'rejected',
       note: note || 'Rejected during policy/safety review in admin audit queue.',
     }, 'rejected');
@@ -3108,8 +3092,12 @@ function AdminCoachingAuditPanel() {
 
   const handleReturnToPending = () => {
     if (!selectedRow) return;
+    if (!canModerateQueue) {
+      setNotice('Queue state changes are limited to super admin for this troubleshooting surface.');
+      return;
+    }
     appendAuditEvent(selectedRow.id, {
-      actorLabel: 'Admin operator (local UI)',
+      actorLabel: 'Super admin (local UI troubleshooting)',
       action: 'submitted',
       note: 'Returned to pending approval after follow-up review.',
     }, 'pending_approval');
@@ -3134,106 +3122,25 @@ function AdminCoachingAuditPanel() {
   };
 
   const aiPolicyGuardrails = [
+    'Exception-only troubleshooting surface. Coach-primary AI workflows stay in /coach runtime surfaces.',
     'No KPI log / forecast / challenge mutation actions are exposed in this surface.',
     'Approve/Reject updates queue state + audit history only (approval-first UI workflow).',
     'No autonomous send/publish paths; execution remains human-triggered elsewhere.',
   ];
-
-  const notificationVisibilityRows = [
-    {
-      id: 'notif_evt_001',
-      cls: 'ai_review_queue',
-      channel: 'in_app_list',
-      audience: 'Admin operator',
-      status: 'visible',
-      reason: 'Approval queue pending admin review',
-      route: '/admin/coaching/audit',
-      dispatchedAt: null,
-    },
-    {
-      id: 'notif_evt_002',
-      cls: 'ai_approval_outcome',
-      channel: 'banner',
-      audience: 'Coach reviewer',
-      status: 'suppressed',
-      reason: 'Pref shell toggle off for banner in local preview',
-      route: 'coach_ops_audit companion',
-      dispatchedAt: null,
-    },
-    {
-      id: 'notif_evt_003',
-      cls: 'broadcast_outcome',
-      channel: 'in_app_list',
-      audience: 'Team Leader',
-      status: 'visible',
-      reason: 'Existing runtime visibility only; no dispatch control',
-      route: 'inbox_channels / channel_thread',
-      dispatchedAt: new Date(Date.now() - 1000 * 60 * 55).toISOString(),
-    },
-    {
-      id: 'notif_evt_004',
-      cls: 'policy_alert',
-      channel: 'badge',
-      audience: 'Admin operator',
-      status: 'visible',
-      reason: 'Ops governance alert in admin companion view',
-      route: '/admin/coaching/audit',
-      dispatchedAt: null,
-    },
-  ] as const;
-
-  const visibilityCounts = notificationVisibilityRows.reduce(
-    (acc, row) => {
-      acc.total += 1;
-      if (row.status === 'visible') acc.visible += 1;
-      if (row.status === 'suppressed') acc.suppressed += 1;
-      if (row.dispatchedAt) acc.outcomes += 1;
-      return acc;
-    },
-    { total: 0, visible: 0, suppressed: 0, outcomes: 0 }
-  );
-
-  const toggleChannelPref = (key: NotificationChannelKey) => {
-    setPrefsChannels((prev) => ({ ...prev, [key]: !prev[key] }));
-    setNotice('Updated notification channel preference shell (local UI only; no persistence/write performed).');
-  };
-  const toggleClassPref = (key: NotificationClassKey) => {
-    setPrefsClasses((prev) => ({ ...prev, [key]: !prev[key] }));
-    setNotice('Updated notification class preference shell (local UI only; no persistence/write performed).');
-  };
-
-  const channelLabels: Record<NotificationChannelKey, string> = {
-    in_app_list: 'In-app list',
-    badge: 'Badge',
-    banner: 'Banner',
-    push_placeholder: 'Push (placeholder)',
-    email_placeholder: 'Email (placeholder)',
-  };
-  const classLabels: Record<NotificationClassKey, string> = {
-    coaching_assignment: 'Coaching assignment',
-    coaching_reminder: 'Coaching reminder',
-    coaching_progress: 'Progress update',
-    channel_message: 'Channel message',
-    broadcast_outcome: 'Broadcast outcome',
-    ai_review_queue: 'AI review queue',
-    ai_approval_outcome: 'AI approval outcome',
-    package_access_change: 'Package access change',
-    policy_alert: 'Policy alert',
-  };
 
   return (
     <View style={styles.panel}>
       <View style={styles.panelTopRow}>
         <View style={styles.panelTitleBlock}>
           <Text style={styles.eyebrow}>/admin/coaching/audit</Text>
-          <Text style={styles.panelTitle}>Coach Ops Audit + AI Approvals</Text>
+          <Text style={styles.panelTitle}>Super Admin AI Troubleshooting</Text>
         </View>
         <View style={[styles.stagePill, { backgroundColor: '#FFF5E6', borderColor: '#F5D9AA' }]}>
-          <Text style={[styles.stagePillText, { color: '#9A5A00' }]}>W5 Approval-First</Text>
+          <Text style={[styles.stagePillText, { color: '#9A5A00' }]}>W7 Exception-Only</Text>
         </View>
       </View>
       <Text style={styles.panelBody}>
-        Admin/coach governance companion surface for AI suggestion approval queue review, rejection, and audit history inspection.
+        Exception-only troubleshooting queue for AI draft review and audit history inspection. This is not the primary coach workflow.
       </Text>
       <View style={styles.alertErrorBox}>
         <Text style={styles.alertErrorTitle}>Disallowed actions preserved</Text>
@@ -3241,71 +3148,11 @@ function AdminCoachingAuditPanel() {
           <Text key={line} style={styles.alertErrorText}>{line}</Text>
         ))}
       </View>
-      <View style={styles.usersDiagnosticsGrid}>
-        <View style={[styles.summaryCard, { flex: 1.05 }]}>
-          <View style={styles.formHeaderRow}>
-            <Text style={styles.summaryLabel}>Notification Prefs Shell (W6)</Text>
-            <Text style={styles.metaRow}>UI-only / stub-safe</Text>
-          </View>
-          <Text style={styles.fieldHelpText}>
-            Preference controls are represented here as a coach/admin visibility and policy-check companion. No persistence or dispatch authority is changed in this pass.
-          </Text>
-          <View style={styles.formField}>
-            <Text style={styles.formLabel}>Persona Preview</Text>
-            <View style={styles.chipRow}>
-              {(['team_leader', 'team_member', 'solo_user', 'coach', 'admin_operator'] as const).map((value) => {
-                const selected = prefsPersona === value;
-                return (
-                  <Pressable
-                    key={value}
-                    onPress={() => setPrefsPersona(value)}
-                    style={[styles.formChip, selected && styles.formChipSelected]}
-                  >
-                    <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>{value}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-          <Text style={styles.formLabel}>Channels</Text>
-          <View style={styles.inlineToggleRow}>
-            {(Object.keys(channelLabels) as NotificationChannelKey[]).map((key) => {
-              const enabled = prefsChannels[key];
-              return (
-                <Pressable key={key} onPress={() => toggleChannelPref(key)} style={[styles.toggleChip, enabled && styles.toggleChipOn]}>
-                  <Text style={[styles.toggleChipText, enabled && styles.toggleChipTextOn]}>
-                    {enabled ? 'On' : 'Off'} • {channelLabels[key]}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-        <View style={[styles.summaryCard, { flex: 1.15 }]}>
-          <View style={styles.formHeaderRow}>
-            <Text style={styles.summaryLabel}>Notification Class Preferences</Text>
-            <Text style={styles.metaRow}>{Object.values(prefsClasses).filter(Boolean).length} enabled</Text>
-          </View>
-          <Text style={styles.fieldHelpText}>
-            W6 shell covers visibility preference intent only. Delivery execution and queue/dispatch ownership remain on existing runtime/backend controls.
-          </Text>
-          <View style={styles.chipRow}>
-            {(Object.keys(classLabels) as NotificationClassKey[]).map((key) => {
-              const enabled = prefsClasses[key];
-              return (
-                <Pressable
-                  key={key}
-                  onPress={() => toggleClassPref(key)}
-                  style={[styles.formChip, enabled && styles.formChipSelected]}
-                >
-                  <Text style={[styles.formChipText, enabled && styles.formChipTextSelected]}>
-                    {enabled ? 'On' : 'Off'} • {classLabels[key]}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+      <View style={styles.noticeBox}>
+        <Text style={styles.noticeTitle}>Access boundary</Text>
+        <Text style={styles.noticeText}>
+          Super admin can update queue status for exception handling. Platform admins have limited read-only troubleshooting access.
+        </Text>
       </View>
 
       <View style={styles.filterBar}>
@@ -3365,7 +3212,7 @@ function AdminCoachingAuditPanel() {
               ) : null}
             </View>
           </View>
-          <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Click a suggestion row to open approval details, flags, and audit history.</Text>
+          <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Select a suggestion row to inspect troubleshooting context, safety flags, and audit history.</Text>
           {selectedRowHiddenByFilters ? (
             <View style={[styles.noticeBox, { marginHorizontal: 12, marginTop: 8 }]}>
               <Text style={styles.noticeTitle}>Selected suggestion is hidden by current filters</Text>
@@ -3452,7 +3299,7 @@ function AdminCoachingAuditPanel() {
         </View>
         <View style={[styles.formCard, styles.usersOpsCard]}>
           <View style={styles.formHeaderRow}>
-            <Text style={styles.formTitle}>Audit Detail + Review</Text>
+            <Text style={styles.formTitle}>Troubleshooting Detail</Text>
             <Text style={styles.metaRow}>{selectedRow ? formatDateTimeShort(selectedRow.updatedAt) : 'Select a suggestion'}</Text>
           </View>
           {selectedRow ? (
@@ -3543,98 +3390,31 @@ function AdminCoachingAuditPanel() {
                 </View>
               </View>
               <View style={styles.formActionsRow}>
-                <TouchableOpacity style={styles.primaryButton} onPress={handleApprove}>
-                  <Text style={styles.primaryButtonText}>Approve (Queue Only)</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.warnButton} onPress={handleReject}>
-                  <Text style={styles.warnButtonText}>Reject (Queue Only)</Text>
-                </TouchableOpacity>
-                {(selectedRow.status === 'approved' || selectedRow.status === 'rejected') ? (
-                  <TouchableOpacity style={styles.smallGhostButton} onPress={handleReturnToPending}>
-                    <Text style={styles.smallGhostButtonText}>Return to Pending</Text>
-                  </TouchableOpacity>
-                ) : null}
+                {canModerateQueue ? (
+                  <>
+                    <TouchableOpacity style={styles.primaryButton} onPress={handleApprove}>
+                      <Text style={styles.primaryButtonText}>Approve (Queue Only)</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.warnButton} onPress={handleReject}>
+                      <Text style={styles.warnButtonText}>Reject (Queue Only)</Text>
+                    </TouchableOpacity>
+                    {(selectedRow.status === 'approved' || selectedRow.status === 'rejected') ? (
+                      <TouchableOpacity style={styles.smallGhostButton} onPress={handleReturnToPending}>
+                        <Text style={styles.smallGhostButtonText}>Return to Pending</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={[styles.metaRow, { flex: 1 }]}>Read-only mode for non-super-admin troubleshooting sessions.</Text>
+                )}
                 <TouchableOpacity style={styles.smallGhostButton} onPress={() => void copySelectedAuditSummary()}>
                   <Text style={styles.smallGhostButtonText}>Copy Audit Summary</Text>
                 </TouchableOpacity>
               </View>
             </>
           ) : (
-            <Text style={styles.panelBody}>Select an AI queue row to inspect approval requirements, safety flags, and audit history.</Text>
+            <Text style={styles.panelBody}>Select an AI queue row to inspect approval requirements, troubleshooting context, and audit history.</Text>
           )}
-        </View>
-      </View>
-
-      <View style={styles.usersDiagnosticsGrid}>
-        <View style={[styles.summaryCard, { flex: 1 }]}>
-          <View style={styles.formHeaderRow}>
-            <Text style={styles.summaryLabel}>Notification Visibility Companion</Text>
-            <Text style={styles.metaRow}>{visibilityCounts.visible} visible / {visibilityCounts.total}</Text>
-          </View>
-          <Text style={styles.summaryNote}>
-            Ops-facing visibility summary for coaching/AI-relevant notification states in the `coach_ops_audit` companion route (no dispatch controls).
-          </Text>
-          <View style={styles.keyValueRow}>
-            <Text style={styles.keyValueLabel}>Visible</Text>
-            <Text style={styles.keyValueValue}>{visibilityCounts.visible}</Text>
-          </View>
-          <View style={styles.keyValueRow}>
-            <Text style={styles.keyValueLabel}>Suppressed</Text>
-            <Text style={styles.keyValueValue}>{visibilityCounts.suppressed}</Text>
-          </View>
-          <View style={styles.keyValueRow}>
-            <Text style={styles.keyValueLabel}>Dispatch outcomes visible</Text>
-            <Text style={styles.keyValueValue}>{visibilityCounts.outcomes}</Text>
-          </View>
-          <Text style={styles.fieldHelpText}>
-            This surface reports visibility/queue context only. Dispatch ownership remains outside this admin companion and is unchanged.
-          </Text>
-        </View>
-        <View style={[styles.summaryCard, { flex: 1.35 }]}>
-          <View style={styles.formHeaderRow}>
-            <Text style={styles.summaryLabel}>Ops Queue / Outcome Rows</Text>
-            <Text style={styles.metaRow}>Preview rows</Text>
-          </View>
-          {notificationVisibilityRows.map((row) => (
-            <View key={row.id} style={styles.compactDataCard}>
-              <View style={styles.formHeaderRow}>
-                <Text style={styles.compactDataTitle}>{row.cls}</Text>
-                <View
-                  style={[
-                    styles.statusChip,
-                    row.status === 'visible'
-                      ? { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' }
-                      : { backgroundColor: '#FFF4F2', borderColor: '#F2C0B9' },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.statusChipText,
-                      { color: row.status === 'visible' ? '#1D7A4D' : '#B2483A' },
-                    ]}
-                  >
-                    {row.status}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.compactDataRow}>
-                <Text style={styles.compactDataMeta}>Audience / channel</Text>
-                <Text style={styles.compactDataValue}>{row.audience} • {row.channel}</Text>
-              </View>
-              <View style={styles.compactDataRow}>
-                <Text style={styles.compactDataMeta}>Reason</Text>
-                <Text style={styles.compactDataValue}>{row.reason}</Text>
-              </View>
-              <View style={styles.compactDataRow}>
-                <Text style={styles.compactDataMeta}>Route</Text>
-                <Text style={styles.compactDataValue}>{row.route}</Text>
-              </View>
-              <View style={styles.compactDataRow}>
-                <Text style={styles.compactDataMeta}>Dispatch outcome ref</Text>
-                <Text style={styles.compactDataValue}>{row.dispatchedAt ? formatDateTimeShort(row.dispatchedAt) : 'not dispatched / not shown'}</Text>
-              </View>
-            </View>
-          ))}
         </View>
       </View>
     </View>
@@ -5301,7 +5081,7 @@ export default function AdminShellScreen() {
                     loading={reportsProbeLoading}
                   />
                 ) : activeRoute.key === 'coachingAudit' ? (
-                  <AdminCoachingAuditPanel />
+                  <AdminCoachingAuditPanel effectiveRoles={effectiveRoles} />
                 ) : activeRoute.key === 'coachingUploads' ||
                   activeRoute.key === 'coachingLibrary' ||
                   activeRoute.key === 'coachingJourneys' ||

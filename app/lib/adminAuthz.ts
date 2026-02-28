@@ -183,10 +183,10 @@ export const ADMIN_ROUTES: AdminRouteDefinition[] = [
   },
   {
     key: 'coachingAudit',
-    label: 'Coaching Audit',
+    label: 'AI Troubleshooting',
     path: '/admin/coaching/audit',
     requiredRoles: ['platform_admin', 'super_admin'],
-    description: 'W5 approval-first AI moderation and audit queue for coach/admin ops.',
+    description: 'W7 exception-only AI troubleshooting queue; super-admin primary with limited platform-admin visibility.',
   },
 ];
 
