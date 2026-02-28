@@ -5262,7 +5262,7 @@ Finalize A3/W12 spotcheck closeout packaging in the board:
 ### `M6-CHALLENGE-DETAIL-GOALS-LEADERBOARD-MVP-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `M6 challenge detail UI cleanup`
 - `Persona:` `Team Leader`, `Team Member`
 - `Flow:` `challenge detail goals redesign` (`team goals`, `individual goals`, `leaderboard hero`, `kpi contribution drill-in`)
@@ -5315,3 +5315,39 @@ Redesign the Challenge Detail screen to look like a true messaging-era product s
 - Which data points came from existing payloads vs fallback UI.
 - Screenshot paths.
 - Commit hash.
+
+#### Evidence Package (2026-02-28)
+
+**Files changed:** `app/screens/KPIDashboardScreen.tsx` (+497/-201)
+
+**Key changes:**
+| Area | What changed |
+|---|---|
+| State | Added `challengeKpiDrillItem` useState (`{key, label, type}` or null) |
+| Computed | `challengeTeamAvgProgressPct`: mean of leaderboard `pct` values; fallback to `progressPct` |
+| Removed | Gauge hero card, owner card, dense meta card, leaderboard tappable card, coaching/updates block |
+| Leaderboard hero | Top-of-detail tappable card: status pill, top-3 podium, full rows, "Tap to open" hint |
+| Team Goals | PC KPI rows; type badge+name left, pct+indigo bar right (`challengeTeamAvgProgressPct`) |
+| Individual Goals | GP+VP KPI rows; type badge+name left, pct+green bar right (`challengeSelected.progressPct`) |
+| Drill-in sheet | KPI row tap → Modal slide-up with participant pct bar rows, empty fallback |
+| Compact meta | Single row: timeframe · days left · participant count |
+| Preserved | Join/leave CTA block, KPI logging sections, all routing keys |
+
+**Data sources:**
+- Leaderboard: `leaderboardPreview` (existing ChallengeFlowItem field)
+- Team progress: derived avg of `leaderboardPreview[].pct`; fallback to `progressPct`
+- Individual progress: `challengeSelected.progressPct` (existing)
+- KPI rows: `challengeScopedKpiGroups.PC/GP/VP` (existing memos)
+
+**Screenshots:**
+- Before (member): `architecture/screenshots/M6-CHALLENGE-DETAIL-GOALS-LB/before_member.png`
+- After (member): `architecture/screenshots/M6-CHALLENGE-DETAIL-GOALS-LB/after_member.png`
+
+**Commit:** `4d67832`
+
+**Constraint verification:**
+- No new tables, migrations, schema changes, or endpoint families
+- Join/leave logic and challenge route continuity preserved
+- Role boundaries intact
+- Missing backend fields use explicit MVP fallback copy/states
+- tsc --noEmit: 0 errors
