@@ -957,6 +957,16 @@ W6/W7 rescope clarifications (owner direction, docs-only):
 4. Challenge creator status does not imply non-participation. Team Leaders may participate in challenges they create, and notification routing/eligibility assumptions must preserve creator-participant cases.
 5. `Challenge Sponsor` is a distinct persona (not just a challenge type) with sponsor-scoped communication tools, content library access, and challenge member KPI visibility; sponsor persona does not log KPIs.
 
+Messaging authority lock (M6, canonical):
+
+1. Coach has full messaging authority across authorized relationships.
+2. Team Leader has the same messaging feature set as Coach, but only in active team scope.
+3. Challenge group chat is open to active challenge participants with channel membership.
+4. Challenge Sponsor may message challenge group, broadcast, and DM individuals only in sponsor/challenge scope.
+5. Team Member DM is same-team only in active team context.
+6. Segment/cohort authoring is Coach-only; Admin operator is oversight/governance.
+7. Messaging surfaces do not expand KPI authority: Sponsor and Team Member remain no-KPI-logging/no-KPI-edit actors.
+
 #### Challenge Sponsor surface/permission boundary (W6/W7 rescope, planning)
 
 - Primary sponsor persona surfaces:

@@ -495,8 +495,18 @@ These notes are additive contract guidance only. They do not introduce a new end
     - `personal_task`: caller may create/update/complete only when `assignee_id` equals caller.
     - `coach_task`: create/update allowed for assigned coach scope; assignee can update status/complete; no cross-scope reassignment.
 - `POST /api/channels/{id}/broadcast`
-  - Requires channel admin, team leader, or platform admin permissions.
+  - Requires authorized broadcaster role in scope: channel admin, coach, team leader (active team scope), challenge sponsor (sponsor/challenge scope only), or platform admin.
   - Enforces baseline 24h throttle and writes `broadcast_log` audit records.
+- Messaging authority policy lock (M6, canonical; docs-only):
+  - Coach has full messaging authority across authorized relationships (DM, channel message, broadcast) within server-enforced scope.
+  - Team Leader has the same messaging feature set as Coach, but only in active team scope.
+  - Challenge group chat is participant-accessible: any active challenge participant with membership can read/write.
+  - Challenge Sponsor may message challenge-group channels, broadcast, and DM individuals only inside sponsor/challenge-authorized scope.
+  - Team Member DM is limited to same-team active context only; cross-team member DM is denied.
+  - Segment/cohort channel authoring is Coach-only; Admin operator is oversight/governance (not primary runtime authoring actor).
+  - Messaging surfaces do not expand KPI authority:
+    - Sponsor and Team Member remain no-KPI-logging/no-KPI-edit actors via messaging flows.
+    - No channel/message/broadcast contract path may mutate KPI source-of-truth records.
 - `POST /api/messages/mark-seen`
   - Resets unread count for caller in specified channel.
 - `GET /api/messages/unread-count`

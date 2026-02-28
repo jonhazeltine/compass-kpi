@@ -206,6 +206,12 @@
 - Then no KPI logging or KPI edit action becomes available through messaging payloads or routes
 - And KPI authority boundaries remain unchanged from existing non-messaging contracts
 
+### 13G) Canonical Messaging Authority Matrix Consistency Lock
+- Given the canonical policy lock is documented in contracts and coaching docs
+- When role-gated messaging actions are evaluated for `coach`, `team_leader`, `team_member`, and `challenge_sponsor`
+- Then allowed/denied outcomes match the same authority matrix across API contracts, coaching persona matrix, and coaching wiring addendum
+- And no test case permits segment/cohort authoring by non-coach personas
+
 ### 13C) Scope-Blocked UX Copy Consistency
 - Given blocked actions are triggered on Comms surfaces (`inbox_channels`, `channel_thread`, `coach_broadcast_compose`)
 - When blocked reason is cross-team DM

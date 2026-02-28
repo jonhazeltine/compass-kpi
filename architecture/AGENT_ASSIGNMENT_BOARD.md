@@ -147,7 +147,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team identity card` (`leader edit controls`, `member read-only rendering`) | `KPIDashboardScreen` Team tab top card only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed: polished role-aware Team identity card landed with leader-only edit flow (avatar/background picker modal + save/cancel) and member read-only rendering. TypeScript clean. |
 | `M6-TEAM-FOCUS-CARD-MERGE-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team focus cards` (`merge projection+focus cards`, `leader edit trigger`, `remove focus pills`) | `KPIDashboardScreen` Team tab Team Focus section only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed (owner-approved scope fold-in): Team Focus KPI card + Team Focus projections merged into one section with compact leader edit control; legacy focus pill block removed. |
 | `M6-TEAM-LEADER-HEALTH-SUMMARY-RESTORE-A` | `committed` | `M6 team UI cleanup` | `Team Leader` | `team leader dashboard` (`team health summary restore`) | `KPIDashboardScreen` Team tab leader view (`above Team Members list`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted: Team Health Summary restored above Team Members and KPI Concern Flags removed in committed follow-on (`a45c0bd`, `2f5f1d6`). |
-| `MESSAGING-AUTHZ-MATRIX-LOCK-D` | `active` | `M6 messaging authority lock (docs/control-plane)` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`, `Admin operator` (oversight) | `messaging authority policy lock` (`coach/team-leader scope`, `challenge/sponsor/DM boundaries`, `segment/cohort authoring`) | docs-only (`04_api_contracts`, `05_acceptance_tests`, `COACHING_CAPABILITY_AND_PERSONA_MATRIX`, `COACHING_WIRING_ADDENDUM`) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (policy/control-plane lock) | Active: lock final messaging authority policy language across contracts/tests/wiring/persona docs with no endpoint family or schema changes; preserve W13 dependency-gated wording and sponsor/team-member no-KPI-logging boundary. |
+| `MESSAGING-AUTHZ-MATRIX-LOCK-D` | `committed` | `M6 messaging authority lock (docs/control-plane)` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`, `Admin operator` (oversight) | `messaging authority policy lock` (`coach/team-leader scope`, `challenge/sponsor/DM boundaries`, `segment/cohort authoring`) | docs-only (`04_api_contracts`, `05_acceptance_tests`, `COACHING_CAPABILITY_AND_PERSONA_MATRIX`, `COACHING_WIRING_ADDENDUM`) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (policy/control-plane lock) | Committed: canonical policy lock applied across contracts/tests/wiring/persona docs with explicit coach/team-leader/challenge-sponsor/team-member scope boundaries and no KPI authority expansion through messaging. |
 
 ## Blocked Assignments
 
@@ -190,7 +190,7 @@ Every worker report should include:
 ### `MESSAGING-AUTHZ-MATRIX-LOCK-D`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `M6 messaging authority lock (docs/control-plane)`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`, `Admin operator` (oversight)
 - `Flow:` `messaging authority policy lock` (`coach/team-leader scope`, `challenge/sponsor/DM boundaries`, `segment/cohort authoring`)
@@ -198,6 +198,9 @@ Every worker report should include:
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred)
 - `Worker note (2026-02-28, Coach-1, start):` Board updated first. Executing docs-only authority lock across contracts/tests/persona/wiring docs so messaging permissions are deterministic and unambiguous.
 - `Current blocker status (2026-02-28, Coach-1, start):` `none`
+- `Completion note (2026-02-28, Coach-1):` Locked authoritative messaging policy: Coach full in-scope messaging authority; Team Leader coach-parity feature set restricted to active team scope; challenge participant group-chat access; challenge sponsor group/broadcast/DM rights restricted to sponsor/challenge scope; Team Member DM same-team only; segment/cohort authoring Coach-only with Admin oversight.
+- `Validation note (2026-02-28, Coach-1):` Policy language synchronized across contracts/tests/persona/wiring docs. No endpoint-family or schema expansion, no runtime code edits, and W13 dependency-gated Stream/Mux language preserved.
+- `Current blocker status (2026-02-28, Coach-1, completion):` `none`
 
 #### Objective
 Lock final messaging authority policy across docs/contracts/tests with no ambiguity.

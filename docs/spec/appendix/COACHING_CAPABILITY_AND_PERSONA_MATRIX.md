@@ -75,11 +75,22 @@ Legend:
 
 | Capability group | Team Leader | Team Member | Solo User | Coach (runtime operator) | Challenge Sponsor | Notes |
 |---|---|---|---|---|---|---|
-| `communication` | `full` | `participant` | `participant/limited` | `full` (coach-scoped channels/cohorts/broadcasts within server-enforced scope) | `limited` (sponsor-scoped channels/broadcast tools only) | Solo access may be community/challenge scoped, no team admin comms. Coach runtime channels may include cohort-based channels for non-team individuals. Sponsor scope must remain challenge/sponsor constrained. |
+| `communication` | `full` (coach-parity feature set but active-team scope only) | `participant` (DM only in active same-team scope) | `participant/limited` | `full` (coach-scoped channels/cohorts/broadcasts across authorized relationships within server-enforced scope) | `limited` (challenge/sponsor scope only: challenge-group chat, sponsor/challenge broadcast, sponsor/challenge DM) | Coach has full messaging authority in authorized relationships. Team Leader has same feature set as Coach, constrained to active team scope. Challenge group chat is participant-accessible. Segment/cohort authoring is Coach-only with Admin oversight. Sponsor and Team Member messaging never expands KPI logging/edit rights. |
 | `coaching_content` | `full` (assign/broadcast + view progress; team-scoped `content_upload` only) | `participant` | `participant` | `full/participant` (deliver coaching guidance, assign/present approved content, view progress in scope) | `limited` (sponsor-scoped content library access/linking; no canonical lesson authoring by default) | Team leader may also be coach depending on DEP-003. Team Leader upload rights are team-scoped and do not grant org-wide authoring ownership or sponsor package authority. Coach authoring ownership is modeled in the authoring/ops matrix below. |
 | `goal_setting_momentum` | `full` (team view + own) | `participant` (own + team visibility) | `participant` (own) | `limited` (guidance context + member/cohort visibility in scope, no KPI logging) | `none` (challenge member KPI visibility only; no KPI logging) | Must not mutate KPI source-of-truth. |
 | `sponsor_challenge_coaching` | `full/limited` (campaign delivery) | `participant` | `participant` | `full/limited` (coach participation in sponsor-linked coaching delivery within scope) | `full/limited` (sponsor campaign comms/content + member KPI visibility within sponsor scope) | Overlaps sponsored challenges and challenge participation flows. |
 | `ai_coach_assist` | `full` (approval + send) | `none/limited` | `none/limited` | `full` (coach-facing recommendations / next-best-actions, approval-first) | `none/limited` (policy-limited sponsor review inputs later) | Phase-later; approval-first required. Admin audit remains secondary oversight, not primary coach workflow. |
+
+## Messaging Authority Policy Lock (M6, Authoritative)
+
+| Policy rule | Coach | Team Leader | Team Member | Challenge Sponsor | Admin operator |
+|---|---|---|---|---|---|
+| Full messaging feature authority in authorized scope | allowed | allowed (active team scope only) | denied | denied | oversight only |
+| Challenge group chat access | allowed (if member/authorized relationship) | allowed (if participant/member) | allowed (if participant/member) | allowed (sponsor/challenge scope) | oversight only |
+| Broadcast messaging | allowed | allowed (active team scope only) | denied | allowed (sponsor/challenge scope only) | policy/governance only |
+| DM messaging | allowed in authorized relationships | allowed (active same-team scope only) | allowed (active same-team scope only) | allowed (sponsor/challenge scope only) | oversight only |
+| Segment/cohort authoring | allowed | denied | denied | denied | oversight/governance only |
+| KPI logging/edit authority expansion via messaging | denied | denied | denied | denied | denied |
 
 ## Coach / Ops Access Model (Authoring + Publishing)
 
