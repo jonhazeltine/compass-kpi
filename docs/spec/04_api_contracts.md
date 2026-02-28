@@ -139,6 +139,36 @@
   - `GET /admin/users/{userId}/kpi-calibration/events` (implemented baseline)
   - `POST /admin/data-exports`
 
+## Planned W13 Third-Party Integration Surface (Docs-First, Dependency-Gated)
+
+Status: `planned only` in this slice. Runtime implementation is blocked until `DEP-002`, `DEP-004`, and `DEP-005` are closed.
+
+### Chat Provider (Compass Facade + Stream Adapter)
+- `POST /api/channels/token` (planned)
+  - Purpose: issue user-scoped Stream session token after Compass role/scope checks.
+- `POST /api/channels/sync` (planned)
+  - Purpose: reconcile Compass channel context/membership to provider channel membership and metadata.
+- Existing `/api/channels*` responses (planned additive fields):
+  - `provider` (for example `stream`)
+  - `provider_channel_id`
+  - provider sync/state metadata (`provider_sync_status`, `provider_sync_updated_at`, `provider_error_code` as applicable)
+
+### Video Provider (Compass Facade + Mux Adapter)
+- `POST /api/coaching/media/upload-url` (planned)
+  - Purpose: create provider-backed direct upload session/url with Compass-owned authorization and metadata context.
+- `POST /api/coaching/media/playback-token` (planned)
+  - Purpose: issue signed playback token for authorized viewer/session.
+- `POST /api/webhooks/mux` (planned)
+  - Purpose: verified webhook receiver for Mux asset lifecycle state transitions.
+- Existing coaching/journey payloads (planned additive fields):
+  - media status/read-model fields (`provider`, `provider_asset_id`, `processing_status`, `playback_ready`, `last_provider_event_at`)
+
+### Observability/Admin Extensions (Planned)
+- Provider operational diagnostics through existing ops/admin families:
+  - queue/backlog failure summary
+  - webhook lag/verification failure counts
+  - token issuance/sync error counters
+
 ## Payload Notes (Initial)
 - KPI log payload should include:
   - `kpi_id`
@@ -193,6 +223,10 @@
     - `pipeline_listings_pending`
     - `pipeline_buyers_uc`
   - `average_price_point` and `commission_rate_percent` must write-through to `public.users` immediately so subsequent KPI log calculations use updated inputs.
+- Third-party provider boundaries (W13 planned):
+  - Mobile/portal clients consume provider-backed data via Compass APIs only.
+  - Provider tokens are issued only after Compass authz checks.
+  - Chat/video provider events and metadata are additive and must not mutate KPI source-of-truth calculations.
 
 ### Baseline Behavior Notes (Current Sprint)
 - `POST /kpi-logs`

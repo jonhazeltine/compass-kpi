@@ -48,6 +48,25 @@ Extract reusable chat + journey UX patterns from Fourth Reason and map them to c
 - `/sponsored-challenges*` (sponsor-scoped context only)
 - `/dashboard` (summary badges/context only)
 
+## W13 Stream Chat Mapping and Rollout Constraints
+
+### Provider Mapping (Planned)
+- Compass channel families remain canonical:
+  - `/api/channels*`
+  - `/api/messages/unread-count`
+  - `/api/messages/mark-seen`
+- Stream integration is introduced behind Compass-managed adapter flow:
+  - `POST /api/channels/token` for role/scope-gated provider session token issuance.
+  - `POST /api/channels/sync` for Compass->provider membership reconciliation.
+- Channel payloads gain additive provider metadata fields only (no endpoint-family expansion requirement for mobile route usage).
+
+### Rollout Constraints (Mandatory)
+- Do not bypass Compass authz with direct client-provider trust.
+- Keep role boundaries unchanged (`member`, `team_leader`, `coach`, `platform_admin`, sponsor scoped visibility only).
+- Preserve current unread/broadcast semantics and acceptance behavior for `inbox*`, `channel_thread`, and `coach_broadcast_compose`.
+- Runtime rollout is blocked until dependency gates close (`DEP-002`, `DEP-004`, `DEP-005`).
+- Chat/video integration must not mutate KPI source-of-truth behavior.
+
 ## Pattern Parity Map
 | Fourth Reason UX pattern | Source evidence | Compass target route/surface | Compass contract family | Parity action | Build lane |
 |---|---|---|---|---|---|

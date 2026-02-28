@@ -268,6 +268,54 @@
 - And regression assertions can evaluate known failure modes (6-month cliff, onboarding skew, KPI selection bias)
 - And run outputs can be exported/reviewed without mutating production user data by default
 
+### 29) Stream Token Role/Scope Gating (Planned W13)
+- Given an authenticated user without required channel scope
+- When user requests `POST /api/channels/token`
+- Then API returns `403` and no provider token is issued
+- Given an authorized member/leader/admin
+- When request is valid for allowed channel scope
+- Then API returns token payload with bounded TTL and provider metadata
+
+### 30) Channel Mapping and Membership Reconciliation (Planned W13)
+- Given a Compass channel context with changed membership
+- When `POST /api/channels/sync` runs
+- Then provider membership reconciles to Compass authority state
+- And drift results are reported with deterministic status fields
+- And unauthorized membership elevation is not possible via provider-only operations
+
+### 31) Messaging Reliability Parity (Planned W13)
+- Given provider-backed chat is enabled behind Compass facade
+- When users send/read/broadcast messages through existing channel families
+- Then unread/read/broadcast semantics remain consistent with scenarios #11-#13
+- And failures return stable Compass error envelopes without leaking provider internals
+
+### 32) Mux Asset Lifecycle Verification (Planned W13)
+- Given an authorized upload session is created via `POST /api/coaching/media/upload-url`
+- When provider lifecycle events arrive at `POST /api/webhooks/mux`
+- Then signature verification gates event acceptance
+- And asset status transitions follow upload -> processing -> ready/failed
+- And coaching/journey payload read-model fields reflect latest valid lifecycle state
+
+### 33) Provider Failure Path Handling (Planned W13)
+- Given provider timeout/token error/sync failure/webhook signature mismatch
+- When affected chat/video endpoint is called
+- Then API returns deterministic error envelopes with request tracing
+- And failure counters are visible in ops/admin diagnostics
+- And client-facing fallback states can be rendered without blocking unrelated KPI flows
+
+### 34) Compliance Retention and Deletion Policy Enforcement (Planned W13)
+- Given approved retention/deletion policy under `DEP-004`
+- When chat/video metadata reaches retention boundaries or receives deletion request
+- Then lifecycle behavior matches approved retention matrix
+- And audit trail captures policy actor/time/reason
+- And provider-side deletion/retention sync outcomes are recorded
+
+### 35) Regression Guardrail for Existing Communication/Coaching Paths (Planned W13)
+- Given Stream/Mux adapter paths are enabled
+- When regression suite runs on existing endpoint families
+- Then `inbox*`, `channel_thread`, `coach_broadcast_compose`, and `coaching_journeys*` paths remain green
+- And KPI engine behavior remains unchanged (no provider side-effect mutation)
+
 ## Edge Cases
 
 ### E1) Offline Log Sync Ordering and Integrity
@@ -315,6 +363,8 @@
   - `cd backend && npm run test:backend-mvp`
 - Release gate command:
   - `cd backend && npm run test:release`
+- W13 docs-first note:
+  - Scenarios #29-#35 are contract planning scenarios in this slice and become runnable only after dependency gates (`DEP-002`, `DEP-004`, `DEP-005`) close and implementation waves are approved.
 
 ### E2) Expired Token
 - Given an expired bearer token

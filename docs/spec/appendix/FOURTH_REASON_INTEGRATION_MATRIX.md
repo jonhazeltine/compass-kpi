@@ -23,8 +23,8 @@ Map the communication + coaching capabilities from `references/the fourth reason
 
 | Capability | Fourth Reason Evidence | Recommendation | Integration Notes |
 |---|---|---|---|
-| 1:1 / group messaging | `server/routes.ts` (`/api/threads`, `/api/messages`, unread endpoints), `shared/schema.ts` (`threads`, `messages`) | Reuse pattern, rebuild in Compass namespace | Keep data model style; remap auth/roles to Compass org/team roles. |
-| Channels (cohort-style comms) | `channels`, `channelMemberships`, `channelMessages` + `channelService.ts` | Reuse concept, adapt to team/challenge context | Make channel type explicit: `team | challenge | sponsor | cohort`, with typed context linkage. |
+| 1:1 / group messaging | `server/routes.ts` (`/api/threads`, `/api/messages`, unread endpoints), `shared/schema.ts` (`threads`, `messages`) | Planned Wave A (`Stream Chat` via Compass adapter/facade) | Keep Compass as authority; reuse pattern semantics while mapping roles/tenancy before provider token issue. |
+| Channels (cohort-style comms) | `channels`, `channelMemberships`, `channelMessages` + `channelService.ts` | Planned Wave A (`Stream Chat` channel sync) | Preserve channel type model `team | challenge | sponsor | cohort`; add provider mapping fields through Compass contracts only. |
 | Coaching journeys + lesson progress | `journeys`, `milestones`, `lessons`, `lessonProgress`, unlock logic | Reuse concept, phased adoption | Introduce after core KPI app stability; align content to coaching module boundaries. |
 | Broadcast messaging | `/api/cohorts/:id/broadcast`, `broadcastService.ts` | Reuse concept | Useful for team leader nudges and forecast/coaching campaigns. |
 | Member invite + onboarding flows | `memberInvites`, `/api/coach/members/invite` | Adapt | Map invite domain to Compass team membership and role assignment rules. |
@@ -32,7 +32,7 @@ Map the communication + coaching capabilities from `references/the fourth reason
 | AI coach suggestions | `/api/ai/*`, `aiSuggestionService.ts`, `aiContextService.ts` | Defer to Phase 3 | Guardrails required: action-oriented suggestions, no source-of-truth conflicts with KPI engine. |
 | Knowledge base ingestion | `/api/knowledge/*`, web/PDF/import workflows | Defer | Valuable for coaching context, but not required for initial communication integration. |
 | Subscription hooks | RevenueCat webhook + subscription service | Defer until billing authority decision | Keep Phase 1/2 billing-agnostic; no RevenueCat webhook code in Compass pre-decision. |
-| Media/video coaching assets | Mux upload + transcript flows | Defer | Keep as optional advanced coaching module after messaging/channels land. |
+| Media/video coaching assets | Mux upload + transcript flows | Planned Wave B (`Mux` via Compass adapter/facade) | Implement direct upload + signed playback + verified webhooks, with media metadata surfaced through existing coaching/journey contracts. |
 
 ## API and Integration Recommendations
 
@@ -81,6 +81,8 @@ Map the communication + coaching capabilities from `references/the fourth reason
   - broadcast audit log
   - per-role broadcast throttles/rate limits
 - Deliverable: stable communication surface inside Compass auth/role model.
+- W13 lock-in note:
+  - Runtime implementation target uses `Stream Chat` through Compass service adapters and API facade.
 
 ### Phase 2: Coaching Content
 - Journey, milestone, lesson and progress tracking.
@@ -98,9 +100,25 @@ Map the communication + coaching capabilities from `references/the fourth reason
   - `status`: `pending | approved | rejected`
 
 ### Phase 4: Advanced Integrations
-- Media/video ingestion + transcript enrichment (Mux or alternative).
+- Media/video ingestion + transcript enrichment (Mux locked as canonical provider).
 - Subscription/integration hardening and analytics expansion.
 - Deliverable: mature coaching platform capabilities.
+
+## W13 Managed Provider Implementation Sequence (Locked)
+1. Docs-first exception (current slice):
+   - architecture/spec/contracts/tests/board sequencing only; no runtime code.
+2. Pre-implementation dependency gates:
+   - `DEP-002` tenancy key strategy final
+   - `DEP-004` retention/compliance final
+   - `DEP-005` vendor security/legal checklist final
+3. Wave A:
+   - Stream token issuance, channel sync mapping, audit trail.
+4. Wave B:
+   - Mux upload/playback tokenization, webhook verification, media lifecycle mapping.
+5. Wave C:
+   - mobile + `/coach/*` parity, fallback states, moderation/audit hardening.
+6. Wave D:
+   - regression matrix, scale/perf checks, rollout/rollback runbooks.
 
 ## Required Pre-Implementation Decisions
 1. Billing authority: Stripe-only vs Stripe + RevenueCat hybrid.

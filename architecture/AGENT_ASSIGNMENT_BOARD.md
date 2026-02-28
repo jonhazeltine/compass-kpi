@@ -4596,3 +4596,54 @@ Keep the Team Leader team-level health summary card/module directly above the Te
 - Runtime behavior proof summary.
 - Screenshot paths.
 - Commit hash.
+
+---
+
+## W13 Third-Party Chat + Video Integration Queue (Docs-First Exception)
+
+Execution order is strict and dependency-gated. Board ownership/status here is the source of truth.
+
+| Order | Assignment ID | Status | Owner | Depends On | Notes |
+|---|---|---|---|---|---|
+| 1 | `W13-CHAT-VIDEO-ARCH-RFC-A` | `review` | `Controller` | none | Docs/control-plane planning slice implemented on 2026-02-28; runtime code explicitly out-of-scope. |
+| 2 | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | `queued` | `Unassigned` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Stream-backed chat facade. |
+| 3 | `W13-MUX-CONTRACTS-AND-TESTS-A` | `queued` | `Unassigned` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Mux-backed video facade/webhooks. |
+| 4 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
+| 5 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation block. |
+| 6 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. |
+
+### `W13-CHAT-VIDEO-ARCH-RFC-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `W13 docs/control-plane exception`
+- `Persona:` `Owner-facing architecture governance`, `backend/platform planning`, `QA planning`
+- `Flow:` `third-party provider strategy` (`Stream Chat`, `Mux`, dependency-gated sequence)
+- `Owner:` `Controller`
+- `Execution note (2026-02-28, Controller):` Implemented docs-first planning slice spanning sprint gate, control plane, SOW parity, decisions log, API contracts, acceptance tests, and Fourth Reason parity appendices.
+- `Completion note (2026-02-28, Controller):` Locked provider decisions and queued dependency-ordered assignments without runtime code changes.
+- `Current blocker status (2026-02-28, completion):` runtime blocked by `DEP-002`, `DEP-004`, `DEP-005`.
+
+#### Primary Objective
+Lock architecture/spec/test/board source-of-truth for Stream Chat + Mux integration sequencing while preserving FE-00 lane and non-negotiables.
+
+#### Scope In
+- `architecture/CURRENT_SPRINT.md`
+- `architecture/PROJECT_CONTROL_PLANE.md`
+- `architecture/SOW_PARITY_MATRIX.md`
+- `architecture/DECISIONS_LOG.md`
+- `docs/spec/04_api_contracts.md`
+- `docs/spec/05_acceptance_tests.md`
+- `docs/spec/appendix/FOURTH_REASON_INTEGRATION_MATRIX.md`
+- `docs/spec/appendix/COACHING_W12_FOURTHREASON_CHAT_PARITY_MAP.md`
+- `architecture/AGENT_ASSIGNMENT_BOARD.md`
+
+#### Scope Out
+- Runtime adapter code
+- Webhook runtime handlers
+- Client SDK integration
+
+#### Hard Constraints
+- No runtime implementation before dependency closure.
+- Preserve Compass backend as provider authority/facade.
+- Preserve KPI non-negotiable boundaries.

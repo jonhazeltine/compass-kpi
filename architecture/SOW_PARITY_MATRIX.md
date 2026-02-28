@@ -64,6 +64,20 @@ Status: `partial-to-strong`
 - Offline cache/sync UX and robust sync orchestration from app side.
 - Forecast confidence "dual logic" algorithm parity with SOW narrative.
 
+### W13 Third-Party Managed Service Plan (Docs-First Exception)
+Status: `planned (docs locked, implementation gated)`
+- Scope lock:
+  - Communications provider fixed to `Stream Chat`.
+  - Video provider fixed to `Mux` (direct upload + signed playback + webhook lifecycle).
+  - Compass backend/API facade remains source of truth for all clients.
+- Sequence lock:
+  - `Wave A`: Stream adapter/token/channel-sync foundation.
+  - `Wave B`: Mux adapter/upload/playback/webhook foundation.
+  - `Wave C`: cross-surface parity + failure handling + observability.
+  - `Wave D`: release hardening and regression/perf/compliance validation.
+- Gating:
+  - Runtime implementation is blocked until `DEP-002`, `DEP-004`, and `DEP-005` are closed.
+
 ### Milestone 3 / Sprint 7: Sponsored Challenges & Polish
 Status: `not started/low`
 - Done:

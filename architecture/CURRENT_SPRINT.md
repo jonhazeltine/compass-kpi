@@ -15,11 +15,16 @@ Execute **FE-00 (Gate Fix)** to transition from backend-only scope to a frontend
   - Mark readiness status for M1 and M2 as explicit sprint gate criteria.
 - Frontend acceptance harness setup:
   - Add frontend UI/API integration harness section to `docs/spec/05_acceptance_tests.md`.
+- W13 docs-first exception slice (planning only):
+  - Lock third-party managed-service direction for communications/video (`Stream Chat` + `Mux`) in architecture/spec docs.
+  - Record dependency gates (`DEP-002`, `DEP-004`, vendor security/legal approval) and queue dependency-ordered assignments.
+  - Explicitly prohibit runtime/provider implementation work in this sprint slice.
 
 ## Out of Scope
 - Net-new backend endpoint families beyond documented contracts in `docs/spec/04_api_contracts.md`.
 - Billing authority implementation details (`DEP-001`) beyond minimal upgrade/paywall UX.
 - Marketing website implementation (deferred to future approved track).
+- Third-party runtime integration coding (`Stream`/`Mux` adapters, webhook handlers, client SDK wiring) before dependency gates close.
 
 ## Definition of Done (FE-00)
 - `architecture/CURRENT_SPRINT.md` reflects FE-00 + full frontend roadmap.
@@ -64,6 +69,7 @@ Parallel staffing assumption: Mobile-first priority; Admin stream starts once M3
 | Sprint Item | Roadmap Phase | Spec Link(s) | Non-Negotiables | Acceptance Tests | Decision Log Needed |
 |---|---|---|---|---|---|
 | FE-00 Gate Fix + Frontend Program Kickoff | 0: Governance Baseline | `architecture/PROJECT_CONTROL_PLANE.md`, `design/figma/FIGMA_INDEX.md`, `docs/spec/appendix/FIGMA_BUILD_MAPPING.md`, `docs/spec/05_acceptance_tests.md` | #1, #2, #3, #4, #9, #10 | frontend harness bootstrap checks | yes |
+| W13 Third-Party Video + Chat Integration Plan (Docs-First Exception) | 3/4 seam: Communication -> Coaching Foundation Planning | `architecture/PROJECT_CONTROL_PLANE.md`, `architecture/SOW_PARITY_MATRIX.md`, `docs/spec/04_api_contracts.md`, `docs/spec/05_acceptance_tests.md`, `docs/spec/appendix/FOURTH_REASON_INTEGRATION_MATRIX.md`, `docs/spec/appendix/COACHING_W12_FOURTHREASON_CHAT_PARITY_MAP.md` | #1, #2, #3, #4, #8, #9 | #29, #30, #31, #32, #33, #34, #35 (planned/docs) | yes |
 | M1 Core Infrastructure + Auth UI Parity | 1: KPI Core | `docs/spec/01_system_overview.md`, `docs/spec/04_api_contracts.md`, `docs/spec/appendix/FIGMA_BUILD_MAPPING.md` | #1, #3, #8 | #1, E2 | no |
 | M2 Onboarding + Profile/Goals | 1: KPI Core | `docs/spec/appendix/Master Spec.md`, `docs/spec/04_api_contracts.md`, `docs/spec/appendix/FIGMA_BUILD_MAPPING.md` | #1, #8 | scenario 1 profile/onboarding UI roundtrip + state coverage | no |
 | M3 KPI System + Dashboard Foundation | 1: KPI Core | `docs/spec/03_engines.md`, `docs/spec/04_api_contracts.md`, `docs/spec/appendix/Master Spec.md` | #1, #2, #3, #4, #6 | #2, #3, #4, #5, #6, E3 | no |
@@ -110,6 +116,7 @@ Parallel staffing assumption: Mobile-first priority; Admin stream starts once M3
 - Tenancy key strategy (`DEP-002`) remains open; monitor for cross-team/admin data-scope impacts.
 - Coaching ownership model (`DEP-003`) remains open; implement configurable role checks in UI.
 - Data retention/compliance policy (`DEP-004`) remains open; required before broad communication launch UX.
+- Vendor security/legal checklist completion (`DEP-005`) remains open; required before Stream/Mux runtime implementation.
 
 ## Prior Sprint Summary
 - Sprint 1 through Sprint 10 backend track completed on 2026-02-20.

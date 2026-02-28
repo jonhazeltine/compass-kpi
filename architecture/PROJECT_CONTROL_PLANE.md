@@ -22,6 +22,11 @@ This document is the always-on project horizon and is used alongside:
 | 5: Hardening + Launch | End-to-end QA, security checks, release readiness. | Feature-complete scope freeze. | Release checklist complete. | planned | Q3 2026 |
 | 6: Backend Completion Track | Complete remaining backend MVP structure (sponsored, admin core, offline sync, notification pipeline, confidence parity). | Sprint 1-5 baseline stable with release gate passing. | `test:backend-mvp` gate passes with documented ops readiness. | active | Q1-Q2 2026 |
 
+### W13 Docs-First Exception Milestone (Phase 3/4 Seam)
+| Milestone | Scope Type | Objective | Blockers/Gates | Status |
+|---|---|---|---|---|
+| W13 Third-Party Video + Chat Integration Planning | docs/control-plane exception | Lock provider strategy (`Stream Chat`, `Mux`), contract surfaces, acceptance scenarios, and assignment sequencing without runtime code changes. | `DEP-002`, `DEP-004`, `DEP-005` must close before implementation waves A/B. | active |
+
 ### Cross-Sprint Invariants
 These must remain true in every phase and sprint:
 - PC and Actual GCI remain separate in schema, logic, and UI.
@@ -47,6 +52,7 @@ For each sprint item in `architecture/CURRENT_SPRINT.md`, add:
 | DEP-002 | Tenancy key strategy (`org_id`, optional `team_id`) | Team/comms/coaching schema | Before communication schema migration | Architecture | open | Must be explicit before adding comms tables. |
 | DEP-003 | Coaching ownership model (leader vs dedicated coach role) | Coaching permissions and UI scopes | Before coaching module build | Product | open | Required for role matrix and endpoint access rules. |
 | DEP-004 | Data retention and compliance policy | Message storage, AI context, deletion workflows | Before communication launch | Product/Legal | open | Needed for audit and deletion behavior. |
+| DEP-005 | Third-party vendor security/legal checklist (Stream + Mux) | Runtime provider integrations, production key issuance, data handling approvals | Before third-party runtime implementation waves A/B | Security/Legal/Architecture | open | Must explicitly clear SOC/compliance, DPA, webhook/IP allowlist, secret rotation, incident response owners. |
 
 ### Risk Register
 | ID | Risk | Probability | Impact | Mitigation | Trigger |
