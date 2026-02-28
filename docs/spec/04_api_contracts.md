@@ -146,12 +146,50 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
 ### Chat Provider (Compass Facade + Stream Adapter)
 - `POST /api/channels/token` (planned)
   - Purpose: issue user-scoped Stream session token after Compass role/scope checks.
+  - Planned dependency gate: contract remains `planned` and runtime-blocked until `DEP-002`, `DEP-004`, and `DEP-005` close.
+  - Planned request fields:
+    - `channel_id`
+    - `token_purpose` (`chat_read` | `chat_write` | `channel_admin`)
+    - `client_session_id` (optional; correlation for deterministic audit traces)
+  - Planned success fields:
+    - `provider` (`stream`)
+    - `provider_user_id`
+    - `provider_token`
+    - `expires_at`
+    - `ttl_seconds`
+    - `scope_grants` (resolved Compass-authoritative grants for requested purpose)
+    - `issued_by_request_id`
+  - Planned failure/status mapping:
+    - `401` unauthenticated
+    - `403` authenticated but scope denied
+    - `422` invalid token purpose or incompatible channel scope
+    - `503` provider unavailable (Compass envelope only; no provider internals exposed)
 - `POST /api/channels/sync` (planned)
   - Purpose: reconcile Compass channel context/membership to provider channel membership and metadata.
+  - Planned dependency gate: contract remains `planned` and runtime-blocked until `DEP-002`, `DEP-004`, and `DEP-005` close.
+  - Planned request fields:
+    - `channel_id`
+    - `sync_reason` (`membership_change` | `role_change` | `metadata_change` | `manual_reconcile`)
+    - `expected_version` (optional optimistic concurrency guard)
+  - Planned success fields:
+    - `provider` (`stream`)
+    - `provider_channel_id`
+    - `sync_status` (`synced` | `stale` | `error`)
+    - `sync_diff` (`members_added`, `members_removed`, `roles_updated`, `metadata_updated`)
+    - `provider_sync_updated_at`
+  - Planned failure/status mapping:
+    - `403` scope denied
+    - `409` optimistic concurrency conflict / stale authority snapshot
+    - `503` provider unavailable or timeout
+  - Authority rule: Compass role and membership state remains source of truth; provider drift cannot promote role authority.
 - Existing `/api/channels*` responses (planned additive fields):
   - `provider` (for example `stream`)
   - `provider_channel_id`
-  - provider sync/state metadata (`provider_sync_status`, `provider_sync_updated_at`, `provider_error_code` as applicable)
+  - provider sync/state metadata:
+    - `provider_sync_status` (`not_synced` | `syncing` | `synced` | `stale` | `error`)
+    - `provider_sync_updated_at`
+    - `provider_error_code` (sanitized, deterministic Compass value when applicable)
+    - `provider_trace_id` (optional correlation id for support and audit)
 
 ### Video Provider (Compass Facade + Mux Adapter)
 - `POST /api/coaching/media/upload-url` (planned)

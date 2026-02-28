@@ -269,25 +269,32 @@
 - And run outputs can be exported/reviewed without mutating production user data by default
 
 ### 29) Stream Token Role/Scope Gating (Planned W13)
+- Planned dependency gate: runnable only after `DEP-002`, `DEP-004`, and `DEP-005` close.
 - Given an authenticated user without required channel scope
 - When user requests `POST /api/channels/token`
 - Then API returns `403` and no provider token is issued
+- And response uses Compass-owned error envelope (`code`, `message`, `request_id`) with no raw provider internals
 - Given an authorized member/leader/admin
 - When request is valid for allowed channel scope
 - Then API returns token payload with bounded TTL and provider metadata
+- And token payload includes resolved Compass grants for requested purpose (`chat_read` | `chat_write` | `channel_admin`)
 
 ### 30) Channel Mapping and Membership Reconciliation (Planned W13)
+- Planned dependency gate: runnable only after `DEP-002`, `DEP-004`, and `DEP-005` close.
 - Given a Compass channel context with changed membership
 - When `POST /api/channels/sync` runs
 - Then provider membership reconciles to Compass authority state
 - And drift results are reported with deterministic status fields
 - And unauthorized membership elevation is not possible via provider-only operations
+- And reconcile result includes deterministic diff metadata (`members_added`, `members_removed`, `roles_updated`, `metadata_updated`)
 
 ### 31) Messaging Reliability Parity (Planned W13)
+- Planned dependency gate: runnable only after `DEP-002`, `DEP-004`, and `DEP-005` close.
 - Given provider-backed chat is enabled behind Compass facade
 - When users send/read/broadcast messages through existing channel families
 - Then unread/read/broadcast semantics remain consistent with scenarios #11-#13
 - And failures return stable Compass error envelopes without leaking provider internals
+- And channel payload sync-state metadata remains deterministic (`not_synced|syncing|synced|stale|error`)
 
 ### 32) Mux Asset Lifecycle Verification (Planned W13)
 - Given an authorized upload session is created via `POST /api/coaching/media/upload-url`
@@ -302,11 +309,13 @@
   - verify `deleted` event removes playback eligibility while preserving audit record
 
 ### 33) Provider Failure Path Handling (Planned W13)
+- Planned dependency gate: runnable only after `DEP-002`, `DEP-004`, and `DEP-005` close.
 - Given provider timeout/token error/sync failure/webhook signature mismatch
 - When affected chat/video endpoint is called
 - Then API returns deterministic error envelopes with request tracing
 - And failure counters are visible in ops/admin diagnostics
 - And client-facing fallback states can be rendered without blocking unrelated KPI flows
+- And chat token/sync failure paths enforce predictable status mapping (`403` scope-denied, `409` reconcile conflict, `503` provider unavailable)
 - Planned Mux-focused failure assertions (gated by `DEP-002` / `DEP-004` / `DEP-005`):
   - upload-url failure returns stable typed code (`provider_unavailable` / `size_limit_exceeded` / `unsupported_content_type`)
   - playback-token call for non-ready media returns `media_not_ready` and no token
@@ -326,10 +335,12 @@
   - retry policy for failed provider deletion is auditable and bounded
 
 ### 35) Regression Guardrail for Existing Communication/Coaching Paths (Planned W13)
+- Planned dependency gate: runnable only after `DEP-002`, `DEP-004`, and `DEP-005` close.
 - Given Stream/Mux adapter paths are enabled
 - When regression suite runs on existing endpoint families
 - Then `inbox*`, `channel_thread`, `coach_broadcast_compose`, and `coaching_journeys*` paths remain green
 - And KPI engine behavior remains unchanged (no provider side-effect mutation)
+- And role-gated chat token issuance remains Compass-authoritative (no provider-only role escalation path)
 - Planned rollout/regression assertions (gated by `DEP-002` / `DEP-004` / `DEP-005`):
   - Mux feature flag OFF path preserves existing coaching/journey payload contract shape (fields may be null/absent per planned additive contract)
   - Mux feature flag ON path adds media lifecycle fields without breaking existing clients
