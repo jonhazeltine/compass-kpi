@@ -137,7 +137,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B` | `review` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges validation` (`hero/list/drawer/join-open route regression`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer behavior | `Mobile-2` | `codex/a2-admin-list-usability-pass` (QA-only; no code edits) | manual-spec-driven (owner-directed design pass) | Review-ready QA pass: leader/member challenge list behavior verified with screenshot evidence matrix; no regressions found and no code edits required. |
 | `W13-DEP-TRACKER-EVIDENCE-SYNC-B` | `committed` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency governance` (`closeout evidence linking + status normalization`) | docs-only: `PROJECT_CONTROL_PLANE`, `W13_DEP_SIGNOFF_BRIEF` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed docs pass: placeholder evidence link removed, DEP-002/004/005 evidence references normalized across control-plane + signoff brief, and Wave A GO/NO-GO language preserved. |
 | `A3-W12-SPOTCHECK-CLOSEOUT-DOC-SYNC-B` | `committed` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach QA governance` (`closeout packaging + board/doc alignment`) | docs-only: `AGENT_ASSIGNMENT_BOARD` A3/W12 spotcheck sections | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Accepted docs closeout sync: A3/W12 rows/specs now use accepted lifecycle status language with explicit determinism dependency chain, final pass counts (`36/36`), evidence paths, and commit references (`5dca5dc`). |
-| `M6-CHALLENGE-DETAIL-GOALS-LEADERBOARD-MVP-A` | `active` | `M6 challenge detail UI cleanup` | `Team Leader`, `Team Member` | `challenge detail goals redesign` (`team goals`, `individual goals`, `leaderboard hero`, `kpi contribution drill-in`) | `KPIDashboardScreen` Challenge detail screen only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Active: redesign challenge detail to MVP-ready goals layout with KPI profile-card rows, team+individual meters, tap-to-view KPI contribution breakdown, and simplified leaderboard-first hierarchy; no new tables/backend families. |
+| `M6-CHALLENGE-DETAIL-GOALS-LEADERBOARD-MVP-A` | `review` | `M6 challenge detail UI cleanup` | `Team Leader`, `Team Member` | `challenge detail goals redesign` (`team goals`, `individual goals`, `leaderboard hero`, `kpi contribution drill-in`) | `KPIDashboardScreen` Challenge detail screen only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Review-ready: challenge detail goals/leaderboard MVP pass refined to keep leaderboard hero first, explicit Goals section hierarchy, KPI-row drill-in behavior, and cumulative team-contribution meter semantics (aggregate with safe fallback under thin payloads); no backend/schema/API changes. |
 | `M6-CHALLENGE-DETAIL-DATA-CONTRACT-INVENTORY-B` | `review` | `M6 challenge detail UI cleanup` | `Team Leader`, `Team Member`, `Controller` | `challenge detail data readiness` (`existing payload field inventory + fallback map`) | docs-only: `docs/spec/04_api_contracts.md`, `docs/spec/05_acceptance_tests.md`, `architecture/AGENT_ASSIGNMENT_BOARD.md` assignment note | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (contracts/acceptance docs) | Review-ready docs pass: challenge-detail support/fallback matrix landed for team goal, individual goal, leaderboard, and KPI contribution drill-in using existing challenge endpoint families only (no backend/schema changes). |
 | `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `committed+pushed` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Accepted and pushed: FE-00 checkpoint moved from pending to concrete complete state in sprint gate, and frontend acceptance harness now includes explicit FE-00 pass/fail closeout criteria with traceability consistency checks. |
 | `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `committed` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Re-execution accepted (2026-02-28): deterministic reset/seed/smoke rerun passed with no runbook drift; refreshed evidence logs captured under `app/test-results/m8-seed-data-smoke-verification-a/04-06-*`. |
@@ -5275,7 +5275,12 @@ Finalize A3/W12 spotcheck closeout packaging in the board:
 - `Persona:` `Team Leader`, `Team Member`
 - `Flow:` `challenge detail goals redesign` (`team goals`, `individual goals`, `leaderboard hero`, `kpi contribution drill-in`)
 - `Owner:` `Claude-1`
+- `Completion note (2026-02-28, Coach-1):` Added explicit `Goals` section heading on challenge detail and updated Team Goals meter semantics to cumulative contribution (aggregate-first, fallback-safe) using existing payload fields only.
+- `Completion note (2026-02-28, Coach-1):` Preserved leaderboard-hero-first hierarchy, Team/Individual goal split, KPI-row drill-in modal behavior, and existing join/leave + challenge route continuity.
+- `Validation note (2026-02-28, Coach-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed.
+- `Validation note (2026-02-28, Coach-1):` Runtime persona screenshots captured under `/Users/jon/compass-kpi/app/test-results/m6-challenge-detail-goals-leaderboard-mvp-a/`.
 - `Current blocker status (2026-02-28, launch):` `none`.
+- `Current blocker status (2026-02-28, completion):` `none`.
 
 #### Primary Objective
 Redesign the Challenge Detail screen to look like a true messaging-era product surface with clear challenge-goals hierarchy:
@@ -5326,36 +5331,33 @@ Redesign the Challenge Detail screen to look like a true messaging-era product s
 
 #### Evidence Package (2026-02-28)
 
-**Files changed:** `app/screens/KPIDashboardScreen.tsx` (+497/-201)
+**Files changed:** `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
 
 **Key changes:**
-| Area | What changed |
-|---|---|
-| State | Added `challengeKpiDrillItem` useState (`{key, label, type}` or null) |
-| Computed | `challengeTeamAvgProgressPct`: mean of leaderboard `pct` values; fallback to `progressPct` |
-| Removed | Gauge hero card, owner card, dense meta card, leaderboard tappable card, coaching/updates block |
-| Leaderboard hero | Top-of-detail tappable card: status pill, top-3 podium, full rows, "Tap to open" hint |
-| Team Goals | PC KPI rows; type badge+name left, pct+indigo bar right (`challengeTeamAvgProgressPct`) |
-| Individual Goals | GP+VP KPI rows; type badge+name left, pct+green bar right (`challengeSelected.progressPct`) |
-| Drill-in sheet | KPI row tap → Modal slide-up with participant pct bar rows, empty fallback |
-| Compact meta | Single row: timeframe · days left · participant count |
-| Preserved | Join/leave CTA block, KPI logging sections, all routing keys |
+- Added `challengeTargetNumeric` parsing from existing `targetValueLabel` for aggregate-safe meter math.
+- Replaced team-goal meter calculation from mean-only (`challengeTeamAvgProgressPct`) to cumulative-first (`challengeTeamCumulativeProgressPct`), with fallbacks:
+  - aggregate `leaderboardPreview[].value` vs `(target * participants)` when target is available
+  - aggregate `leaderboardPreview[].pct` when target is not parseable
+  - fallback to `challengeSelected.progressPct` when leaderboard rows are absent
+- Added explicit top row title for goals block (`Goals`) to reinforce hierarchy.
 
-**Data sources:**
-- Leaderboard: `leaderboardPreview` (existing ChallengeFlowItem field)
-- Team progress: derived avg of `leaderboardPreview[].pct`; fallback to `progressPct`
-- Individual progress: `challengeSelected.progressPct` (existing)
-- KPI rows: `challengeScopedKpiGroups.PC/GP/VP` (existing memos)
+**Data sources (existing payloads only):**
+- Leaderboard rows: `challengeSelected.leaderboardPreview`
+- Team participant count: `challengeSelected.participants`
+- Goal baseline label: `challengeSelected.targetValueLabel`
+- Individual progress: `challengeSelected.progressPct`
+- KPI rows: `challengeScopedKpiGroups.PC/GP/VP`
+
+**Fallback behavior:**
+- If target value cannot be parsed from `targetValueLabel`, team meter uses aggregate leaderboard `%`.
+- If leaderboard rows are missing, team meter falls back to `challengeSelected.progressPct`.
 
 **Screenshots:**
-- Before (member): `architecture/screenshots/M6-CHALLENGE-DETAIL-GOALS-LB/before_member.png`
-- After (member): `architecture/screenshots/M6-CHALLENGE-DETAIL-GOALS-LB/after_member.png`
-
-**Commit:** `4d67832`
+- `/Users/jon/compass-kpi/app/test-results/m6-challenge-detail-goals-leaderboard-mvp-a/leader-persona-runtime.png`
+- `/Users/jon/compass-kpi/app/test-results/m6-challenge-detail-goals-leaderboard-mvp-a/member-persona-runtime.png`
 
 **Constraint verification:**
-- No new tables, migrations, schema changes, or endpoint families
-- Join/leave logic and challenge route continuity preserved
-- Role boundaries intact
-- Missing backend fields use explicit MVP fallback copy/states
-- tsc --noEmit: 0 errors
+- No new tables, migrations, schema changes, or endpoint families.
+- Join/leave logic and challenge route continuity preserved.
+- Role boundaries intact.
+- Missing backend fields handled via fallback math and safe UI states.

@@ -6083,13 +6083,35 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     return [] as ChallengeFlowLeaderboardEntry[];
   }, [challengeSelected]);
   const challengeLeaderboardHasLowEntry = challengeLeaderboardRowsForScreen.length > 0 && challengeLeaderboardRowsForScreen.length < 3;
-  // Team average progress: mean of leaderboard entry pcts; fallback to individual progressPct
-  const challengeTeamAvgProgressPct = useMemo(() => {
+  const challengeTargetNumeric = useMemo(() => {
+    const raw = String(challengeSelected?.targetValueLabel ?? '');
+    const numeric = Number(raw.replace(/[^0-9.]/g, ''));
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+  }, [challengeSelected?.targetValueLabel]);
+  // Team cumulative contribution:
+  // prefer aggregate logs / (target * participants), fallback to aggregate member progress, then current user progress.
+  const challengeTeamCumulativeProgressPct = useMemo(() => {
     if (challengeLeaderboardPreview.length > 0) {
-      return Math.min(100, Math.round(challengeLeaderboardPreview.reduce((s, e) => s + e.pct, 0) / challengeLeaderboardPreview.length));
+      const totalContribution = challengeLeaderboardPreview.reduce((sum, entry) => sum + Math.max(0, Number(entry.value) || 0), 0);
+      const denominator =
+        challengeTargetNumeric && (challengeSelected?.participants ?? 0) > 0
+          ? challengeTargetNumeric * (challengeSelected?.participants ?? 0)
+          : null;
+      if (denominator && denominator > 0) {
+        return Math.min(100, Math.round((totalContribution / denominator) * 100));
+      }
+      return Math.min(
+        100,
+        Math.round(challengeLeaderboardPreview.reduce((sum, entry) => sum + Math.max(0, entry.pct), 0))
+      );
     }
     return challengeSelected?.progressPct ?? 0;
-  }, [challengeLeaderboardPreview, challengeSelected?.progressPct]);
+  }, [
+    challengeLeaderboardPreview,
+    challengeSelected?.participants,
+    challengeSelected?.progressPct,
+    challengeTargetNumeric,
+  ]);
   const challengeListUsingPlaceholderRows = !Array.isArray(challengeApiRows) || challengeApiRows.length === 0;
   const challengeDetailsSurfaceLabel =
     teamPersonaVariant === 'member'
@@ -7777,6 +7799,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
                   {/* ── Goals Section ── */}
                   <View style={styles.cdGoalsSection}>
+                    <View style={styles.cdGoalsSectionTitleRow}>
+                      <Text style={styles.cdGoalsSectionTitle}>Goals</Text>
+                    </View>
                     {/* Team Goals */}
                     <View style={styles.cdGoalsGroupHeader}>
                       <Text style={styles.cdGoalsGroupTitle}>Team Goals</Text>
@@ -7797,9 +7822,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             <Text numberOfLines={1} style={styles.cdGoalKpiName}>{kpi.name}</Text>
                           </View>
                           <View style={styles.cdGoalKpiRight}>
-                            <Text style={styles.cdGoalKpiPct}>{challengeTeamAvgProgressPct}%</Text>
+                            <Text style={styles.cdGoalKpiPct}>{challengeTeamCumulativeProgressPct}%</Text>
                             <View style={styles.cdGoalKpiTrack}>
-                              <View style={[styles.cdGoalKpiFill, styles.cdGoalKpiFillTeam, { width: `${Math.min(100, challengeTeamAvgProgressPct)}%` as `${number}%` }]} />
+                              <View style={[styles.cdGoalKpiFill, styles.cdGoalKpiFillTeam, { width: `${Math.min(100, challengeTeamCumulativeProgressPct)}%` as `${number}%` }]} />
                             </View>
                           </View>
                         </TouchableOpacity>
@@ -13172,6 +13197,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     marginBottom: 12,
     overflow: 'hidden',
+  },
+  cdGoalsSectionTitleRow: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eef1f8',
+    backgroundColor: '#f4f7fd',
+  },
+  cdGoalsSectionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1a2540',
+    letterSpacing: 0.3,
   },
   cdGoalsGroupHeader: {
     flexDirection: 'row',
