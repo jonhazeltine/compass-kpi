@@ -669,6 +669,7 @@ const PIPELINE_LOST_ENCOURAGEMENT_MESSAGES = [
   'Lost deals happen. Your consistency restores momentum.',
   'Reset the count, keep the reps high, and the next win comes faster.',
 ] as const;
+const MAX_KPIS_PER_TYPE = 8;
 
 function fmtUsd(v: number) {
   const safe = Number.isFinite(v) ? v : 0;
@@ -1264,7 +1265,7 @@ function defaultChallengeFlowItems(): ChallengeFlowItem[] {
       raw: null,
       leaderboardPreview: [],
     },
-  ];
+];
 }
 
 function mapChallengesToFlowItems(rows: ChallengeApiRow[] | null | undefined): ChallengeFlowItem[] {
@@ -1670,7 +1671,7 @@ function normalizeManagedKpiIds(
     const kpi = byId.get(id);
     if (!kpi) continue;
     if (kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP') {
-      if (counts[kpi.type] >= 6) continue;
+      if (counts[kpi.type] >= MAX_KPIS_PER_TYPE) continue;
       counts[kpi.type] += 1;
       next.push(id);
     }
@@ -3190,7 +3191,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const managedKpiIdSet = useMemo(() => new Set(managedKpiIds), [managedKpiIds]);
 
   const quickLogKpis = useMemo(
-    () => managedKpis.filter((kpi) => kpi.type === segment).slice(0, 6),
+    () => managedKpis.filter((kpi) => kpi.type === segment).slice(0, MAX_KPIS_PER_TYPE),
     [managedKpis, segment]
   );
 
@@ -4622,7 +4623,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       let next = exists ? prev.filter((id) => id !== kpiId) : [...prev, kpiId];
       next = normalizeManagedKpiIds(next, allSelectableKpis);
       if (!exists && !next.includes(kpiId)) {
-        Alert.alert('Category limit reached', `You can only keep up to 6 ${kpi.type} KPIs active.`);
+        Alert.alert(
+          'Category limit reached',
+          `You can only keep up to ${MAX_KPIS_PER_TYPE} ${kpi.type} KPIs active.`
+        );
         return prev;
       }
       setFavoriteKpiIds((prevFav) => {
@@ -11612,7 +11616,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   onPress={() => setDrawerFilter(filter)}
                 >
                   <Text style={[styles.drawerFilterChipText, drawerFilter === filter && styles.drawerFilterChipTextActive]}>
-                    {filter === 'Quick' ? 'Priority' : `${filter} ${selectedCountsByType[filter]}/6`}
+                    {filter === 'Quick' ? 'Priority' : `${filter} ${selectedCountsByType[filter]}/${MAX_KPIS_PER_TYPE}`}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -11625,7 +11629,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 const favoriteRank = favoriteKpiIds.indexOf(kpi.id);
                 const categoryFull =
                   (kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP') &&
-                  selectedCountsByType[kpi.type] >= 6 &&
+                  selectedCountsByType[kpi.type] >= MAX_KPIS_PER_TYPE &&
                   !selected;
                 const selectionDisabled = locked || categoryFull;
                 return (
@@ -11648,7 +11652,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       return;
                     }
                     if (categoryFull) {
-                      Alert.alert('Category Full', `You already have 6 ${kpi.type} KPIs selected. Turn one off first.`);
+                      Alert.alert(
+                        'Category Full',
+                        `You already have ${MAX_KPIS_PER_TYPE} ${kpi.type} KPIs selected. Turn one off first.`
+                      );
                       return;
                     }
                     toggleManagedKpi(kpi.id);
@@ -11673,7 +11680,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </View>
                       {categoryFull ? (
                         <View style={[styles.drawerStateChip, styles.drawerStateChipCap]}>
-                          <Text style={styles.drawerStateChipText}>Type Full (6/6)</Text>
+                          <Text style={styles.drawerStateChipText}>Type Full ({MAX_KPIS_PER_TYPE}/{MAX_KPIS_PER_TYPE})</Text>
                         </View>
                       ) : null}
                     </View>
