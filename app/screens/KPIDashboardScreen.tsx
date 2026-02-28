@@ -2422,6 +2422,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [pipelineLostEncouragement, setPipelineLostEncouragement] = useState('');
   const [pipelineCheckinDismissedDay, setPipelineCheckinDismissedDay] = useState<string | null>(null);
   const [pipelineCheckinDismissalLoaded, setPipelineCheckinDismissalLoaded] = useState(false);
+  const [inlinePipelineSubmitting, setInlinePipelineSubmitting] = useState(false);
   const bottomNavLift = Math.max(8, Math.round(insets.bottom * 0.24));
   const bottomNavPadBottom = Math.max(8, Math.round(insets.bottom * 0.45));
   const contentBottomPad = 132 + Math.max(12, insets.bottom);
@@ -5039,6 +5040,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     setPipelineCheckinVisible(true);
   }, [pipelineAnchorCounts.buyers, pipelineAnchorCounts.listings]);
 
+  useEffect(() => {
+    if (pipelineCheckinVisible) return;
+    setPipelineCheckinListings(pipelineAnchorCounts.listings);
+    setPipelineCheckinBuyers(pipelineAnchorCounts.buyers);
+  }, [pipelineAnchorCounts.buyers, pipelineAnchorCounts.listings, pipelineCheckinVisible]);
+
   React.useEffect(() => {
     let cancelled = false;
     setPipelineCheckinDismissalLoaded(false);
@@ -5126,6 +5133,46 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     },
     [session?.access_token]
   );
+
+  const saveInlinePipelineCounts = useCallback(async () => {
+    const listingsKpi = pipelineCheckinAnchors.listings;
+    const buyersKpi = pipelineCheckinAnchors.buyers;
+    if (!listingsKpi || !buyersKpi) {
+      Alert.alert('Pipeline update unavailable', 'Required pipeline anchors are not available.');
+      return;
+    }
+    const nextListings = Math.max(0, Math.round(pipelineCheckinListings));
+    const nextBuyers = Math.max(0, Math.round(pipelineCheckinBuyers));
+    setInlinePipelineSubmitting(true);
+    try {
+      const eventIso = new Date().toISOString();
+      const listingsSaved = await sendLog(listingsKpi.id, nextListings, {
+        kpiType: 'Pipeline_Anchor',
+        skipSuccessBadge: true,
+        skipProjectionFlight: true,
+        eventTimestampIso: eventIso,
+      });
+      if (!listingsSaved) return;
+      const buyersSaved = await sendLog(buyersKpi.id, nextBuyers, {
+        kpiType: 'Pipeline_Anchor',
+        skipSuccessBadge: true,
+        skipProjectionFlight: true,
+        eventTimestampIso: eventIso,
+      });
+      if (!buyersSaved) return;
+      await persistPipelineCountsMetadata(nextListings, nextBuyers);
+      Alert.alert('Pipeline updated', 'Pipeline counts were saved from the Activity card.');
+    } finally {
+      setInlinePipelineSubmitting(false);
+    }
+  }, [
+    persistPipelineCountsMetadata,
+    pipelineCheckinAnchors.buyers,
+    pipelineCheckinAnchors.listings,
+    pipelineCheckinBuyers,
+    pipelineCheckinListings,
+    sendLog,
+  ]);
 
   const finalizePipelineCheckinSave = useCallback(
     async (reason: PipelineCheckinReason) => {
@@ -10842,9 +10889,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             <View style={styles.activityHeroCard}>
               <View style={styles.activityHeroTopRow}>
                 <Text style={styles.activityHeroEyebrow}>Activity / Logs & History</Text>
-                <TouchableOpacity style={styles.logPipelineBtn} onPress={openPipelineCheckinOverlay}>
-                  <Text style={styles.logPipelineBtnText}>Update pipeline</Text>
-                </TouchableOpacity>
               </View>
               <Text style={styles.logTitle}>Activity</Text>
               <Text style={styles.activityHeroSub}>
@@ -11000,11 +11044,59 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               <View style={styles.activityPipelineCopy}>
                 <Text style={styles.activityPipelineTitle}>Pipeline check-in</Text>
                 <Text style={styles.activityPipelineSub}>
-                  Update pending listings and buyers under contract anytime from Activity.
+                  Update pending listings and buyers under contract directly from this card.
                 </Text>
               </View>
-              <TouchableOpacity style={styles.activityPipelineCta} onPress={openPipelineCheckinOverlay}>
-                <Text style={styles.activityPipelineCtaText}>Update pipeline</Text>
+              <View style={styles.activityPipelineInlineRow}>
+                <View style={styles.activityPipelineInlineField}>
+                  <Text style={styles.activityPipelineInlineLabel}>Pending listings</Text>
+                  <View style={styles.activityPipelineInlineStepper}>
+                    <TouchableOpacity
+                      style={styles.activityPipelineInlineStepBtn}
+                      disabled={inlinePipelineSubmitting}
+                      onPress={() => setPipelineCheckinListings((v) => Math.max(0, v - 1))}
+                    >
+                      <Text style={styles.activityPipelineInlineStepBtnText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.activityPipelineInlineValue}>{fmtNum(pipelineCheckinListings)}</Text>
+                    <TouchableOpacity
+                      style={styles.activityPipelineInlineStepBtn}
+                      disabled={inlinePipelineSubmitting}
+                      onPress={() => setPipelineCheckinListings((v) => Math.max(0, v + 1))}
+                    >
+                      <Text style={styles.activityPipelineInlineStepBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={styles.activityPipelineInlineField}>
+                  <Text style={styles.activityPipelineInlineLabel}>Buyers under contract</Text>
+                  <View style={styles.activityPipelineInlineStepper}>
+                    <TouchableOpacity
+                      style={styles.activityPipelineInlineStepBtn}
+                      disabled={inlinePipelineSubmitting}
+                      onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v - 1))}
+                    >
+                      <Text style={styles.activityPipelineInlineStepBtnText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.activityPipelineInlineValue}>{fmtNum(pipelineCheckinBuyers)}</Text>
+                    <TouchableOpacity
+                      style={styles.activityPipelineInlineStepBtn}
+                      disabled={inlinePipelineSubmitting}
+                      onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v + 1))}
+                    >
+                      <Text style={styles.activityPipelineInlineStepBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[styles.activityPipelineCta, inlinePipelineSubmitting && styles.disabled]}
+                onPress={() => void saveInlinePipelineCounts()}
+                disabled={inlinePipelineSubmitting}
+              >
+                <Text style={styles.activityPipelineCtaText}>
+                  {inlinePipelineSubmitting ? 'Saving…' : 'Save pipeline'}
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -19151,6 +19243,57 @@ const styles = StyleSheet.create({
     color: '#1f5fe2',
     fontSize: 11,
     fontWeight: '800',
+  },
+  activityPipelineInlineRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  activityPipelineInlineField: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#e2e8f2',
+    borderRadius: 10,
+    backgroundColor: '#f8fbff',
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    gap: 4,
+  },
+  activityPipelineInlineLabel: {
+    color: '#5f6a7d',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  activityPipelineInlineStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  activityPipelineInlineStepBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#d8e2f2',
+    backgroundColor: '#eef5ff',
+  },
+  activityPipelineInlineStepBtnText: {
+    color: '#1f5fe2',
+    fontSize: 14,
+    fontWeight: '800',
+    lineHeight: 16,
+  },
+  activityPipelineInlineValue: {
+    color: '#2f3442',
+    fontSize: 18,
+    fontWeight: '800',
+    minWidth: 32,
+    textAlign: 'center',
   },
   todayLogsCard: {
     backgroundColor: '#fff',
