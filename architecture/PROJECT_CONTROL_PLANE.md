@@ -57,11 +57,12 @@ For each sprint item in `architecture/CURRENT_SPRINT.md`, add:
 ### W13 Dependency Closeout Tracker (DEP-002 / DEP-004 / DEP-005)
 
 Single source for Wave A dependency closure state. Keep this tracker in sync with source artifacts.
+Consolidated owner sign-off summary: `/Users/jon/compass-kpi/architecture/W13_DEP_SIGNOFF_BRIEF.md`.
 
 | Dependency | Closure Criteria | Evidence Link(s) | Owner | Status |
 |---|---|---|---|---|
 | DEP-002 | Owner signs off final tenancy key strategy (`org_id` required, `team_id` optional) plus enforcement rules for Stream/Mux channel/media/webhook ownership and migration path. | `/Users/jon/compass-kpi/architecture/W13_DEP002_TENANCY_DECISION_PACKET.md` | Architecture + Owner | open |
-| DEP-004 | Retention/deletion policy approved for chat/video metadata and webhook/audit retention windows, with explicit policy actor/approval record. | `TBD: policy artifact link` | Product/Legal | open |
+| DEP-004 | Retention/deletion policy approved for chat/video metadata and webhook/audit retention windows, with explicit policy actor/approval record. | `/Users/jon/compass-kpi/architecture/W13_DEP004_RETENTION_COMPLIANCE_DECISION_PACKET.md` | Product/Legal | open |
 | DEP-005 | All required gates in vendor checklist are `PASS` with evidence and Security/Legal/Architecture approvals recorded. | `/Users/jon/compass-kpi/architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md` | Security/Legal/Architecture | open |
 
 #### Wave A Ready Rule (Go / No-Go)

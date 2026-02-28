@@ -2,6 +2,7 @@
 
 ## Purpose
 Single-page owner sign-off summary consolidating the required decisions to unlock W13 runtime waves (`Stream`, `Mux`).
+Control-plane tracker source: `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` (`W13 Dependency Closeout Tracker` section).
 
 Date: `2026-02-28`  
 Program slice: `W13 docs-first exception`  
