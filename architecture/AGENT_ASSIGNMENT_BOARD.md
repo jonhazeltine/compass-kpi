@@ -4683,6 +4683,7 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 | 8 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
 | 9 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation block. |
 | 10 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. |
+| 11 | `W13-STREAM-MUX-READINESS-CONTRACT-LOCK-C` | `review` | `Admin-1` | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A`, `W13-MUX-CONTRACTS-AND-TESTS-A`, `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | Review-ready docs lock: deterministic status/error vocabulary finalized for Stream/Mux planned paths, 1:1 contract behavior to acceptance mapping tables added, and KPI no-side-effect regression guardrails tightened (docs-only). |
 
 ### `W13-CHAT-VIDEO-ARCH-RFC-A`
 
@@ -4937,6 +4938,51 @@ Create a single control-plane gate tracker that shows closure criteria, status, 
 - Files changed.
 - Gate tracker summary.
 - Commit hash.
+
+### `W13-STREAM-MUX-READINESS-CONTRACT-LOCK-C`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `W13 docs/control-plane dependency-gated readiness`
+- `Persona:` `backend/platform contracts`, `QA planning`, `control-plane reviewers`
+- `Flow:` `Stream/Mux implementation-readiness contract lock`
+- `Owner:` `Admin-1`
+- `Execution note (2026-02-28, Coach-1):` Board updated first. Locking deterministic status/error vocab, contract-to-acceptance 1:1 mapping, and KPI no-side-effect regression guardrails across W13 planned docs.
+- `Completion note (2026-02-28, Coach-1):` Updated `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md` with deterministic status/error vocab lock for Stream token/sync and Mux upload/playback/webhook planned paths, preserving dependency gates on all planned runtime sections.
+- `Completion note (2026-02-28, Coach-1):` Added explicit W13 contract-to-acceptance mapping table in contracts doc and mirrored coverage map in `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md` for 1:1 behavior coverage.
+- `Completion note (2026-02-28, Coach-1):` Strengthened KPI no-side-effect guardrails in regression scenario #35 to explicitly include Stream token/sync and Mux upload/playback/webhook no-mutation constraints.
+- `Validation note (2026-02-28, Coach-1):` Cross-checked W13 planned endpoint blocks against acceptance IDs and verified no contradiction with `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` Wave A GO/NO-GO (`OPEN` deps => `NO-GO`).
+- `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
+- `Current blocker status (2026-02-28, completion):` `none`.
+
+#### Primary Objective
+Finalize Stream/Mux implementation-readiness in contracts/tests docs only, preserving W13 dependency gates (`DEP-002`, `DEP-004`, `DEP-005`) and Wave A GO/NO-GO consistency.
+
+#### Scope In
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md` (row/spec update only)
+
+#### Scope Out
+- Runtime code edits
+- Schema/table changes
+- API-family additions
+
+#### Hard Constraints
+- Docs-only.
+- No endpoint/schema changes.
+- Preserve current sprint W13 docs-first rule.
+
+#### Validation
+- Cross-check each W13 planned endpoint behavior against acceptance scenario IDs.
+- Confirm no contradiction with `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` Wave A GO/NO-GO rule.
+
+#### Report-Back
+- Program status
+- Files changed
+- Contract-to-test mapping delta
+- Remaining ambiguity list (if any)
+- Commit hash
 
 ### `M6-TEAM-FOCUS-KPI-CARD-DENSITY-REDUCE-A`
 

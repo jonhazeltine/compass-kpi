@@ -306,11 +306,13 @@
 - And channel payload sync-state metadata remains deterministic (`not_synced|syncing|synced|stale|error`)
 
 ### 32) Mux Asset Lifecycle Verification (Planned W13)
+- Planned dependency gate: runnable only after `DEP-002`, `DEP-004`, and `DEP-005` close.
 - Given an authorized upload session is created via `POST /api/coaching/media/upload-url`
 - When provider lifecycle events arrive at `POST /api/webhooks/mux`
 - Then signature verification gates event acceptance
 - And asset status transitions follow upload -> processing -> ready/failed
 - And coaching/journey payload read-model fields reflect latest valid lifecycle state
+- And verification outcomes use deterministic status vocabulary (`verified`, `rejected_signature`, `rejected_replay_window`, `duplicate_ignored`)
 - Planned validation detail (gated by `DEP-002` / `DEP-004` / `DEP-005`):
   - verify replay-window rejection for stale webhook timestamps
   - verify idempotent handling of duplicate webhook deliveries
@@ -325,6 +327,7 @@
 - And failure counters are visible in ops/admin diagnostics
 - And client-facing fallback states can be rendered without blocking unrelated KPI flows
 - And chat token/sync failure paths enforce predictable status mapping (`403` scope-denied, `409` reconcile conflict, `503` provider unavailable)
+- And Mux upload/playback failure paths enforce deterministic status mapping (`401|403|413|415|503` for upload-url, `403|409|503` for playback-token)
 - Planned Mux-focused failure assertions (gated by `DEP-002` / `DEP-004` / `DEP-005`):
   - upload-url failure returns stable typed code (`provider_unavailable` / `size_limit_exceeded` / `unsupported_content_type`)
   - playback-token call for non-ready media returns `media_not_ready` and no token
@@ -332,6 +335,7 @@
   - processing-timeout path marks media `failed` with sanitized provider failure detail
 
 ### 34) Compliance Retention and Deletion Policy Enforcement (Planned W13)
+- Planned dependency gate: runnable only after `DEP-002`, `DEP-004`, and `DEP-005` close.
 - Given approved retention/deletion policy under `DEP-004`
 - When chat/video metadata reaches retention boundaries or receives deletion request
 - Then lifecycle behavior matches approved retention matrix
@@ -355,6 +359,21 @@
   - Mux feature flag ON path adds media lifecycle fields without breaking existing clients
   - fallback copy/state for `processing` and `failed` media does not block lesson/journey navigation
   - no provider webhook event can mutate KPI log totals, forecast base values, or confidence base calculation inputs
+  - no Stream token/sync path can mutate KPI log totals, forecast base values, confidence base calculation inputs, challenge score totals, or leaderboard rank data
+  - no Mux upload/playback/webhook path can mutate KPI log totals, forecast base values, confidence base calculation inputs, challenge score totals, or leaderboard rank data
+
+### W13 Planned Contract Behavior Coverage Map (Dependency-Gated)
+- Mapping is `planned only`; runnable only after `DEP-002`, `DEP-004`, and `DEP-005` close.
+
+| Contract Behavior ID | Acceptance Scenario Coverage |
+|---|---|
+| `STR-TOKEN-STATUS-VOCAB` | `#29`, `#33` |
+| `STR-SYNC-STATUS-VOCAB` | `#30`, `#33` |
+| `STR-SYNC-STATE-METADATA` | `#31`, `#35` |
+| `MUX-UPLOAD-STATUS-VOCAB` | `#32`, `#33` |
+| `MUX-PLAYBACK-STATUS-VOCAB` | `#32`, `#33` |
+| `MUX-WEBHOOK-VERIFY-VOCAB` | `#32`, `#33`, `#34`, `#35` |
+| `KPI-NO-SIDE-EFFECT-GUARD` | `#35` |
 
 ## Edge Cases
 

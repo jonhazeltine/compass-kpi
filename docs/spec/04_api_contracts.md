@@ -164,6 +164,9 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
     - `403` authenticated but scope denied
     - `422` invalid token purpose or incompatible channel scope
     - `503` provider unavailable (Compass envelope only; no provider internals exposed)
+  - Deterministic error/status vocabulary (planned):
+    - `status_code`: `401|403|422|503`
+    - `error.code`: `unauthenticated` | `scope_denied` | `invalid_token_purpose` | `provider_unavailable`
 - `POST /api/channels/sync` (planned)
   - Purpose: reconcile Compass channel context/membership to provider channel membership and metadata.
   - Planned dependency gate: contract remains `planned` and runtime-blocked until `DEP-002`, `DEP-004`, and `DEP-005` close.
@@ -181,6 +184,9 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
     - `403` scope denied
     - `409` optimistic concurrency conflict / stale authority snapshot
     - `503` provider unavailable or timeout
+  - Deterministic error/status vocabulary (planned):
+    - `status_code`: `403|409|503`
+    - `error.code`: `scope_denied` | `reconcile_conflict` | `provider_unavailable`
   - Authority rule: Compass role and membership state remains source of truth; provider drift cannot promote role authority.
 - Existing `/api/channels*` responses (planned additive fields):
   - `provider` (for example `stream`)
@@ -194,6 +200,7 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
 ### Video Provider (Compass Facade + Mux Adapter)
 - `POST /api/coaching/media/upload-url` (planned)
   - Purpose: create provider-backed direct upload session/url with Compass-owned authorization and metadata context.
+  - Planned dependency gate: contract remains `planned` and runtime-blocked until `DEP-002`, `DEP-004`, and `DEP-005` close.
   - Planned request envelope (dependency-gated):
     - `journey_id` or `lesson_id` context reference (exact one required)
     - `filename`
@@ -209,8 +216,12 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
     - initial lifecycle state (`queued_for_upload`)
   - Planned failure envelope (dependency-gated):
     - deterministic `error.code` values for `unauthorized_scope`, `unsupported_content_type`, `size_limit_exceeded`, `provider_unavailable`
+  - Deterministic error/status vocabulary (planned):
+    - `status_code`: `401|403|413|415|503`
+    - `error.code`: `unauthorized_scope` | `unsupported_content_type` | `size_limit_exceeded` | `provider_unavailable`
 - `POST /api/coaching/media/playback-token` (planned)
   - Purpose: issue signed playback token for authorized viewer/session.
+  - Planned dependency gate: contract remains `planned` and runtime-blocked until `DEP-002`, `DEP-004`, and `DEP-005` close.
   - Planned request envelope (dependency-gated):
     - `media_id` (Compass media record id)
     - optional `viewer_context` (`coach`, `team_leader`, `member`, `sponsor`) for policy-bound claims
@@ -221,8 +232,12 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
     - policy metadata (`watermark_required`, `allow_download=false` when policy requires)
   - Planned failure envelope (dependency-gated):
     - deterministic `error.code` values for `media_not_ready`, `media_failed_processing`, `viewer_not_authorized`, `token_issue_failed`
+  - Deterministic error/status vocabulary (planned):
+    - `status_code`: `403|409|503`
+    - `error.code`: `viewer_not_authorized` | `media_not_ready` | `media_failed_processing` | `token_issue_failed` | `provider_unavailable`
 - `POST /api/webhooks/mux` (planned)
   - Purpose: verified webhook receiver for Mux asset lifecycle state transitions.
+  - Planned dependency gate: contract remains `planned` and runtime-blocked until `DEP-002`, `DEP-004`, and `DEP-005` close.
   - Planned verification constraints (dependency-gated):
     - verify signed webhook headers before parsing event payload
     - reject stale timestamps outside replay window
@@ -234,6 +249,9 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
     - asset ready
     - asset errored
     - asset deleted
+  - Deterministic verification/status vocabulary (planned):
+    - `verification_status`: `verified` | `rejected_signature` | `rejected_replay_window` | `duplicate_ignored`
+    - `lifecycle_state`: `queued_for_upload` | `uploaded_pending_asset` | `processing` | `ready` | `failed` | `deleted`
 - Existing coaching/journey payloads (planned additive fields):
   - media status/read-model fields (`provider`, `provider_asset_id`, `processing_status`, `playback_ready`, `last_provider_event_at`)
   - Planned lifecycle read-model status vocabulary (dependency-gated):
@@ -270,6 +288,19 @@ Status: `planned only` in this slice. Runtime implementation is blocked until `D
 - Planned rollback guardrails:
   - feature-flagged provider path can be disabled without losing Compass media metadata records.
   - fallback response for disabled provider path returns deterministic `provider_disabled` envelope.
+
+### W13 Contract-to-Acceptance Mapping (Planned, Dependency-Gated)
+- Mapping is `planned only`; runnable only after `DEP-002`, `DEP-004`, and `DEP-005` close.
+
+| Planned Contract Behavior | Endpoint / Surface | Acceptance Scenario ID(s) |
+|---|---|---|
+| `STR-TOKEN-STATUS-VOCAB` deterministic token status/error vocab (`401/403/422/503` + typed `error.code`) | `POST /api/channels/token` | `#29`, `#33` |
+| `STR-SYNC-STATUS-VOCAB` deterministic sync status/error vocab (`403/409/503` + typed `error.code`) | `POST /api/channels/sync` | `#30`, `#33` |
+| `STR-SYNC-STATE-METADATA` deterministic channel sync-state metadata (`not_synced|syncing|synced|stale|error`) | existing `/api/channels*` payloads | `#31`, `#35` |
+| `MUX-UPLOAD-STATUS-VOCAB` deterministic upload-url status/error vocab (`401/403/413/415/503` + typed `error.code`) | `POST /api/coaching/media/upload-url` | `#32`, `#33` |
+| `MUX-PLAYBACK-STATUS-VOCAB` deterministic playback-token status/error vocab (`403/409/503` + typed `error.code`) | `POST /api/coaching/media/playback-token` | `#32`, `#33` |
+| `MUX-WEBHOOK-VERIFY-VOCAB` deterministic verification/lifecycle vocabulary for webhook processing | `POST /api/webhooks/mux` + media read-model fields | `#32`, `#33`, `#34`, `#35` |
+| `KPI-NO-SIDE-EFFECT-GUARD` explicit no KPI/forecast mutation side effects from provider paths | Stream/Mux planned runtime surfaces | `#35` |
 
 ## Payload Notes (Initial)
 - KPI log payload should include:
