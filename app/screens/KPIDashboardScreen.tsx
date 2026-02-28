@@ -11054,7 +11054,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <TouchableOpacity
                       style={styles.activityPipelineInlineStepBtn}
                       disabled={inlinePipelineSubmitting}
-                      onPress={() => setPipelineCheckinListings((v) => Math.max(0, v - 1))}
+                      onPress={openPipelineCheckinOverlay}
                     >
                       <Text style={styles.activityPipelineInlineStepBtnText}>−</Text>
                     </TouchableOpacity>
@@ -11074,7 +11074,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <TouchableOpacity
                       style={styles.activityPipelineInlineStepBtn}
                       disabled={inlinePipelineSubmitting}
-                      onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v - 1))}
+                      onPress={openPipelineCheckinOverlay}
                     >
                       <Text style={styles.activityPipelineInlineStepBtnText}>−</Text>
                     </TouchableOpacity>
