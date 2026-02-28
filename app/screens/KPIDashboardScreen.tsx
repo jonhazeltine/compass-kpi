@@ -3204,14 +3204,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         payload: payload ?? null,
         gpUnlocked,
         vpUnlocked,
-      }).slice(0, 6);
+      }).slice(0, MAX_KPIS_PER_TYPE);
     },
     [favoriteKpiIds, gpUnlocked, managedKpiIdSet, managedKpis, payload, vpUnlocked]
   );
 
   const homePanelTiles = useMemo(() => {
     const panelKpis =
-      homePanel === 'Quick' ? homeQuickLog : managedKpis.filter((kpi) => kpi.type === homePanel).slice(0, 6);
+      homePanel === 'Quick'
+        ? homeQuickLog
+        : managedKpis.filter((kpi) => kpi.type === homePanel).slice(0, MAX_KPIS_PER_TYPE);
     return buildHomePanelTiles(panelKpis, payload ?? null);
   }, [homePanel, homeQuickLog, managedKpis, payload]);
   const pipelineAnchorNag = useMemo(() => derivePipelineAnchorNagState(payload ?? null), [payload]);
@@ -4424,7 +4426,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       panel === homePanel
         ? homePanelTiles
         : buildHomePanelTiles(
-            panel === 'Quick' ? homeQuickLog : managedKpis.filter((kpi) => kpi.type === panel).slice(0, 6),
+            panel === 'Quick'
+              ? homeQuickLog
+              : managedKpis.filter((kpi) => kpi.type === panel).slice(0, MAX_KPIS_PER_TYPE),
             payload ?? null
           );
 
