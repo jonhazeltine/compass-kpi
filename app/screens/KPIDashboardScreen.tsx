@@ -5248,6 +5248,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     options?: {
       hideTypePill?: boolean;
       trailingControl?: React.ReactNode;
+      compactIcons?: boolean;
     }
   ) => {
     if (kpis.length === 0) return null;
@@ -5305,7 +5306,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               return (
                 <Pressable
                   key={`challenge-${type}-${kpi.id}`}
-                  style={[styles.gridItem, styles.challengeGridItem, submitting && submittingKpiId === kpi.id && styles.disabled]}
+                  style={[
+                    styles.gridItem,
+                    styles.challengeGridItem,
+                    options?.compactIcons && styles.challengeGridItemCompact,
+                    submitting && submittingKpiId === kpi.id && styles.disabled,
+                  ]}
                   onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
                   disabled={submitting}
                   onPressIn={() => runKpiTilePressInFeedback(kpi, { surface: 'log' })}
@@ -5318,10 +5324,18 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       { transform: [{ scale: getKpiTileScale(kpi.id) }] },
                     ]}
                   >
-                    <View style={styles.gridCircleWrap}>
-                      <View style={styles.challengeTilePlate} />
-                      <View style={[styles.gridCircle, confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed]}>
-                        {renderKpiIcon(kpi)}
+                    <View style={[styles.gridCircleWrap, options?.compactIcons && styles.challengeGridCircleWrapCompact]}>
+                      <View style={[styles.challengeTilePlate, options?.compactIcons && styles.challengeTilePlateCompact]} />
+                      <View
+                        style={[
+                          styles.gridCircle,
+                          options?.compactIcons && styles.challengeGridCircleCompact,
+                          confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed,
+                        ]}
+                      >
+                        <View style={options?.compactIcons ? styles.challengeCompactIconScale : undefined}>
+                          {renderKpiIcon(kpi)}
+                        </View>
                       </View>
                       <Animated.View
                         pointerEvents="none"
@@ -5343,6 +5357,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       style={[
                         styles.gridLabel,
                         styles.challengeGridLabel,
+                        options?.compactIcons && styles.challengeGridLabelCompact,
                         confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed,
                       ]}
                     >
@@ -8294,9 +8309,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               };
               const teamLeaderEscrowDeals = teamPipelineRows.reduce((sum, row) => sum + Math.max(0, Number(row.pending ?? 0)), 0);
               const teamLeaderProjectedRevenue = Math.round(Math.max(0, Number(cardMetrics.projectedNext90 ?? 0)));
-              const teamLeaderConcernRows = teamLeaderRows
-                .flatMap((row) => row.concerns.map((concern) => ({ member: row.name, concern, critical: row.status === 'at_risk' })))
-                .slice(0, 6);
               const teamLeaderStatusCounts = teamLeaderRows.reduce(
                 (acc, row) => {
                   if (row.status === 'on_track') acc.onTrack += 1;
@@ -8509,10 +8521,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <View style={styles.challengeSectionsWrap}>
                       {renderChallengeKpiSection(
                         'PC',
-                        'Team Focus Projections',
+                        "Team Focus KPI's",
                         teamFocusKpiGroups.PC,
                         {
                           hideTypePill: true,
+                          compactIcons: true,
                           trailingControl:
                             teamPersonaVariant === 'leader' ? (
                               <TouchableOpacity
@@ -9187,21 +9200,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             </View>
                           );
                         })}
-                      </View>
-                      <View style={styles.teamLeaderConcernCard}>
-                        <View style={styles.teamMemberChallengeTopRow}>
-                          <Text style={styles.teamMemberChallengeLabel}>KPI Concern Flags</Text>
-                          <Text style={styles.teamMemberChallengeLink}>{teamLeaderConcernRows.length}</Text>
-                        </View>
-                        {teamLeaderConcernRows.length === 0 ? (
-                          <Text style={styles.teamMemberChallengeSub}>No flagged indicators in the current filter set.</Text>
-                        ) : (
-                          teamLeaderConcernRows.slice(0, 3).map((row) => (
-                            <Text key={`${row.member}-${row.concern}`} style={styles.teamLeaderConcernBullet}>
-                              • {row.member}: {row.concern}
-                            </Text>
-                          ))
-                        )}
                       </View>
                       {teamLoggingBlock}
                     </View>
@@ -16871,6 +16869,9 @@ const styles = StyleSheet.create({
   challengeGridItem: {
     gap: 4,
   },
+  challengeGridItemCompact: {
+    gap: 2,
+  },
   challengeGridTileAnimatedWrap: {
     paddingTop: 1,
   },
@@ -16893,6 +16894,28 @@ const styles = StyleSheet.create({
     lineHeight: 13,
     marginTop: -1,
     paddingHorizontal: 2,
+  },
+  challengeGridLabelCompact: {
+    fontSize: 10,
+    lineHeight: 12,
+    marginTop: -4,
+  },
+  challengeTilePlateCompact: {
+    width: 84,
+    height: 84,
+    borderRadius: 22,
+  },
+  challengeGridCircleWrapCompact: {
+    width: 82,
+    height: 82,
+  },
+  challengeGridCircleCompact: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+  },
+  challengeCompactIconScale: {
+    transform: [{ scale: 0.62 }],
   },
   challengeEmptyCard: {
     backgroundColor: '#fff',
