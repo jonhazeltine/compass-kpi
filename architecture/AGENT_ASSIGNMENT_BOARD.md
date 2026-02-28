@@ -134,10 +134,11 @@ Only use long custom prompts when the board is missing required details or a one
 | `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A` | `committed` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `backend/platform` | `retention/compliance governance` (`chat/video metadata policy packet`) | docs-only: retention/deletion policy packet + control-plane dependency linkage | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed: owner sign-off packet landed with retention/deletion matrix, legal-hold rules, provider reconciliation model, unresolved decisions, and control-plane linkage. |
 | `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | `committed` | `W13 docs/control-plane exception` | `Controller`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency closure tracking` (`DEP-002/004/005 closeout board + go/no-go criteria`) | docs-only: project control plane + assignment board closeout table | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed: control-plane tracker now centralizes DEP-002/DEP-004/DEP-005 closure criteria, evidence, owners, statuses, and explicit Wave A GO/NO-GO rule. |
 | `M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` | `committed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges list redesign` (`hero header`, `reduced card detail`, `preview bottom drawer`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer routing behavior | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted: Team Challenges list now uses hero header treatment, simplified challenge cards with essentials-only progress rows, non-joined preview drawer (KPI list/dates/summary/join), and joined-card direct route to existing challenge detail screen (`4772f8d`, `709460a`, `ad71b1e`). |
-| `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B` | `queued` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges validation` (`hero/list/drawer/join-open route regression`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer behavior | `Mobile-2` | `codex/a2-admin-list-usability-pass` (QA-only; no code edits) | manual-spec-driven (owner-directed design pass) | Queued QA follow-on: runtime screenshot + behavior matrix after `M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` lands; file edits prohibited. |
+| `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B` | `active` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges validation` (`hero/list/drawer/join-open route regression`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer behavior | `Mobile-2` | `codex/a2-admin-list-usability-pass` (QA-only; no code edits) | manual-spec-driven (owner-directed design pass) | Active: dependency is satisfied (`M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` committed). Run runtime screenshot + behavior matrix; file edits prohibited. |
 | `W13-DEP-TRACKER-EVIDENCE-SYNC-B` | `committed` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency governance` (`closeout evidence linking + status normalization`) | docs-only: `PROJECT_CONTROL_PLANE`, `W13_DEP_SIGNOFF_BRIEF` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed docs pass: placeholder evidence link removed, DEP-002/004/005 evidence references normalized across control-plane + signoff brief, and Wave A GO/NO-GO language preserved. |
 | `A3-W12-SPOTCHECK-CLOSEOUT-DOC-SYNC-B` | `committed` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach QA governance` (`closeout packaging + board/doc alignment`) | docs-only: `AGENT_ASSIGNMENT_BOARD` A3/W12 spotcheck sections | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Accepted docs closeout sync: A3/W12 rows/specs now use accepted lifecycle status language with explicit determinism dependency chain, final pass counts (`36/36`), evidence paths, and commit references (`5dca5dc`). |
 | `M6-CHALLENGE-DETAIL-GOALS-LEADERBOARD-MVP-A` | `active` | `M6 challenge detail UI cleanup` | `Team Leader`, `Team Member` | `challenge detail goals redesign` (`team goals`, `individual goals`, `leaderboard hero`, `kpi contribution drill-in`) | `KPIDashboardScreen` Challenge detail screen only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Active: redesign challenge detail to MVP-ready goals layout with KPI profile-card rows, team+individual meters, tap-to-view KPI contribution breakdown, and simplified leaderboard-first hierarchy; no new tables/backend families. |
+| `M6-CHALLENGE-DETAIL-DATA-CONTRACT-INVENTORY-B` | `active` | `M6 challenge detail UI cleanup` | `Team Leader`, `Team Member`, `Controller` | `challenge detail data readiness` (`existing payload field inventory + fallback map`) | docs-only: `docs/spec/04_api_contracts.md`, `docs/spec/05_acceptance_tests.md`, `architecture/AGENT_ASSIGNMENT_BOARD.md` assignment note | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (contracts/acceptance docs) | Active docs pass: inventory existing challenge-detail/team-goal/individual-goal/leaderboard-support fields and define explicit fallback mapping for MVP UI, with no backend/schema changes. |
 | `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `committed+pushed` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Accepted and pushed: FE-00 checkpoint moved from pending to concrete complete state in sprint gate, and frontend acceptance harness now includes explicit FE-00 pass/fail closeout criteria with traceability consistency checks. |
 | `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `committed` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Re-execution accepted (2026-02-28): deterministic reset/seed/smoke rerun passed with no runbook drift; refreshed evidence logs captured under `app/test-results/m8-seed-data-smoke-verification-a/04-06-*`. |
 | `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team identity card` (`leader edit controls`, `member read-only rendering`) | `KPIDashboardScreen` Team tab top card only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed: polished role-aware Team identity card landed with leader-only edit flow (avatar/background picker modal + save/cancel) and member read-only rendering. TypeScript clean. |
@@ -5110,12 +5111,12 @@ Redesign Team tab `Challenges` list so it is less dense and more actionable:
 ### `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B`
 
 #### Snapshot
-- `Status:` `queued`
+- `Status:` `active`
 - `Program status:` `M6 team UI cleanup`
 - `Persona:` `Team Leader`, `Team Member`
 - `Flow:` `team challenges validation` (`hero/list/drawer/join-open route regression`)
 - `Owner:` `Mobile-2`
-- `Current blocker status (2026-02-28, queue):` blocked until `M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` is `committed`.
+- `Current blocker status (2026-02-28, launch):` `none`; dependency cleared (`M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` is committed).
 
 #### Primary Objective
 Run QA-only validation on Team `Challenges` redesign once code lands:
@@ -5142,6 +5143,50 @@ Run QA-only validation on Team `Challenges` redesign once code lands:
 - Validation matrix summary.
 - Screenshot paths.
 - Any regressions with exact repro steps.
+
+### `M6-CHALLENGE-DETAIL-DATA-CONTRACT-INVENTORY-B`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 challenge detail UI cleanup`
+- `Persona:` `Team Leader`, `Team Member`, `Controller`
+- `Flow:` `challenge detail data readiness` (`existing payload field inventory + fallback map`)
+- `Owner:` `Coach-1`
+- `Current blocker status (2026-02-28, launch):` `none` (docs-only).
+
+#### Primary Objective
+Support the Challenge Detail MVP redesign with a docs-first inventory of existing data so Claude can ship UI without backend drift:
+1. Enumerate existing challenge payload fields currently available to challenge detail runtime for:
+   - team-goal progress
+   - individual-goal progress
+   - leaderboard ranking
+   - KPI-level contribution drill-in
+2. Mark which requested UI states are fully supported vs partially supported.
+3. Define explicit fallback rendering rules for unsupported fields.
+
+#### Scope In
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md`
+- `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md` (assignment evidence note only)
+
+#### Scope Out
+- Backend endpoint changes.
+- Schema/table changes.
+- Runtime UI code edits.
+
+#### Hard Constraints
+- No new endpoint families.
+- No structural changes requiring decision-log updates.
+- Keep outputs implementation-directed and concise.
+
+#### Required Validation
+- Contract references must point to existing endpoint families already in `04_api_contracts.md`.
+- Acceptance scenarios added/updated must remain in-sprint and UI-fallback-safe.
+
+#### Report-Back
+- Updated files + exact sections.
+- Supported vs fallback data matrix summary.
+- Commit hash.
 
 ### `W13-DEP-TRACKER-EVIDENCE-SYNC-B`
 
