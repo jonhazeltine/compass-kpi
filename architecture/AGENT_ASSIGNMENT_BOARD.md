@@ -121,10 +121,10 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-W12-TEAM-SCREEN-PERSONA-SPLIT-A` | `closed` | `M6 / W12 (persona split hardening)` | `Team Member` (simple view), `Team Leader` (ops-heavy view) | `team surface runtime split` (`member simplicity`, `leader operational controls`) | `KPIDashboardScreen` Team surface only | `Mobile-1` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | team runtime parity task (no new Figma node lock for this swath) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
 | `M6-W12-TEAM-PERSON-PROFILE-CARD-AND-FOCUS-EDITOR-A` | `closed` | `M6 / W12 (team leader ops + person profile UX)` | `Team Leader` (primary), `Team Member` (limited profile-only behavior) | `team interaction refinement` (`focus editor usability`, `avatar/profile split`, `leader KPI detail`, `DM handoff`) | `KPIDashboardScreen` Team surface + person profile card surface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + persona-gated card UX) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
 | `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A` | `closed` | `M6 / W12` | `Team Leader`, `Team Member`, `Solo User` | `challenge surface` (`team-pattern interaction alignment`) | `KPIDashboardScreen` Challenge surface only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + wiring pass) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
-| `M8-MOBILE-RUNTIME-REGRESSION-MATRIX-A` | `review` | `M8 mobile hardening` | `Team Leader`, `Team Member`, `Solo User`, `Coach`, `Challenge Sponsor` | `mobile runtime QA` (`critical-route regression matrix + screenshot proof`) | `Home`, `Team`, `Challenge`, `Comms`, `Journeys/Lessons`, `Log` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | N/A (runtime validation swath) | Review-ready QA sweep: runtime matrix completed (30/30 pass, 0 blockers) with consolidated evidence in `app/test-results/m8-mobile-regression-matrix-a/`; assignment remained QA-only with no app/backend code edits. |
-| `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `active` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Execute browser/runtime spotcheck and capture failures with path+persona granularity; code changes allowed only for scoped regressions discovered during this pass. |
-| `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `review` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Review-ready: FE-00 checkpoint moved from pending to concrete complete state in sprint gate, and frontend acceptance harness now includes explicit FE-00 pass/fail closeout criteria with traceability consistency checks. |
-| `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `review` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Review-ready: reset + seed + smoke sequence passed against current deterministic realism runbook; no command/output drift found; logs captured under `app/test-results/m8-seed-data-smoke-verification-a/`. |
+| `M8-MOBILE-RUNTIME-REGRESSION-MATRIX-A` | `committed+pushed` | `M8 mobile hardening` | `Team Leader`, `Team Member`, `Solo User`, `Coach`, `Challenge Sponsor` | `mobile runtime QA` (`critical-route regression matrix + screenshot proof`) | `Home`, `Team`, `Challenge`, `Comms`, `Journeys/Lessons`, `Log` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | N/A (runtime validation swath) | Accepted and pushed: runtime matrix completed (30/30 pass, 0 blockers) with consolidated evidence in `app/test-results/m8-mobile-regression-matrix-a/`; assignment remained QA-only with no app/backend code edits. |
+| `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `blocked` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Blocked on persona-role validation determinism: runtime account resolves backend `/me` role=`super_admin`, and `resolvedRoles` unions backend + session metadata, so local metadata overrides cannot faithfully simulate `coach/team_leader/challenge_sponsor` gates in-browser for canonical proof. Route alias/shell checks and super-admin baseline pass evidence captured under `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/`; persona-gate mismatch list reflects this blocker. |
+| `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `committed+pushed` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Accepted and pushed: FE-00 checkpoint moved from pending to concrete complete state in sprint gate, and frontend acceptance harness now includes explicit FE-00 pass/fail closeout criteria with traceability consistency checks. |
+| `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `committed+pushed` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Accepted and pushed: reset + seed + smoke sequence passed against current deterministic realism runbook; no command/output drift found; logs captured under `app/test-results/m8-seed-data-smoke-verification-a/`. |
 
 ## Blocked Assignments
 
@@ -4262,7 +4262,7 @@ Redesign the Challenge surface to mirror Team interaction patterns while preserv
 ### `M8-MOBILE-RUNTIME-REGRESSION-MATRIX-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M8 mobile hardening`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`, `Coach`, `Challenge Sponsor`
 - `Flow:` `mobile runtime QA` (`critical-route regression matrix + screenshot proof`)
@@ -4309,7 +4309,7 @@ Run a mobile regression sweep across critical routes and personas, capture pass/
 ### `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `blocked`
 - `Program status:` `A3/W12 admin+coach hardening`
 - `Persona:` `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor`
 - `Flow:` `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`)
@@ -4317,6 +4317,9 @@ Run a mobile regression sweep across critical routes and personas, capture pass/
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated admin worktree required)
 - `Execution note (2026-02-27, Controller):` Assignment launched for deterministic browser/runtime verification of admin and coach portal surfaces after standalone host + IA simplification merges.
 - `Current blocker status (2026-02-27, launch):` `none`.
+- `Completion note (2026-02-28, Admin-1):` Route alias/shell checks completed with screenshot evidence for `/admin/*`, `/coach/*`, and compatibility `/admin/coaching/*` paths. Super-admin baseline pathing passed.
+- `Validation note (2026-02-28, Admin-1):` Persona simulation mismatch report captured in `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/mismatches.json` and summary matrix under `summary.txt`.
+- `Current blocker status (2026-02-28, completion):` `blocked` on persona-role validation determinism: runtime session resolves as `super_admin` and effective role resolution (`resolvedRoles`) cannot cleanly isolate coach/team_leader/challenge_sponsor gate behavior for canonical in-browser proof.
 
 #### Primary Objective
 Validate admin + coach route/runtime integrity and role gating after recent W11/W12 merges, then fix only scoped regressions.
@@ -4352,7 +4355,7 @@ Validate admin + coach route/runtime integrity and role gating after recent W11/
 ### `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `FE-00 gate closeout`
 - `Persona:` `Owner-facing program governance`
 - `Flow:` `frontend acceptance harness docs` (`traceability lock + harness mapping`)
@@ -4395,7 +4398,7 @@ Close the FE-00 frontend acceptance-harness gap by locking sprint-to-harness tra
 ### `M8-SEED-DATA-SMOKE-VERIFICATION-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed+pushed`
 - `Program status:` `M8 backend/data hardening`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`
 - `Flow:` `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`)
