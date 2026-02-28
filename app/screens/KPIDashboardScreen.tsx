@@ -2233,6 +2233,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [challengeMemberCreateModalVisible, setChallengeMemberCreateModalVisible] = useState(false);
   const [challengeMemberCreateMode, setChallengeMemberCreateMode] = useState<'public' | 'team'>('team');
   const [teamFlowScreen, setTeamFlowScreen] = useState<TeamFlowScreen>('dashboard');
+  const [teamChallengesSegment, setTeamChallengesSegment] = useState<'active' | 'completed'>('active');
   const [teamLeaderExpandedMemberId, setTeamLeaderExpandedMemberId] = useState<string | null>(null);
   const [teamFocusSelectedKpiIds, setTeamFocusSelectedKpiIds] = useState<string[]>([]);
   const [teamFocusEditorOpen, setTeamFocusEditorOpen] = useState(false);
@@ -8131,12 +8132,30 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 { name: 'Philip Antony', pending: 4, current: 2 },
                 { name: 'James Matew', pending: 6, current: 1 },
               ] as const;
-              const teamChallengeRows = [
-                { title: '30 Day Listing Challenge', started: 'Started Oct 15, 2025', due: 'Till Nov 30, 2025', daysLeft: '12 days left', progress: 60, tone: 'green' },
-                { title: '30 Day Listing Challenge', started: 'Started Oct 15, 2025', due: 'Till Nov 30, 2025', daysLeft: '12 days left', progress: 35, tone: 'yellow' },
-              ] as const;
-              const openChallengeFlowFromTeam = (mode: 'list' | 'details' | 'leaderboard' = 'details') => {
-                const preferred = challengeListItems.find((item) => item.challengeModeLabel === 'Team') ?? challengeListItems[0];
+              const teamChallengeRows = challengeListItems.filter(
+                (item) => item.challengeModeLabel === 'Team' || Boolean(item.raw?.team_id)
+              );
+              const teamChallengeRowsForSurface = (teamChallengeRows.length > 0 ? teamChallengeRows : challengeListItems).slice(0, 8);
+              const teamChallengeActiveRows = teamChallengeRowsForSurface.filter(
+                (item) => item.bucket === 'active' || item.bucket === 'upcoming'
+              );
+              const teamChallengeCompletedRows = teamChallengeRowsForSurface.filter((item) => item.bucket === 'completed');
+              const teamChallengeVisibleRows =
+                teamChallengesSegment === 'active' ? teamChallengeActiveRows : teamChallengeCompletedRows;
+              const teamChallengeUpcoming = teamChallengeRowsForSurface.find((item) => item.bucket === 'upcoming') ?? null;
+              const teamChallengePreviewKpis = [
+                ...challengeKpiGroups.PC.slice(0, 2).map((kpi) => kpi.name),
+                ...challengeKpiGroups.GP.slice(0, 2).map((kpi) => kpi.name),
+                ...challengeKpiGroups.VP.slice(0, 2).map((kpi) => kpi.name),
+              ].slice(0, 6);
+              const openChallengeFlowFromTeam = (
+                mode: 'list' | 'details' | 'leaderboard' = 'details',
+                selectedChallengeId?: string
+              ) => {
+                const preferred =
+                  challengeListItems.find((item) => item.id === selectedChallengeId) ??
+                  challengeListItems.find((item) => item.challengeModeLabel === 'Team') ??
+                  challengeListItems[0];
                 if (preferred) setChallengeSelectedId(preferred.id);
                 setChallengeFlowScreen(mode);
                 setActiveTab('challenge');
@@ -8749,79 +8768,198 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
                     {screen === 'team_challenges' ? (
                       <>
-                        <View style={styles.teamChallengesHeroRow}>
-                          <View style={styles.teamChallengesUpcomingCard}>
+                        <View style={styles.teamChallengesHeroCard}>
+                          <View style={styles.teamChallengesHeroTopRow}>
                             <View style={styles.teamChallengesUpcomingIcon}>
-                              <Text style={styles.teamChallengesUpcomingIconText}>⚡</Text>
+                              <Text style={styles.teamChallengesUpcomingIconText}>🏁</Text>
                             </View>
-                            <View style={styles.teamRouteCardRowCopy}>
-                              <Text style={styles.teamRouteCardRowTitle}>Upcoming</Text>
-                              <Text style={styles.teamRouteCardRowSub}>New challenge on</Text>
+                            <View style={styles.teamChallengesHeroCopy}>
+                              <Text style={styles.teamChallengesHeroTitle}>Team Challenges</Text>
+                              <Text style={styles.teamChallengesHeroSub}>
+                                {teamChallengeUpcoming
+                                  ? `Upcoming starts ${fmtShortMonthDayYear(teamChallengeUpcoming.startAtIso)}`
+                                  : 'Track active and completed team challenges.'}
+                              </Text>
                             </View>
-                            <Text style={styles.teamChallengesUpcomingDate}>Nov 8</Text>
+                            <Text style={styles.teamChallengesUpcomingDate}>
+                              {teamChallengeUpcoming ? fmtShortMonthDay(teamChallengeUpcoming.startAtIso) : 'No date'}
+                            </Text>
                           </View>
-                          {teamPersonaVariant !== 'member' ? (
-                            <TouchableOpacity
-                              style={styles.teamChallengesCreateBtn}
-                              onPress={() => openChallengeFlowFromTeam('list')}
-                            >
-                              <Text style={styles.teamChallengesCreateBtnText}>Open Challenges</Text>
-                            </TouchableOpacity>
-                          ) : null}
-                        </View>
-                        <View style={styles.teamChallengesStatsRow}>
-                          <View style={[styles.teamChallengesStatCard, styles.teamParityStatCardGreen]}>
-                            <Text style={styles.teamParityStatTitle}>Active</Text>
-                            <Text style={styles.teamParityStatValue}>02</Text>
-                            <Text style={styles.teamParityStatFoot}>Challenges</Text>
+                          <View style={styles.teamChallengesHeroStatsRow}>
+                            <View style={[styles.teamChallengesStatCard, styles.teamParityStatCardGreen]}>
+                              <Text style={styles.teamParityStatTitle}>Active</Text>
+                              <Text style={styles.teamParityStatValue}>{String(teamChallengeActiveRows.length).padStart(2, '0')}</Text>
+                              <Text style={styles.teamParityStatFoot}>Challenges</Text>
+                            </View>
+                            <View style={[styles.teamChallengesStatCard, styles.teamParityStatCardPurple]}>
+                              <Text style={styles.teamParityStatTitle}>Completed</Text>
+                              <Text style={styles.teamParityStatValue}>{String(teamChallengeCompletedRows.length).padStart(2, '0')}</Text>
+                              <Text style={styles.teamParityStatFoot}>Challenges</Text>
+                            </View>
                           </View>
-                          <View style={[styles.teamChallengesStatCard, styles.teamParityStatCardPurple]}>
-                            <Text style={styles.teamParityStatTitle}>Completed</Text>
-                            <Text style={styles.teamParityStatValue}>03</Text>
-                            <Text style={styles.teamParityStatFoot}>Challenges</Text>
-                          </View>
+                          <TouchableOpacity style={styles.teamChallengesCreateBtn} onPress={() => openChallengeFlowFromTeam('list')}>
+                            <Text style={styles.teamChallengesCreateBtnText}>Open Full Challenge Hub</Text>
+                          </TouchableOpacity>
                         </View>
                         <View style={styles.teamChallengesSegmentRow}>
-                          <View style={[styles.teamChallengesSegmentPill, styles.teamChallengesSegmentPillActive]}>
-                            <Text style={[styles.teamChallengesSegmentPillText, styles.teamChallengesSegmentPillTextActive]}>Active</Text>
-                          </View>
-                          <View style={styles.teamChallengesSegmentPill}>
-                            <Text style={styles.teamChallengesSegmentPillText}>Completed</Text>
-                          </View>
+                          <TouchableOpacity
+                            style={[styles.teamChallengesSegmentPill, teamChallengesSegment === 'active' && styles.teamChallengesSegmentPillActive]}
+                            onPress={() => setTeamChallengesSegment('active')}
+                          >
+                            <Text
+                              style={[
+                                styles.teamChallengesSegmentPillText,
+                                teamChallengesSegment === 'active' && styles.teamChallengesSegmentPillTextActive,
+                              ]}
+                            >
+                              Active
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.teamChallengesSegmentPill, teamChallengesSegment === 'completed' && styles.teamChallengesSegmentPillActive]}
+                            onPress={() => setTeamChallengesSegment('completed')}
+                          >
+                            <Text
+                              style={[
+                                styles.teamChallengesSegmentPillText,
+                                teamChallengesSegment === 'completed' && styles.teamChallengesSegmentPillTextActive,
+                              ]}
+                            >
+                              Completed
+                            </Text>
+                          </TouchableOpacity>
                         </View>
                         <View style={styles.teamRouteStack}>
-                          {teamChallengeRows.map((row) => (
-                            <TouchableOpacity
-                              key={`${row.title}-${row.progress}`}
-                              style={styles.teamChallengesCard}
-                              onPress={() => openChallengeFlowFromTeam('details')}
-                            >
-                              <View style={styles.teamChallengesCardTopRow}>
-                                <View style={styles.teamRouteCardRowCopy}>
-                                  <Text style={styles.teamRouteCardRowTitle}>{row.title}</Text>
-                                  <Text style={styles.teamRouteCardRowSub}>{row.started}</Text>
+                          {teamChallengeVisibleRows.length === 0 ? (
+                            <View style={styles.teamChallengesEmptyCard}>
+                              <Text style={styles.teamChallengesEmptyTitle}>No challenges in this state</Text>
+                              <Text style={styles.teamChallengesEmptySub}>
+                                {teamChallengesSegment === 'active'
+                                  ? 'Switch to Completed or open the challenge hub to create/join.'
+                                  : 'Completed team challenges will appear here.'}
+                              </Text>
+                            </View>
+                          ) : (
+                            teamChallengeVisibleRows.map((row) => (
+                              <TouchableOpacity
+                                key={row.id}
+                                style={styles.teamChallengesCard}
+                                onPress={() => {
+                                  if (row.joined) {
+                                    openChallengeFlowFromTeam('details', row.id);
+                                    return;
+                                  }
+                                  setChallengePreviewItem(row);
+                                }}
+                              >
+                                <View style={styles.teamChallengesCardTopRow}>
+                                  <View style={styles.teamRouteCardRowCopy}>
+                                    <Text style={styles.teamRouteCardRowTitle}>{row.title}</Text>
+                                    <Text numberOfLines={1} style={styles.teamRouteCardRowSub}>{row.subtitle}</Text>
+                                  </View>
+                                  <View
+                                    style={[
+                                      styles.teamChallengesActiveBadge,
+                                      row.bucket === 'completed' && styles.teamChallengesCompletedBadge,
+                                      row.bucket === 'upcoming' && styles.teamChallengesUpcomingBadge,
+                                    ]}
+                                  >
+                                    <Text
+                                      style={[
+                                        styles.teamChallengesActiveBadgeText,
+                                        row.bucket === 'completed' && styles.teamChallengesCompletedBadgeText,
+                                        row.bucket === 'upcoming' && styles.teamChallengesUpcomingBadgeText,
+                                      ]}
+                                    >
+                                      {row.status}
+                                    </Text>
+                                  </View>
                                 </View>
-                                <View style={styles.teamChallengesActiveBadge}>
-                                  <Text style={styles.teamChallengesActiveBadgeText}>Active</Text>
+                                <View style={styles.teamChallengesCardMetaRow}>
+                                  <Text style={styles.teamChallengesMetaStrong}>{row.timeframe}</Text>
+                                  <Text style={styles.teamRouteCardRowSub}>{row.daysLabel}</Text>
                                 </View>
-                              </View>
-                              <View style={styles.teamChallengesCardMetaRow}>
-                                <Text style={styles.teamChallengesMetaStrong}>{row.due}</Text>
-                                <Text style={styles.teamRouteCardRowSub}>{row.daysLeft}</Text>
-                              </View>
-                              <View style={styles.teamChallengesProgressTrack}>
-                                <View
-                                  style={[
-                                    styles.teamChallengesProgressFill,
-                                    row.tone === 'yellow' && styles.teamChallengesProgressFillYellow,
-                                    { width: `${row.progress}%` },
-                                  ]}
-                                />
-                              </View>
-                              <Text style={styles.teamRouteCardRowSub}>Progress: {row.progress}%</Text>
-                            </TouchableOpacity>
-                          ))}
+                                <View style={styles.teamChallengesProgressTrack}>
+                                  <View style={[styles.teamChallengesProgressFill, { width: `${Math.min(100, Math.max(0, row.progressPct))}%` }]} />
+                                </View>
+                                <Text style={styles.teamRouteCardRowSub}>Progress: {row.progressPct}%</Text>
+                              </TouchableOpacity>
+                            ))
+                          )}
                         </View>
+                        <Modal
+                          visible={challengePreviewItem !== null}
+                          transparent
+                          animationType="slide"
+                          onRequestClose={() => setChallengePreviewItem(null)}
+                        >
+                          <Pressable style={styles.challengeDrawerBackdrop} onPress={() => setChallengePreviewItem(null)}>
+                            <Pressable style={styles.challengeDrawerSheet} onPress={() => {}}>
+                              <View style={styles.challengeDrawerHandle} />
+                              {challengePreviewItem ? (
+                                <>
+                                  <Text style={styles.challengeDrawerTitle}>{challengePreviewItem.title}</Text>
+                                  <Text style={styles.challengeDrawerSub}>{challengePreviewItem.subtitle}</Text>
+                                  <View style={styles.challengeDrawerMetaRow}>
+                                    <Text style={styles.challengeDrawerMetaText}>📅 {challengePreviewItem.timeframe}</Text>
+                                    <Text style={styles.challengeDrawerMetaText}>{challengePreviewItem.daysLabel}</Text>
+                                  </View>
+                                  <View style={styles.challengeDrawerDivider} />
+                                  <Text style={styles.challengeDrawerSectionTitle}>KPIs Tracked</Text>
+                                  <View style={styles.teamChallengesDrawerKpiList}>
+                                    {teamChallengePreviewKpis.length > 0 ? (
+                                      teamChallengePreviewKpis.map((kpiName) => (
+                                        <View key={`team-drawer-kpi-${kpiName}`} style={styles.teamChallengesDrawerKpiChip}>
+                                          <Text style={styles.teamChallengesDrawerKpiChipText}>{kpiName}</Text>
+                                        </View>
+                                      ))
+                                    ) : (
+                                      <View style={styles.teamChallengesDrawerKpiChip}>
+                                        <Text style={styles.teamChallengesDrawerKpiChipText}>KPI list available on live challenge data</Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                  <View style={styles.challengeDrawerDivider} />
+                                  <View style={styles.challengeDrawerFootRow}>
+                                    <Text style={styles.challengeDrawerFootMeta}>
+                                      {challengePreviewItem.participants} participant
+                                      {challengePreviewItem.participants === 1 ? '' : 's'} · {challengePreviewItem.challengeModeLabel}
+                                    </Text>
+                                  </View>
+                                  {isApiBackedChallenge(challengePreviewItem) &&
+                                  !challengePreviewItem.joined &&
+                                  challengePreviewItem.bucket !== 'completed' ? (
+                                    <TouchableOpacity
+                                      style={[
+                                        styles.challengeDrawerJoinBtn,
+                                        challengeJoinSubmittingId === challengePreviewItem.id && styles.disabled,
+                                      ]}
+                                      disabled={challengeJoinSubmittingId === challengePreviewItem.id}
+                                      onPress={() => {
+                                        void joinChallenge(challengePreviewItem.id);
+                                        setChallengePreviewItem(null);
+                                      }}
+                                    >
+                                      <Text style={styles.challengeDrawerJoinBtnText}>
+                                        {challengeJoinSubmittingId === challengePreviewItem.id ? 'Joining…' : 'Join Challenge'}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  ) : (
+                                    <TouchableOpacity
+                                      style={styles.challengeDrawerViewBtn}
+                                      onPress={() => {
+                                        openChallengeFlowFromTeam('details', challengePreviewItem.id);
+                                        setChallengePreviewItem(null);
+                                      }}
+                                    >
+                                      <Text style={styles.challengeDrawerViewBtnText}>View Details</Text>
+                                    </TouchableOpacity>
+                                  )}
+                                </>
+                              ) : null}
+                            </Pressable>
+                          </Pressable>
+                        </Modal>
                       </>
                     ) : null}
                   </View>
@@ -15438,50 +15576,62 @@ const styles = StyleSheet.create({
   teamRouteMutedText: {
     color: '#b0b5be',
   },
-  teamChallengesHeroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
+  teamChallengesHeroCard: {
+    borderRadius: 14,
+    backgroundColor: '#eef3ff',
+    borderWidth: 1,
+    borderColor: '#dbe6ff',
+    padding: 12,
+    gap: 10,
   },
-  teamChallengesUpcomingCard: {
-    flex: 1,
-    borderRadius: 10,
-    backgroundColor: '#f0ead7',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+  teamChallengesHeroTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+  },
+  teamChallengesHeroCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  teamChallengesHeroTitle: {
+    color: '#203452',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  teamChallengesHeroSub: {
+    color: '#5b6d8e',
+    fontSize: 12,
+    lineHeight: 16,
   },
   teamChallengesUpcomingIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#fff7dd',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#d7e7ff',
     alignItems: 'center',
     justifyContent: 'center',
   },
   teamChallengesUpcomingIconText: {
-    fontSize: 11,
+    fontSize: 13,
   },
   teamChallengesUpcomingDate: {
-    color: '#3f4653',
-    fontSize: 14,
+    color: '#203452',
+    fontSize: 13,
     fontWeight: '800',
   },
   teamChallengesCreateBtn: {
-    borderRadius: 999,
-    backgroundColor: '#0f1218',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#1f5fe2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
   },
   teamChallengesCreateBtnText: {
     color: '#fff',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
   },
-  teamChallengesStatsRow: {
+  teamChallengesHeroStatsRow: {
     flexDirection: 'row',
     gap: 8,
   },
@@ -15517,14 +15667,17 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   teamChallengesCard: {
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: '#eef0f4',
-    padding: 10,
-    gap: 8,
+    borderWidth: 1,
+    borderColor: '#e2e7ef',
+    padding: 12,
+    gap: 7,
   },
   teamChallengesCardTopRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
   },
   teamChallengesActiveBadge: {
@@ -15538,6 +15691,18 @@ const styles = StyleSheet.create({
     color: '#35451f',
     fontSize: 10,
     fontWeight: '800',
+  },
+  teamChallengesCompletedBadge: {
+    backgroundColor: '#d6d2f8',
+  },
+  teamChallengesCompletedBadgeText: {
+    color: '#4b3f7f',
+  },
+  teamChallengesUpcomingBadge: {
+    backgroundColor: '#f7e8bf',
+  },
+  teamChallengesUpcomingBadgeText: {
+    color: '#645222',
   },
   teamChallengesCardMetaRow: {
     flexDirection: 'row',
@@ -15563,6 +15728,42 @@ const styles = StyleSheet.create({
   },
   teamChallengesProgressFillYellow: {
     backgroundColor: '#e7cb53',
+  },
+  teamChallengesEmptyCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e1e6ef',
+    backgroundColor: '#f6f8fc',
+    padding: 12,
+    gap: 6,
+  },
+  teamChallengesEmptyTitle: {
+    color: '#3a4962',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  teamChallengesEmptySub: {
+    color: '#6e7d95',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  teamChallengesDrawerKpiList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  teamChallengesDrawerKpiChip: {
+    borderRadius: 999,
+    backgroundColor: '#eff4ff',
+    borderWidth: 1,
+    borderColor: '#d6e2ff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  teamChallengesDrawerKpiChipText: {
+    color: '#4b5f84',
+    fontSize: 11,
+    fontWeight: '600',
   },
   coachingEntryCard: {
     backgroundColor: '#fff',
