@@ -136,7 +136,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` | `active` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges list redesign` (`hero header`, `reduced card detail`, `preview bottom drawer`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer routing behavior | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Active (reassigned from Claude-1 due availability): redesign Team Challenges list with hero card treatment, simplified challenge cards + progress meter, bottom-drawer preview (KPI list/dates/summary/join), and joined-card routing to existing challenge detail screen. |
 | `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B` | `queued` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges validation` (`hero/list/drawer/join-open route regression`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer behavior | `Mobile-2` | `codex/a2-admin-list-usability-pass` (QA-only; no code edits) | manual-spec-driven (owner-directed design pass) | Queued QA follow-on: runtime screenshot + behavior matrix after `M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` lands; file edits prohibited. |
 | `W13-DEP-TRACKER-EVIDENCE-SYNC-B` | `committed` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency governance` (`closeout evidence linking + status normalization`) | docs-only: `PROJECT_CONTROL_PLANE`, `W13_DEP_SIGNOFF_BRIEF` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed docs pass: placeholder evidence link removed, DEP-002/004/005 evidence references normalized across control-plane + signoff brief, and Wave A GO/NO-GO language preserved. |
-| `A3-W12-SPOTCHECK-CLOSEOUT-DOC-SYNC-B` | `queued` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach QA governance` (`closeout packaging + board/doc alignment`) | docs-only: `AGENT_ASSIGNMENT_BOARD` A3/W12 spotcheck sections | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Queued docs pass: finalize deterministic spotcheck closeout wording and ensure accepted evidence paths/commits are explicit and unambiguous. |
+| `A3-W12-SPOTCHECK-CLOSEOUT-DOC-SYNC-B` | `review` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach QA governance` (`closeout packaging + board/doc alignment`) | docs-only: `AGENT_ASSIGNMENT_BOARD` A3/W12 spotcheck sections | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Completed docs closeout sync: A3/W12 rows/specs now use accepted lifecycle status language with explicit determinism dependency chain, final pass counts (`36/36`), evidence paths, and commit references. |
 | `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `committed+pushed` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Accepted and pushed: FE-00 checkpoint moved from pending to concrete complete state in sprint gate, and frontend acceptance harness now includes explicit FE-00 pass/fail closeout criteria with traceability consistency checks. |
 | `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `committed` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Re-execution accepted (2026-02-28): deterministic reset/seed/smoke rerun passed with no runbook drift; refreshed evidence logs captured under `app/test-results/m8-seed-data-smoke-verification-a/04-06-*`. |
 | `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team identity card` (`leader edit controls`, `member read-only rendering`) | `KPIDashboardScreen` Team tab top card only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed: polished role-aware Team identity card landed with leader-only edit flow (avatar/background picker modal + save/cancel) and member read-only rendering. TypeScript clean. |
@@ -4326,7 +4326,7 @@ Run a mobile regression sweep across critical routes and personas, capture pass/
 ### `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `A3/W12 admin+coach hardening`
 - `Persona:` `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor`
 - `Flow:` `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`)
@@ -4339,6 +4339,7 @@ Run a mobile regression sweep across critical routes and personas, capture pass/
 - `Current blocker status (2026-02-28, completion):` `blocked` on persona-role validation determinism: runtime session resolves as `super_admin` and effective role resolution (`resolvedRoles`) cannot cleanly isolate coach/team_leader/challenge_sponsor gate behavior for canonical in-browser proof.
 - `Blocker resolution note (2026-02-28, Mobile-2):` Deterministic dev-only role override path finalized in `AdminAuthzContext` and runtime matrix rerun shows clean persona isolation: `runtime-role-determinism-summary.txt` reports `36/36` pass for `coach`, `team_leader`, `challenge_sponsor` with zero mismatches.
 - `Current blocker status (2026-02-28, latest):` `resolved`; assignment promoted to `review`.
+- `Closeout note (2026-02-28, docs sync):` Assignment accepted/committed with deterministic evidence captured under `/Users/jon/compass-kpi/app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/` (`runtime-role-determinism-summary.txt`, `runtime-role-determinism-results.json`, `runtime-role-determinism-mismatches.json`).
 
 #### Primary Objective
 Validate admin + coach route/runtime integrity and role gating after recent W11/W12 merges, then fix only scoped regressions.
@@ -4374,7 +4375,7 @@ Validate admin + coach route/runtime integrity and role gating after recent W11/
 ### `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `A3/W12 admin+coach hardening`
 - `Persona:` `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor`
 - `Flow:` `admin/coach runtime test harness` (`deterministic role-switch validation without super_admin bleed`)
@@ -4389,6 +4390,7 @@ Validate admin + coach route/runtime integrity and role gating after recent W11/
 - `Validation note (2026-02-28, Mobile-2 final):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed and `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz` passed after final evidence refresh.
 - `Recommendation note (2026-02-28, Mobile-2 final):` Parent assignment `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` can move from `blocked` to `review`; deterministic persona-role blocker is resolved.
 - `Current blocker status (2026-02-28, review):` `none`.
+- `Commit chain note (2026-02-28, docs sync):` Runtime determinism unblock landed in `0a00f14` (`AdminAuthzContext` + board), followed by board-closeout alignment commits `e98e2dc` and `e392497`.
 
 #### Primary Objective
 Provide a deterministic role-switch runtime/test method that validates `coach`, `team_leader`, and `challenge_sponsor` route outcomes without backend `super_admin` role bleed-through.
@@ -5017,7 +5019,7 @@ Intermediate rounds also captured: `after_user_sim.png` (r1), `after_r2_*.png` (
 ### `M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `M6 team UI cleanup`
 - `Persona:` `Team Leader`, `Team Member`
 - `Flow:` `team challenges list redesign` (`hero header`, `simplified cards`, `preview drawer + join/open behavior`)
@@ -5071,6 +5073,34 @@ Redesign Team tab `Challenges` list so it is less dense and more actionable:
 - Files changed + line refs.
 - Before/after screenshot paths.
 - Commit hash.
+
+#### Evidence Package (2026-02-28)
+
+**Files changed:** `app/screens/KPIDashboardScreen.tsx` (1 file, +313/-211 r1, +38/-45 r2)
+
+**Key changes:**
+| Area | What changed |
+|---|---|
+| State | Added `challengePreviewItem` useState (ChallengeFlowItem or null) |
+| Hero card | Replaces old challengeListHeaderRow + subtitle; indigo accent bar, contextual eyebrow/title/subtitle per tab state, integrated Create button |
+| List cards | Simplified: title + status pill, 1-line subtitle, timeframe + daysLabel, 7px progress bar |
+| Tap behavior | `item.joined` → setChallengeFlowScreen('details'); `!item.joined` → setChallengePreviewItem(item) |
+| Preview drawer | Modal with slide animation, KPI chips, participant count, Join/View Details CTA, role gates preserved |
+| Layout order | Hero card (with Create btn) → Active/Upcoming/History tabs → filter chips → card stack |
+
+**Screenshots:**
+- After (member, r1): `architecture/screenshots/M6-CHALLENGES-HERO-DRAWER/after_member.png`
+- After (member, r2 — hero at top): `architecture/screenshots/M6-CHALLENGES-HERO-DRAWER/after_member_r2.png`
+- After (leader): `architecture/screenshots/M6-CHALLENGES-HERO-DRAWER/after_leader.png`
+
+**Commits:** `4772f8d` (r1), `709460a` (r2: hero card to top replacing header)
+
+**Constraint verification:**
+- Role gates preserved (`isApiBackedChallenge()`, `challengeCreateAllowed`)
+- Join logic intact (uses existing `joinChallenge()`)
+- Routing keys preserved (`setChallengeFlowScreen('details')`, `setChallengeSelectedId`)
+- No backend/schema/API changes
+- tsc --noEmit: 0 errors
 
 ### `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B`
 
@@ -5145,12 +5175,16 @@ Tighten W13 dependency tracker evidence quality without changing implementation 
 ### `A3-W12-SPOTCHECK-CLOSEOUT-DOC-SYNC-B`
 
 #### Snapshot
-- `Status:` `queued`
+- `Status:` `review`
 - `Program status:` `A3/W12 admin+coach hardening`
 - `Persona:` `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor`
 - `Flow:` `admin/coach QA governance` (`closeout packaging + board/doc alignment`)
 - `Owner:` `Admin-1`
 - `Current blocker status (2026-02-28, queue):` `none` (docs-only).
+- `Execution note (2026-02-28, Admin-1):` Assignment activated and executed as a docs-only closeout pass on the board A3/W12 sections.
+- `Completion note (2026-02-28, Admin-1):` Updated A3/W12 active rows and assignment-spec snapshots to accepted lifecycle language (`committed`), and clarified deterministic-role dependency chain with explicit pass counts/evidence artifacts.
+- `Validation note (2026-02-28, Admin-1):` Confirmed A3 rows/specs include explicit evidence paths and commit references (`0a00f14`, `e98e2dc`, `e392497`) and no stale `review` phrasing remains for accepted A3 spotcheck assignments.
+- `Current blocker status (2026-02-28, review):` `none`.
 
 #### Primary Objective
 Finalize A3/W12 spotcheck closeout packaging in the board:
