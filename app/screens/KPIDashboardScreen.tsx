@@ -2228,6 +2228,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [challengeLeaveSubmittingId, setChallengeLeaveSubmittingId] = useState<string | null>(null);
   const [challengeJoinError, setChallengeJoinError] = useState<string | null>(null);
   const [challengeLeaveError, setChallengeLeaveError] = useState<string | null>(null);
+  const [challengePreviewItem, setChallengePreviewItem] = useState<ChallengeFlowItem | null>(null);
   const [runtimeMeRole, setRuntimeMeRole] = useState<string | null>(null);
   const [challengeMemberCreateModalVisible, setChallengeMemberCreateModalVisible] = useState(false);
   const [challengeMemberCreateMode, setChallengeMemberCreateMode] = useState<'public' | 'team'>('team');
@@ -7309,167 +7310,85 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     : null}
 
                   <View style={styles.challengeListCardStack}>
-                    {challengeSelectedWithinState ? (
-                      <>
-                        <View style={styles.challengeHeaderCard}>
-                          <View style={styles.challengeHeaderTopRow}>
-                            <View style={styles.challengeHeaderBadge}>
-                              <Text style={styles.challengeHeaderBadgeText}>
-                                {challengeStateTab === 'history' ? 'History' : challengeStateTab === 'upcoming' ? 'Upcoming' : 'Active'}
-                              </Text>
-                            </View>
-                            <Text style={styles.challengeHeaderMeta}>{challengeSelectedWithinState.daysLabel}</Text>
-                          </View>
-                          <Text style={styles.challengeHeaderTitle}>{challengeSelectedWithinState.title}</Text>
-                          <Text style={styles.challengeHeaderSub}>{challengeSelectedWithinState.subtitle}</Text>
-                          <View style={styles.challengeHeaderStatsRow}>
-                            <View style={styles.challengeHeaderStatChip}>
-                              <Text style={styles.challengeHeaderStatLabel}>Progress</Text>
-                              <Text style={styles.challengeHeaderStatValue}>{challengeSelectedWithinState.progressPct}%</Text>
-                              <Text style={styles.challengeHeaderStatFoot}>
-                                {challengeSelectedWithinState.joined ? 'Joined participation' : 'Not joined yet'}
-                              </Text>
-                            </View>
-                            <View style={styles.challengeHeaderStatChip}>
-                              <Text style={styles.challengeHeaderStatLabel}>Participants</Text>
-                              <Text style={styles.challengeHeaderStatValue}>{challengeSelectedWithinState.participants}</Text>
-                              <Text style={styles.challengeHeaderStatFoot}>Leaderboard entries</Text>
-                            </View>
-                          </View>
-                          <View style={styles.teamDashboardHeroCtaRow}>
-                            <TouchableOpacity
-                              style={styles.teamDashboardHeroPrimaryCta}
-                              onPress={() => {
-                                setChallengeSelectedId(challengeSelectedWithinState.id);
-                                setChallengeFlowScreen('details');
-                              }}
-                            >
-                              <Text style={styles.teamDashboardHeroPrimaryCtaText}>Open Details</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={styles.teamDashboardHeroSecondaryCta}
-                              onPress={() => {
-                                setChallengeSelectedId(challengeSelectedWithinState.id);
-                                setChallengeFlowScreen('leaderboard');
-                              }}
-                            >
-                              <Text style={styles.teamDashboardHeroSecondaryCtaText}>
-                                {challengeStateTab === 'history' ? 'Open Results' : 'Leaderboard'}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-
-                        <View style={styles.teamDashboardModuleCard}>
-                          <View style={styles.teamDashboardModuleHeader}>
-                            <Text style={styles.teamDashboardModuleTitle}>Challenge KPI Context</Text>
-                            <Text style={styles.teamDashboardModuleMeta}>{challengeSelectedWithinState.challengeModeLabel}</Text>
-                          </View>
-                          <Text style={styles.teamDashboardModuleHint}>
-                            {isApiBackedChallenge(challengeSelectedWithinState)
-                              ? `Target: ${challengeSelectedWithinState.targetValueLabel}. Track relevant KPIs to progress this challenge.`
-                              : 'Preview challenge row. Join/leave and richer KPI targets are available on live challenge rows.'}
+                    {/* ── Hero Card ── */}
+                    <View style={styles.challengeHeroCard}>
+                      <View style={styles.challengeHeroAccent} />
+                      <View style={styles.challengeHeroBody}>
+                        <View style={styles.challengeHeroTopRow}>
+                          <Text style={styles.challengeHeroEyebrow}>
+                            {challengeStateTab === 'active' ? '🏆 Active Challenges' : challengeStateTab === 'upcoming' ? '📅 Upcoming' : '📊 History'}
                           </Text>
-                          <View style={styles.teamDashboardMetricGrid}>
-                            {challengeKpiSummaryCards.map((card) => (
-                              <View key={`challenge-kpi-summary-${card.key}`} style={styles.teamDashboardMetricCard}>
-                                <Text style={styles.teamDashboardMetricLabel}>{card.label}</Text>
-                                <Text style={styles.teamDashboardMetricValue}>{card.value}</Text>
-                                <Text style={styles.teamDashboardMetricFoot}>active KPIs</Text>
-                              </View>
-                            ))}
-                          </View>
-                          {!isApiBackedChallenge(challengeSelectedWithinState) ? renderKnownLimitedDataChip('join unavailable on preview row') : null}
+                          <Text style={styles.challengeHeroCount}>{challengeCurrentStateRows.length}</Text>
                         </View>
+                        <Text style={styles.challengeHeroTitle}>
+                          {challengeStateTab === 'active'
+                            ? 'Compete, track, and win'
+                            : challengeStateTab === 'upcoming'
+                              ? 'Coming up next'
+                              : 'Past results'}
+                        </Text>
+                        <Text style={styles.challengeHeroSub}>
+                          {challengeStateTab === 'active'
+                            ? 'Tap a challenge to preview or open your progress.'
+                            : challengeStateTab === 'upcoming'
+                              ? 'Preview upcoming challenges and join early.'
+                              : 'Review completed challenge results and rankings.'}
+                        </Text>
+                      </View>
+                    </View>
 
-                        <View style={styles.teamDashboardModuleCard}>
-                          <View style={styles.teamDashboardModuleHeader}>
-                            <Text style={styles.teamDashboardModuleTitle}>Participants</Text>
-                            <Text style={styles.teamDashboardModuleMeta}>
-                              {challengeParticipantRows.length} row{challengeParticipantRows.length === 1 ? '' : 's'}
-                            </Text>
-                          </View>
-                          <View style={styles.teamMemberRowsCard}>
-                            {challengeParticipantRows.map((entry, index) => (
-                              <View
-                                key={`challenge-participant-row-${entry.rank}-${entry.name}`}
-                                style={[styles.teamMemberRow, index > 0 && styles.teamParityDividerTop]}
-                              >
-                                <View style={[styles.teamMemberRowAvatar, { backgroundColor: '#e9effa' }]}>
-                                  <Text style={styles.teamMemberRowAvatarText}>
-                                    {entry.name
-                                      .split(' ')
-                                      .map((part) => part[0])
-                                      .join('')
-                                      .slice(0, 2)
-                                      .toUpperCase()}
-                                  </Text>
-                                </View>
-                                <View style={styles.teamMemberRowCopy}>
-                                  <Text style={styles.teamMemberRowName}>{entry.name}</Text>
-                                  <Text style={styles.teamMemberRowSub}>
-                                    #{entry.rank} · {entry.value} logs
-                                  </Text>
-                                </View>
-                                <Text style={styles.teamMemberRowMenu}>{entry.pct}%</Text>
-                              </View>
-                            ))}
-                          </View>
-                        </View>
-
-                        <View style={styles.challengeDetailsCtaBlock}>
-                          {(() => {
-                            const isJoinSubmitting = challengeJoinSubmittingId === challengeSelectedWithinState.id;
-                            const isLeaveSubmitting = challengeLeaveSubmittingId === challengeSelectedWithinState.id;
-                            const canJoinLiveChallenge =
-                              isApiBackedChallenge(challengeSelectedWithinState) &&
-                              !challengeSelectedWithinState.joined &&
-                              challengeSelectedWithinState.bucket !== 'completed';
-                            const canLeaveJoinedActiveChallenge =
-                              isApiBackedChallenge(challengeSelectedWithinState) &&
-                              challengeSelectedWithinState.joined &&
-                              challengeSelectedWithinState.bucket !== 'completed';
-                            const actionLabel = canJoinLiveChallenge
-                              ? isJoinSubmitting
-                                ? 'Joining…'
-                                : 'Join Challenge'
-                              : canLeaveJoinedActiveChallenge
-                                ? isLeaveSubmitting
-                                  ? 'Leaving…'
-                                  : 'Leave Challenge'
-                                : challengeSelectedWithinState.bucket === 'completed'
-                                  ? 'History selected'
-                                  : 'No action needed';
-                            return (
-                              <TouchableOpacity
+                    {/* ── Simplified Challenge Cards ── */}
+                    {challengeCurrentStateRows.length > 0 ? (
+                      challengeCurrentStateRows.map((item) => (
+                        <TouchableOpacity
+                          key={`challenge-card-${item.id}`}
+                          style={styles.challengeListItemCard}
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            if (item.joined) {
+                              setChallengeSelectedId(item.id);
+                              setChallengeFlowScreen('details');
+                            } else {
+                              setChallengePreviewItem(item);
+                            }
+                          }}
+                        >
+                          <View style={styles.challengeListItemTopRow}>
+                            <Text numberOfLines={1} style={styles.challengeListItemTitle}>{item.title}</Text>
+                            <View
+                              style={[
+                                styles.challengeListStatusPill,
+                                item.bucket === 'active'
+                                  ? styles.challengeListStatusActive
+                                  : item.bucket === 'upcoming'
+                                    ? styles.challengeListStatusUpcoming
+                                    : styles.challengeListStatusCompleted,
+                              ]}
+                            >
+                              <Text
                                 style={[
-                                  styles.challengeDetailsPrimaryCta,
-                                  (!canJoinLiveChallenge && !canLeaveJoinedActiveChallenge) && styles.disabled,
+                                  styles.challengeListStatusPillText,
+                                  item.bucket === 'active'
+                                    ? styles.challengeListStatusActiveText
+                                    : item.bucket === 'upcoming'
+                                      ? styles.challengeListStatusUpcomingText
+                                      : styles.challengeListStatusCompletedText,
                                 ]}
-                                onPress={() => {
-                                  if (canJoinLiveChallenge) {
-                                    void joinChallenge(challengeSelectedWithinState.id);
-                                    return;
-                                  }
-                                  if (canLeaveJoinedActiveChallenge) {
-                                    Alert.alert(
-                                      'Leave Challenge',
-                                      'Are you sure you want to leave this challenge? Your participation progress will no longer be tracked.',
-                                      [
-                                        { text: 'Cancel', style: 'cancel' },
-                                        { text: 'Leave', style: 'destructive', onPress: () => void leaveChallenge(challengeSelectedWithinState.id) },
-                                      ]
-                                    );
-                                  }
-                                }}
-                                disabled={isJoinSubmitting || isLeaveSubmitting || (!canJoinLiveChallenge && !canLeaveJoinedActiveChallenge)}
                               >
-                                <Text style={styles.challengeDetailsPrimaryCtaText}>{actionLabel}</Text>
-                              </TouchableOpacity>
-                            );
-                          })()}
-                        </View>
-                      </>
+                                {item.status}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text numberOfLines={1} style={styles.challengeListItemSub}>{item.subtitle}</Text>
+                          <View style={styles.challengeListItemMetaRow}>
+                            <Text style={styles.challengeListItemMetaText}>{item.timeframe}</Text>
+                            <Text style={styles.challengeListItemMetaText}>{item.daysLabel}</Text>
+                          </View>
+                          <View style={styles.challengeListItemProgressTrack}>
+                            <View style={[styles.challengeListItemProgressFill, { width: `${Math.min(100, Math.max(0, item.progressPct))}%` }]} />
+                          </View>
+                        </TouchableOpacity>
+                      ))
                     ) : (
                       <View style={styles.challengeListEmptyFilterCard}>
                         <Text style={styles.challengeListEmptyFilterTitle}>No challenges in this state</Text>
@@ -7482,66 +7401,79 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </Text>
                       </View>
                     )}
-
-                    {challengeCurrentStateRows.length > 0 ? (
-                      <View style={styles.challengeListBucket}>
-                        <Text style={styles.challengeListBucketTitle}>
-                          {challengeStateTab === 'history' ? 'Challenge History' : 'More in this state'}
-                        </Text>
-                        {challengeCurrentStateRows.map((item) => (
-                          <TouchableOpacity
-                            key={`challenge-state-row-${item.id}`}
-                            style={[
-                              styles.challengeListItemCard,
-                              challengeSelectedWithinState?.id === item.id && styles.challengeListItemCardSelected,
-                            ]}
-                            onPress={() => setChallengeSelectedId(item.id)}
-                          >
-                            <View style={styles.challengeListItemTopRow}>
-                              <Text numberOfLines={1} style={styles.challengeListItemTitle}>{item.title}</Text>
-                              <View
-                                style={[
-                                  styles.challengeListStatusPill,
-                                  item.bucket === 'active'
-                                    ? styles.challengeListStatusActive
-                                    : item.bucket === 'upcoming'
-                                      ? styles.challengeListStatusUpcoming
-                                      : styles.challengeListStatusCompleted,
-                                ]}
-                              >
-                                <Text
-                                  style={[
-                                    styles.challengeListStatusPillText,
-                                    item.bucket === 'active'
-                                      ? styles.challengeListStatusActiveText
-                                      : item.bucket === 'upcoming'
-                                        ? styles.challengeListStatusUpcomingText
-                                        : styles.challengeListStatusCompletedText,
-                                  ]}
-                                >
-                                  {item.status}
-                                </Text>
-                              </View>
-                            </View>
-                            <Text numberOfLines={2} style={styles.challengeListItemSub}>{item.subtitle}</Text>
-                            <View style={styles.challengeListItemMetaRow}>
-                              <Text style={styles.challengeListItemMetaText}>{item.timeframe}</Text>
-                              <Text style={styles.challengeListItemMetaText}>{item.daysLabel}</Text>
-                            </View>
-                            <View style={styles.challengeListItemBottomRow}>
-                              <Text style={styles.challengeListItemBottomText}>
-                                {item.joined ? 'Joined' : 'Not joined'} · {item.participants} participant{item.participants === 1 ? '' : 's'}
-                              </Text>
-                              <Text style={styles.challengeListItemBottomLink}>
-                                {item.bucket === 'completed' ? 'Open results ›' : 'Open details ›'}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ) : null}
                   </View>
                 </View>
+
+                {/* ── Challenge Preview Bottom Drawer ── */}
+                <Modal
+                  visible={challengePreviewItem !== null}
+                  transparent
+                  animationType="slide"
+                  onRequestClose={() => setChallengePreviewItem(null)}
+                >
+                  <Pressable style={styles.challengeDrawerBackdrop} onPress={() => setChallengePreviewItem(null)}>
+                    <Pressable style={styles.challengeDrawerSheet} onPress={() => {}}>
+                      <View style={styles.challengeDrawerHandle} />
+                      {challengePreviewItem ? (
+                        <>
+                          <Text style={styles.challengeDrawerTitle}>{challengePreviewItem.title}</Text>
+                          <Text style={styles.challengeDrawerSub}>{challengePreviewItem.subtitle}</Text>
+                          <View style={styles.challengeDrawerMetaRow}>
+                            <Text style={styles.challengeDrawerMetaText}>📅 {challengePreviewItem.timeframe}</Text>
+                            <Text style={styles.challengeDrawerMetaText}>{challengePreviewItem.daysLabel}</Text>
+                          </View>
+                          <View style={styles.challengeDrawerDivider} />
+                          <Text style={styles.challengeDrawerSectionTitle}>KPIs Tracked</Text>
+                          <View style={styles.challengeDrawerKpiRow}>
+                            {challengeKpiSummaryCards.map((card) => (
+                              <View key={`drawer-kpi-${card.key}`} style={styles.challengeDrawerKpiChip}>
+                                <Text style={styles.challengeDrawerKpiValue}>{card.value}</Text>
+                                <Text style={styles.challengeDrawerKpiLabel}>{card.label}</Text>
+                              </View>
+                            ))}
+                          </View>
+                          <View style={styles.challengeDrawerDivider} />
+                          <View style={styles.challengeDrawerFootRow}>
+                            <Text style={styles.challengeDrawerFootMeta}>
+                              {challengePreviewItem.participants} participant{challengePreviewItem.participants === 1 ? '' : 's'} · {challengePreviewItem.challengeModeLabel}
+                            </Text>
+                          </View>
+                          {(() => {
+                            const canJoin =
+                              isApiBackedChallenge(challengePreviewItem) &&
+                              !challengePreviewItem.joined &&
+                              challengePreviewItem.bucket !== 'completed';
+                            const isSubmitting = challengeJoinSubmittingId === challengePreviewItem.id;
+                            return canJoin ? (
+                              <TouchableOpacity
+                                style={[styles.challengeDrawerJoinBtn, isSubmitting && styles.disabled]}
+                                disabled={isSubmitting}
+                                onPress={() => {
+                                  void joinChallenge(challengePreviewItem.id);
+                                  setChallengePreviewItem(null);
+                                }}
+                              >
+                                <Text style={styles.challengeDrawerJoinBtnText}>{isSubmitting ? 'Joining…' : 'Join Challenge'}</Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <TouchableOpacity
+                                style={styles.challengeDrawerViewBtn}
+                                onPress={() => {
+                                  setChallengeSelectedId(challengePreviewItem.id);
+                                  setChallengeFlowScreen('details');
+                                  setChallengePreviewItem(null);
+                                }}
+                              >
+                                <Text style={styles.challengeDrawerViewBtnText}>View Details</Text>
+                              </TouchableOpacity>
+                            );
+                          })()}
+                        </>
+                      ) : null}
+                    </Pressable>
+                  </Pressable>
+                </Modal>
+
                 {challengeCreateAllowed ? (
                   <Modal
                     visible={challengeMemberCreateModalVisible}
@@ -12847,6 +12779,176 @@ const styles = StyleSheet.create({
     color: '#8590a2',
     fontSize: 10,
     lineHeight: 12,
+  },
+  /* ── Challenge Hero Card ── */
+  challengeHeroCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#c8d6f0',
+    shadowColor: '#1f355f',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
+  },
+  challengeHeroAccent: {
+    height: 6,
+    backgroundColor: '#4361c2',
+  },
+  challengeHeroBody: {
+    backgroundColor: '#f0f4ff',
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
+    gap: 4,
+  },
+  challengeHeroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  challengeHeroEyebrow: {
+    color: '#3d5ab5',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  challengeHeroCount: {
+    color: '#4361c2',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  challengeHeroTitle: {
+    color: '#1e2a47',
+    fontSize: 19,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  challengeHeroSub: {
+    color: '#5b6d8e',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  /* ── Challenge Preview Drawer ── */
+  challengeDrawerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(20, 28, 44, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  challengeDrawerSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 32,
+    gap: 10,
+    shadowColor: '#0d1b33',
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 20,
+  },
+  challengeDrawerHandle: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#d1d8e4',
+    marginBottom: 6,
+  },
+  challengeDrawerTitle: {
+    color: '#1e2a47',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  challengeDrawerSub: {
+    color: '#5b6d8e',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  challengeDrawerMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  challengeDrawerMetaText: {
+    color: '#7b8697',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  challengeDrawerDivider: {
+    height: 1,
+    backgroundColor: '#e8edf5',
+  },
+  challengeDrawerSectionTitle: {
+    color: '#3d4e6a',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  challengeDrawerKpiRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  challengeDrawerKpiChip: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: '#f4f7fd',
+    borderWidth: 1,
+    borderColor: '#e1eaf5',
+    paddingVertical: 8,
+    alignItems: 'center',
+    gap: 2,
+  },
+  challengeDrawerKpiValue: {
+    color: '#2f3442',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  challengeDrawerKpiLabel: {
+    color: '#7b8697',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  challengeDrawerFootRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  challengeDrawerFootMeta: {
+    color: '#7b8697',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  challengeDrawerJoinBtn: {
+    marginTop: 4,
+    borderRadius: 12,
+    backgroundColor: '#1f5fe2',
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  challengeDrawerJoinBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  challengeDrawerViewBtn: {
+    marginTop: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d4dff3',
+    backgroundColor: '#f8fbff',
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  challengeDrawerViewBtnText: {
+    color: '#35557f',
+    fontSize: 14,
+    fontWeight: '800',
   },
   challengeProgressCard: {
     borderRadius: 12,
