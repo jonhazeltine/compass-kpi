@@ -132,12 +132,12 @@ Only use long custom prompts when the board is missing required details or a one
 | `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `committed` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Determinism blocker cleared by `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A`: strict role override + refreshed deterministic matrix (`36/36` pass) confirms coach/team_leader/challenge_sponsor runtime route outcomes. |
 | `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A` | `committed` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach runtime test harness` (`deterministic role-switch validation without super_admin bleed`) | app runtime/test harness only (`AdminAuthzContext`, spotcheck harness scripts/evidence) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (app/runtime harness scope only) | N/A (runtime harness determinism) | Completed and accepted: deterministic dev-only role override finalized/validated and runtime role matrix evidence refreshed (`coach`, `team_leader`, `challenge_sponsor`, 36 checks, 0 failures). |
 | `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A` | `committed` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `backend/platform` | `retention/compliance governance` (`chat/video metadata policy packet`) | docs-only: retention/deletion policy packet + control-plane dependency linkage | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed: owner sign-off packet landed with retention/deletion matrix, legal-hold rules, provider reconciliation model, unresolved decisions, and control-plane linkage. |
-| `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | `committed` | `W13 docs/control-plane exception` | `Controller`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency closure tracking` (`DEP-002/004/005 closeout board + go/no-go criteria`) | docs-only: project control plane + assignment board closeout table | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed: control-plane tracker now centralizes DEP-002/DEP-004/DEP-005 closure criteria, evidence, owners, statuses, and explicit Wave A GO/NO-GO rule. |
+| `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | `active` | `W13 docs/control-plane exception` | `Controller`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency closure tracking` (`DEP-002/004/005 closeout board + go/no-go criteria`) | docs-only: project control plane + assignment board closeout table | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Active closeout update (owner directive): set `DEP-002`/`DEP-004`/`DEP-005` to `CLOSED` with owner risk-acceptance note and keep Wave A GO/NO-GO matrix consistent. |
 | `M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` | `committed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges list redesign` (`hero header`, `reduced card detail`, `preview bottom drawer`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer routing behavior | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted: Team Challenges list now uses hero header treatment, simplified challenge cards with essentials-only progress rows, non-joined preview drawer (KPI list/dates/summary/join), and joined-card direct route to existing challenge detail screen (`4772f8d`, `709460a`, `ad71b1e`). |
-| `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B` | `committed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges validation` (`hero/list/drawer/join-open route regression`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer behavior | `Mobile-2` | `codex/a2-admin-list-usability-pass` (QA-only; no code edits) | manual-spec-driven (owner-directed design pass) | Accepted QA pass: leader/member challenge list behavior verified with screenshot evidence matrix; no regressions found and no code edits required. |
+| `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B` | `review` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges validation` (`hero/list/drawer/join-open route regression`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer behavior | `Mobile-2` | `codex/a2-admin-list-usability-pass` (QA-only; no code edits) | manual-spec-driven (owner-directed design pass) | Re-run complete (Mobile-1 runtime QA hardening): leader/member hero/list/drawer/join-open flow re-validated with refreshed runtime evidence; no regressions and no UI code edits. |
 | `M6-COMMS-UX-REDESIGN-SHELL-B` | `review` | `M6 UI MVP polish (provider-ready shell, no Stream runtime switch)` | `Team Leader`, `Team Member`, `Coach`, `Solo User`, `Challenge Sponsor` | `comms shell UX redesign` (`inbox`, `channels list`, `thread readability`, `broadcast compose`) | `KPIDashboardScreen` comms surfaces only (`inbox`, `inbox_channels`, `channel_thread`, `coach_broadcast_compose`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (messaging-first visual polish) | Review-ready: messaging-first visual hierarchy pass landed for Comms Hub tabs/search/channel rows/thread bubbles/composer actions while keeping existing route/API calls and role-gated broadcast behavior unchanged. |
 | `M6-COMMS-FR-PATTERN-MATRIX-B` | `review` | `M6 comms integration planning (docs-only)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `comms architecture mapping` (`Fourth Reason behavior -> Compass adaptation matrix`) | docs-only: `FOURTH_REASON_INTEGRATION_MATRIX`, additive mapping notes in `04_api_contracts`, assignment note in board | `Mobile-2` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Completed docs pass: landed pattern-by-pattern Fourth Reason messaging matrix with `build now / defer / blocked by DEP` statuses and explicit no-new-table adaptation notes, plus additive API mapping guidance. |
-| `COMMS-RECIPIENT-SCOPE-UX-SPEC-D` | `review` | `M6 comms scope UX prep (docs-only)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `comms recipient scope UX` (`recipient picker rules`, `challenge thread scope`, `blocked-state copy`) | docs-only: `COACHING_WIRING_ADDENDUM`, `05_acceptance_tests`, board notes | `Mobile-2` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Completed docs pass: recipient/target scope matrix, challenge participant chat policy, and canonical blocked-copy states landed with matching acceptance scenarios for allowed/blocked Comms paths. |
+| `COMMS-RECIPIENT-SCOPE-UX-SPEC-D` | `committed` | `M6 comms scope UX prep (docs-only)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `comms recipient scope UX` (`recipient picker rules`, `challenge thread scope`, `blocked-state copy`) | docs-only: `COACHING_WIRING_ADDENDUM`, `05_acceptance_tests`, board notes | `Mobile-2` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed: recipient/target scope matrix, challenge participant chat policy, canonical blocked-copy strings, and acceptance coverage for allowed/blocked Comms paths are synchronized and accepted. |
 | `W13-DEP-TRACKER-EVIDENCE-SYNC-B` | `committed` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency governance` (`closeout evidence linking + status normalization`) | docs-only: `PROJECT_CONTROL_PLANE`, `W13_DEP_SIGNOFF_BRIEF` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed docs pass: placeholder evidence link removed, DEP-002/004/005 evidence references normalized across control-plane + signoff brief, and Wave A GO/NO-GO language preserved. |
 | `A3-W12-SPOTCHECK-CLOSEOUT-DOC-SYNC-B` | `committed` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach QA governance` (`closeout packaging + board/doc alignment`) | docs-only: `AGENT_ASSIGNMENT_BOARD` A3/W12 spotcheck sections | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Accepted docs closeout sync: A3/W12 rows/specs now use accepted lifecycle status language with explicit determinism dependency chain, final pass counts (`36/36`), evidence paths, and commit references (`5dca5dc`). |
 | `M6-CHALLENGE-DETAIL-GOALS-LEADERBOARD-MVP-A` | `committed` | `M6 challenge detail UI cleanup` | `Team Leader`, `Team Member` | `challenge detail goals redesign` (`team goals`, `individual goals`, `leaderboard hero`, `kpi contribution drill-in`) | `KPIDashboardScreen` Challenge detail screen only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted: challenge detail goals/leaderboard MVP keeps leaderboard hero first, explicit Goals hierarchy, KPI-row drill-in behavior, and cumulative team-contribution meter semantics (safe fallback under thin payloads); no backend/schema/API changes (`4d67832`, `72242bb`). |
@@ -1107,7 +1107,7 @@ Produce the first implementation-ready coaching integration planning package (ma
 ### `COACHING-UI-W1-ALLOCATION-SHELLS`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `M3/M3b baseline + approved M6 planning overlap (manual-spec-driven UI prep)`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `coaching / communication` (`W1 allocation + route shells`)
@@ -2590,7 +2590,7 @@ Run a high-value end-to-end runtime validation/refinement pass for W5 AI assist 
 ### `COACHING-W5-OPS-AI-AUDIT-RUNTIME-VALIDATION-REFINEMENT-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `M6 coaching slice (W5 AI moderation/audit runtime validation/refinement)`
 - `Persona:` `Admin operator`, `Coach` (reviewer), `Sponsor ops` limited
 - `Flow:` `coaching / AI assist` (`admin moderation/audit runtime validation + refinement`)
@@ -4735,14 +4735,14 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 | 6 | `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | `committed` | `Admin-1` | `W13-DEP-002-TENANCY-DECISION-PACKET-A`, `W13-DEP-005-VENDOR-SECURITY-LEGAL-CHECKLIST-A` | Committed: single W13 dependency closeout tracker added in control plane with closure criteria, evidence links, owners, statuses, and explicit Wave A GO/NO-GO rule. |
 | 7 | `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-004 retention/compliance decision packet + control-plane linkage completed (docs-only; no runtime changes). |
 | 8 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
-| 9 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation block. |
-| 10 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. |
-| 11 | `W13-STREAM-MUX-READINESS-CONTRACT-LOCK-C` | `review` | `Admin-1` | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A`, `W13-MUX-CONTRACTS-AND-TESTS-A`, `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | Review-ready docs lock: deterministic status/error vocabulary finalized for Stream/Mux planned paths, 1:1 contract behavior to acceptance mapping tables added, and KPI no-side-effect regression guardrails tightened (docs-only). |
+| 9 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Admin-1` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation remains blocked (revalidated 2026-02-28): `PROJECT_CONTROL_PLANE` shows `Wave A = NO-GO` with `DEP-002/DEP-004/DEP-005` still `OPEN`; current sprint W13 lane is docs-first only (runtime/provider implementation prohibited). |
+| 10 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. Recheck (2026-02-28, Mobile-2): still blocked because upstream Stream/Mux runtime implementation assignments remain blocked by unresolved DEP gate approvals/signoff. |
+| 11 | `W13-STREAM-MUX-READINESS-CONTRACT-LOCK-C` | `committed` | `Admin-1` | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A`, `W13-MUX-CONTRACTS-AND-TESTS-A`, `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | Committed docs lock: deterministic status/error vocabulary finalized for Stream/Mux planned paths, 1:1 contract behavior to acceptance mapping tables added, and KPI no-side-effect regression guardrails tightened (docs-only). |
 
 ### `W13-CHAT-VIDEO-ARCH-RFC-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `W13 docs/control-plane exception`
 - `Persona:` `Owner-facing architecture governance`, `backend/platform planning`, `QA planning`
 - `Flow:` `third-party provider strategy` (`Stream Chat`, `Mux`, dependency-gated sequence)
@@ -4957,7 +4957,7 @@ Create an owner sign-off packet for `DEP-004` that defines retention/deletion po
 ### `W13-DEP-GATES-CLOSEOUT-TRACKER-A`
 
 #### Snapshot
-- `Status:` `committed`
+- `Status:` `active`
 - `Program status:` `W13 docs/control-plane exception`
 - `Persona:` `Controller`, `Architecture`, `Security/Legal`, `backend/platform`
 - `Flow:` `dependency closure tracking` (`DEP-002/004/005 go/no-go tracker`)
@@ -4965,6 +4965,7 @@ Create an owner sign-off packet for `DEP-004` that defines retention/deletion po
 - `Completion note (2026-02-28, Admin-1):` Added single dependency closeout tracker in `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` with closure criteria, evidence links, owners, and statuses for `DEP-002`, `DEP-004`, `DEP-005`.
 - `Wave A GO/NO-GO summary:` `GO` only when all three deps are `closed`; otherwise `NO-GO` and runtime Wave A/B/C assignments remain blocked.
 - `Current blocker status (2026-02-28, completion):` `none` (docs-only scope).
+- `Execution note (2026-02-28, Coach-1):` Re-opened by owner directive to close `DEP-002`/`DEP-004`/`DEP-005` with explicit owner risk-acceptance statement and refresh Wave A GO/NO-GO matrix consistency in control-plane tracker.
 
 #### Primary Objective
 Create a single control-plane gate tracker that shows closure criteria, status, owners, and evidence for `DEP-002`, `DEP-004`, and `DEP-005`, with a clear go/no-go line for starting Wave A runtime work.
@@ -4996,7 +4997,7 @@ Create a single control-plane gate tracker that shows closure criteria, status, 
 ### `W13-STREAM-MUX-READINESS-CONTRACT-LOCK-C`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `W13 docs/control-plane dependency-gated readiness`
 - `Persona:` `backend/platform contracts`, `QA planning`, `control-plane reviewers`
 - `Flow:` `Stream/Mux implementation-readiness contract lock`
@@ -5006,6 +5007,8 @@ Create a single control-plane gate tracker that shows closure criteria, status, 
 - `Completion note (2026-02-28, Coach-1):` Added explicit W13 contract-to-acceptance mapping table in contracts doc and mirrored coverage map in `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md` for 1:1 behavior coverage.
 - `Completion note (2026-02-28, Coach-1):` Strengthened KPI no-side-effect guardrails in regression scenario #35 to explicitly include Stream token/sync and Mux upload/playback/webhook no-mutation constraints.
 - `Validation note (2026-02-28, Coach-1):` Cross-checked W13 planned endpoint blocks against acceptance IDs and verified no contradiction with `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` Wave A GO/NO-GO (`OPEN` deps => `NO-GO`).
+- `Execution note (2026-02-28, Mobile-2):` Re-ran assignment validation checklist and confirmed the existing docs lock remains complete with no contract-to-acceptance drift.
+- `Validation note (2026-02-28, Mobile-2):` Verified 1:1 mapping parity across `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md` and `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md` for `STR-*`, `MUX-*`, and `KPI-NO-SIDE-EFFECT-GUARD` coverage IDs; confirmed Wave A remains `NO-GO` while `DEP-002`, `DEP-004`, and `DEP-005` are `OPEN`.
 - `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
 - `Current blocker status (2026-02-28, completion):` `none`.
 
@@ -5218,6 +5221,10 @@ Redesign Team tab `Challenges` list so it is less dense and more actionable:
 - `Flow:` `team challenges validation` (`hero/list/drawer/join-open route regression`)
 - `Owner:` `Mobile-2`
 - `Current blocker status (2026-02-28, launch):` `none`; dependency cleared (`M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` is committed).
+- `Execution note (2026-02-28, Mobile-1 re-run):` Re-opened for runtime QA hardening re-validation (no UI edits). Re-checking leader/member join-open routing matrix and refreshing evidence path.
+- `Validation note (2026-02-28, Mobile-1 re-run):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed.
+- `Validation note (2026-02-28, Mobile-1 re-run):` Refreshed runtime artifact: `/Users/jon/compass-kpi/screenshots/M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B/runtime-rerun-2026-02-28.png`.
+- `Current blocker status (2026-02-28, re-run completion):` `none`.
 - `Completion note (2026-02-28, Mobile-1 execution):` QA-only regression check completed for Team `Challenges` hero/list/drawer behavior across leader/member personas. No regressions found; no app code changes required.
 - `Validation note (2026-02-28, Mobile-1 execution):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed.
 - `Validation note (2026-02-28, Mobile-1 execution):` Evidence captured in `/Users/jon/compass-kpi/screenshots/M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B/` (`leader-team-challenges-list.png`, `member-team-challenges-list.png`, `runtime-current-team-challenges.png`).
@@ -5578,6 +5585,8 @@ Create a Compass implementation matrix from Fourth Reason messaging behavior:
 - `Completion note (2026-02-28, Mobile-2):` Added implementation-ready recipient picker rules by persona, challenge participant access model, canonical blocked-action copy strings, and screen-by-screen behavior mapping for `inbox`, `inbox_channels`, `channel_thread`, and `coach_broadcast_compose`.
 - `Validation note (2026-02-28, Mobile-2):` Added acceptance scenarios for allowed/blocked recipient and target scope cases, and ensured UX states map 1:1 to policy rules with no endpoint-family additions.
 - `Current blocker status (2026-02-28, review):` `none`.
+- `Controller acceptance note (2026-02-28, Coach-1):` Re-validated scoped docs for 1:1 policy mapping between recipient matrix, challenge-participant thread rules, and canonical blocked copy strings; assignment accepted as committed with docs-only scope preserved.
+- `Current blocker status (2026-02-28, committed):` `none`.
 
 #### Primary Objective
 Produce implementation-ready UX spec for recipient/target scope behavior in Comms:
