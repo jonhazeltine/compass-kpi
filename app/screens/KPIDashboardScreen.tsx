@@ -11217,8 +11217,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   <>
                     <View style={[styles.bottomIconSvgWrap, isActive && { backgroundColor: bottomTabTheme.activeBg }]}>
                       <TabIcon
-                        width={36}
-                        height={36}
+                        width={40}
+                        height={40}
                         color={iconColor}
                         style={[styles.bottomIconSvg, bottomTabIconStyleByKey[tab]]}
                       />
@@ -18639,7 +18639,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-evenly',
     alignItems: 'flex-end',
     paddingHorizontal: 4,
-    paddingTop: 7,
+    paddingTop: 4,
     paddingBottom: 6,
     shadowColor: '#1a2138',
     shadowOpacity: 0.10,
@@ -18650,8 +18650,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     flex: 1,
-    minHeight: 48,
-    paddingBottom: 2,
+    minHeight: 44,
+    paddingBottom: 0,
     zIndex: 2,
   },
   bottomItemInner: {
@@ -18659,7 +18659,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bottomItemLogCta: {
-    minHeight: 48,
+    minHeight: 44,
     zIndex: 10,
   },
   fxProjectile: {
@@ -18736,7 +18736,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.15,
     color: '#8d95a5',
-    marginTop: 1,
+    marginTop: 0,
   },
   bottomTabLabelActive: {
     fontWeight: '800',
@@ -18804,7 +18804,7 @@ const styles = StyleSheet.create({
     lineHeight: 13,
     fontWeight: '900',
     letterSpacing: 0.8,
-    marginTop: 3,
+    marginTop: 1,
   },
   drawerBackdrop: {
     flex: 1,
