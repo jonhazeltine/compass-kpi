@@ -154,7 +154,7 @@ Only use long custom prompts when the board is missing required details or a one
 | ID | Status | Program status | Persona | Flow | Screens | Blocker | Next action |
 |---|---|---|---|---|---|---|---|
 | `COACHING-INTEGRATION-A` | `unblocked via explicit owner approval` | `M3/M3b baseline + approved M6 planning overlap` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` | host surfaces across `Home`, `Challenge`, `Team`, `Profile` + future `Inbox/Journeys` | Former blocker resolved: owner approved pull-forward planning work; assignment spec now defined; docs-only to avoid code/sprint collision while `TEAM-MEMBER-PARITY-A` runs | Execute via `Coach-1`; update board first, then brief report back |
-| `W13-RUNTIME-PARITY-AND-HARDENING-A` | `queued` | `W13 runtime parity/hardening` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `stream+mux runtime parity and hardening` | runtime parity/hardening surfaces not yet executable | Sequenced behind runtime prerequisites (`W13-IMPLEMENT-STREAM-ADAPTER-A` and `W13-IMPLEMENT-MUX-ADAPTER-A`) and waiting for both to reach `committed`/`pushed`. | Keep queued and launch immediately after upstream runtime adapter assignments are both complete. |
+| `W13-RUNTIME-PARITY-AND-HARDENING-A` | `review` | `W13 runtime parity/hardening` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `stream+mux runtime parity and hardening` | runtime parity/hardening surfaces in checkpoint validation/review | Runtime checkpoints landed and are under control-plane acceptance review (`c8d85ea`, `103d725`). | Validate checkpoint evidence against assignment acceptance criteria and close out or relaunch targeted deltas only. |
 
 ## Recently Completed (Awaiting Review / Landed on Branch)
 
@@ -4737,7 +4737,7 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 | 7 | `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-004 retention/compliance decision packet + control-plane linkage completed (docs-only; no runtime changes). |
 | 8 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `queued` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation is unblocked by closed deps and `Wave A = GO`; queued for worker assignment. |
 | 9 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `active` | `Admin-1` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation activated: dependency gates are closed and control-plane Wave A matrix is `GO`. |
-| 10 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `queued` | `Mobile-2` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Assignment spec is now present; runtime execution remains dependency-sequenced behind Stream/Mux adapter completion (DEP gates already `CLOSED`, Wave A control-plane state remains `GO`). |
+| 10 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `review` | `Mobile-2` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Runtime checkpoint returns landed for hardening/recovery (`c8d85ea`, `103d725`); dependency gates remain `CLOSED` and Wave A control-plane state remains `GO`. |
 | 11 | `W13-STREAM-MUX-READINESS-CONTRACT-LOCK-C` | `committed` | `Admin-1` | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A`, `W13-MUX-CONTRACTS-AND-TESTS-A`, `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | Committed docs lock: deterministic status/error vocabulary finalized for Stream/Mux planned paths, 1:1 contract behavior to acceptance mapping tables added, and KPI no-side-effect regression guardrails tightened (docs-only). |
 
 ### `W13-CHAT-VIDEO-ARCH-RFC-A`
@@ -5048,13 +5048,15 @@ Finalize Stream/Mux implementation-readiness in contracts/tests docs only, prese
 ### `W13-RUNTIME-PARITY-AND-HARDENING-A`
 
 #### Snapshot
-- `Status:` `queued`
+- `Status:` `review`
 - `Program status:` `W13 runtime parity/hardening`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`
 - `Flow:` `stream+mux runtime parity and hardening`
 - `Owner:` `Mobile-2`
 - `Execution note (2026-02-28, Controller):` Assignment spec added to remove control-plane ambiguity and keep queue language aligned with closed dependencies and `Wave A = GO`.
-- `Current blocker status (2026-02-28, queue):` `dependency-sequenced` behind runtime adapter completion only (`W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A`); not blocked by DEP gates.
+- `Execution note (2026-02-28, Mobile-2):` QA-only recovery scaffold prepared (endpoint smoke, auth/role gate, messaging+challenge regression checklists, and evidence matrix template) under `/Users/jon/compass-kpi/app/test-results/w13-runtime-parity-and-hardening-a/`; final matrix execution explicitly paused pending controller green light on latest merged Stream+Mux runtime state.
+- `Completion note (2026-02-28, Controller checkpoint sync):` Runtime checkpoint returns accepted into control-plane review with landed runtime commits `c8d85ea` and `103d725`; board status advanced from `queued` to `review` pending final acceptance pass.
+- `Current blocker status (2026-02-28, review):` `none` from dependency gating (`DEP-002`/`DEP-004`/`DEP-005` are `CLOSED`); remaining work is acceptance confirmation only.
 
 #### Primary Objective
 Execute runtime parity and hardening pass after Stream and Mux adapters land, ensuring provider-backed chat/video behavior is deterministic across coach portal and mobile surfaces without expanding API families or violating persona guardrails.
