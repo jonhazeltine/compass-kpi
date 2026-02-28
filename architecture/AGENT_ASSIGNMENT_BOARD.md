@@ -5565,7 +5565,7 @@ Create a Compass implementation matrix from Fourth Reason messaging behavior:
 ### `COMMS-RECIPIENT-SCOPE-UX-SPEC-D`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `M6 comms scope UX prep (docs-only)`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`
 - `Flow:` `comms recipient scope UX` (`recipient picker`, `challenge scope`, `blocked-state copy`)
