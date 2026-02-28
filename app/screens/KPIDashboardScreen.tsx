@@ -7233,25 +7233,45 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             {challengeFlowScreen === 'list' ? (
               <>
                 <View style={styles.challengeListShell}>
-                  <View style={styles.challengeListHeaderRow}>
-                    <Text style={styles.challengeListTitle}>Challenges</Text>
-                    {challengeCreateAllowed ? (
-                      <TouchableOpacity
-                        style={styles.challengeListCreateBtn}
-                        onPress={() => {
-                          setChallengeMemberCreateMode('team');
-                          setChallengeMemberCreateModalVisible(true);
-                        }}
-                      >
-                        <Text style={styles.challengeListCreateBtnText}>Create ⊕</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      renderKnownLimitedDataChip('challenge create')
-                    )}
+                  {/* ── Hero Card (replaces old header) ── */}
+                  <View style={styles.challengeHeroCard}>
+                    <View style={styles.challengeHeroAccent} />
+                    <View style={styles.challengeHeroBody}>
+                      <View style={styles.challengeHeroTopRow}>
+                        <Text style={styles.challengeHeroEyebrow}>
+                          {challengeStateTab === 'active' ? '🏆 Active Challenges' : challengeStateTab === 'upcoming' ? '📅 Upcoming' : '📊 History'}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <Text style={styles.challengeHeroCount}>{challengeCurrentStateRows.length}</Text>
+                          {challengeCreateAllowed ? (
+                            <TouchableOpacity
+                              style={styles.challengeListCreateBtn}
+                              onPress={() => {
+                                setChallengeMemberCreateMode('team');
+                                setChallengeMemberCreateModalVisible(true);
+                              }}
+                            >
+                              <Text style={styles.challengeListCreateBtnText}>Create ⊕</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                      </View>
+                      <Text style={styles.challengeHeroTitle}>
+                        {challengeStateTab === 'active'
+                          ? 'Compete, track, and win'
+                          : challengeStateTab === 'upcoming'
+                            ? 'Coming up next'
+                            : 'Past results'}
+                      </Text>
+                      <Text style={styles.challengeHeroSub}>
+                        {challengeStateTab === 'active'
+                          ? 'Tap a challenge to preview or open your progress.'
+                          : challengeStateTab === 'upcoming'
+                            ? 'Preview upcoming challenges and join early.'
+                            : 'Review completed challenge results and rankings.'}
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={styles.challengeListSub}>
-                    Challenge landing opens to your active challenge. Switch states quickly and open details or leaderboard from any challenge.
-                  </Text>
                   <View style={styles.challengeMemberSegmentRow}>
                     {([
                       { key: 'active', label: 'Active' },
@@ -7310,33 +7330,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     : null}
 
                   <View style={styles.challengeListCardStack}>
-                    {/* ── Hero Card ── */}
-                    <View style={styles.challengeHeroCard}>
-                      <View style={styles.challengeHeroAccent} />
-                      <View style={styles.challengeHeroBody}>
-                        <View style={styles.challengeHeroTopRow}>
-                          <Text style={styles.challengeHeroEyebrow}>
-                            {challengeStateTab === 'active' ? '🏆 Active Challenges' : challengeStateTab === 'upcoming' ? '📅 Upcoming' : '📊 History'}
-                          </Text>
-                          <Text style={styles.challengeHeroCount}>{challengeCurrentStateRows.length}</Text>
-                        </View>
-                        <Text style={styles.challengeHeroTitle}>
-                          {challengeStateTab === 'active'
-                            ? 'Compete, track, and win'
-                            : challengeStateTab === 'upcoming'
-                              ? 'Coming up next'
-                              : 'Past results'}
-                        </Text>
-                        <Text style={styles.challengeHeroSub}>
-                          {challengeStateTab === 'active'
-                            ? 'Tap a challenge to preview or open your progress.'
-                            : challengeStateTab === 'upcoming'
-                              ? 'Preview upcoming challenges and join early.'
-                              : 'Review completed challenge results and rankings.'}
-                        </Text>
-                      </View>
-                    </View>
-
                     {/* ── Simplified Challenge Cards ── */}
                     {challengeCurrentStateRows.length > 0 ? (
                       challengeCurrentStateRows.map((item) => (
