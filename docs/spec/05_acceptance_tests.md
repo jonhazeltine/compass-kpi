@@ -221,6 +221,12 @@
 - When blocked reason is out-of-scope broadcast target
 - Then UI displays exact copy `You can only broadcast to channels within your authorized scope.`
 
+### 13H) Comms Screen Mapping Policy Parity
+- Given recipient/target scope policy is documented for `inbox`, `inbox_channels`, `channel_thread`, and `coach_broadcast_compose`
+- When each screen renders with authorized and blocked contexts
+- Then visible recipients/targets, disabled states, and blocked-copy outcomes match the documented policy mapping 1:1
+- And no screen introduces a policy exception outside server-authorized scope outcomes
+
 ### 14) Coaching Journey and Lesson Progress
 - Given an authenticated user and active coaching journey with milestones/lessons
 - When user requests `GET /api/coaching/journeys` and `GET /api/coaching/journeys/{id}`
