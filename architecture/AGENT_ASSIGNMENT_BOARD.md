@@ -4734,9 +4734,9 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 | 5 | `W13-DEP-002-TENANCY-DECISION-PACKET-A` | `committed` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-002 decision packet committed with model comparison, recommendation, Stream/Mux implications, enforcement rules, migration path, and explicit owner sign-off prompts. |
 | 6 | `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | `committed` | `Admin-1` | `W13-DEP-002-TENANCY-DECISION-PACKET-A`, `W13-DEP-005-VENDOR-SECURITY-LEGAL-CHECKLIST-A` | Committed: single W13 dependency closeout tracker added in control plane with closure criteria, evidence links, owners, statuses, and explicit Wave A GO/NO-GO rule. |
 | 7 | `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-004 retention/compliance decision packet + control-plane linkage completed (docs-only; no runtime changes). |
-| 8 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
-| 9 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Admin-1` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation remains blocked (revalidated 2026-02-28): `PROJECT_CONTROL_PLANE` shows `Wave A = NO-GO` with `DEP-002/DEP-004/DEP-005` still `OPEN`; current sprint W13 lane is docs-first only (runtime/provider implementation prohibited). |
-| 10 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. Recheck (2026-02-28, Mobile-2): still blocked because upstream Stream/Mux runtime implementation assignments remain blocked by unresolved DEP gate approvals/signoff. |
+| 8 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `queued` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation is unblocked by closed deps and `Wave A = GO`; queued for worker assignment. |
+| 9 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `active` | `Admin-1` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation activated: dependency gates are closed and control-plane Wave A matrix is `GO`. |
+| 10 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `queued` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity/hardening queued pending completion of runtime implementation assignments 8 and 9. |
 | 11 | `W13-STREAM-MUX-READINESS-CONTRACT-LOCK-C` | `committed` | `Admin-1` | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A`, `W13-MUX-CONTRACTS-AND-TESTS-A`, `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | Committed docs lock: deterministic status/error vocabulary finalized for Stream/Mux planned paths, 1:1 contract behavior to acceptance mapping tables added, and KPI no-side-effect regression guardrails tightened (docs-only). |
 
 ### `W13-CHAT-VIDEO-ARCH-RFC-A`
@@ -4749,7 +4749,7 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 - `Owner:` `Controller`
 - `Execution note (2026-02-28, Controller):` Implemented docs-first planning slice spanning sprint gate, control plane, SOW parity, decisions log, API contracts, acceptance tests, and Fourth Reason parity appendices.
 - `Completion note (2026-02-28, Controller):` Locked provider decisions and queued dependency-ordered assignments without runtime code changes.
-- `Current blocker status (2026-02-28, completion):` runtime blocked by `DEP-002`, `DEP-004`, `DEP-005`.
+- `Current blocker status (2026-02-28, completion):` `none` for dependency gating; runtime queue is now unblocked by closed `DEP-002`/`DEP-004`/`DEP-005` and `Wave A = GO`.
 
 #### Primary Objective
 Lock architecture/spec/test/board source-of-truth for Stream Chat + Mux integration sequencing while preserving FE-00 lane and non-negotiables.
@@ -5009,9 +5009,9 @@ Create a single control-plane gate tracker that shows closure criteria, status, 
 - `Completion note (2026-02-28, Coach-1):` Updated `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md` with deterministic status/error vocab lock for Stream token/sync and Mux upload/playback/webhook planned paths, preserving dependency gates on all planned runtime sections.
 - `Completion note (2026-02-28, Coach-1):` Added explicit W13 contract-to-acceptance mapping table in contracts doc and mirrored coverage map in `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md` for 1:1 behavior coverage.
 - `Completion note (2026-02-28, Coach-1):` Strengthened KPI no-side-effect guardrails in regression scenario #35 to explicitly include Stream token/sync and Mux upload/playback/webhook no-mutation constraints.
-- `Validation note (2026-02-28, Coach-1):` Cross-checked W13 planned endpoint blocks against acceptance IDs and verified no contradiction with `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` Wave A GO/NO-GO (`OPEN` deps => `NO-GO`).
+- `Validation note (2026-02-28, Coach-1):` Cross-checked W13 planned endpoint blocks against acceptance IDs and verified no contradiction with `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` Wave A GO/NO-GO logic (state-dependent and currently `GO` with deps closed).
 - `Execution note (2026-02-28, Mobile-2):` Re-ran assignment validation checklist and confirmed the existing docs lock remains complete with no contract-to-acceptance drift.
-- `Validation note (2026-02-28, Mobile-2):` Verified 1:1 mapping parity across `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md` and `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md` for `STR-*`, `MUX-*`, and `KPI-NO-SIDE-EFFECT-GUARD` coverage IDs; confirmed Wave A remains `NO-GO` while `DEP-002`, `DEP-004`, and `DEP-005` are `OPEN`.
+- `Validation note (2026-02-28, Mobile-2):` Verified 1:1 mapping parity across `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md` and `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md` for `STR-*`, `MUX-*`, and `KPI-NO-SIDE-EFFECT-GUARD` coverage IDs; this contracts/tests lock remains consistent with current control-plane state (`DEP-002`/`DEP-004`/`DEP-005` closed, Wave A = `GO`).
 - `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
 - `Current blocker status (2026-02-28, completion):` `none`.
 
