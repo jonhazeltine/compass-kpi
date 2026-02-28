@@ -4971,32 +4971,41 @@ Reduce Team Focus KPI visual footprint by shrinking KPI tile containers and card
 - `Flow:` `global bottom navigation polish`
 - `Owner:` `Claude-1`
 - `Current blocker status (2026-02-28, launch):` `none`.
-- `Completion note (2026-02-28, Claude-1):` Bottom bar tuned per request: icons increased (`34 -> 36`), icon-label gap tightened (`marginTop 3 -> 1`, center LOG label `5 -> 3`), and bar height reduced (`paddingTop 10 -> 7`, `minHeight 52 -> 48`) while preserving tab behavior and LOG center hierarchy.
-- `Validation note (2026-02-28, Claude-1):` Before/after evidence captured under `/Users/jon/compass-kpi/screenshots/M6-BOTTOM-BAR-TUNING-A/`.
-- `Commit:` `c0c9d4a`
 
-#### Primary Objective
-Tune the bottom bar visual balance: slightly larger icons, tighter icon-label spacing, and slightly shorter bar height.
+#### Final Style Deltas (original → committed)
 
-#### Scope In
-- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` bottom nav styles/components only.
+| Property | Original | Committed | File / Line |
+|---|---|---|---|
+| Non-LOG icon size (JSX) | `34×34` | `40×40` | `KPIDashboardScreen.tsx` L11220-11221 |
+| `bottomNav.paddingTop` | `10` | `4` | L18642 |
+| `bottomItem.minHeight` | `52` | `44` | L18653 |
+| `bottomItem.paddingBottom` | `2` | `0` | L18654 |
+| `bottomItemLogCta.minHeight` | `52` | `44` | L18662 |
+| `bottomTabLabel.marginTop` | `3` | `0` | L18739 |
+| `bottomLogLabel.marginTop` | `5` | `1` | L18807 |
+| `bottomTabIconStyleByKey.comms` | `null` | `{ transform: [{ translateY: 3.5 }] }` | L2173 |
 
-#### Scope Out
-- Tab routing/behavior changes
-- Screen content/layout changes above the bottom bar
-- Backend/schema/API changes
+#### Evidence Screenshots
 
-#### Hard Constraints
-- Preserve current tab order and active-state behavior.
-- Keep `LOG` center tab hierarchy/shape intact (only proportional polish allowed).
-- Maintain accessibility tap targets.
+| Sim | Before | After (final r4) |
+|---|---|---|
+| iPhone 17 Pro | `screenshots/M6-BOTTOM-BAR-TUNING-A/before_iphone17pro.png` | `screenshots/M6-BOTTOM-BAR-TUNING-A/after_r4_iphone17pro.png` |
+| User sim | `screenshots/M6-BOTTOM-BAR-TUNING-A/before_user_sim.png` | `screenshots/M6-BOTTOM-BAR-TUNING-A/after_r4_user_sim.png` |
+
+Intermediate rounds also captured: `after_user_sim.png` (r1), `after_r2_*.png` (r2), `after_r3_*.png` (r3).
+
+#### Commit Chain
+- `c0c9d4a` — r1: initial tuning (icons 34→36, paddingTop 10→7, minHeight 52→48, label gaps tightened)
+- `601b935` — r2: aggressive compaction (icons 36→40, paddingTop 7→4, minHeight 48→44, label gaps to 0/1, paddingBottom 2→0)
+- `78cb3e7` — r3: Messages icon translateY:2 optical correction
+- `b0fb748` — r4: Messages icon translateY 2→3.5 (final alignment)
 
 #### Validation
-- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
-- iPhone User sim + iPhone 17 Pro sim visual check.
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` — **0 errors** (verified each round).
+- iPhone User sim + iPhone 17 Pro sim visual check — **pass** (verified each round).
 
-#### Report-Back
-- Update board status first (`active` -> `review`/`blocked`).
-- Files changed + line refs.
-- Before/after screenshot paths.
-- Commit hash.
+#### Constraints Verified
+- Tab order unchanged: Messages → Team → LOG → Reports → Coach.
+- LOG center button (68px circle, glow ring, sparkles) untouched.
+- Accessibility tap targets preserved: `bottomIconSvgWrap` 44×44, `bottomItem` minHeight 44.
+- Active/inactive highlight states verified on both sims — no regressions.
