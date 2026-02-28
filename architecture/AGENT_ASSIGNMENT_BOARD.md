@@ -129,12 +129,16 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-W12-TEAM-PERSON-PROFILE-CARD-AND-FOCUS-EDITOR-A` | `closed` | `M6 / W12 (team leader ops + person profile UX)` | `Team Leader` (primary), `Team Member` (limited profile-only behavior) | `team interaction refinement` (`focus editor usability`, `avatar/profile split`, `leader KPI detail`, `DM handoff`) | `KPIDashboardScreen` Team surface + person profile card surface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + persona-gated card UX) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
 | `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A` | `closed` | `M6 / W12` | `Team Leader`, `Team Member`, `Solo User` | `challenge surface` (`team-pattern interaction alignment`) | `KPIDashboardScreen` Challenge surface only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + wiring pass) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
 | `M8-MOBILE-RUNTIME-REGRESSION-MATRIX-A` | `committed+pushed` | `M8 mobile hardening` | `Team Leader`, `Team Member`, `Solo User`, `Coach`, `Challenge Sponsor` | `mobile runtime QA` (`critical-route regression matrix + screenshot proof`) | `Home`, `Team`, `Challenge`, `Comms`, `Journeys/Lessons`, `Log` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | N/A (runtime validation swath) | Accepted and pushed: runtime matrix completed (30/30 pass, 0 blockers) with consolidated evidence in `app/test-results/m8-mobile-regression-matrix-a/`; assignment remained QA-only with no app/backend code edits. |
-| `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `review` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Determinism blocker cleared by `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A`: dev-only strict role override plus refreshed deterministic matrix evidence now validates `coach`, `team_leader`, and `challenge_sponsor` route outcomes (`36/36` pass) under `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/`. |
-| `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A` | `review` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach runtime test harness` (`deterministic role-switch validation without super_admin bleed`) | app runtime/test harness only (`AdminAuthzContext`, spotcheck harness scripts/evidence) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (app/runtime harness scope only) | N/A (runtime harness determinism) | Completed: deterministic dev-only role override finalized/validated and runtime role matrix evidence refreshed (`coach`, `team_leader`, `challenge_sponsor`, 36 checks, 0 failures). |
-| `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A` | `active` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `backend/platform` | `retention/compliance governance` (`chat/video metadata policy packet`) | docs-only: retention/deletion policy packet + control-plane dependency linkage | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | New: produce owner sign-off decision packet for DEP-004 with explicit retention/deletion matrix and provider reconciliation rules for Stream/Mux metadata. |
+| `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `committed` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Determinism blocker cleared by `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A`: strict role override + refreshed deterministic matrix (`36/36` pass) confirms coach/team_leader/challenge_sponsor runtime route outcomes. |
+| `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A` | `committed` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach runtime test harness` (`deterministic role-switch validation without super_admin bleed`) | app runtime/test harness only (`AdminAuthzContext`, spotcheck harness scripts/evidence) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (app/runtime harness scope only) | N/A (runtime harness determinism) | Completed and accepted: deterministic dev-only role override finalized/validated and runtime role matrix evidence refreshed (`coach`, `team_leader`, `challenge_sponsor`, 36 checks, 0 failures). |
+| `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A` | `committed` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `backend/platform` | `retention/compliance governance` (`chat/video metadata policy packet`) | docs-only: retention/deletion policy packet + control-plane dependency linkage | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed: owner sign-off packet landed with retention/deletion matrix, legal-hold rules, provider reconciliation model, unresolved decisions, and control-plane linkage. |
 | `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | `committed` | `W13 docs/control-plane exception` | `Controller`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency closure tracking` (`DEP-002/004/005 closeout board + go/no-go criteria`) | docs-only: project control plane + assignment board closeout table | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed: control-plane tracker now centralizes DEP-002/DEP-004/DEP-005 closure criteria, evidence, owners, statuses, and explicit Wave A GO/NO-GO rule. |
+| `M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` | `active` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges list redesign` (`hero header`, `reduced card detail`, `preview bottom drawer`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer routing behavior | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Active (reassigned from Claude-1 due availability): redesign Team Challenges list with hero card treatment, simplified challenge cards + progress meter, bottom-drawer preview (KPI list/dates/summary/join), and joined-card routing to existing challenge detail screen. |
+| `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B` | `queued` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges validation` (`hero/list/drawer/join-open route regression`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer behavior | `Mobile-2` | `codex/a2-admin-list-usability-pass` (QA-only; no code edits) | manual-spec-driven (owner-directed design pass) | Queued QA follow-on: runtime screenshot + behavior matrix after `M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` lands; file edits prohibited. |
+| `W13-DEP-TRACKER-EVIDENCE-SYNC-B` | `queued` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency governance` (`closeout evidence linking + status normalization`) | docs-only: `PROJECT_CONTROL_PLANE`, `AGENT_ASSIGNMENT_BOARD` W13 dependency sections | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Queued docs pass: replace placeholder evidence refs, normalize DEP-002/004/005 tracker linkage, and keep Wave A GO/NO-GO gate explicit with no runtime scope drift. |
+| `A3-W12-SPOTCHECK-CLOSEOUT-DOC-SYNC-B` | `queued` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach QA governance` (`closeout packaging + board/doc alignment`) | docs-only: `AGENT_ASSIGNMENT_BOARD` A3/W12 spotcheck sections | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Queued docs pass: finalize deterministic spotcheck closeout wording and ensure accepted evidence paths/commits are explicit and unambiguous. |
 | `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `committed+pushed` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Accepted and pushed: FE-00 checkpoint moved from pending to concrete complete state in sprint gate, and frontend acceptance harness now includes explicit FE-00 pass/fail closeout criteria with traceability consistency checks. |
-| `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `review` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Re-execution complete (2026-02-28): deterministic reset/seed/smoke rerun passed with no runbook drift; refreshed evidence logs captured under `app/test-results/m8-seed-data-smoke-verification-a/04-06-*`. |
+| `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `committed` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Re-execution accepted (2026-02-28): deterministic reset/seed/smoke rerun passed with no runbook drift; refreshed evidence logs captured under `app/test-results/m8-seed-data-smoke-verification-a/04-06-*`. |
 | `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team identity card` (`leader edit controls`, `member read-only rendering`) | `KPIDashboardScreen` Team tab top card only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed: polished role-aware Team identity card landed with leader-only edit flow (avatar/background picker modal + save/cancel) and member read-only rendering. TypeScript clean. |
 | `M6-TEAM-FOCUS-CARD-MERGE-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team focus cards` (`merge projection+focus cards`, `leader edit trigger`, `remove focus pills`) | `KPIDashboardScreen` Team tab Team Focus section only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed (owner-approved scope fold-in): Team Focus KPI card + Team Focus projections merged into one section with compact leader edit control; legacy focus pill block removed. |
 | `M6-TEAM-LEADER-HEALTH-SUMMARY-RESTORE-A` | `committed` | `M6 team UI cleanup` | `Team Leader` | `team leader dashboard` (`team health summary restore`) | `KPIDashboardScreen` Team tab leader view (`above Team Members list`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted: Team Health Summary restored above Team Members and KPI Concern Flags removed in committed follow-on (`a45c0bd`, `2f5f1d6`). |
@@ -5009,3 +5013,162 @@ Intermediate rounds also captured: `after_user_sim.png` (r1), `after_r2_*.png` (
 - LOG center button (68px circle, glow ring, sparkles) untouched.
 - Accessibility tap targets preserved: `bottomIconSvgWrap` 44×44, `bottomItem` minHeight 44.
 - Active/inactive highlight states verified on both sims — no regressions.
+
+### `M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 team UI cleanup`
+- `Persona:` `Team Leader`, `Team Member`
+- `Flow:` `team challenges list redesign` (`hero header`, `simplified cards`, `preview drawer + join/open behavior`)
+- `Owner:` `Mobile-1`
+- `Current blocker status (2026-02-28, launch):` `none`.
+- `Reassignment note (2026-02-28):` Reassigned from `Claude-1` to `Mobile-1` for collision-safe execution continuity.
+
+#### Primary Objective
+Redesign Team tab `Challenges` list so it is less dense and more actionable:
+- hero-style header card at top of Challenges list page
+- simplified challenge cards with progress meter + essentials only
+- bottom-drawer challenge preview for non-joined challenges
+- joined challenges route directly to existing challenge detail screen
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (Team tab `Challenges` list page and related bottom-drawer preview interaction only)
+
+#### Scope Out
+- Challenge detail screen redesign
+- Team tab `Team` page layout changes
+- Backend/schema/API changes
+
+#### Required UX Changes
+1. Header card on Team `Challenges` tab must become a hero card:
+   - visual language should feel related to Team profile card, but clearly distinct as challenges-focused.
+2. Challenge list cards must reduce detail density:
+   - keep title, date range, short summary, progress meter.
+   - remove high-detail content from list rows.
+3. Non-joined challenge tap behavior:
+   - open bottom drawer preview (not full navigation).
+   - drawer includes KPI list tracked, dates, summary/preview content, and `Join` button.
+4. Joined challenge tap behavior:
+   - open existing challenge detail screen directly.
+
+#### Hard Constraints
+- Keep existing role gates and challenge join logic intact.
+- Do not change endpoint families or payload contracts.
+- Preserve existing challenge detail route and routing keys.
+- No concurrent edits outside this screen file.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime checks for both personas:
+  - hero card visible on Team `Challenges` list
+  - list cards show progress meter + essentials only
+  - non-joined card opens bottom drawer preview with KPI list + dates + join action
+  - joined card routes to existing detail screen
+
+#### Report-Back
+- Update board status first (`active` -> `review`/`blocked`).
+- Files changed + line refs.
+- Before/after screenshot paths.
+- Commit hash.
+
+### `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M6 team UI cleanup`
+- `Persona:` `Team Leader`, `Team Member`
+- `Flow:` `team challenges validation` (`hero/list/drawer/join-open route regression`)
+- `Owner:` `Mobile-2`
+- `Current blocker status (2026-02-28, queue):` blocked until `M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` is `committed`.
+
+#### Primary Objective
+Run QA-only validation on Team `Challenges` redesign once code lands:
+- verify hero header behavior/visuals
+- verify simplified card density + progress meter
+- verify non-joined challenge opens preview bottom drawer
+- verify joined challenge opens existing challenge detail screen
+
+#### Scope In
+- Runtime verification and screenshot evidence only.
+- `KPIDashboardScreen` Team `Challenges` list behavior checks.
+
+#### Scope Out
+- Any code edits.
+- Backend/schema/API/doc-structure changes.
+
+#### Required Validation
+- Role pass for `team_leader` and `team_member`.
+- Join/open routing matrix with evidence screenshots in:
+  - `/Users/jon/compass-kpi/screenshots/M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B/`
+
+#### Report-Back
+- Update board status first (`queued` -> `review`/`blocked`).
+- Validation matrix summary.
+- Screenshot paths.
+- Any regressions with exact repro steps.
+
+### `W13-DEP-TRACKER-EVIDENCE-SYNC-B`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `W13 docs/control-plane exception`
+- `Persona:` `Product`, `Legal`, `Architecture`, `Security/Legal`, `backend/platform`
+- `Flow:` `dependency governance` (`closeout evidence linking + status normalization`)
+- `Owner:` `Coach-1`
+- `Current blocker status (2026-02-28, queue):` `none` (docs-only).
+
+#### Primary Objective
+Tighten W13 dependency tracker evidence quality without changing implementation scope:
+- replace placeholder evidence links with concrete artifact links where available
+- align dependency status wording across control-plane + board
+- keep Wave A `GO/NO-GO` gate language explicit and unchanged
+
+#### Scope In
+- `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md`
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+
+#### Scope Out
+- Runtime/provider implementation.
+- API/schema/folder boundary changes.
+
+#### Required Validation
+- Verify all `DEP-002`, `DEP-004`, `DEP-005` evidence links resolve to in-repo artifacts.
+- Confirm no status contradiction between control-plane tracker and board rows.
+
+#### Report-Back
+- Updated files + line refs.
+- Before/after tracker status summary.
+- Commit hash.
+
+### `A3-W12-SPOTCHECK-CLOSEOUT-DOC-SYNC-B`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `A3/W12 admin+coach hardening`
+- `Persona:` `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor`
+- `Flow:` `admin/coach QA governance` (`closeout packaging + board/doc alignment`)
+- `Owner:` `Admin-1`
+- `Current blocker status (2026-02-28, queue):` `none` (docs-only).
+
+#### Primary Objective
+Finalize A3/W12 spotcheck closeout packaging in the board:
+- ensure deterministic-role-override dependency chain is clearly stated
+- ensure final pass counts/evidence paths are explicit and unambiguous
+- remove stale `review` phrasing for accepted rows
+
+#### Scope In
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md` A3/W12 rows and spec notes only.
+
+#### Scope Out
+- Runtime code changes.
+- Admin/coach route behavior changes.
+- Backend/schema/API changes.
+
+#### Required Validation
+- Confirm A3 rows use final accepted lifecycle status language.
+- Confirm commit references and evidence folder paths are present.
+
+#### Report-Back
+- Updated row/spec references with line refs.
+- Commit hash.
