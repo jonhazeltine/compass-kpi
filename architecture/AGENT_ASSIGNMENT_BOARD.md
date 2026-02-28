@@ -55,6 +55,13 @@ Only use long custom prompts when the board is missing required details or a one
 - Admin track: A2 usability pass committed; branch contains additional docs/control-plane commits
 - Challenge flow: CTA/link rescue committed and accepted
 
+## Worker Profiles (Controller Defaults)
+- `Mobile-1`: Mobile runtime implementation + integration swaths. Strong on wiring + API consumption. Must stay inside assignment scope and preserve role gates.
+- `Mobile-2`: Mobile/admin hybrid implementer for focused UX/interaction bugfixes and regression hardening. Prefer narrowly scoped, collision-safe swaths.
+- `Admin-1`: Admin/coach web and authz-heavy implementation swaths with deterministic validation proof.
+- `Coach-1`: Docs/spec/control-plane packaging, parity mapping, and architecture-boundary synchronization.
+- `Claude-1` (primary UI/design worker): design-first execution for layout, hierarchy, iconography, spacing, and interaction polish. Default behavior: preserve existing architecture/contracts, ship production-ready visual quality (not placeholder), keep changes collision-safe, and include before/after screenshot evidence with exact runtime validation notes.
+
 ## Active Assignments
 
 | ID | Status | Program status | Persona | Flow | Screens in scope | Owner | Branch / Worktree | Figma refs | Deliverable |
@@ -127,6 +134,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `committed+pushed` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Accepted and pushed: reset + seed + smoke sequence passed against current deterministic realism runbook; no command/output drift found; logs captured under `app/test-results/m8-seed-data-smoke-verification-a/`. |
 | `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team identity card` (`leader edit controls`, `member read-only rendering`) | `KPIDashboardScreen` Team tab top card only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed: polished role-aware Team identity card landed with leader-only edit flow (avatar/background picker modal + save/cancel) and member read-only rendering. TypeScript clean. |
 | `M6-TEAM-FOCUS-CARD-MERGE-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team focus cards` (`merge projection+focus cards`, `leader edit trigger`, `remove focus pills`) | `KPIDashboardScreen` Team tab Team Focus section only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed (owner-approved scope fold-in): Team Focus KPI card + Team Focus projections merged into one section with compact leader edit control; legacy focus pill block removed. |
+| `M6-TEAM-LEADER-HEALTH-SUMMARY-RESTORE-A` | `review` | `M6 team UI cleanup` | `Team Leader` | `team leader dashboard` (`team health summary restore`) | `KPIDashboardScreen` Team tab leader view (`above Team Members list`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Review-ready: restored team-level health summary module above Team Members list with aggregate KPI health meter + status chips (`On Track`, `Watch`, `At Risk`) while preserving Team member row/profile behaviors and Team Focus edit flow. |
 
 ## Blocked Assignments
 
@@ -4449,7 +4457,7 @@ Re-run deterministic seed and smoke flows, verify expected dataset outcomes, and
 - `Program status:` `M6 team UI cleanup`
 - `Persona:` `Team Leader`, `Team Member`
 - `Flow:` `team identity card` (`leader edit controls`, `member read-only rendering`)
-- `Owner:` `Claude-1`
+- `Owner:` `Mobile-1`
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required)
 - `Scope:` `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (Team tab top identity card only)
 - `Execution note (2026-02-28, Controller):` Owner-directed design-heavy pass launched. Team Leader must have explicit edit affordance and controlled edit mode; Team Member must see read-only result only.
@@ -4530,4 +4538,56 @@ Merge Team Focus KPI card + Team Focus projection card into one combined section
 - Files + line refs.
 - Collision-safe handoff confirmation.
 - Validation + screenshots.
+- Commit hash.
+
+### `M6-TEAM-LEADER-HEALTH-SUMMARY-RESTORE-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 team UI cleanup`
+- `Persona:` `Team Leader`
+- `Flow:` `team leader dashboard` (`team health summary restore`)
+- `Owner:` `Claude-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required)
+- `Scope:` `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (Team tab leader view only)
+- `Execution note (2026-02-28, Controller):` Owner requested restoration of team-level health summary module above Team Members list in Team Leader view; design-first quality expected.
+- `Completion note (2026-02-28, Mobile-1):` Restored a Team Leader `Team Health Summary` module directly above the Team Members list, including aggregate health percent meter and team status distribution chips for `On Track`, `Watch`, and `At Risk`.
+- `Completion note (2026-02-28, Mobile-1):` Kept Team Member row/profile interaction behaviors unchanged and preserved Team Focus projection/edit surface behavior.
+- `Validation note (2026-02-28, Mobile-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed.
+- `Validation note (2026-02-28, Mobile-1):` Screenshot evidence captured at `/Users/jon/compass-kpi/app/test-results/m6-team-leader-health-summary-restore-a/` (`team-leader-before.png`, `team-leader-after.png`).
+- `Current blocker status (2026-02-28, launch):` `none`.
+- `Current blocker status (2026-02-28, completion):` `none`.
+
+#### Primary Objective
+Restore the Team Leader team-level health summary card/module directly above the Team Members list so the leader can assess overall team health at a glance.
+
+#### Scope In
+- Team Leader Team tab only.
+- Reintroduce team-level health summary module placement above Team Members list.
+- Keep visual treatment polished and consistent with current Team leader card language.
+- Preserve existing Team members list/profile row behaviors.
+
+#### Scope Out
+- Team Member layout rewrites.
+- Team Focus selection logic changes.
+- Backend/schema/API/folder changes.
+
+#### Hard Constraints
+- Do not change API families, schema, or role model.
+- Keep edits collision-safe and localized to Team leader Team tab composition.
+- Preserve recently landed Team identity and Team focus card behaviors.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime checks on Team Leader persona:
+  - team health summary visible above Team Members list
+  - no regression in Team Members row actions
+  - no regression in Team Focus projections/edit behavior
+- Screenshot evidence (before/after) for Team Leader Team tab.
+
+#### Report-Back
+- Update board status first (`active` -> `review`/`blocked`).
+- Files changed + line refs.
+- Runtime behavior proof summary.
+- Screenshot paths.
 - Commit hash.

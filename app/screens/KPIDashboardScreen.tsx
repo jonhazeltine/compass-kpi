@@ -25,10 +25,10 @@ import PillGrowthBg from '../assets/figma/kpi_icon_bank/pill_growth_bg_v1.svg';
 import PillProjectionsBg from '../assets/figma/kpi_icon_bank/pill_projections_bg_v1.svg';
 import PillQuicklogBg from '../assets/figma/kpi_icon_bank/pill_quicklog_bg_v1.svg';
 import PillVitalityBg from '../assets/figma/kpi_icon_bank/pill_vitality_bg_orange_v2.svg';
-import TabChallengesIcon from '../assets/figma/kpi_icon_bank/tab_challenges_themeable_v1.svg';
-import TabCoachIcon from '../assets/figma/kpi_icon_bank/tab_coach_themeable_v2.svg';
+import TabCoachIcon from '../assets/figma/kpi_icon_bank/tab_coach_themeable_v3.svg';
 import TabDashboardIcon from '../assets/figma/kpi_icon_bank/tab_dashboard_themeable_v1.svg';
-import TabLogsIcon from '../assets/figma/kpi_icon_bank/tab_logs_themeable_v1.svg';
+import TabMessagesIcon from '../assets/figma/kpi_icon_bank/tab_messages_v1.svg';
+import TabReportsIcon from '../assets/figma/kpi_icon_bank/tab_reports_v1.svg';
 import TabTeamIcon from '../assets/figma/kpi_icon_bank/tab_team_themeable_v1.svg';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -2152,10 +2152,10 @@ const feedbackAudioAssets = {
 
 const bottomTabIconSvgByKey = {
   home: TabDashboardIcon,
-  challenge: TabChallengesIcon,
-  logs: TabLogsIcon,
+  challenge: TabCoachIcon,
+  logs: TabReportsIcon,
   team: TabTeamIcon,
-  comms: TabCoachIcon,
+  comms: TabMessagesIcon,
 } as const;
 
 const homePanelPillSvgBg = {
@@ -2169,17 +2169,24 @@ const bottomTabIconStyleByKey: Record<BottomTab, any> = {
   home: null,
   challenge: null,
   logs: null,
-  team: { transform: [{ translateY: -6 }] },
-  comms: { transform: [{ translateY: -3 }] },
+  team: null,
+  comms: null,
 };
 
-const bottomTabOrder: BottomTab[] = ['challenge', 'logs', 'home', 'team', 'comms'];
+const bottomTabOrder: BottomTab[] = ['comms', 'team', 'home', 'logs', 'challenge'];
 const bottomTabAccessibilityLabel: Record<BottomTab, string> = {
-  challenge: 'Challenges',
-  logs: 'Logs and reports',
+  challenge: 'Coach',
+  logs: 'Reports',
   home: 'LOG',
   team: 'Team',
-  comms: 'Comms',
+  comms: 'Messages',
+};
+const bottomTabDisplayLabel: Record<BottomTab, string> = {
+  comms: 'Messages',
+  team: 'Team',
+  home: 'LOG',
+  logs: 'Reports',
+  challenge: 'Coach',
 };
 
 type Props = {
@@ -2412,9 +2419,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [pipelineCheckinDismissalLoaded, setPipelineCheckinDismissalLoaded] = useState(false);
   const bottomNavLift = Math.max(8, Math.round(insets.bottom * 0.24));
   const bottomNavPadBottom = Math.max(8, Math.round(insets.bottom * 0.45));
-  const bottomNavPadTop = 4;
   const contentBottomPad = 132 + Math.max(12, insets.bottom);
-  const bottomNavCutoutBg = isDarkMode ? '#0f1624' : '#f6f7f9';
   const bottomTabTheme = isDarkMode
     ? {
         activeFg: '#CFE0FF',
@@ -5239,7 +5244,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const renderChallengeKpiSection = (
     type: 'PC' | 'GP' | 'VP',
     title: string,
-    kpis: DashboardPayload['loggable_kpis']
+    kpis: DashboardPayload['loggable_kpis'],
+    options?: {
+      hideTypePill?: boolean;
+      trailingControl?: React.ReactNode;
+    }
   ) => {
     if (kpis.length === 0) return null;
     const locked = (type === 'GP' && !gpUnlocked) || (type === 'VP' && !vpUnlocked);
@@ -5260,9 +5269,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             </View>
             <Text style={styles.challengeSectionSub}>{sectionSub}</Text>
           </View>
-          <View style={[styles.challengeSectionTypePill, { backgroundColor: kpiTypeTint(type) }]}>
-            <Text style={[styles.challengeSectionTypePillText, { color: kpiTypeAccent(type) }]}>{type}</Text>
-          </View>
+          {options?.trailingControl ?? (
+            options?.hideTypePill ? null : (
+              <View style={[styles.challengeSectionTypePill, { backgroundColor: kpiTypeTint(type) }]}>
+                <Text style={[styles.challengeSectionTypePillText, { color: kpiTypeAccent(type) }]}>{type}</Text>
+              </View>
+            )
+          )}
         </View>
         <View style={styles.challengeSectionDivider} />
         {locked ? (
@@ -8284,6 +8297,23 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const teamLeaderConcernRows = teamLeaderRows
                 .flatMap((row) => row.concerns.map((concern) => ({ member: row.name, concern, critical: row.status === 'at_risk' })))
                 .slice(0, 6);
+              const teamLeaderStatusCounts = teamLeaderRows.reduce(
+                (acc, row) => {
+                  if (row.status === 'on_track') acc.onTrack += 1;
+                  else if (row.status === 'watch') acc.watch += 1;
+                  else acc.atRisk += 1;
+                  return acc;
+                },
+                { onTrack: 0, watch: 0, atRisk: 0 }
+              );
+              const teamLeaderHealthLabel =
+                teamOverallProgressPct >= 86 ? 'Strong' : teamOverallProgressPct >= 72 ? 'Watch' : 'At Risk';
+              const teamLeaderHealthLabelToneStyle =
+                teamOverallProgressPct >= 86
+                  ? styles.teamLeaderHealthSummaryToneGood
+                  : teamOverallProgressPct >= 72
+                    ? styles.teamLeaderHealthSummaryToneWatch
+                    : styles.teamLeaderHealthSummaryToneRisk;
               const orderedKpiTypes: Segment[] = ['PC', 'GP', 'VP'];
               const teamFocusKpiGroups = {
                 PC: teamFocusKpisForDisplay.filter((kpi) => kpi.type === 'PC'),
@@ -8456,94 +8486,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
               const teamLoggingBlock = (
                 <View style={styles.challengeSectionsWrap}>
-                  <View style={styles.challengeLoggingHeaderCard}>
-                    <View style={styles.teamFocusHeaderRow}>
-                      <Text style={styles.challengeLoggingHeaderTitle}>Team Focus KPIs + Projections</Text>
-                      {teamPersonaVariant === 'leader' ? (
-                        <TouchableOpacity
-                          style={styles.teamFocusHeaderEditBtn}
-                          onPress={() => setTeamFocusEditorOpen((prev) => !prev)}
-                        >
-                          <Text style={styles.teamFocusHeaderEditBtnText}>{teamFocusEditorOpen ? 'Done' : 'Edit'}</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                    <Text style={styles.challengeLoggingHeaderSub}>
-                      {teamPersonaVariant === 'leader'
-                        ? 'Use edit to manage Team Focus KPI selections.'
-                        : 'Selected focus KPIs only. Shared KPI logging mechanics stay unchanged.'}
-                    </Text>
-                  </View>
-                  {teamPersonaVariant === 'member' ? (
-                    <Text style={styles.teamFocusReadOnlyLabel}>Read-only focus KPIs</Text>
-                  ) : null}
-                  {teamPersonaVariant === 'leader' && teamFocusEditorOpen ? (
-                    <View style={styles.teamFocusEditorPanel}>
-                      <Text style={styles.teamFocusEditorTitle}>Edit Team Focus KPIs</Text>
-                      <View style={styles.teamFocusEditorFilterRow}>
-                        {([
-                          { key: 'PC', label: 'Projection' },
-                          { key: 'GP', label: 'Business' },
-                          { key: 'VP', label: 'Vitality' },
-                        ] as const).map((chip) => {
-                          const active = teamFocusEditorFilter === chip.key;
-                          return (
-                            <TouchableOpacity
-                              key={`team-focus-filter-${chip.key}`}
-                              style={[styles.teamFocusEditorFilterChip, active && styles.teamFocusEditorFilterChipActive]}
-                              onPress={() => setTeamFocusEditorFilter(chip.key)}
-                            >
-                              <Text
-                                style={[
-                                  styles.teamFocusEditorFilterChipText,
-                                  active && styles.teamFocusEditorFilterChipTextActive,
-                                ]}
-                              >
-                                {chip.label}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                      {orderedKpiTypes
-                        .filter((typeKey) => typeKey === teamFocusEditorFilter)
-                        .map((typeKey) => {
-                          const rows = teamSurfaceKpis
-                            .filter((kpi) => kpi.type === typeKey)
-                            .slice()
-                            .sort((a, b) => a.name.localeCompare(b.name));
-                          if (rows.length === 0) return null;
-                          return (
-                            <View key={`team-focus-editor-group-${typeKey}`} style={styles.teamLeaderKpiTypeSection}>
-                              <Text style={styles.teamLeaderKpiTypeSectionTitle}>
-                                {typeKey === 'PC' ? 'Projection (PC)' : typeKey === 'GP' ? 'Business (GP)' : 'Vitality (VP)'}
-                              </Text>
-                              {rows.map((kpi) => {
-                                const kpiId = String(kpi.id);
-                                const selected = teamFocusSelectedKpiIds.includes(kpiId);
-                                return (
-                                  <TouchableOpacity
-                                    key={`team-focus-editor-${kpiId}`}
-                                    style={styles.teamFocusEditorRow}
-                                    onPress={() =>
-                                      setTeamFocusSelectedKpiIds((prev) =>
-                                        prev.includes(kpiId) ? prev.filter((id) => id !== kpiId) : [...prev, kpiId]
-                                      )
-                                    }
-                                  >
-                                    <Text style={styles.teamFocusEditorRowName}>{kpi.name}</Text>
-                                    <Text style={selected ? styles.teamFocusEditorSelectedText : styles.teamFocusEditorUnselectedText}>
-                                      {selected ? 'Selected' : 'Select'}
-                                    </Text>
-                                  </TouchableOpacity>
-                                );
-                              })}
-                            </View>
-                          );
-                        })}
-                    </View>
-                  ) : null}
-
                   {teamTileCount === 0 ? (
                     <View style={styles.challengeEmptyCard}>
                       <View style={[styles.challengeEmptyBadge, styles.teamHeaderBadge]}>
@@ -8565,7 +8507,98 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     </View>
                   ) : (
                     <View style={styles.challengeSectionsWrap}>
-                      {renderChallengeKpiSection('PC', 'Team Focus Projections (PC)', teamFocusKpiGroups.PC)}
+                      {renderChallengeKpiSection(
+                        'PC',
+                        'Team Focus Projections',
+                        teamFocusKpiGroups.PC,
+                        {
+                          hideTypePill: true,
+                          trailingControl:
+                            teamPersonaVariant === 'leader' ? (
+                              <TouchableOpacity
+                                style={styles.teamFocusHeaderEditBtn}
+                                onPress={() => setTeamFocusEditorOpen((prev) => !prev)}
+                              >
+                                <Text style={styles.teamFocusHeaderEditBtnText}>✎</Text>
+                              </TouchableOpacity>
+                            ) : null,
+                        }
+                      )}
+                      <Modal visible={teamFocusEditorOpen} transparent animationType="slide" onRequestClose={() => setTeamFocusEditorOpen(false)}>
+                        <Pressable style={styles.teamFocusDrawerBackdrop} onPress={() => setTeamFocusEditorOpen(false)}>
+                          <Pressable style={styles.teamFocusDrawerSheet} onPress={() => {}}>
+                            <View style={styles.teamFocusDrawerHandle} />
+                            <View style={styles.teamFocusDrawerHeader}>
+                              <Text style={styles.teamFocusDrawerTitle}>Edit Focus KPIs</Text>
+                              <TouchableOpacity style={styles.teamFocusDrawerCloseBtn} onPress={() => setTeamFocusEditorOpen(false)}>
+                                <Text style={styles.teamFocusDrawerCloseBtnText}>✕</Text>
+                              </TouchableOpacity>
+                            </View>
+                            <Text style={styles.teamFocusDrawerSub}>Select which KPIs your team tracks on the dashboard.</Text>
+                            <View style={styles.teamFocusDrawerFilterRow}>
+                              {([
+                                { key: 'PC', label: 'Projection' },
+                                { key: 'GP', label: 'Business' },
+                                { key: 'VP', label: 'Vitality' },
+                              ] as const).map((chip) => {
+                                const active = teamFocusEditorFilter === chip.key;
+                                return (
+                                  <TouchableOpacity
+                                    key={`team-focus-filter-${chip.key}`}
+                                    style={[styles.teamFocusDrawerChip, active && styles.teamFocusDrawerChipActive]}
+                                    onPress={() => setTeamFocusEditorFilter(chip.key)}
+                                  >
+                                    <Text style={[styles.teamFocusDrawerChipText, active && styles.teamFocusDrawerChipTextActive]}>
+                                      {chip.label}
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                            <ScrollView style={styles.teamFocusDrawerList} showsVerticalScrollIndicator={false}>
+                              {(['PC', 'GP', 'VP'] as Segment[])
+                                .filter((typeKey) => typeKey === teamFocusEditorFilter)
+                                .map((typeKey) => {
+                                  const rows = teamSurfaceKpis
+                                    .filter((kpi) => kpi.type === typeKey)
+                                    .slice()
+                                    .sort((a, b) => a.name.localeCompare(b.name));
+                                  if (rows.length === 0) {
+                                    return (
+                                      <Text key={`team-focus-empty-${typeKey}`} style={styles.teamFocusDrawerEmpty}>
+                                        No {typeKey === 'PC' ? 'Projection' : typeKey === 'GP' ? 'Business' : 'Vitality'} KPIs available.
+                                      </Text>
+                                    );
+                                  }
+                                  return rows.map((kpi) => {
+                                    const kpiId = String(kpi.id);
+                                    const selected = teamFocusSelectedKpiIds.includes(kpiId);
+                                    return (
+                                      <TouchableOpacity
+                                        key={`team-focus-editor-${kpiId}`}
+                                        style={[styles.teamFocusDrawerRow, selected && styles.teamFocusDrawerRowSelected]}
+                                        activeOpacity={0.6}
+                                        onPress={() =>
+                                          setTeamFocusSelectedKpiIds((prev) =>
+                                            prev.includes(kpiId) ? prev.filter((id) => id !== kpiId) : [...prev, kpiId]
+                                          )
+                                        }
+                                      >
+                                        <View style={[styles.teamFocusDrawerCheck, selected && styles.teamFocusDrawerCheckActive]}>
+                                          {selected ? <Text style={styles.teamFocusDrawerCheckMark}>✓</Text> : null}
+                                        </View>
+                                        <Text style={[styles.teamFocusDrawerRowName, selected && styles.teamFocusDrawerRowNameActive]}>{kpi.name}</Text>
+                                      </TouchableOpacity>
+                                    );
+                                  });
+                                })}
+                            </ScrollView>
+                            <TouchableOpacity style={styles.teamFocusDrawerDoneBtn} onPress={() => setTeamFocusEditorOpen(false)}>
+                              <Text style={styles.teamFocusDrawerDoneBtnText}>Done</Text>
+                            </TouchableOpacity>
+                          </Pressable>
+                        </Pressable>
+                      </Modal>
                       {renderChallengeKpiSection('GP', 'Team Focus Growth (GP)', teamFocusKpiGroups.GP)}
                       {renderChallengeKpiSection('VP', 'Team Focus Vitality (VP)', teamFocusKpiGroups.VP)}
                     </View>
@@ -8933,6 +8966,44 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           <Text style={styles.teamParityStatFoot}>Next 90 days</Text>
                         </TouchableOpacity>
                       </View>
+                      <View style={styles.teamLeaderHealthSummaryCard}>
+                        <View style={styles.teamLeaderHealthSummaryHeaderRow}>
+                          <Text style={styles.teamLeaderHealthSummaryTitle}>Team Health Summary</Text>
+                          <View style={[styles.teamLeaderHealthSummaryToneChip, teamLeaderHealthLabelToneStyle]}>
+                            <Text style={styles.teamLeaderHealthSummaryToneText}>{teamLeaderHealthLabel}</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.teamLeaderHealthSummarySub}>
+                          At-a-glance team KPI health before member-level drilldown.
+                        </Text>
+                        <View style={styles.teamHealthMeterRow}>
+                          <View style={styles.teamHealthMeterTrack}>
+                            <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentRed]} />
+                            <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentOrange]} />
+                            <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentYellow]} />
+                            <View style={[styles.teamHealthMeterSegment, styles.teamHealthMeterSegmentGreen]} />
+                            <View
+                              style={[
+                                styles.teamHealthMeterRemainingMask,
+                                { left: `${Math.max(0, Math.min(100, teamOverallProgressPct))}%` },
+                              ]}
+                            />
+                          </View>
+                          <Text style={styles.teamHealthMeterPercentText}>{teamOverallProgressPct}%</Text>
+                        </View>
+                        <View style={styles.teamLeaderHealthSummaryStatsRow}>
+                          <View style={[styles.teamLeaderHealthSummaryStatChip, styles.teamLeaderHealthSummaryStatChipGood]}>
+                            <Text style={styles.teamLeaderHealthSummaryStatText}>On Track {teamLeaderStatusCounts.onTrack}</Text>
+                          </View>
+                          <View style={[styles.teamLeaderHealthSummaryStatChip, styles.teamLeaderHealthSummaryStatChipWatch]}>
+                            <Text style={styles.teamLeaderHealthSummaryStatText}>Watch {teamLeaderStatusCounts.watch}</Text>
+                          </View>
+                          <View style={[styles.teamLeaderHealthSummaryStatChip, styles.teamLeaderHealthSummaryStatChipRisk]}>
+                            <Text style={styles.teamLeaderHealthSummaryStatText}>At Risk {teamLeaderStatusCounts.atRisk}</Text>
+                          </View>
+                        </View>
+                      </View>
+                      <Text style={styles.teamMemberSectionLabel}>Team Members</Text>
 
                       <View style={styles.teamLeaderExpandableList}>
                         {teamLeaderRows.map((row) => {
@@ -11108,72 +11179,65 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         </React.Fragment>
       ))}
 
-      <View style={[styles.bottomNav, { paddingTop: bottomNavPadTop, paddingBottom: bottomNavPadBottom, bottom: bottomNavLift }]}>
-        <View pointerEvents="none" style={[styles.bottomNavCenterCutout, { backgroundColor: bottomNavCutoutBg }]} />
-        {bottomTabOrder.map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            accessibilityRole="button"
-            accessibilityLabel={bottomTabAccessibilityLabel[tab]}
-            accessibilityState={{ selected: activeTab === tab }}
-            style={[
-              styles.bottomItem,
-              tab === 'home' ? styles.bottomItemLogCta : null,
-              activeTab === tab && styles.bottomItemActivePill,
-              tab === 'home' && activeTab === tab ? styles.bottomItemLogCtaActive : null,
-            ]}
-            onPress={() => onBottomTabPress(tab)}
-          >
-            <Animated.View
-              style={
-                activeTab === tab
-                  ? {
-                      transform: [
-                        {
-                          scale: modeLanePulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] }),
-                        },
-                      ],
-                    }
-                  : undefined
-              }
+      <View style={[styles.bottomNav, { paddingBottom: bottomNavPadBottom, bottom: bottomNavLift }]}>
+        {bottomTabOrder.map((tab) => {
+          const TabIcon = bottomTabIconSvgByKey[tab];
+          const isActive = activeTab === tab;
+          const isLog = tab === 'home';
+          const iconColor = isLog ? '#ffffff' : isActive ? bottomTabTheme.activeFg : bottomTabTheme.inactiveFg;
+          const labelColor = isLog ? '#28a84d' : isActive ? '#1f5fe2' : '#8d95a5';
+          return (
+            <TouchableOpacity
+              key={tab}
+              accessibilityRole="button"
+              accessibilityLabel={bottomTabAccessibilityLabel[tab]}
+              accessibilityState={{ selected: isActive }}
+              style={[styles.bottomItem, isLog && styles.bottomItemLogCta]}
+              activeOpacity={isLog ? 0.75 : 0.6}
+              onPress={() => onBottomTabPress(tab)}
             >
-              {(() => {
-                const TabIcon = bottomTabIconSvgByKey[tab];
-                const isActive = activeTab === tab;
-                const iconColor = tab === 'home' ? '#f7fff8' : isActive ? bottomTabTheme.activeFg : bottomTabTheme.inactiveFg;
-                return (
-                  <View
-                    style={[
-                      styles.bottomIconSvgWrap,
-                      tab === 'home' ? styles.bottomIconSvgWrapLog : null,
-                      tab === 'home' ? null : isActive && { backgroundColor: bottomTabTheme.activeBg },
-                      isActive ? styles.bottomIconImageActive : styles.bottomIconImageInactive,
-                    ]}
-                  >
-                    {tab === 'home' ? (
-                      <>
-                        <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleOne]} />
-                        <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleTwo]} />
-                      </>
-                    ) : null}
-                    <TabIcon
-                      width="100%"
-                      height="100%"
-                      color={iconColor}
-                      style={[
-                        styles.bottomIconSvg,
-                        tab === 'home' ? styles.bottomIconSvgLog : null,
-                        bottomTabIconStyleByKey[tab],
-                      ]}
-                    />
-                    {tab === 'home' ? <Text style={styles.bottomLogLabel}>LOG</Text> : null}
-                    {tab === 'logs' ? <Text style={styles.bottomLogsReportsLabel}>Logs/Reports</Text> : null}
+              <Animated.View
+                style={[
+                  styles.bottomItemInner,
+                  isActive && !isLog
+                    ? {
+                        transform: [
+                          { scale: modeLanePulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) },
+                        ],
+                      }
+                    : undefined,
+                ]}
+              >
+                {isLog ? (
+                  <View style={styles.bottomLogOuter}>
+                    <View style={styles.bottomLogGlowRing} />
+                    <View style={styles.bottomLogBtn}>
+                      <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleOne]} />
+                      <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleTwo]} />
+                      <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleThree]} />
+                      <TabIcon width={36} height={36} color="#ffffff" style={styles.bottomIconSvgLog} />
+                    </View>
+                    <Text style={styles.bottomLogLabel}>LOG</Text>
                   </View>
-                );
-              })()}
-            </Animated.View>
-          </TouchableOpacity>
-        ))}
+                ) : (
+                  <>
+                    <View style={[styles.bottomIconSvgWrap, isActive && { backgroundColor: bottomTabTheme.activeBg }]}>
+                      <TabIcon
+                        width={34}
+                        height={34}
+                        color={iconColor}
+                        style={[styles.bottomIconSvg, bottomTabIconStyleByKey[tab]]}
+                      />
+                    </View>
+                    <Text style={[styles.bottomTabLabel, { color: labelColor }, isActive && styles.bottomTabLabelActive]}>
+                      {bottomTabDisplayLabel[tab]}
+                    </Text>
+                  </>
+                )}
+              </Animated.View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <Modal visible={aiAssistVisible} transparent animationType="fade" onRequestClose={() => setAiAssistVisible(false)}>
@@ -13767,6 +13831,80 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  teamLeaderHealthSummaryCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#dce5f4',
+    backgroundColor: '#f7faff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  teamLeaderHealthSummaryHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  teamLeaderHealthSummaryTitle: {
+    color: '#2f3f58',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  teamLeaderHealthSummarySub: {
+    color: '#6f7c90',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  teamLeaderHealthSummaryToneChip: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  teamLeaderHealthSummaryToneGood: {
+    backgroundColor: '#dff4df',
+  },
+  teamLeaderHealthSummaryToneWatch: {
+    backgroundColor: '#fff3d8',
+  },
+  teamLeaderHealthSummaryToneRisk: {
+    backgroundColor: '#ffe4e2',
+  },
+  teamLeaderHealthSummaryToneText: {
+    color: '#3f4f65',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  teamLeaderHealthSummaryStatsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  teamLeaderHealthSummaryStatChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  teamLeaderHealthSummaryStatChipGood: {
+    borderColor: '#a8ddb0',
+    backgroundColor: '#eff9ef',
+  },
+  teamLeaderHealthSummaryStatChipWatch: {
+    borderColor: '#e7cf87',
+    backgroundColor: '#fff8e7',
+  },
+  teamLeaderHealthSummaryStatChipRisk: {
+    borderColor: '#e9b3ae',
+    backgroundColor: '#fff1ef',
+  },
+  teamLeaderHealthSummaryStatText: {
+    color: '#4c5e77',
+    fontSize: 10,
+    fontWeight: '700',
+  },
   teamLeaderSortRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -14062,59 +14200,158 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
   },
-  teamFocusEditorPanel: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#d9e3f5',
-    backgroundColor: '#fff',
-    padding: 10,
-    gap: 8,
+  teamFocusDrawerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(32, 36, 44, 0.55)',
+    justifyContent: 'flex-end',
   },
-  teamFocusEditorTitle: {
-    color: '#32405a',
-    fontSize: 13,
-    fontWeight: '800',
+  teamFocusDrawerSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingHorizontal: 20,
+    paddingBottom: 28,
+    maxHeight: '72%',
   },
-  teamFocusEditorRow: {
+  teamFocusDrawerHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#d0d5dd',
+    marginTop: 10,
+    marginBottom: 14,
+  },
+  teamFocusDrawerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  teamFocusDrawerTitle: {
+    color: '#1e2534',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  teamFocusDrawerCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f0f2f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamFocusDrawerCloseBtnText: {
+    color: '#5f6b7f',
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: -1,
+  },
+  teamFocusDrawerSub: {
+    color: '#6b7a90',
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  teamFocusDrawerFilterRow: {
+    flexDirection: 'row',
     gap: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e4ebf6',
-    backgroundColor: '#fbfdff',
-    paddingHorizontal: 9,
+    marginBottom: 14,
+  },
+  teamFocusDrawerChip: {
+    borderWidth: 1.5,
+    borderColor: '#d5dfef',
+    backgroundColor: '#f6f8fc',
+    borderRadius: 999,
+    paddingHorizontal: 16,
     paddingVertical: 8,
   },
-  teamFocusEditorRowName: {
+  teamFocusDrawerChipActive: {
+    borderColor: '#1f5fe2',
+    backgroundColor: '#1f5fe2',
+  },
+  teamFocusDrawerChipText: {
+    color: '#5f6f89',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  teamFocusDrawerChipTextActive: {
+    color: '#ffffff',
+  },
+  teamFocusDrawerList: {
+    flexGrow: 0,
+    marginBottom: 16,
+  },
+  teamFocusDrawerEmpty: {
+    color: '#8d95a5',
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+    paddingVertical: 24,
+  },
+  teamFocusDrawerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e8edf5',
+    backgroundColor: '#fafbfd',
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 8,
+  },
+  teamFocusDrawerRowSelected: {
+    borderColor: '#c0d4f6',
+    backgroundColor: '#eef4ff',
+  },
+  teamFocusDrawerCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#c8d0de',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teamFocusDrawerCheckActive: {
+    borderColor: '#1f5fe2',
+    backgroundColor: '#1f5fe2',
+  },
+  teamFocusDrawerCheckMark: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
+    marginTop: -1,
+  },
+  teamFocusDrawerRowName: {
     color: '#44526a',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     flex: 1,
   },
-  teamFocusEditorSelectedText: {
-    color: '#1e5ac8',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  teamFocusEditorUnselectedText: {
-    color: '#7a879c',
-    fontSize: 11,
+  teamFocusDrawerRowNameActive: {
+    color: '#1e3a6e',
     fontWeight: '700',
   },
-  teamFocusEditorDoneBtn: {
-    marginTop: 2,
-    borderRadius: 8,
+  teamFocusDrawerDoneBtn: {
+    borderRadius: 14,
     backgroundColor: '#1f5fe2',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 14,
+    shadowColor: '#1a3fa0',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
   },
-  teamFocusEditorDoneBtnText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
+  teamFocusDrawerDoneBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   teamParityNavRow: {
     flexDirection: 'row',
@@ -14459,31 +14696,6 @@ const styles = StyleSheet.create({
     color: '#6d7789',
     fontSize: 11,
     fontWeight: '600',
-  },
-  teamFocusEditorFilterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  teamFocusEditorFilterChip: {
-    borderWidth: 1,
-    borderColor: '#d5dfef',
-    backgroundColor: '#f6f8fc',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  teamFocusEditorFilterChipActive: {
-    borderColor: '#2f67da',
-    backgroundColor: '#2f67da',
-  },
-  teamFocusEditorFilterChipText: {
-    color: '#5f6f89',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  teamFocusEditorFilterChipTextActive: {
-    color: '#fff',
   },
   teamFocusQuickLogRow: {
     flexDirection: 'row',
@@ -16567,17 +16779,19 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   teamFocusHeaderEditBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#d0dcf0',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: '#f6f9ff',
   },
   teamFocusHeaderEditBtnText: {
-    color: '#2f67da',
-    fontSize: 11,
-    fontWeight: '800',
+    color: '#4d5a6c',
+    fontSize: 14,
+    fontWeight: '700',
   },
   challengeLoggingHeaderTitle: {
     color: '#2f3442',
@@ -18371,56 +18585,35 @@ const styles = StyleSheet.create({
     bottom: 10,
     zIndex: 90,
     elevation: 90,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e6ebf1',
-    borderRadius: 22,
+    backgroundColor: '#ffffff',
+    borderRadius: 28,
     overflow: 'visible',
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingTop: 4,
-    paddingBottom: 10,
-  },
-  bottomNavCenterCutout: {
-    position: 'absolute',
-    top: -1,
-    left: '50%',
-    marginLeft: -62,
-    width: 124,
-    height: 38,
-    borderBottomLeftRadius: 38,
-    borderBottomRightRadius: 38,
-    zIndex: 2,
+    justifyContent: 'space-evenly',
+    alignItems: 'flex-end',
+    paddingHorizontal: 4,
+    paddingTop: 10,
+    paddingBottom: 6,
+    shadowColor: '#1a2138',
+    shadowOpacity: 0.10,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: -3 },
   },
   bottomItem: {
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 0,
-    minWidth: 68,
-    minHeight: 62,
-    borderRadius: 20,
-    paddingHorizontal: 4,
-    paddingTop: 2,
-    paddingBottom: 4,
+    justifyContent: 'flex-end',
+    flex: 1,
+    minHeight: 52,
+    paddingBottom: 2,
     zIndex: 2,
   },
-  bottomItemActivePill: {
-    backgroundColor: '#eef4ff',
+  bottomItemInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   bottomItemLogCta: {
-    minWidth: 92,
-    minHeight: 80,
-    marginTop: -8,
-    paddingTop: 0,
-    paddingHorizontal: 0,
-    borderRadius: 40,
-    backgroundColor: 'transparent',
-    zIndex: 8,
-  },
-  bottomItemLogCtaActive: {
-    backgroundColor: 'transparent',
+    minHeight: 52,
+    zIndex: 10,
   },
   fxProjectile: {
     position: 'absolute',
@@ -18482,99 +18675,89 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.72)',
   },
-  bottomIcon: {
-    color: '#a0a8b7',
-    fontSize: 15,
-    lineHeight: 16,
-  },
-  bottomIconImage: {
-    width: 56,
-    height: 56,
-  },
   bottomIconSvgWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bottomIconSvg: {
-    width: 54,
-    height: 54,
+  bottomIconSvg: {},
+  bottomTabLabel: {
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: '600',
+    letterSpacing: 0.15,
+    color: '#8d95a5',
+    marginTop: 3,
   },
-  bottomIconSvgWrapLog: {
-    width: 78,
-    height: 56,
-    borderTopLeftRadius: 39,
-    borderTopRightRadius: 39,
-    borderBottomLeftRadius: 22,
-    borderBottomRightRadius: 22,
+  bottomTabLabelActive: {
+    fontWeight: '800',
+  },
+  bottomLogOuter: {
+    alignItems: 'center',
+    marginTop: -30,
+  },
+  bottomLogGlowRing: {
+    position: 'absolute',
+    top: -4,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(40, 168, 77, 0.10)',
+    borderWidth: 2,
+    borderColor: 'rgba(40, 168, 77, 0.15)',
+  },
+  bottomLogBtn: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: '#28a84d',
-    borderWidth: 1,
-    borderColor: '#1f7f3a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#ffffff',
     shadowColor: '#1e9441',
-    shadowOpacity: 0.22,
-    shadowRadius: 7,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 9,
-    marginBottom: 0,
-    marginTop: -1,
+    shadowOpacity: 0.38,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 14,
     zIndex: 10,
   },
-  bottomIconSvgLog: {
-    width: 40,
-    height: 40,
-  },
+  bottomIconSvgLog: {},
   bottomLogSparkle: {
     position: 'absolute',
-    width: 7,
-    height: 7,
+    width: 6,
+    height: 6,
     borderRadius: 99,
-    backgroundColor: '#e7ffe6',
+    backgroundColor: 'rgba(231, 255, 230, 0.9)',
     borderWidth: 1,
-    borderColor: '#ffffff',
+    borderColor: 'rgba(255,255,255,0.8)',
   },
   bottomLogSparkleOne: {
-    top: 10,
-    right: 12,
+    top: 11,
+    right: 10,
   },
   bottomLogSparkleTwo: {
-    top: 16,
-    left: 11,
+    top: 17,
+    left: 10,
     width: 5,
     height: 5,
   },
+  bottomLogSparkleThree: {
+    bottom: 14,
+    right: 14,
+    width: 4,
+    height: 4,
+    backgroundColor: 'rgba(200, 255, 200, 0.7)',
+  },
   bottomLogLabel: {
-    position: 'absolute',
-    bottom: 6,
-    color: '#f7fff8',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '900',
-    letterSpacing: 0.6,
-  },
-  bottomLogsReportsLabel: {
-    position: 'absolute',
-    bottom: -9,
-    color: '#5f6b7f',
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.15,
-  },
-  bottomIconImageInactive: {
-    opacity: 0.88,
-  },
-  bottomIconImageActive: {
-    opacity: 1,
-  },
-  bottomLabel: {
-    color: '#a0a8b7',
+    color: '#28a84d',
     fontSize: 11,
-    lineHeight: 12,
-  },
-  bottomActive: {
-    color: '#1f5fe2',
-    fontWeight: '700',
+    lineHeight: 13,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    marginTop: 5,
   },
   drawerBackdrop: {
     flex: 1,
