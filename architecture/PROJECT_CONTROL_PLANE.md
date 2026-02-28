@@ -51,7 +51,7 @@ For each sprint item in `architecture/CURRENT_SPRINT.md`, add:
 | DEP-001 | Billing authority decision (Stripe-only vs hybrid) | Subscription workflows and paywall behavior | Before subscription implementation | Product/Architecture | open | Keep RevenueCat code deferred until resolved. |
 | DEP-002 | Tenancy key strategy (`org_id`, optional `team_id`) | Team/comms/coaching schema | Before communication schema migration | Architecture | open | Must be explicit before adding comms tables. |
 | DEP-003 | Coaching ownership model (leader vs dedicated coach role) | Coaching permissions and UI scopes | Before coaching module build | Product | open | Required for role matrix and endpoint access rules. |
-| DEP-004 | Data retention and compliance policy | Message storage, AI context, deletion workflows | Before communication launch | Product/Legal | open | Needed for audit and deletion behavior. |
+| DEP-004 | Data retention and compliance policy | Message storage, AI context, deletion workflows | Before communication launch | Product/Legal | open | Needed for audit and deletion behavior. Source of truth: `/Users/jon/compass-kpi/architecture/W13_DEP004_RETENTION_COMPLIANCE_DECISION_PACKET.md`. |
 | DEP-005 | Third-party vendor security/legal checklist (Stream + Mux) | Runtime provider integrations, production key issuance, data handling approvals | Before third-party runtime implementation waves A/B | Security/Legal/Architecture | open | Must explicitly clear SOC/compliance, DPA, webhook/IP allowlist, secret rotation, incident response owners. Source of truth: `/Users/jon/compass-kpi/architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md`. |
 
 ### W13 Dependency Closeout Tracker (DEP-002 / DEP-004 / DEP-005)

@@ -4662,9 +4662,10 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 | 4 | `W13-DEP-005-VENDOR-SECURITY-LEGAL-CHECKLIST-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-005 checklist artifact + control-plane linkage completed (docs-only; no runtime changes). |
 | 5 | `W13-DEP-002-TENANCY-DECISION-PACKET-A` | `committed` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-002 decision packet committed with model comparison, recommendation, Stream/Mux implications, enforcement rules, migration path, and explicit owner sign-off prompts. |
 | 6 | `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | `committed` | `Admin-1` | `W13-DEP-002-TENANCY-DECISION-PACKET-A`, `W13-DEP-005-VENDOR-SECURITY-LEGAL-CHECKLIST-A` | Committed: single W13 dependency closeout tracker added in control plane with closure criteria, evidence links, owners, statuses, and explicit Wave A GO/NO-GO rule. |
-| 7 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
-| 8 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation block. |
-| 9 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. |
+| 7 | `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-004 retention/compliance decision packet + control-plane linkage completed (docs-only; no runtime changes). |
+| 8 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
+| 9 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation block. |
+| 10 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. |
 
 ### `W13-CHAT-VIDEO-ARCH-RFC-A`
 
@@ -4841,12 +4842,17 @@ Create a single source-of-truth checklist for DEP-005 closure (`Stream` + `Mux`)
 ### `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `committed`
 - `Program status:` `W13 docs/control-plane exception`
 - `Persona:` `Product`, `Legal`, `Architecture`, `backend/platform`
 - `Flow:` `retention/compliance governance` (`chat/video metadata policy packet`)
 - `Owner:` `Coach-1`
+- `Execution note (2026-02-28, Coach-1):` Board updated first. Prepared owner sign-off packet for retention/deletion matrix, legal-hold rules, provider reconciliation behavior, and unresolved policy decisions.
+- `Completion note (2026-02-28, Coach-1):` Added `/Users/jon/compass-kpi/architecture/W13_DEP004_RETENTION_COMPLIANCE_DECISION_PACKET.md` with data-class retention/deletion matrix, legal hold rules, Stream/Mux reconciliation status model, unresolved decisions, and explicit sign-off block.
+- `Completion note (2026-02-28, Coach-1):` Updated `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` DEP-004 dependency notes to reference the packet as source of truth.
+- `Validation note (2026-02-28, Coach-1):` Verified docs-only assignment diff (`architecture/W13_DEP004_RETENTION_COMPLIANCE_DECISION_PACKET.md`, `architecture/PROJECT_CONTROL_PLANE.md`, `architecture/AGENT_ASSIGNMENT_BOARD.md`).
 - `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
+- `Current blocker status (2026-02-28, completion):` `none`.
 
 #### Primary Objective
 Create an owner sign-off packet for `DEP-004` that defines retention/deletion policy for chat/video metadata and provider reconciliation rules.
