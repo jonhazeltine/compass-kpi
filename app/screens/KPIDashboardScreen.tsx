@@ -2321,6 +2321,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [aiSuggestionListLoading, setAiSuggestionListLoading] = useState(false);
   const [aiSuggestionListError, setAiSuggestionListError] = useState<string | null>(null);
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
+  const [logOtherVisible, setLogOtherVisible] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
   const [favoriteKpiIds, setFavoriteKpiIds] = useState<string[]>([]);
@@ -4712,6 +4713,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const openAddNewDrawer = () => {
     setDrawerFilter(homePanel);
     setAddDrawerVisible(true);
+  };
+
+  const openLogOtherDrawer = () => {
+    setLogOtherVisible(true);
   };
 
   const activateHomePanel = useCallback(
@@ -7145,13 +7150,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     addIds(challengeScopedKpis);
     return bySegment;
   }, [challengeScopedKpis, teamFocusSelectedKpiIds, teamSurfaceKpis]);
-
-  const prioritizedQuickLogKpis = useMemo(() => {
-    const byId = new Map(managedKpis.map((kpi) => [String(kpi.id), kpi] as const));
-    const forced = forcedQuickLogIdsBySegment[segment].map((id) => byId.get(id)).filter(Boolean) as DashboardPayload['loggable_kpis'];
-    const rest = quickLogKpis.filter((kpi) => !forced.some((f) => String(f.id) === String(kpi.id)));
-    return [...forced, ...rest].slice(0, 6);
-  }, [forcedQuickLogIdsBySegment, managedKpis, quickLogKpis, segment]);
 
   if (state === 'loading') {
     return (
@@ -11030,8 +11028,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     Use this grid to add logs to {selectedLogDate === isoTodayLocal() ? 'today' : 'the selected history day'}.
                   </Text>
                 </View>
-                <TouchableOpacity style={styles.addNewBtn} onPress={openAddNewDrawer}>
-                  <Text style={styles.addNewBtnText}>⊕ Add New</Text>
+                <TouchableOpacity style={styles.addNewBtn} onPress={openLogOtherDrawer}>
+                  <Text style={styles.addNewBtnText}>⊕ Log Other</Text>
                 </TouchableOpacity>
               </View>
 
@@ -11072,7 +11070,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 </View>
               ) : (
                 <View style={styles.gridWrap}>
-                  {prioritizedQuickLogKpis.map((kpi) => {
+                  {quickLogKpis.map((kpi) => {
                     const successAnim = getKpiTileSuccessAnim(kpi.id);
                     const isTeamContextTarget = teamLogContext?.kpi_id === String(kpi.id);
                     const successOpacity = successAnim.interpolate({
@@ -11540,6 +11538,65 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             </TouchableOpacity>
           </Pressable>
         </Pressable>
+      </Modal>
+
+      <Modal visible={logOtherVisible} transparent animationType="fade" onRequestClose={() => setLogOtherVisible(false)}>
+        <View style={styles.drawerBackdrop}>
+          <View style={styles.drawerCard}>
+            <Text style={styles.drawerTitle}>Log Other KPI</Text>
+            <Text style={styles.drawerUnlockedHint}>
+              Select any KPI to log for {selectedLogDate === isoTodayLocal() ? 'today' : formatLogDateHeading(selectedLogDate)}.
+            </Text>
+            <ScrollView style={styles.drawerGridScroll} contentContainerStyle={styles.drawerList}>
+              {allSelectableKpis.map((kpi) => {
+                const locked = (kpi.type === 'GP' && !gpUnlocked) || (kpi.type === 'VP' && !vpUnlocked);
+                return (
+                  <TouchableOpacity
+                    key={`log-other-${kpi.id}`}
+                    style={[styles.drawerListRow, locked && styles.disabled]}
+                    onPress={() => {
+                      if (locked) {
+                        Alert.alert(
+                          'Category Locked',
+                          kpi.type === 'GP'
+                            ? 'Business Growth unlocks after 3 active days or 20 total KPI logs.'
+                            : 'Vitality unlocks after 7 active days or 40 total KPI logs.'
+                        );
+                        return;
+                      }
+                      setSegment(kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP' ? kpi.type : 'PC');
+                      setLogOtherVisible(false);
+                      void onTapQuickLog(kpi, { skipTapFeedback: true });
+                    }}
+                  >
+                    <View style={[styles.drawerListIconWrap, { backgroundColor: kpiTypeTint(kpi.type) }]}>
+                      <View style={styles.drawerListIconInner}>{renderKpiIcon(kpi)}</View>
+                    </View>
+                    <View style={styles.drawerListMain}>
+                      <View style={styles.drawerListTitleRow}>
+                        <Text numberOfLines={1} style={styles.drawerListLabel}>{kpi.name}</Text>
+                        <View style={[styles.drawerTypeBadge, { backgroundColor: kpiTypeTint(kpi.type) }]}>
+                          <Text style={[styles.drawerTypeBadgeText, { color: kpiTypeAccent(kpi.type) }]}>{kpi.type}</Text>
+                        </View>
+                      </View>
+                      <Text numberOfLines={1} style={styles.drawerListMeta}>
+                        {formatDrawerKpiMeta(kpi)}
+                      </Text>
+                    </View>
+                    <View style={styles.drawerActionCol}>
+                      <View style={[styles.drawerActionPill, styles.drawerActionAdd]}>
+                        <Text style={styles.drawerActionText}>Log</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity style={styles.drawerClose} onPress={() => setLogOtherVisible(false)}>
+              <Text style={styles.drawerCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       <Modal visible={addDrawerVisible} transparent animationType="fade" onRequestClose={() => setAddDrawerVisible(false)}>
