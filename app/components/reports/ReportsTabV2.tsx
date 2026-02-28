@@ -3,15 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Animated,
-  Dimensions,
   LayoutAnimation,
   Platform,
   UIManager,
 } from 'react-native';
-import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -139,31 +136,6 @@ function kpiTypeAccent(type: KpiType) {
   return '#48505f';
 }
 
-function toPointsSpaced(values: number[], step: number, height: number, min: number, max: number, startX = 0) {
-  if (values.length < 2) return '';
-  return values
-    .map((value, idx) => {
-      const clamped = Math.max(min, Math.min(max, value));
-      const y = height - ((clamped - min) / (max - min || 1)) * height;
-      const x = startX + idx * step;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
-}
-
-function yForValue(value: number, height: number, min: number, max: number) {
-  const clamped = Math.max(min, Math.min(max, value));
-  return height - ((clamped - min) / (max - min || 1)) * height;
-}
-
-function formatAxisLabel(dollars: number) {
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-  if (dollars >= 1000) {
-    const k = dollars / 1000;
-    return `$${k >= 100 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, '')}k`;
-  }
-  return `$${Math.round(dollars)}`;
-}
 
 // ─── Data Derivation Hooks ─────────────────────────────────────────────────────
 
@@ -278,8 +250,6 @@ function useGciDirection(payload: DashPayload | null) {
       confidenceBand,
       confidenceScore,
       pastValues,
-      futureValues: futureRows.map((r) => Math.round(Number(r.value ?? 0) / 1000)),
-      pastValuesK: pastRows.map((r) => Math.round(Number(r.value ?? 0) / 1000)),
     };
   }, [payload]);
 }
@@ -445,123 +415,42 @@ function useAiObservations(
   }, [loggingTrend, topKpis, gci, challengeSummary]);
 }
 
-// ─── Mini Chart Component ──────────────────────────────────────────────────────
+// ─── KPI Activity Direction Indicator ──────────────────────────────────────────
 
-const MINI_CHART_W = Dimensions.get('window').width - 64;
-const MINI_CHART_H = 140;
-const MINI_CHART_PAD = 8;
-
-function MiniTrendChart({
-  pastValues,
-  futureValues,
+function ActivityDirectionHero({
+  direction,
+  deltaPct,
+  current,
+  prior,
+  rangeDays,
 }: {
-  pastValues: number[];
-  futureValues: number[];
+  direction: 'up' | 'down' | 'flat';
+  deltaPct: number;
+  current: number;
+  prior: number;
+  rangeDays: number;
 }) {
-  const all = [...pastValues, ...futureValues];
-  if (all.length < 2) return null;
-  const rawMin = Math.min(...all.filter((v) => v > 0), 0);
-  const rawMax = Math.max(...all, 1);
-  const pad = Math.max(5, (rawMax - rawMin) * 0.15);
-  const min = Math.max(0, rawMin - pad);
-  const max = rawMax + pad;
-  const totalLen = all.length;
-  const step = (MINI_CHART_W - MINI_CHART_PAD * 2) / Math.max(1, totalLen - 1);
-  const h = MINI_CHART_H - 24;
-
-  const pastPts = toPointsSpaced(pastValues, step, h, min, max, MINI_CHART_PAD);
-  const futurePts = toPointsSpaced(futureValues, step, h, min, max, MINI_CHART_PAD + pastValues.length * step);
-
-  // boundary x
-  const bx = MINI_CHART_PAD + (pastValues.length - 1) * step;
-
-  // area fill points for past
-  const pastAreaPts = pastPts
-    ? `${MINI_CHART_PAD},${h} ${pastPts} ${(MINI_CHART_PAD + (pastValues.length - 1) * step).toFixed(1)},${h}`
-    : '';
-  // area fill for future
-  const futureStartX = MINI_CHART_PAD + pastValues.length * step;
-  const futureAreaPts = futurePts
-    ? `${futureStartX.toFixed(1)},${h} ${futurePts} ${(futureStartX + (futureValues.length - 1) * step).toFixed(1)},${h}`
-    : '';
-
-  // Y axis ticks
-  const tickCount = 3;
-  const ticks = Array.from({ length: tickCount }, (_, i) => {
-    const val = max - ((max - min) / (tickCount - 1)) * i;
-    const y = yForValue(val, h, min, max);
-    return { val: val * 1000, y };
-  });
+  const bg =
+    direction === 'up' ? '#eaf7ee' : direction === 'down' ? '#fdf0ef' : '#f2f4f8';
+  const accent =
+    direction === 'up' ? '#1a7a3a' : direction === 'down' ? '#b83227' : '#636b78';
+  const arrow = direction === 'up' ? '↑' : direction === 'down' ? '↓' : '→';
+  const label =
+    direction === 'up'
+      ? 'Trending Up'
+      : direction === 'down'
+        ? 'Trending Down'
+        : 'Maintaining';
+  const sub =
+    direction === 'flat'
+      ? `Steady at ${fmtNum(current)} logs over ${rangeDays}d`
+      : `${fmtNum(current)} logs vs ${fmtNum(prior)} prior ${rangeDays}d`;
 
   return (
-    <View style={sty.miniChartWrap}>
-      <Svg width={MINI_CHART_W} height={MINI_CHART_H}>
-        {/* grid lines */}
-        {ticks.map((tick, i) => (
-          <Line
-            key={`g${i}`}
-            x1={MINI_CHART_PAD}
-            y1={tick.y}
-            x2={MINI_CHART_W - MINI_CHART_PAD}
-            y2={tick.y}
-            stroke="#e8ecf4"
-            strokeWidth="1"
-          />
-        ))}
-        {/* Past area fill */}
-        {pastAreaPts ? <Polygon points={pastAreaPts} fill="#2f9f56" opacity="0.08" /> : null}
-        {/* Future area fill */}
-        {futureAreaPts ? <Polygon points={futureAreaPts} fill="#2158d5" opacity="0.06" /> : null}
-        {/* Boundary line */}
-        <Line x1={bx} y1={0} x2={bx} y2={h} stroke="#c5cdd8" strokeWidth="1" strokeDasharray="4,3" />
-        {/* Past actual line */}
-        {pastPts ? (
-          <Polyline points={pastPts} fill="none" stroke="#2f9f56" strokeWidth="2.5" strokeLinecap="round" />
-        ) : null}
-        {/* Future projected line */}
-        {futurePts ? (
-          <Polyline
-            points={futurePts}
-            fill="none"
-            stroke="#2158d5"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeDasharray="6,4"
-          />
-        ) : null}
-        {/* dots on last actual + first projected */}
-        {pastValues.length > 0 ? (
-          <Circle
-            cx={String(bx)}
-            cy={String(yForValue(pastValues[pastValues.length - 1], h, min, max))}
-            r="4"
-            fill="#fff"
-            stroke="#2f9f56"
-            strokeWidth="2"
-          />
-        ) : null}
-      </Svg>
-      {/* axis labels */}
-      <View style={sty.miniChartAxisRow}>
-        {ticks.map((tick, i) => (
-          <Text
-            key={`t${i}`}
-            style={[sty.miniChartAxisLabel, { position: 'absolute', top: tick.y - 6, left: 0 }]}
-          >
-            {formatAxisLabel(tick.val)}
-          </Text>
-        ))}
-      </View>
-      <View style={sty.miniChartLegendRow}>
-        <View style={sty.miniChartLegendItem}>
-          <View style={[sty.miniChartLegendDot, { backgroundColor: '#2f9f56' }]} />
-          <Text style={sty.miniChartLegendText}>Actual</Text>
-        </View>
-        <View style={sty.miniChartLegendItem}>
-          <View style={[sty.miniChartLegendDot, { backgroundColor: '#2158d5' }]} />
-          <Text style={sty.miniChartLegendText}>Projected</Text>
-        </View>
-      </View>
+    <View style={[sty.directionHeroWrap, { backgroundColor: bg }]}>
+      <Text style={[sty.directionArrow, { color: accent }]}>{arrow}</Text>
+      <Text style={[sty.directionLabel, { color: accent }]}>{label}</Text>
+      <Text style={sty.directionSub}>{sub}</Text>
     </View>
   );
 }
@@ -700,8 +589,14 @@ export default function ReportsTabV2({ payload, challengeApiRows, runtimeMeUserI
             <Text style={sty.heroMetricLabel}>vs Prior</Text>
           </View>
         </View>
-        {/* Mini chart */}
-        <MiniTrendChart pastValues={gci.pastValuesK} futureValues={gci.futureValues} />
+        {/* Activity direction indicator */}
+        <ActivityDirectionHero
+          direction={loggingTrend.direction}
+          deltaPct={loggingTrend.deltaPct}
+          current={loggingTrend.current}
+          prior={loggingTrend.prior}
+          rangeDays={RANGE_DAYS[range]}
+        />
       </SectionCard>
 
       {/* ── 2. Most Logged KPIs ────────────────────────────────────── */}
@@ -1224,26 +1119,28 @@ const sty = StyleSheet.create({
   pointsLabel: { fontSize: 10, fontWeight: '600', color: '#7f8795' },
   pointsDivider: { width: 1, height: 36, backgroundColor: '#e8ecf4' },
 
-  // ── Mini Chart ──
-  miniChartWrap: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+  // ── Activity Direction Hero ──
+  directionHeroWrap: {
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 14,
+    paddingVertical: 18,
+    borderRadius: 14,
+    gap: 4,
   },
-  miniChartAxisRow: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: 50,
-    height: MINI_CHART_H - 24,
+  directionArrow: {
+    fontSize: 52,
+    fontWeight: '900',
+    lineHeight: 58,
   },
-  miniChartAxisLabel: { fontSize: 8, color: '#8a93a6', fontWeight: '600' },
-  miniChartLegendRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 16,
-    paddingTop: 6,
+  directionLabel: {
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
-  miniChartLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  miniChartLegendDot: { width: 8, height: 8, borderRadius: 4 },
-  miniChartLegendText: { fontSize: 10, color: '#636b78', fontWeight: '600' },
+  directionSub: {
+    fontSize: 12,
+    color: '#636b78',
+    marginTop: 2,
+  },
 });
