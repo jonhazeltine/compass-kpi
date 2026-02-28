@@ -123,7 +123,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A` | `closed` | `M6 / W12` | `Team Leader`, `Team Member`, `Solo User` | `challenge surface` (`team-pattern interaction alignment`) | `KPIDashboardScreen` Challenge surface only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + wiring pass) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
 | `M8-MOBILE-RUNTIME-REGRESSION-MATRIX-A` | `active` | `M8 mobile hardening` | `Team Leader`, `Team Member`, `Solo User`, `Coach`, `Challenge Sponsor` | `mobile runtime QA` (`critical-route regression matrix + screenshot proof`) | `Home`, `Team`, `Challenge`, `Comms`, `Journeys/Lessons`, `Log` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | N/A (runtime validation swath) | QA-only pass: capture matrix + screenshots. No code edits in this assignment; file new targeted bugfix assignment IDs for any regression found. |
 | `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `active` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Execute browser/runtime spotcheck and capture failures with path+persona granularity; code changes allowed only for scoped regressions discovered during this pass. |
-| `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `active` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Close FE-00 pending checkpoint by locking frontend harness mapping and explicit pass/fail gate criteria in docs with no product runtime code edits. |
+| `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `review` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Review-ready: FE-00 checkpoint moved from pending to concrete complete state in sprint gate, and frontend acceptance harness now includes explicit FE-00 pass/fail closeout criteria with traceability consistency checks. |
 | `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `active` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Re-run deterministic seed/smoke flow and verify sample-content assumptions still hold for current mobile/admin runtime expectations. |
 
 ## Blocked Assignments
@@ -4346,7 +4346,7 @@ Validate admin + coach route/runtime integrity and role gating after recent W11/
 ### `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `FE-00 gate closeout`
 - `Persona:` `Owner-facing program governance`
 - `Flow:` `frontend acceptance harness docs` (`traceability lock + harness mapping`)
@@ -4354,6 +4354,10 @@ Validate admin + coach route/runtime integrity and role gating after recent W11/
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred)
 - `Execution note (2026-02-27, Controller):` Assignment launched to close the FE-00 pending acceptance-harness checkpoint in current sprint docs.
 - `Current blocker status (2026-02-27, launch):` `none`.
+- `Completion note (2026-02-27, Coach-1):` Updated `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md` with explicit FE-00 harness closeout gate criteria (pass/fail table) and closeout status, and updated `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md` FE-00 checkpoint fields from pending/TBD to concrete complete values with direct harness criteria reference.
+- `Validation note (2026-02-27, Coach-1):` Cross-doc traceability and wording alignment verified between FE-00 sprint traceability row/checkpoint state in `CURRENT_SPRINT.md` and FE acceptance harness mapping/closeout criteria in `05_acceptance_tests.md`.
+- `Decision note (2026-02-27, Coach-1):` `not needed` — no structural boundary changes in this docs closeout pass.
+- `Current blocker status (2026-02-27, completion):` `none`.
 
 #### Primary Objective
 Close the FE-00 frontend acceptance-harness gap by locking sprint-to-harness traceability and explicit pass/fail criteria in docs.

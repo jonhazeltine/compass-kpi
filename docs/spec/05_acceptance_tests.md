@@ -436,3 +436,20 @@ This section defines UI/API integration validation for the frontend sprint roadm
 - No sprint closes unless prior frontend sprint coverage remains green.
 - No pixel-parity story closes unless corresponding export exists with node-id + dimensions logged in `design/figma/FIGMA_INDEX.md`.
 - Any UI change impacting contract semantics must cross-check affected rows in `docs/spec/04_api_contracts.md`.
+
+### FE-00 Harness Closeout Criteria (Gate)
+
+| Gate Check | Pass Condition | Fail Condition |
+|---|---|---|
+| Sprint gate source of truth | `architecture/CURRENT_SPRINT.md` includes FE-00 goal, in-scope/out-of-scope, complete sprint traceability matrix, and FE-00 checkpoint marked complete | FE-00 checkpoint fields remain `pending`/`TBD` or missing |
+| Harness mapping coverage | Frontend harness section maps FE-00, M1-M8, and A1-A4 to scenario coverage and UI integration focus | Any frontend sprint row missing or not linked to acceptance scenarios |
+| Asset-readiness gate linkage | FE-00 required screen/component export checks are explicit and referenced by sprint gate docs | Required export checks or readiness statuses are missing/ambiguous |
+| Non-negotiable alignment | Harness principles and regression gate preserve PC vs Actual separation, GP/VP constraints, confidence display-only rule, and pipeline-anchor visibility | Harness wording permits behavior that conflicts with non-negotiables |
+| Traceability consistency | FE-00 traceability row in `CURRENT_SPRINT.md` matches FE-00 harness row and references this file | FE-00 traceability row and harness row are inconsistent |
+
+### FE-00 Harness Closeout Status
+- `Status`: `passed` (docs gate closeout)
+- `Closeout date`: `2026-02-27`
+- `Validated by`: cross-doc consistency check between:
+  - `architecture/CURRENT_SPRINT.md`
+  - `docs/spec/05_acceptance_tests.md`

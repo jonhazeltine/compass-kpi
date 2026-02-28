@@ -118,10 +118,11 @@ Parallel staffing assumption: Mobile-first priority; Admin stream starts once M3
   - `cd backend && npm run test:backend-mvp`
 
 ## FE-00 Completion Checkpoint
-- Completion date: TBD.
-- Frontend gate transition approved: pending.
+- Completion date: 2026-02-27.
+- Frontend gate transition approved: complete (2026-02-27).
 - Asset readiness M1/M2 green: complete.
-- Frontend acceptance harness merged: pending.
+- Frontend acceptance harness merged: complete (2026-02-27).
+- FE-00 harness closeout criteria (explicit pass/fail): complete (see `docs/spec/05_acceptance_tests.md` -> `FE-00 Harness Closeout Criteria (Gate)`).
 
 ## Active Implementation Focus (M3 Engine Hardening)
 - Canonical algorithm source locked to `docs/spec/appendix/Master Spec.md` ("Calcs and Algorithmns").
