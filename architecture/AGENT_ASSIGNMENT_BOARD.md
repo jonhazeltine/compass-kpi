@@ -124,7 +124,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M8-MOBILE-RUNTIME-REGRESSION-MATRIX-A` | `review` | `M8 mobile hardening` | `Team Leader`, `Team Member`, `Solo User`, `Coach`, `Challenge Sponsor` | `mobile runtime QA` (`critical-route regression matrix + screenshot proof`) | `Home`, `Team`, `Challenge`, `Comms`, `Journeys/Lessons`, `Log` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | N/A (runtime validation swath) | Review-ready QA sweep: runtime matrix completed (30/30 pass, 0 blockers) with consolidated evidence in `app/test-results/m8-mobile-regression-matrix-a/`; assignment remained QA-only with no app/backend code edits. |
 | `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `active` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Execute browser/runtime spotcheck and capture failures with path+persona granularity; code changes allowed only for scoped regressions discovered during this pass. |
 | `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `review` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Review-ready: FE-00 checkpoint moved from pending to concrete complete state in sprint gate, and frontend acceptance harness now includes explicit FE-00 pass/fail closeout criteria with traceability consistency checks. |
-| `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `active` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Re-run deterministic seed/smoke flow and verify sample-content assumptions still hold for current mobile/admin runtime expectations. |
+| `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `review` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Review-ready: reset + seed + smoke sequence passed against current deterministic realism runbook; no command/output drift found; logs captured under `app/test-results/m8-seed-data-smoke-verification-a/`. |
 
 ## Blocked Assignments
 
@@ -4395,7 +4395,7 @@ Close the FE-00 frontend acceptance-harness gap by locking sprint-to-harness tra
 ### `M8-SEED-DATA-SMOKE-VERIFICATION-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `M8 backend/data hardening`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`
 - `Flow:` `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`)
@@ -4403,6 +4403,10 @@ Close the FE-00 frontend acceptance-harness gap by locking sprint-to-harness tra
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (backend/data worktree preferred)
 - `Execution note (2026-02-27, Controller):` Assignment launched to re-validate seeded data realism/runbook determinism against latest runtime expectations.
 - `Current blocker status (2026-02-27, launch):` `none`.
+- `Completion note (2026-02-28, Mobile-2):` Executed documented deterministic runbook sequence end-to-end: `npm run seed:coaching:realism:reset`, `npm run seed:coaching:realism`, and `npm run seed:coaching:realism:smoke` from `/backend`. All commands passed and smoke assertions succeeded for coaching/channels/dashboard/sponsored endpoint families.
+- `Validation note (2026-02-28, Mobile-2):` Seed output confirms expected deterministic dataset coverage (`journeys=4`, `milestones=5`, `lessons=10`, `lesson_progress_rows=10`, `channels=3`, `channel_messages=13`, `sponsors=1`, `sponsored_challenges=2`, `kpis=2`) and persona visibility examples (`coach`, `team_leader`, `member`, `solo`, `challenge_sponsor`) with role visibility outcomes `true`.
+- `Drift note (2026-02-28, Mobile-2):` No runbook drift detected between `/docs/spec/appendix/M6_REALISM_DATA_PACK_UI_EVALUATION.md` commands/expectations and current script behavior.
+- `Evidence path (2026-02-28, Mobile-2):` `/Users/jon/compass-kpi/app/test-results/m8-seed-data-smoke-verification-a/01-seed-reset.log`, `/Users/jon/compass-kpi/app/test-results/m8-seed-data-smoke-verification-a/02-seed-and-smoke.log`, `/Users/jon/compass-kpi/app/test-results/m8-seed-data-smoke-verification-a/03-smoke-only.log`.
 
 #### Primary Objective
 Re-run deterministic seed and smoke flows, verify expected dataset outcomes, and document runbook drift or failures.
