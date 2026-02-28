@@ -2229,6 +2229,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [challengeJoinError, setChallengeJoinError] = useState<string | null>(null);
   const [challengeLeaveError, setChallengeLeaveError] = useState<string | null>(null);
   const [challengePreviewItem, setChallengePreviewItem] = useState<ChallengeFlowItem | null>(null);
+  const [challengeKpiDrillItem, setChallengeKpiDrillItem] = useState<{ key: string; label: string; type: string } | null>(null);
   const [runtimeMeRole, setRuntimeMeRole] = useState<string | null>(null);
   const [challengeMemberCreateModalVisible, setChallengeMemberCreateModalVisible] = useState(false);
   const [challengeMemberCreateMode, setChallengeMemberCreateMode] = useState<'public' | 'team'>('team');
@@ -6082,6 +6083,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     return [] as ChallengeFlowLeaderboardEntry[];
   }, [challengeSelected]);
   const challengeLeaderboardHasLowEntry = challengeLeaderboardRowsForScreen.length > 0 && challengeLeaderboardRowsForScreen.length < 3;
+  // Team average progress: mean of leaderboard entry pcts; fallback to individual progressPct
+  const challengeTeamAvgProgressPct = useMemo(() => {
+    if (challengeLeaderboardPreview.length > 0) {
+      return Math.min(100, Math.round(challengeLeaderboardPreview.reduce((s, e) => s + e.pct, 0) / challengeLeaderboardPreview.length));
+    }
+    return challengeSelected?.progressPct ?? 0;
+  }, [challengeLeaderboardPreview, challengeSelected?.progressPct]);
   const challengeListUsingPlaceholderRows = !Array.isArray(challengeApiRows) || challengeApiRows.length === 0;
   const challengeDetailsSurfaceLabel =
     teamPersonaVariant === 'member'
@@ -7687,12 +7695,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <Text style={styles.challengeDetailsNavTitle}>
                       {challengeDetailsSurfaceLabel}
                     </Text>
-                    <TouchableOpacity
-                      style={[styles.challengeDetailsActionBtn, styles.disabled]}
-                      disabled
-                    >
-                      <Text style={styles.challengeDetailsActionBtnText}>KPIs Below</Text>
-                    </TouchableOpacity>
+                    <View style={styles.challengeDetailsNavSpacer} />
                   </View>
 
                   <View style={styles.challengeDetailsTitleBlock}>
@@ -7702,10 +7705,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     </Text>
                   </View>
 
-                  <View style={styles.challengeDetailsHeroCard}>
-                    <View style={styles.challengeDetailsHeroTop}>
-                      <Text style={styles.challengeDetailsHeroLabel}>
-                        {challengeIsCompleted ? 'Challenge Results' : 'Challenge Progress'}
+                  {/* ── Leaderboard Hero Card ── */}
+                  <TouchableOpacity
+                    style={styles.cdLbHeroCard}
+                    activeOpacity={0.9}
+                    onPress={() => setChallengeFlowScreen('leaderboard')}
+                  >
+                    <View style={styles.cdLbHeroHeader}>
+                      <Text style={styles.cdLbHeroTitle}>
+                        {challengeIsCompleted ? 'Results & Standings' : 'Leaderboard'}
                       </Text>
                       <View
                         style={[
@@ -7725,225 +7733,126 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </Text>
                       </View>
                     </View>
-                    <View style={styles.challengeDetailsGaugeWrap}>
-                      <View style={styles.challengeDetailsGaugeOuter}>
-                        <View style={styles.challengeDetailsGaugeArcBase} />
-                        <View style={styles.challengeDetailsGaugeArcFill} />
-                        <View style={styles.challengeDetailsGaugeInner}>
-                          <Text style={styles.challengeDetailsGaugeValue}>{challengeSelected.progressPct}%</Text>
-                          <Text style={styles.challengeDetailsGaugeCaption}>
-                            {challengeSelected.bucket === 'completed' ? 'Completed' : 'Complete'}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                    <Text style={styles.challengeDetailsHeroHint}>
-                      {challengeIsCompleted
-                        ? 'Results summary is shown here.'
-                        : challengeIsPlaceholderOnly
-                          ? 'This is a placeholder preview card. Join/leave is disabled until a live challenge row is available.'
-                          : 'Progress and leaderboard update from challenge participation data. Some detail fields still use fallback values.'}
-                    </Text>
-                  </View>
-
-                  <View style={styles.challengeDetailsOwnerCard}>
-                    <View style={styles.challengeDetailsOwnerLeft}>
-                      <View style={styles.challengeDetailsOwnerAvatar}>
-                        <Text style={styles.challengeDetailsOwnerAvatarText}>
-                          {challengeSelected.joined ? 'ME' : challengeIsCompleted ? 'RS' : 'CH'}
-                        </Text>
-                      </View>
-                      <View style={styles.challengeDetailsOwnerCopy}>
-                        <Text style={styles.challengeDetailsOwnerName}>{challengeDetailsSummaryTitle}</Text>
-                        <Text style={styles.challengeDetailsOwnerStatus}>
-                          {challengeMembershipStateLabel} · {challengeDetailsSummaryStatus}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.challengeDetailsOwnerMetric}>
-                      <Text style={styles.challengeDetailsOwnerMetricValue}>{challengeDetailsSummaryMetricValue}</Text>
-                      <Text style={styles.challengeDetailsOwnerMetricLabel}>{challengeDetailsSummaryMetricLabel}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.challengeDetailsMetaCard}>
-                    <View style={styles.challengeDetailsDateRangeRow}>
-                      <Text style={styles.challengeDetailsDateRangeTitle}>{challengeSelected.timeframe}</Text>
-                      <View style={styles.challengeDetailsDaysPill}>
-                        <Text style={styles.challengeDetailsDaysPillText}>
-                          {challengeSelected.bucket === 'active' ? `${challengeDaysLeft} days left` : challengeSelected.daysLabel}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.challengeDetailsMetaRows}>
-                      <View style={styles.challengeDetailsMetaRow}>
-                        <Text style={styles.challengeDetailsMetaKey}>Start Date</Text>
-                        <Text style={styles.challengeDetailsMetaVal}>
-                          {fmtShortMonthDayYear(challengeSelected.startAtIso) || 'TBD'}
-                        </Text>
-                      </View>
-                      <View style={styles.challengeDetailsMetaRow}>
-                        <Text style={styles.challengeDetailsMetaKey}>End Date</Text>
-                        <Text style={styles.challengeDetailsMetaVal}>
-                          {fmtShortMonthDayYear(challengeSelected.endAtIso) || 'TBD'}
-                        </Text>
-                      </View>
-                      <View style={styles.challengeDetailsMetaRow}>
-                        <Text style={styles.challengeDetailsMetaKey}>Challenge Type</Text>
-                        <Text style={styles.challengeDetailsMetaVal}>{challengeSelected.challengeModeLabel}</Text>
-                      </View>
-                      <View style={styles.challengeDetailsMetaRow}>
-                        <Text style={styles.challengeDetailsMetaKey}>Target Value</Text>
-                        <Text style={styles.challengeDetailsMetaVal}>{challengeSelected.targetValueLabel}</Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  <TouchableOpacity
-                    style={styles.challengeDetailsLeaderboardCard}
-                    activeOpacity={0.9}
-                    onPress={() => setChallengeFlowScreen('leaderboard')}
-                  >
-                    <View style={styles.challengeDetailsLeaderboardHeader}>
-                      <Text style={styles.challengeDetailsLeaderboardTitle}>
-                        {challengeIsCompleted ? 'Results & Leaderboard' : 'Leaderboard & Progress'}
-                      </Text>
-                      <Text style={styles.challengeDetailsLeaderboardMeta}>
-                        {challengeIsCompleted ? 'Open results' : 'Open leaderboard'}
-                      </Text>
-                    </View>
                     {challengeLeaderboardHasRealRows ? (
                       <>
-                        <View style={styles.challengeDetailsLeaderboardTop3}>
+                        <View style={styles.cdLbHeroTop3}>
                           {challengeLeaderboardPreview.slice(0, 3).map((entry) => (
-                            <View key={`challenge-lb-${entry.rank}`} style={styles.challengeDetailsLeaderboardTopCard}>
-                              <Text style={styles.challengeDetailsLeaderboardRank}>#{entry.rank}</Text>
-                              <View style={styles.challengeDetailsLeaderboardAvatar}>
-                                <Text style={styles.challengeDetailsLeaderboardAvatarText}>
+                            <View key={`cdlb-top-${entry.rank}`} style={styles.cdLbHeroTopCard}>
+                              <Text style={styles.cdLbHeroRank}>#{entry.rank}</Text>
+                              <View style={styles.cdLbHeroAvatar}>
+                                <Text style={styles.cdLbHeroAvatarText}>
                                   {entry.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}
                                 </Text>
                               </View>
-                              <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardName}>{entry.name}</Text>
-                              <Text style={styles.challengeDetailsLeaderboardPct}>{entry.pct}%</Text>
-                              <Text style={styles.challengeDetailsLeaderboardVal}>{entry.value} logs</Text>
+                              <Text numberOfLines={1} style={styles.cdLbHeroName}>{entry.name}</Text>
+                              <Text style={styles.cdLbHeroPct}>{entry.pct}%</Text>
                             </View>
                           ))}
                         </View>
-                        <View style={styles.challengeDetailsLeaderboardList}>
+                        <View style={styles.cdLbHeroRows}>
                           {challengeLeaderboardPreview.map((entry) => (
-                            <View key={`challenge-lb-row-${entry.rank}`} style={styles.challengeDetailsLeaderboardRow}>
-                              <Text style={styles.challengeDetailsLeaderboardRowRank}>{String(entry.rank).padStart(2, '0')}</Text>
-                              <Text numberOfLines={1} style={styles.challengeDetailsLeaderboardRowName}>{entry.name}</Text>
-                              <Text style={styles.challengeDetailsLeaderboardRowPct}>{entry.pct}%</Text>
+                            <View key={`cdlb-row-${entry.rank}`} style={styles.cdLbHeroRow}>
+                              <Text style={styles.cdLbHeroRowRank}>{String(entry.rank).padStart(2, '0')}</Text>
+                              <Text numberOfLines={1} style={styles.cdLbHeroRowName}>{entry.name}</Text>
+                              <Text style={styles.cdLbHeroRowVal}>{entry.value} logs</Text>
+                              <Text style={styles.cdLbHeroRowPct}>{entry.pct}%</Text>
                             </View>
                           ))}
                         </View>
-                        {challengeLeaderboardPreview.length < 3 ? (
-                          <View style={styles.challengeLeaderboardPreviewEmpty}>
-                            <Text style={styles.challengeLeaderboardPreviewEmptyTitle}>
-                              {challengeIsCompleted ? 'Partial results loaded' : 'Leaderboard is just getting started'}
-                            </Text>
-                            <Text style={styles.challengeLeaderboardPreviewEmptySub}>
-                              {challengeIsCompleted
-                                ? 'Only part of the final standings are available.'
-                                : 'Additional leaderboard rows will appear after more participation activity.'}
-                            </Text>
-                          </View>
-                        ) : null}
                       </>
                     ) : (
-                      <View style={styles.challengeLeaderboardPreviewEmpty}>
-                        <Text style={styles.challengeLeaderboardPreviewEmptyTitle}>
-                          {challengeIsCompleted ? 'Results details are not available yet' : 'Leaderboard will appear after challenge activity starts'}
+                      <View style={styles.cdLbHeroEmpty}>
+                        <Text style={styles.cdLbHeroEmptyTitle}>
+                          {challengeIsCompleted ? 'Results loading' : 'Leaderboard populates after activity starts'}
                         </Text>
-                        <Text style={styles.challengeLeaderboardPreviewEmptySub}>
+                        <Text style={styles.cdLbHeroEmptySub}>
                           {challengeIsCompleted
-                            ? 'This challenge is complete. Final standings are still loading.'
-                            : 'Join and log challenge activity to populate leaderboard standings.'}
+                            ? 'Final standings are still being calculated.'
+                            : 'Join and log challenge activity to appear on the leaderboard.'}
                         </Text>
                       </View>
                     )}
+                    <Text style={styles.cdLbHeroHint}>Tap to open full leaderboard →</Text>
                   </TouchableOpacity>
 
-                  <View style={styles.coachingEntryCard}>
-                    <View style={styles.coachingEntryHeaderRow}>
-                      <Text style={styles.coachingEntryTitle}>
-                        {challengeIsCompleted ? 'Challenge Coaching & Updates' : 'Challenge Updates & Coaching'}
-                      </Text>
-                      <Text style={styles.coachingEntryBadge}>W2 comms</Text>
+                  {/* ── Goals Section ── */}
+                  <View style={styles.cdGoalsSection}>
+                    {/* Team Goals */}
+                    <View style={styles.cdGoalsGroupHeader}>
+                      <Text style={styles.cdGoalsGroupTitle}>Team Goals</Text>
+                      <Text style={styles.cdGoalsGroupMeta}>cumulative team contribution</Text>
                     </View>
-                    <Text style={styles.coachingEntrySub}>
-                      Challenge updates and coaching paths.
-                    </Text>
-                    {renderRuntimeStateBanner(challengeRuntimeStateModel, { compact: true })}
-                    {renderCoachingPackageGateBanner('Challenge coaching and updates', challengeCoachingPackageOutcome, { compact: true })}
-                    {renderCoachingNotificationSurface(
-                      'Challenge notifications',
-                      challengeSurfaceNotificationRows,
-                      summarizeNotificationRows(challengeSurfaceNotificationRows, { sourceLabel: 'challenge_surface' }),
-                      { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No challenge coaching notifications yet.' }
-                    )}
-                    {challengeCoachingGateBlocksCtas ? (
-                      renderKnownLimitedDataChip('challenge coaching access')
-                    ) : (
-                      <>
-                        <View style={styles.coachingEntryButtonRow}>
-                          <TouchableOpacity
-                            style={styles.coachingEntryPrimaryBtn}
-                            onPress={() =>
-                              openCoachingShell('channel_thread', {
-                                source: 'challenge_details',
-                                preferredChannelScope: challengeHasSponsorSignal ? 'sponsor' : 'challenge',
-                                preferredChannelLabel: challengeHasSponsorSignal ? 'Sponsor / Challenge Updates' : 'Challenge Updates',
-                                threadTitle: challengeHasSponsorSignal
-                                  ? `${challengeSelected?.title ?? 'Challenge'} Sponsor Channel`
-                                  : `${challengeSelected?.title ?? 'Challenge'} Channel`,
-                                threadSub: challengeHasSponsorSignal
-                                  ? 'Sponsor/challenge updates thread.'
-                                  : 'Challenge updates thread.',
-                                broadcastAudienceLabel: null,
-                                broadcastRoleAllowed: false,
-                              })
-                            }
-                          >
-                            <Text style={styles.coachingEntryPrimaryBtnText}>Challenge Updates</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.coachingEntrySecondaryBtn}
-                            onPress={() =>
-                              openCoachingShell(challengeIsCompleted ? 'coaching_journeys' : 'coaching_journey_detail', {
-                                source: 'challenge_details',
-                                selectedJourneyId: null,
-                                selectedJourneyTitle: null,
-                                selectedLessonId: null,
-                                selectedLessonTitle: null,
-                              })
-                            }
-                          >
-                            <Text style={styles.coachingEntrySecondaryBtnText}>Coaching Prompt</Text>
-                          </TouchableOpacity>
-                        </View>
+                    {challengeScopedKpiGroups.PC.length > 0 ? (
+                      challengeScopedKpiGroups.PC.map((kpi) => (
                         <TouchableOpacity
-                          style={styles.coachingEntryDarkBtn}
-                          onPress={() =>
-                            openAiAssistShell(
-                              {
-                                host: 'challenge_coaching_module',
-                                title: 'AI Assist (Approval-First)',
-                                sub: 'Draft only. Human review required.',
-                                targetLabel: challengeSelected?.title ?? 'Challenge coaching module',
-                                approvedInsertOnly: true,
-                              },
-                              {
-                                prompt: `Draft a short coaching/support note for ${challengeSelected?.title ?? 'this challenge'} without changing challenge results or participation state.`,
-                              }
-                            )
-                          }
+                          key={`cdgoal-team-${kpi.id}`}
+                          style={styles.cdGoalKpiRow}
+                          activeOpacity={0.75}
+                          onPress={() => setChallengeKpiDrillItem({ key: kpi.id, label: String(kpi.name ?? kpi.id), type: kpi.type })}
                         >
-                          <Text style={styles.coachingEntryDarkBtnText}>AI Assist Draft (Review)</Text>
+                          <View style={styles.cdGoalKpiLeft}>
+                            <View style={[styles.cdGoalKpiTypeBadge, styles.cdGoalKpiTypeBadgeTeam]}>
+                              <Text style={styles.cdGoalKpiTypeBadgeText}>{kpi.type}</Text>
+                            </View>
+                            <Text numberOfLines={1} style={styles.cdGoalKpiName}>{kpi.name}</Text>
+                          </View>
+                          <View style={styles.cdGoalKpiRight}>
+                            <Text style={styles.cdGoalKpiPct}>{challengeTeamAvgProgressPct}%</Text>
+                            <View style={styles.cdGoalKpiTrack}>
+                              <View style={[styles.cdGoalKpiFill, styles.cdGoalKpiFillTeam, { width: `${Math.min(100, challengeTeamAvgProgressPct)}%` as `${number}%` }]} />
+                            </View>
+                          </View>
                         </TouchableOpacity>
-                      </>
+                      ))
+                    ) : (
+                      <View style={styles.cdGoalsEmptyRow}>
+                        <Text style={styles.cdGoalsEmptyText}>No team goal KPIs available for this challenge.</Text>
+                      </View>
                     )}
+
+                    {/* Individual Goals */}
+                    <View style={[styles.cdGoalsGroupHeader, styles.cdGoalsGroupHeaderIndividual]}>
+                      <Text style={styles.cdGoalsGroupTitle}>Individual Goals</Text>
+                      <Text style={styles.cdGoalsGroupMeta}>your progress only</Text>
+                    </View>
+                    {(challengeScopedKpiGroups.GP.length > 0 || challengeScopedKpiGroups.VP.length > 0) ? (
+                      [...challengeScopedKpiGroups.GP, ...challengeScopedKpiGroups.VP].map((kpi) => (
+                        <TouchableOpacity
+                          key={`cdgoal-ind-${kpi.id}`}
+                          style={styles.cdGoalKpiRow}
+                          activeOpacity={0.75}
+                          onPress={() => setChallengeKpiDrillItem({ key: kpi.id, label: String(kpi.name ?? kpi.id), type: kpi.type })}
+                        >
+                          <View style={styles.cdGoalKpiLeft}>
+                            <View style={[styles.cdGoalKpiTypeBadge, styles.cdGoalKpiTypeBadgeIndividual]}>
+                              <Text style={styles.cdGoalKpiTypeBadgeText}>{kpi.type}</Text>
+                            </View>
+                            <Text numberOfLines={1} style={styles.cdGoalKpiName}>{kpi.name}</Text>
+                          </View>
+                          <View style={styles.cdGoalKpiRight}>
+                            <Text style={styles.cdGoalKpiPct}>{challengeSelected.progressPct}%</Text>
+                            <View style={styles.cdGoalKpiTrack}>
+                              <View style={[styles.cdGoalKpiFill, styles.cdGoalKpiFillIndividual, { width: `${Math.min(100, challengeSelected.progressPct)}%` as `${number}%` }]} />
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      ))
+                    ) : (
+                      <View style={styles.cdGoalsEmptyRow}>
+                        <Text style={styles.cdGoalsEmptyText}>No individual goal KPIs available.</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Compact meta row */}
+                  <View style={styles.cdMetaCompact}>
+                    <Text style={styles.cdMetaCompactText}>{challengeSelected.timeframe}</Text>
+                    <Text style={styles.cdMetaCompactDot}>·</Text>
+                    <Text style={styles.cdMetaCompactText}>
+                      {challengeSelected.bucket === 'active' ? `${challengeDaysLeft} days left` : challengeSelected.daysLabel}
+                    </Text>
+                    <Text style={styles.cdMetaCompactDot}>·</Text>
+                    <Text style={styles.cdMetaCompactText}>{challengeSelected.participants} participants</Text>
                   </View>
 
                   <View style={styles.challengeDetailsCtaBlock}>
@@ -8078,6 +7987,53 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     {renderChallengeKpiSection('VP', 'Vitality (VP)', challengeScopedKpiGroups.VP)}
                   </View>
                 )}
+
+                {/* ── KPI Contribution Drill-In Sheet ── */}
+                <Modal
+                  visible={challengeKpiDrillItem !== null}
+                  transparent
+                  animationType="slide"
+                  onRequestClose={() => setChallengeKpiDrillItem(null)}
+                >
+                  <Pressable style={styles.challengeDrawerBackdrop} onPress={() => setChallengeKpiDrillItem(null)}>
+                    <Pressable style={styles.challengeDrawerSheet} onPress={() => {}}>
+                      <View style={styles.challengeDrawerHandle} />
+                      {challengeKpiDrillItem ? (
+                        <>
+                          <View style={styles.cdDrillHeader}>
+                            <View style={[styles.cdGoalKpiTypeBadge,
+                              challengeKpiDrillItem.type === 'PC' ? styles.cdGoalKpiTypeBadgeTeam : styles.cdGoalKpiTypeBadgeIndividual,
+                            ]}>
+                              <Text style={styles.cdGoalKpiTypeBadgeText}>{challengeKpiDrillItem.type}</Text>
+                            </View>
+                            <Text style={styles.cdDrillTitle} numberOfLines={2}>{challengeKpiDrillItem.label}</Text>
+                          </View>
+                          <Text style={styles.cdDrillSub}>Participant contribution breakdown</Text>
+                          <View style={styles.challengeDrawerDivider} />
+                          {challengeLeaderboardPreview.length > 0 ? (
+                            challengeLeaderboardPreview.map((entry) => (
+                              <View key={`cddrill-${entry.rank}`} style={styles.cdDrillRow}>
+                                <Text style={styles.cdDrillRowRank}>#{entry.rank}</Text>
+                                <Text numberOfLines={1} style={styles.cdDrillRowName}>{entry.name}</Text>
+                                <View style={styles.cdDrillBarWrap}>
+                                  <View style={styles.cdDrillBarTrack}>
+                                    <View style={[styles.cdDrillBarFill, { width: `${Math.min(100, entry.pct)}%` as `${number}%` }]} />
+                                  </View>
+                                  <Text style={styles.cdDrillRowPct}>{entry.pct}%</Text>
+                                </View>
+                              </View>
+                            ))
+                          ) : (
+                            <View style={styles.cdDrillEmpty}>
+                              <Text style={styles.cdDrillEmptyText}>No participant data available yet for this KPI.</Text>
+                              <Text style={styles.cdDrillEmptySub}>Data will appear once participants join and log challenge activity.</Text>
+                            </View>
+                          )}
+                        </>
+                      ) : null}
+                    </Pressable>
+                  </Pressable>
+                </Modal>
               </>
             )}
           </View>
@@ -13080,6 +13036,346 @@ const styles = StyleSheet.create({
     color: '#35557f',
     fontSize: 14,
     fontWeight: '800',
+  },
+  // ── Challenge Detail Leaderboard Hero Card ──────────────────────────────
+  cdLbHeroCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dce3f0',
+    backgroundColor: '#fff',
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  cdLbHeroHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f3f8',
+  },
+  cdLbHeroTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1a2540',
+  },
+  cdLbHeroTop3: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    backgroundColor: '#f6f9ff',
+    gap: 4,
+  },
+  cdLbHeroTopCard: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  cdLbHeroRank: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4361c2',
+  },
+  cdLbHeroAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#4361c2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cdLbHeroAvatarText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  cdLbHeroName: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1a2540',
+    textAlign: 'center',
+    maxWidth: 72,
+  },
+  cdLbHeroPct: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1a2540',
+  },
+  cdLbHeroRows: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  cdLbHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f5fb',
+  },
+  cdLbHeroRowRank: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8a93a6',
+    width: 24,
+  },
+  cdLbHeroRowName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#1a2540',
+  },
+  cdLbHeroRowVal: {
+    fontSize: 12,
+    color: '#6b7790',
+    marginRight: 4,
+  },
+  cdLbHeroRowPct: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4361c2',
+    width: 38,
+    textAlign: 'right',
+  },
+  cdLbHeroEmpty: {
+    padding: 16,
+    alignItems: 'center',
+    gap: 4,
+  },
+  cdLbHeroEmptyTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7790',
+    textAlign: 'center',
+  },
+  cdLbHeroEmptySub: {
+    fontSize: 12,
+    color: '#8a93a6',
+    textAlign: 'center',
+  },
+  cdLbHeroHint: {
+    fontSize: 12,
+    color: '#4361c2',
+    textAlign: 'center',
+    paddingBottom: 12,
+    fontWeight: '600',
+  },
+  // ── Challenge Detail Goals Section ──────────────────────────────────────
+  cdGoalsSection: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dce3f0',
+    backgroundColor: '#fff',
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  cdGoalsGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: '#f6f9ff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eef1f8',
+  },
+  cdGoalsGroupHeaderIndividual: {
+    borderTopWidth: 1,
+    borderTopColor: '#eef1f8',
+    backgroundColor: '#f8f7ff',
+  },
+  cdGoalsGroupTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1a2540',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  cdGoalsGroupMeta: {
+    fontSize: 11,
+    color: '#8a93a6',
+    fontWeight: '500',
+  },
+  cdGoalKpiRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f5fb',
+  },
+  cdGoalKpiLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+  },
+  cdGoalKpiTypeBadge: {
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 28,
+  },
+  cdGoalKpiTypeBadgeTeam: {
+    backgroundColor: '#e6edfa',
+  },
+  cdGoalKpiTypeBadgeIndividual: {
+    backgroundColor: '#e8f5ed',
+  },
+  cdGoalKpiTypeBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#1a2540',
+    textTransform: 'uppercase',
+  },
+  cdGoalKpiName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#1a2540',
+  },
+  cdGoalKpiRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+    width: 90,
+  },
+  cdGoalKpiPct: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1a2540',
+  },
+  cdGoalKpiTrack: {
+    width: 90,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#e8edf5',
+    overflow: 'hidden',
+  },
+  cdGoalKpiFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  cdGoalKpiFillTeam: {
+    backgroundColor: '#4361c2',
+  },
+  cdGoalKpiFillIndividual: {
+    backgroundColor: '#57d36a',
+  },
+  cdGoalsEmptyRow: {
+    padding: 14,
+    alignItems: 'center',
+  },
+  cdGoalsEmptyText: {
+    fontSize: 12,
+    color: '#8a93a6',
+    textAlign: 'center',
+  },
+  // ── Challenge Detail Compact Meta Row ───────────────────────────────────
+  cdMetaCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 12,
+    paddingHorizontal: 8,
+  },
+  cdMetaCompactText: {
+    fontSize: 12,
+    color: '#6b7790',
+    fontWeight: '500',
+  },
+  cdMetaCompactDot: {
+    fontSize: 12,
+    color: '#b0b8ca',
+  },
+  // ── KPI Contribution Drill-In Sheet ─────────────────────────────────────
+  cdDrillHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
+  cdDrillTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a2540',
+  },
+  cdDrillSub: {
+    fontSize: 13,
+    color: '#6b7790',
+    marginBottom: 8,
+  },
+  cdDrillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f5fb',
+  },
+  cdDrillRowRank: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8a93a6',
+    width: 28,
+  },
+  cdDrillRowName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#1a2540',
+  },
+  cdDrillBarWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    width: 110,
+  },
+  cdDrillBarTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#e8edf5',
+    overflow: 'hidden',
+  },
+  cdDrillBarFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#4361c2',
+  },
+  cdDrillRowPct: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4361c2',
+    width: 34,
+    textAlign: 'right',
+  },
+  cdDrillEmpty: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    gap: 6,
+  },
+  cdDrillEmptyText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7790',
+    textAlign: 'center',
+  },
+  cdDrillEmptySub: {
+    fontSize: 12,
+    color: '#8a93a6',
+    textAlign: 'center',
   },
   challengeProgressCard: {
     borderRadius: 12,
