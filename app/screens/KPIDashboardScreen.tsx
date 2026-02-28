@@ -21,6 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
 import LottieSlot from '../components/LottieSlot';
+import ReportsTabV2 from '../components/reports/ReportsTabV2';
 import PillGrowthBg from '../assets/figma/kpi_icon_bank/pill_growth_bg_v1.svg';
 import PillProjectionsBg from '../assets/figma/kpi_icon_bank/pill_projections_bg_v1.svg';
 import PillQuicklogBg from '../assets/figma/kpi_icon_bank/pill_quicklog_bg_v1.svg';
@@ -11333,58 +11334,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             </View>
               </>
             ) : (
-              <>
-                <View style={styles.logsReportsSummaryGrid}>
-                  <View style={styles.logsReportsSummaryCard}>
-                    <Text style={styles.logsReportsSummaryLabel}>Active Days</Text>
-                    <Text style={styles.logsReportsSummaryValue}>{fmtNum(payload?.activity.active_days ?? 0)}</Text>
-                    <Text style={styles.logsReportsSummarySub}>Logging streak context</Text>
-                  </View>
-                  <View style={styles.logsReportsSummaryCard}>
-                    <Text style={styles.logsReportsSummaryLabel}>Total Logs</Text>
-                    <Text style={styles.logsReportsSummaryValue}>{fmtNum(payload?.activity.total_logs ?? 0)}</Text>
-                    <Text style={styles.logsReportsSummarySub}>Historical entries</Text>
-                  </View>
-                </View>
-
-                <View style={styles.logsReportsCard}>
-                  <Text style={styles.logsReportsCardTitle}>Reports snapshot</Text>
-                  <Text style={styles.logsReportsCardSub}>
-                    Reports remain in this shared surface. Use Logs for date-based entry history and Reports for trend review.
-                  </Text>
-                  <View style={styles.logsReportsMetricRow}>
-                    <Text style={styles.logsReportsMetricLabel}>Projected (90d)</Text>
-                    <Text style={styles.logsReportsMetricValue}>{fmtUsd(cardMetrics.projectedNext90)}</Text>
-                  </View>
-                  <View style={styles.logsReportsMetricRow}>
-                    <Text style={styles.logsReportsMetricLabel}>Actual (365d)</Text>
-                    <Text style={styles.logsReportsMetricValue}>{fmtUsd(cardMetrics.actualLast365)}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.logsReportsCard}>
-                  <Text style={styles.logsReportsCardTitle}>Recent activity (read-only)</Text>
-                  {recentLogEntries.length === 0 ? (
-                    <Text style={styles.todayLogsEmpty}>No recent activity yet.</Text>
-                  ) : (
-                    recentLogEntries.slice(0, 6).map((log) => (
-                      <View key={`report-${log.id}`} style={styles.recentEntryRow}>
-                        <View style={styles.recentEntryMeta}>
-                          <Text style={styles.recentEntryName}>{log.kpi_name || 'KPI'}</Text>
-                          <Text style={styles.recentEntryTime}>
-                            {new Date(log.event_timestamp).toLocaleString(undefined, {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: 'numeric',
-                              minute: '2-digit',
-                            })}
-                          </Text>
-                        </View>
-                      </View>
-                    ))
-                  )}
-                </View>
-              </>
+              <ReportsTabV2
+                payload={payload}
+                challengeApiRows={challengeApiRows}
+                runtimeMeUserId={runtimeMeRole}
+              />
             )}
           </>
         )}
