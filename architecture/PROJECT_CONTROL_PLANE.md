@@ -54,6 +54,26 @@ For each sprint item in `architecture/CURRENT_SPRINT.md`, add:
 | DEP-004 | Data retention and compliance policy | Message storage, AI context, deletion workflows | Before communication launch | Product/Legal | open | Needed for audit and deletion behavior. |
 | DEP-005 | Third-party vendor security/legal checklist (Stream + Mux) | Runtime provider integrations, production key issuance, data handling approvals | Before third-party runtime implementation waves A/B | Security/Legal/Architecture | open | Must explicitly clear SOC/compliance, DPA, webhook/IP allowlist, secret rotation, incident response owners. Source of truth: `/Users/jon/compass-kpi/architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md`. |
 
+### W13 Dependency Closeout Tracker (DEP-002 / DEP-004 / DEP-005)
+
+Single source for Wave A dependency closure state. Keep this tracker in sync with source artifacts.
+
+| Dependency | Closure Criteria | Evidence Link(s) | Owner | Status |
+|---|---|---|---|---|
+| DEP-002 | Owner signs off final tenancy key strategy (`org_id` required, `team_id` optional) plus enforcement rules for Stream/Mux channel/media/webhook ownership and migration path. | `/Users/jon/compass-kpi/architecture/W13_DEP002_TENANCY_DECISION_PACKET.md` | Architecture + Owner | open |
+| DEP-004 | Retention/deletion policy approved for chat/video metadata and webhook/audit retention windows, with explicit policy actor/approval record. | `TBD: policy artifact link` | Product/Legal | open |
+| DEP-005 | All required gates in vendor checklist are `PASS` with evidence and Security/Legal/Architecture approvals recorded. | `/Users/jon/compass-kpi/architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md` | Security/Legal/Architecture | open |
+
+#### Wave A Ready Rule (Go / No-Go)
+- `Wave A Ready = GO` only when **all three** dependencies above are `closed`:
+  - `DEP-002` status = `closed`
+  - `DEP-004` status = `closed`
+  - `DEP-005` status = `closed`
+- If any dependency remains `open`, `pending`, or `blocked`, `Wave A Ready = NO-GO` and runtime assignments remain blocked:
+  - `W13-IMPLEMENT-STREAM-ADAPTER-A`
+  - `W13-IMPLEMENT-MUX-ADAPTER-A`
+  - `W13-RUNTIME-PARITY-AND-HARDENING-A`
+
 ### Risk Register
 | ID | Risk | Probability | Impact | Mitigation | Trigger |
 |---|---|---|---|---|---|

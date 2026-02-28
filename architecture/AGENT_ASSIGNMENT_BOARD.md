@@ -4661,9 +4661,10 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 | 3 | `W13-MUX-CONTRACTS-AND-TESTS-A` | `committed` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Planned Mux upload/playback/webhook contracts + acceptance depth merged (docs-only). |
 | 4 | `W13-DEP-005-VENDOR-SECURITY-LEGAL-CHECKLIST-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-005 checklist artifact + control-plane linkage completed (docs-only; no runtime changes). |
 | 5 | `W13-DEP-002-TENANCY-DECISION-PACKET-A` | `committed` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-002 decision packet committed with model comparison, recommendation, Stream/Mux implications, enforcement rules, migration path, and explicit owner sign-off prompts. |
-| 6 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
-| 7 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation block. |
-| 8 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. |
+| 6 | `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | `committed` | `Admin-1` | `W13-DEP-002-TENANCY-DECISION-PACKET-A`, `W13-DEP-005-VENDOR-SECURITY-LEGAL-CHECKLIST-A` | Committed: single W13 dependency closeout tracker added in control plane with closure criteria, evidence links, owners, statuses, and explicit Wave A GO/NO-GO rule. |
+| 7 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
+| 8 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation block. |
+| 9 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. |
 
 ### `W13-CHAT-VIDEO-ARCH-RFC-A`
 
