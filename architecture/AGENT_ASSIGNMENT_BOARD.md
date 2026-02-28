@@ -4606,11 +4606,13 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 | Order | Assignment ID | Status | Owner | Depends On | Notes |
 |---|---|---|---|---|---|
 | 1 | `W13-CHAT-VIDEO-ARCH-RFC-A` | `review` | `Controller` | none | Docs/control-plane planning slice implemented on 2026-02-28; runtime code explicitly out-of-scope. |
-| 2 | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | `active` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Stream-backed chat facade. |
-| 3 | `W13-MUX-CONTRACTS-AND-TESTS-A` | `active` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Mux-backed video facade/webhooks. |
-| 4 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
-| 5 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation block. |
-| 6 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. |
+| 2 | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | `review` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Stream-backed chat facade. |
+| 3 | `W13-MUX-CONTRACTS-AND-TESTS-A` | `review` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Mux-backed video facade/webhooks. |
+| 4 | `W13-DEP-005-VENDOR-SECURITY-LEGAL-CHECKLIST-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-005 checklist artifact + control-plane linkage completed (docs-only; no runtime changes). |
+| 5 | `W13-DEP-002-TENANCY-DECISION-PACKET-A` | `active` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-002 decision packet with candidate models, recommendation, enforcement rules, and owner sign-off block. |
+| 6 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
+| 7 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation block. |
+| 8 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. |
 
 ### `W13-CHAT-VIDEO-ARCH-RFC-A`
 
@@ -4703,6 +4705,82 @@ Deepen Mux planned contracts + acceptance scenarios and provider rollout constra
 - Keep all additions explicitly marked `planned`.
 - Preserve blocked gate references (`DEP-002`, `DEP-004`, `DEP-005`).
 
+### `W13-DEP-002-TENANCY-DECISION-PACKET-A`
+
+#### Snapshot
+- `Status:` `committed`
+- `Program status:` `W13 docs/control-plane exception`
+- `Persona:` `owner architecture sign-off`, `backend/platform contracts`, `ops/governance`
+- `Flow:` `DEP-002 tenancy model decision`
+- `Owner:` `Admin-1`
+- `Execution note (2026-02-28, Admin-1):` Board updated first. Producing docs-only DEP-002 decision packet with 2-3 models, recommended schema key strategy, and explicit owner sign-off section.
+- `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
+
+#### Primary Objective
+Create an owner-ready DEP-002 decision packet that recommends final tenancy keys and enforcement rules for Stream/Mux contract rollout planning.
+
+#### Scope In
+- `/Users/jon/compass-kpi/architecture/W13_DEP002_TENANCY_DECISION_PACKET.md` (new)
+
+#### Scope Out
+- Runtime code edits
+- Provider runtime implementation
+- Endpoint/webhook code changes
+
+#### Hard Constraints
+- Include 2-3 concrete tenancy models with tradeoffs.
+- Provide a single recommended model and migration path.
+- Explicitly state final key recommendation (`org_id`, optional `team_id`) and enforcement rules.
+- Include clear `decision needed` owner sign-off section.
+
+### `W13-DEP-005-VENDOR-SECURITY-LEGAL-CHECKLIST-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `W13 docs/control-plane exception`
+- `Persona:` `Security`, `Legal`, `Architecture`, `backend/platform planning`
+- `Flow:` `vendor security/legal dependency closure` (`DEP-005`)
+- `Owner:` `Coach-1`
+- `Execution note (2026-02-28, Coach-1):` Board updated first. Creating explicit DEP-005 pass/fail checklist artifact and wiring reference in project control plane dependency notes.
+- `Completion note (2026-02-28, Coach-1):` Added `/Users/jon/compass-kpi/architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md` with explicit PASS/FAIL gate definitions and owner/due-date status tracker; updated `DEP-005` note in `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` to reference the checklist as source of truth.
+- `Validation note (2026-02-28, Coach-1):` Docs-only diff verified for `architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md`, `architecture/PROJECT_CONTROL_PLANE.md`, and `architecture/AGENT_ASSIGNMENT_BOARD.md`.
+- `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
+- `Current blocker status (2026-02-28, completion):` `none`.
+
+#### Primary Objective
+Create a single source-of-truth checklist for DEP-005 closure (`Stream` + `Mux`) with explicit pass/fail gates and owner/due-date tracking, then reference it from the control plane dependency register.
+
+#### Scope In
+- `/Users/jon/compass-kpi/architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md` (new)
+- `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` (DEP-005 notes linkage only)
+
+#### Scope Out
+- Runtime/backend code
+- API/schema changes
+- Provider implementation tasks
+
+#### Hard Constraints
+- Docs-only diff.
+- Checklist must include explicit pass/fail gates:
+  - SOC/compliance evidence
+  - DPA
+  - data residency
+  - secret rotation
+  - webhook security
+  - incident response owners
+  - offboarding/termination controls
+
+#### Validation
+- `cd /Users/jon/compass-kpi && git diff -- architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md architecture/PROJECT_CONTROL_PLANE.md architecture/AGENT_ASSIGNMENT_BOARD.md`
+- Verify only docs files changed and no runtime code touched.
+
+#### Report-Back
+- Update board status first (`active` -> `committed` or `blocked`).
+- Files changed.
+- Checklist gate summary.
+- Validation command output summary.
+- Commit hash.
+
 ### `M6-TEAM-FOCUS-KPI-CARD-DENSITY-REDUCE-A`
 
 #### Snapshot
@@ -4735,3 +4813,39 @@ Reduce Team Focus KPI visual footprint by shrinking KPI tile containers and card
 - Preserve existing edit-button behavior and role gating.
 - Do not rename routes/API calls.
 - Keep changes localized to Team Focus KPI card dimensions/spacing/typography.
+
+### `M6-BOTTOM-BAR-TUNING-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 mobile UI cleanup`
+- `Persona:` `All mobile personas`
+- `Flow:` `global bottom navigation polish`
+- `Owner:` `Claude-1`
+- `Current blocker status (2026-02-28, launch):` `none`.
+
+#### Primary Objective
+Tune the bottom bar visual balance: slightly larger icons, tighter icon-label spacing, and slightly shorter bar height.
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` bottom nav styles/components only.
+
+#### Scope Out
+- Tab routing/behavior changes
+- Screen content/layout changes above the bottom bar
+- Backend/schema/API changes
+
+#### Hard Constraints
+- Preserve current tab order and active-state behavior.
+- Keep `LOG` center tab hierarchy/shape intact (only proportional polish allowed).
+- Maintain accessibility tap targets.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- iPhone User sim + iPhone 17 Pro sim visual check.
+
+#### Report-Back
+- Update board status first (`active` -> `review`/`blocked`).
+- Files changed + line refs.
+- Before/after screenshot paths.
+- Commit hash.
