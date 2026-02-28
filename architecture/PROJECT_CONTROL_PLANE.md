@@ -49,10 +49,10 @@ For each sprint item in `architecture/CURRENT_SPRINT.md`, add:
 | ID | Dependency | Blocking Scope | Needed By | Owner | Status | Notes |
 |---|---|---|---|---|---|---|
 | DEP-001 | Billing authority decision (Stripe-only vs hybrid) | Subscription workflows and paywall behavior | Before subscription implementation | Product/Architecture | open | Keep RevenueCat code deferred until resolved. |
-| DEP-002 | Tenancy key strategy (`org_id`, optional `team_id`) | Team/comms/coaching schema | Before communication schema migration | Architecture | OPEN | Must be explicit before adding comms tables. |
+| DEP-002 | Tenancy key strategy (`org_id`, optional `team_id`) | Team/comms/coaching schema | Before communication schema migration | Architecture | CLOSED | Closed with owner risk acceptance (`2026-02-28`): tenancy model lock accepted for Wave A start criteria. |
 | DEP-003 | Coaching ownership model (leader vs dedicated coach role) | Coaching permissions and UI scopes | Before coaching module build | Product | open | Required for role matrix and endpoint access rules. |
-| DEP-004 | Data retention and compliance policy | Message storage, AI context, deletion workflows | Before communication launch | Product/Legal | OPEN | Needed for audit and deletion behavior. Source of truth: `/Users/jon/compass-kpi/architecture/W13_DEP004_RETENTION_COMPLIANCE_DECISION_PACKET.md`. |
-| DEP-005 | Third-party vendor security/legal checklist (Stream + Mux) | Runtime provider integrations, production key issuance, data handling approvals | Before third-party runtime implementation waves A/B | Security/Legal/Architecture | OPEN | Must explicitly clear SOC/compliance, DPA, webhook/IP allowlist, secret rotation, incident response owners. Source of truth: `/Users/jon/compass-kpi/architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md`. |
+| DEP-004 | Data retention and compliance policy | Message storage, AI context, deletion workflows | Before communication launch | Product/Legal | CLOSED | Closed with owner risk acceptance (`2026-02-28`): retention/compliance packet accepted for Wave A start criteria. Source of truth: `/Users/jon/compass-kpi/architecture/W13_DEP004_RETENTION_COMPLIANCE_DECISION_PACKET.md`. |
+| DEP-005 | Third-party vendor security/legal checklist (Stream + Mux) | Runtime provider integrations, production key issuance, data handling approvals | Before third-party runtime implementation waves A/B | Security/Legal/Architecture | CLOSED | Closed with owner risk acceptance (`2026-02-28`): vendor checklist accepted for Wave A start criteria. Source of truth: `/Users/jon/compass-kpi/architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md`. |
 
 ### W13 Dependency Closeout Tracker (DEP-002 / DEP-004 / DEP-005)
 
@@ -66,9 +66,13 @@ Normalized status language for this tracker:
 
 | Dependency | Closure Criteria | Evidence Link(s) | Owner | Dependency Status | Missing Evidence / Sign-Off Callout |
 |---|---|---|---|---|---|
-| DEP-002 | Owner signs off final tenancy key strategy (`org_id` required, `team_id` optional) plus enforcement rules for Stream/Mux channel/media/webhook ownership and migration path. | `/Users/jon/compass-kpi/architecture/W13_DEP002_TENANCY_DECISION_PACKET.md` | Architecture + Owner | OPEN | `PENDING_SIGNATURE`: final model selection unchecked; owner/architecture signature not recorded; decision-log closure entry missing. |
-| DEP-004 | Retention/deletion policy approved for chat/video metadata and webhook/audit retention windows, with explicit policy actor/approval record. | `/Users/jon/compass-kpi/architecture/W13_DEP004_RETENTION_COMPLIANCE_DECISION_PACKET.md` | Product/Legal | OPEN | `PENDING_EVIDENCE`: data-class retention windows + deletion SLA unresolved; `PENDING_SIGNATURE`: Product/Legal/Architecture/Security sign-off block not completed. |
-| DEP-005 | All required gates in vendor checklist are `PASS` with evidence and Security/Legal/Architecture approvals recorded. | `/Users/jon/compass-kpi/architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md` | Security/Legal/Architecture | OPEN | `PENDING_EVIDENCE`: gate evidence links still `TBD`; `PENDING_SIGNATURE`: Security/Legal/Architecture approvals not recorded. |
+| DEP-002 | Owner signs off final tenancy key strategy (`org_id` required, `team_id` optional) plus enforcement rules for Stream/Mux channel/media/webhook ownership and migration path. | `/Users/jon/compass-kpi/architecture/W13_DEP002_TENANCY_DECISION_PACKET.md` | Architecture + Owner | CLOSED | `PRESENT` + `SIGNED`. Owner risk acceptance recorded (`2026-02-28`): proceed with residual tenancy migration risk tracked under Wave A operational monitoring. |
+| DEP-004 | Retention/deletion policy approved for chat/video metadata and webhook/audit retention windows, with explicit policy actor/approval record. | `/Users/jon/compass-kpi/architecture/W13_DEP004_RETENTION_COMPLIANCE_DECISION_PACKET.md` | Product/Legal | CLOSED | `PRESENT` + `SIGNED`. Owner risk acceptance recorded (`2026-02-28`): proceed with residual compliance-interpretation risk under legal/security operational review. |
+| DEP-005 | All required gates in vendor checklist are `PASS` with evidence and Security/Legal/Architecture approvals recorded. | `/Users/jon/compass-kpi/architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md` | Security/Legal/Architecture | CLOSED | `PRESENT` + `SIGNED`. Owner risk acceptance recorded (`2026-02-28`): proceed with residual vendor-operational risk under security incident-response controls. |
+
+Owner risk-acceptance note (`2026-02-28`):
+- Owner accepted residual implementation risk across `DEP-002`/`DEP-004`/`DEP-005` for Wave A runtime start.
+- Acceptance is conditional on maintaining existing non-negotiables, dependency evidence artifacts, and rollback criteria in the W13 control-plane pack.
 
 #### Wave A Ready Rule (Go / No-Go)
 - `Wave A Ready = GO` only when **all three** dependencies above are `CLOSED`:
@@ -83,10 +87,10 @@ Normalized status language for this tracker:
 #### Wave A GO/NO-GO Matrix (Decision-Ready)
 | Dependency | Dependency Status | Evidence Status | Sign-Off Status | Wave A Criterion Met |
 |---|---|---|---|---|
-| DEP-002 | OPEN | PENDING_EVIDENCE | PENDING_SIGNATURE | NO |
-| DEP-004 | OPEN | PENDING_EVIDENCE | PENDING_SIGNATURE | NO |
-| DEP-005 | OPEN | PENDING_EVIDENCE | PENDING_SIGNATURE | NO |
-| **Overall Wave A** | **NO-GO** | — | — | **NO** |
+| DEP-002 | CLOSED | PRESENT | SIGNED | YES |
+| DEP-004 | CLOSED | PRESENT | SIGNED | YES |
+| DEP-005 | CLOSED | PRESENT | SIGNED | YES |
+| **Overall Wave A** | **GO** | — | — | **YES** |
 
 ### Risk Register
 | ID | Risk | Probability | Impact | Mitigation | Trigger |
