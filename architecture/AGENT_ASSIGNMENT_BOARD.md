@@ -130,6 +130,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A` | `closed` | `M6 / W12` | `Team Leader`, `Team Member`, `Solo User` | `challenge surface` (`team-pattern interaction alignment`) | `KPIDashboardScreen` Challenge surface only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + wiring pass) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
 | `M8-MOBILE-RUNTIME-REGRESSION-MATRIX-A` | `committed+pushed` | `M8 mobile hardening` | `Team Leader`, `Team Member`, `Solo User`, `Coach`, `Challenge Sponsor` | `mobile runtime QA` (`critical-route regression matrix + screenshot proof`) | `Home`, `Team`, `Challenge`, `Comms`, `Journeys/Lessons`, `Log` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | N/A (runtime validation swath) | Accepted and pushed: runtime matrix completed (30/30 pass, 0 blockers) with consolidated evidence in `app/test-results/m8-mobile-regression-matrix-a/`; assignment remained QA-only with no app/backend code edits. |
 | `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `blocked` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Blocked on persona-role validation determinism: runtime account resolves backend `/me` role=`super_admin`, and `resolvedRoles` unions backend + session metadata, so local metadata overrides cannot faithfully simulate `coach/team_leader/challenge_sponsor` gates in-browser for canonical proof. Route alias/shell checks and super-admin baseline pass evidence captured under `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/`; persona-gate mismatch list reflects this blocker. |
+| `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A` | `active` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach runtime test harness` (`deterministic role-switch validation without super_admin bleed`) | app runtime/test harness only (`AdminAuthzContext`, spotcheck harness scripts/evidence) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (app/runtime harness scope only) | N/A (runtime harness determinism) | Active: implement strict deterministic persona-role override path and refresh evidence matrix/screenshots for coach/team_leader/challenge_sponsor route validation. |
 | `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `committed+pushed` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Accepted and pushed: FE-00 checkpoint moved from pending to concrete complete state in sprint gate, and frontend acceptance harness now includes explicit FE-00 pass/fail closeout criteria with traceability consistency checks. |
 | `M8-SEED-DATA-SMOKE-VERIFICATION-A` | `committed+pushed` | `M8 backend/data hardening` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `seeded-data QA` (`reset/seed/smoke verification + runbook drift check`) | backend seed scripts + docs runbook surfaces; no app UI rewrites | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (backend/data validation swath) | Accepted and pushed: reset + seed + smoke sequence passed against current deterministic realism runbook; no command/output drift found; logs captured under `app/test-results/m8-seed-data-smoke-verification-a/`. |
 | `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team identity card` (`leader edit controls`, `member read-only rendering`) | `KPIDashboardScreen` Team tab top card only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed: polished role-aware Team identity card landed with leader-only edit flow (avatar/background picker modal + save/cancel) and member read-only rendering. TypeScript clean. |
@@ -4362,6 +4363,52 @@ Validate admin + coach route/runtime integrity and role gating after recent W11/
 - Screenshot paths.
 - Commit hash.
 
+### `A3-W12-RUNTIME-SPOTCHECK-BLOCKER-RESOLUTION-A`
+
+#### Snapshot
+- `Status:` `blocked`
+- `Program status:` `A3/W12 admin+coach hardening`
+- `Persona:` `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor`
+- `Flow:` `admin/coach runtime test harness` (`deterministic role-switch validation without super_admin bleed`)
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (app/runtime harness scope only)
+- `Execution note (2026-02-28, Controller):` Mobile-2 assigned to resolve deterministic persona-role validation blocker from `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A`.
+- `Current blocker status (2026-02-28, launch):` `none`.
+- `Completion note (2026-02-28, Mobile-2 partial):` Added deterministic dev-only runtime role override plumbing in `AdminAuthzContext` (`authz_roles` / `authz_mode`, strict|merge, localStorage persistence) to prevent backend `super_admin` bleed-through during role-gate verification.
+- `Validation note (2026-02-28, Controller):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed; `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz` passed.
+- `Current blocker status (2026-02-28, review):` `blocked` pending updated evidence matrix/screenshots + committed assignment report for `coach`, `team_leader`, and `challenge_sponsor` route outcomes.
+
+#### Primary Objective
+Provide a deterministic role-switch runtime/test method that validates `coach`, `team_leader`, and `challenge_sponsor` route outcomes without backend `super_admin` role bleed-through.
+
+#### Scope In
+- App runtime/test harness only
+- Deterministic role override plumbing for runtime verification
+- Evidence matrix + screenshots refresh under `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/`
+
+#### Scope Out
+- Backend/API/schema changes
+- Net-new endpoint families
+- Coach/admin IA redesign
+
+#### Hard Constraints
+- Keep route families unchanged (`/admin/*`, `/coach/*`, compatibility `/admin/coaching/*`).
+- Preserve existing role-gate policy.
+- Do not alter backend role model in this assignment.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Deterministic role-switch runtime proof for `coach`, `team_leader`, `challenge_sponsor`.
+- Updated evidence matrix + screenshots under `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/`.
+
+#### Report-Back
+- Update board status first (`active` -> `review`/`blocked`).
+- Deterministic role-switch method implemented.
+- Evidence matrix/screenshot updates.
+- Recommendation on whether `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` can move to review.
+- Files changed + line refs.
+- Commit hash.
+
 ### `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A`
 
 #### Snapshot
@@ -4606,8 +4653,8 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 | Order | Assignment ID | Status | Owner | Depends On | Notes |
 |---|---|---|---|---|---|
 | 1 | `W13-CHAT-VIDEO-ARCH-RFC-A` | `review` | `Controller` | none | Docs/control-plane planning slice implemented on 2026-02-28; runtime code explicitly out-of-scope. |
-| 2 | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | `review` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Stream-backed chat facade. |
-| 3 | `W13-MUX-CONTRACTS-AND-TESTS-A` | `review` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Mux-backed video facade/webhooks. |
+| 2 | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Planned Stream token/sync contracts + acceptance depth merged (docs-only). |
+| 3 | `W13-MUX-CONTRACTS-AND-TESTS-A` | `committed` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Planned Mux upload/playback/webhook contracts + acceptance depth merged (docs-only). |
 | 4 | `W13-DEP-005-VENDOR-SECURITY-LEGAL-CHECKLIST-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-005 checklist artifact + control-plane linkage completed (docs-only; no runtime changes). |
 | 5 | `W13-DEP-002-TENANCY-DECISION-PACKET-A` | `committed` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-002 decision packet committed with model comparison, recommendation, Stream/Mux implications, enforcement rules, migration path, and explicit owner sign-off prompts. |
 | 6 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
@@ -4653,12 +4700,14 @@ Lock architecture/spec/test/board source-of-truth for Stream Chat + Mux integrat
 ### `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `W13 docs/control-plane exception`
 - `Persona:` `backend/platform contracts`, `QA`
 - `Flow:` `Stream Chat contract hardening`
 - `Owner:` `Coach-1`
 - `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
+- `Completion note (2026-02-28, Coach-1):` Deepened planned Stream token/sync contract envelopes, deterministic status/error mapping, and provider metadata/state semantics in API contracts and acceptance tests.
+- `Commit:` `0961ee9`
 
 #### Primary Objective
 Deepen Stream Chat planned contracts + acceptance scenarios while preserving current endpoint-family discipline and dependency gates.
@@ -4680,12 +4729,14 @@ Deepen Stream Chat planned contracts + acceptance scenarios while preserving cur
 ### `W13-MUX-CONTRACTS-AND-TESTS-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `W13 docs/control-plane exception`
 - `Persona:` `backend/platform contracts`, `QA`
 - `Flow:` `Mux video contract hardening`
 - `Owner:` `Admin-1`
 - `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
+- `Completion note (2026-02-28, Admin-1):` Deepened planned Mux upload/playback/webhook envelopes, lifecycle/error vocabulary, and dependency-gated rollout/regression assertions in contracts/tests/integration matrix.
+- `Commit:` `fedfc19`
 
 #### Primary Objective
 Deepen Mux planned contracts + acceptance scenarios and provider rollout constraints without changing chat contract sections.
@@ -4818,12 +4869,15 @@ Reduce Team Focus KPI visual footprint by shrinking KPI tile containers and card
 ### `M6-BOTTOM-BAR-TUNING-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `M6 mobile UI cleanup`
 - `Persona:` `All mobile personas`
 - `Flow:` `global bottom navigation polish`
 - `Owner:` `Claude-1`
 - `Current blocker status (2026-02-28, launch):` `none`.
+- `Completion note (2026-02-28, Claude-1):` Bottom bar tuned per request: icons increased (`34 -> 36`), icon-label gap tightened (`marginTop 3 -> 1`, center LOG label `5 -> 3`), and bar height reduced (`paddingTop 10 -> 7`, `minHeight 52 -> 48`) while preserving tab behavior and LOG center hierarchy.
+- `Validation note (2026-02-28, Claude-1):` Before/after evidence captured under `/Users/jon/compass-kpi/screenshots/M6-BOTTOM-BAR-TUNING-A/`.
+- `Commit:` `c0c9d4a`
 
 #### Primary Objective
 Tune the bottom bar visual balance: slightly larger icons, tighter icon-label spacing, and slightly shorter bar height.
