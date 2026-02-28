@@ -7766,15 +7766,28 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             2: { emoji: '🥈', bgColor: '#7c8ba1', size: 38, isFirst: false },
                             3: { emoji: '🥉', bgColor: '#a07040', size: 34, isFirst: false },
                           };
-                          const podiumEntries = [
-                            top3.find(e => e.rank === 2),
-                            top3.find(e => e.rank === 1),
-                            top3.find(e => e.rank === 3),
-                          ].filter((e) => e !== undefined) as typeof top3;
+                          // Always show all 3 slots — placeholder if no data yet
+                          const podiumSlots: Array<{ rank: number; entry: (typeof top3)[0] | undefined }> = [
+                            { rank: 2, entry: top3.find(e => e.rank === 2) },
+                            { rank: 1, entry: top3.find(e => e.rank === 1) },
+                            { rank: 3, entry: top3.find(e => e.rank === 3) },
+                          ];
                           return (
                             <View style={styles.cdLbHeroTop3}>
-                              {podiumEntries.map((entry) => {
-                                const m = medalData[entry.rank] ?? { emoji: `#${entry.rank}`, bgColor: '#4361c2', size: 36, isFirst: false };
+                              {podiumSlots.map(({ rank, entry }) => {
+                                const m = medalData[rank] ?? { emoji: `#${rank}`, bgColor: '#4361c2', size: 36, isFirst: false };
+                                if (!entry) {
+                                  return (
+                                    <View key={`cdlb-empty-${rank}`} style={[styles.cdLbHeroTopCard, m.isFirst && styles.cdLbHeroTopCardFirst, { opacity: 0.35 }]}>
+                                      <Text style={styles.cdLbHeroMedal}>{m.emoji}</Text>
+                                      <View style={[styles.cdLbHeroAvatar, { width: m.size, height: m.size, borderRadius: m.size / 2, backgroundColor: '#b0b8cc' }]}>
+                                        <Text style={[styles.cdLbHeroAvatarText, m.isFirst && styles.cdLbHeroAvatarTextFirst]}>—</Text>
+                                      </View>
+                                      <Text style={styles.cdLbHeroName}>Open</Text>
+                                      <Text style={styles.cdLbHeroPct}>–%</Text>
+                                    </View>
+                                  );
+                                }
                                 return (
                                   <View key={`cdlb-top-${entry.rank}`} style={[styles.cdLbHeroTopCard, m.isFirst && styles.cdLbHeroTopCardFirst]}>
                                     <Text style={styles.cdLbHeroMedal}>{m.emoji}</Text>
