@@ -116,11 +116,11 @@ Only use long custom prompts when the board is missing required details or a one
 | `ADMIN-W12-INTERACTION-PRIMITIVES-DOCS-SYNC-C` | `committed` | `A3/W12 admin interaction primitives docs sync` | `Admin operator` (primary), `Coach` (admin-hosted companion routes) | `admin interaction model` (`commit buttons`, `view switching controls`, `row-selection/sorting`, `secondary-action menus`, `scroll requirements`) | admin-hosted surfaces (`/admin/users`, `/admin/reports`, `/admin/kpis`, `/admin/challenge-templates`, `/admin/coaching/*` compatibility routes) + shared screenmap/wiring docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + post Admin-1 landing sync | Committed docs sync: admin interaction-primitives standard is now explicit in screenmap/wiring docs (primary commit buttons, tabs/segmented view switching, row selection + table-header sorting patterns, secondary-action menus, and page scroll requirements). No structural boundary changes. |
 | `COACHING-W9-COACH-PORTAL-EXPERIENCE-PLANNING-A` | `committed` | `W9 coach portal experience planning (docs/control-plane)` | `Coach` (primary), `Team Leader` (team-scoped upload), `Challenge Sponsor` (sponsor-scoped tools), `Admin operator` (host foundation only during transition) | `coach portal IA/UX` (`dedicated experience + migration path + production sequencing`) | dedicated coach portal IA/UX direction (outside admin-shell presentation), migration from `/admin/coaching/*` foundation routes, persona visibility model, production-experience sequencing | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | manual-spec-driven + W7/W8 acceptance pack | Committed W10 route-decoupling swath: dedicated `/coach/*` uploads/library/cohorts/channels routes + customer-facing shell/nav landed, coach-facing navigation migrated to `/coach/*`, and `/admin/coaching/*` retained as temporary compatibility redirect-only paths (no backend/schema/API changes). |
 | `COACHING-W7-SUPERADMIN-AI-TROUBLESHOOTING-AUDIT-A` | `queued` | `W7 optional hardening (super-admin AI troubleshooting only)` | `Super Admin` (primary), `Admin operator` (limited) | `AI troubleshooting / audit` (`exception-only`) | optional trimmed `/admin/coaching/audit` super-admin troubleshooting views | `Admin-1` | `codex/a2-admin-list-usability-pass` (admin web worktree preferred) | manual-spec-driven + W6/W7 rescope package + explicit owner approval gate | Optional exception-only follow-on to repurpose or trim `/admin/coaching/audit` into super-admin AI troubleshooting/audit; not a coach notification or coach primary workflow surface. |
-| `COACHING-W12-MOBILE-NAV-LOG-CTA-CENTER-A` | `closed (frozen)` | `M6 / W12 mobile IA polish` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Sponsor` | `mobile IA` (`bottom tab LOG center CTA emphasis`) | `KPIDashboardScreen` bottom tab bar only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (IA/interaction polish; no Figma lock specified in assignment) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
-| `M6-W12-TEAM-LEADER-ROW-EXPANSION-AND-LOG-WIRING-A` | `closed (frozen)` | `M6 / W12` | `Team Leader` (primary), `Team Member` (no-regression) | `team leader ops` (`row expansion UI`, `team KPI -> log context wiring`) | `KPIDashboardScreen` Team Leader surface + handoff to Log interface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (interaction model + wiring fix) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
-| `M6-W12-TEAM-SCREEN-PERSONA-SPLIT-A` | `closed (frozen)` | `M6 / W12 (persona split hardening)` | `Team Member` (simple view), `Team Leader` (ops-heavy view) | `team surface runtime split` (`member simplicity`, `leader operational controls`) | `KPIDashboardScreen` Team surface only | `Mobile-1` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | team runtime parity task (no new Figma node lock for this swath) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
-| `M6-W12-TEAM-PERSON-PROFILE-CARD-AND-FOCUS-EDITOR-A` | `closed (frozen)` | `M6 / W12 (team leader ops + person profile UX)` | `Team Leader` (primary), `Team Member` (limited profile-only behavior) | `team interaction refinement` (`focus editor usability`, `avatar/profile split`, `leader KPI detail`, `DM handoff`) | `KPIDashboardScreen` Team surface + person profile card surface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + persona-gated card UX) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
-| `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A` | `closed (frozen)` | `M6 / W12` | `Team Leader`, `Team Member`, `Solo User` | `challenge surface` (`team-pattern interaction alignment`) | `KPIDashboardScreen` Challenge surface only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + wiring pass) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
+| `COACHING-W12-MOBILE-NAV-LOG-CTA-CENTER-A` | `closed` | `M6 / W12 mobile IA polish` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Sponsor` | `mobile IA` (`bottom tab LOG center CTA emphasis`) | `KPIDashboardScreen` bottom tab bar only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (IA/interaction polish; no Figma lock specified in assignment) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
+| `M6-W12-TEAM-LEADER-ROW-EXPANSION-AND-LOG-WIRING-A` | `closed` | `M6 / W12` | `Team Leader` (primary), `Team Member` (no-regression) | `team leader ops` (`row expansion UI`, `team KPI -> log context wiring`) | `KPIDashboardScreen` Team Leader surface + handoff to Log interface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (interaction model + wiring fix) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
+| `M6-W12-TEAM-SCREEN-PERSONA-SPLIT-A` | `closed` | `M6 / W12 (persona split hardening)` | `Team Member` (simple view), `Team Leader` (ops-heavy view) | `team surface runtime split` (`member simplicity`, `leader operational controls`) | `KPIDashboardScreen` Team surface only | `Mobile-1` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | team runtime parity task (no new Figma node lock for this swath) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
+| `M6-W12-TEAM-PERSON-PROFILE-CARD-AND-FOCUS-EDITOR-A` | `closed` | `M6 / W12 (team leader ops + person profile UX)` | `Team Leader` (primary), `Team Member` (limited profile-only behavior) | `team interaction refinement` (`focus editor usability`, `avatar/profile split`, `leader KPI detail`, `DM handoff`) | `KPIDashboardScreen` Team surface + person profile card surface | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + persona-gated card UX) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
+| `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A` | `closed` | `M6 / W12` | `Team Leader`, `Team Member`, `Solo User` | `challenge surface` (`team-pattern interaction alignment`) | `KPIDashboardScreen` Challenge surface only | `Mobile-2` | `codex/a2-admin-list-usability-pass` (mobile app worktree preferred) | N/A (runtime interaction + wiring pass) | Locked baseline landed. Do not relaunch; open new targeted bugfix assignment if regressions are discovered. |
 | `M8-MOBILE-RUNTIME-REGRESSION-MATRIX-A` | `active` | `M8 mobile hardening` | `Team Leader`, `Team Member`, `Solo User`, `Coach`, `Challenge Sponsor` | `mobile runtime QA` (`critical-route regression matrix + screenshot proof`) | `Home`, `Team`, `Challenge`, `Comms`, `Journeys/Lessons`, `Log` | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | N/A (runtime validation swath) | QA-only pass: capture matrix + screenshots. No code edits in this assignment; file new targeted bugfix assignment IDs for any regression found. |
 | `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` | `active` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach web runtime QA` (`route alias, role-gate, shell consistency`) | `/admin/users`, `/admin/reports`, `/coach/*`, compatibility `/admin/coaching/*` redirects | `Admin-1` | `codex/a2-admin-list-usability-pass` (dedicated admin worktree required) | N/A (runtime validation swath) | Execute browser/runtime spotcheck and capture failures with path+persona granularity; code changes allowed only for scoped regressions discovered during this pass. |
 | `FE-00-ACCEPTANCE-HARNESS-CLOSEOUT-A` | `active` | `FE-00 gate closeout` | `Owner-facing program governance` | `frontend acceptance harness docs` (`traceability lock + harness mapping`) | docs-only: `CURRENT_SPRINT`, `05_acceptance_tests`, frontend traceability docs | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (docs control-plane swath) | Close FE-00 pending checkpoint by locking frontend harness mapping and explicit pass/fail gate criteria in docs with no product runtime code edits. |
@@ -236,7 +236,7 @@ Provide realistic, repeatable seeded data so mobile + `/coach/*` evaluate as pro
 ### `COACHING-W12-MOBILE-NAV-LOG-CTA-CENTER-A`
 
 #### Snapshot
-- `Status:` `closed (frozen)`
+- `Status:` `closed`
 - `Program status:` `M6 / W12 mobile IA polish`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Sponsor`
 - `Flow:` `mobile IA` (`bottom tab LOG center CTA emphasis`)
@@ -294,7 +294,7 @@ Update the mobile bottom nav in `KPIDashboardScreen.tsx` to emphasize logging as
 ### `M6-W12-TEAM-SCREEN-PERSONA-SPLIT-A`
 
 #### Snapshot
-- `Status:` `closed (frozen)`
+- `Status:` `closed`
 - `Program status:` `M6 / W12 (persona split hardening)`
 - `Persona:` `Team Member` (simple view), `Team Leader` (ops-heavy view)
 - `Flow:` `team surface runtime split` (`member simplicity`, `leader operational controls`)
@@ -389,7 +389,7 @@ Produce a reusable parity map that translates Fourth Reason chat/journey UX patt
 ### `M6-W12-TEAM-LEADER-ROW-EXPANSION-AND-LOG-WIRING-A`
 
 #### Snapshot
-- `Status:` `closed (frozen)`
+- `Status:` `closed`
 - `Program status:` `M6 / W12`
 - `Persona:` `Team Leader` (primary), `Team Member` (no-regression)
 - `Flow:` `team leader ops` (`row expansion`, `team KPI selection`, `log handoff wiring`)
@@ -453,7 +453,7 @@ Replace chip-heavy Team Leader filters with expandable member rows and ensure se
 ### `M6-W12-TEAM-PERSON-PROFILE-CARD-AND-FOCUS-EDITOR-A`
 
 #### Snapshot
-- `Status:` `closed (frozen)`
+- `Status:` `closed`
 - `Program status:` `M6 / W12 (team leader ops + person profile UX)`
 - `Persona:` `Team Leader` (primary), `Team Member` (limited profile-only behavior)
 - `Flow:` `team interaction refinement` (`focus editor`, `avatar/profile split`, `leader KPI detail`, `DM handoff`)
@@ -4217,7 +4217,7 @@ Lock a shared admin interaction-primitives standard so admin implementation lane
 ### `M6-W12-CHALLENGE-SURFACE-TEAM-PATTERN-ALIGN-A`
 
 #### Snapshot
-- `Status:` `closed (frozen)`
+- `Status:` `closed`
 - `Program status:` `M6 / W12`
 - `Persona:` `Team Leader`, `Team Member`, `Solo User`
 - `Flow:` `challenge surface` (`team-pattern interaction alignment`)
