@@ -52,7 +52,7 @@ For each sprint item in `architecture/CURRENT_SPRINT.md`, add:
 | DEP-002 | Tenancy key strategy (`org_id`, optional `team_id`) | Team/comms/coaching schema | Before communication schema migration | Architecture | open | Must be explicit before adding comms tables. |
 | DEP-003 | Coaching ownership model (leader vs dedicated coach role) | Coaching permissions and UI scopes | Before coaching module build | Product | open | Required for role matrix and endpoint access rules. |
 | DEP-004 | Data retention and compliance policy | Message storage, AI context, deletion workflows | Before communication launch | Product/Legal | open | Needed for audit and deletion behavior. |
-| DEP-005 | Third-party vendor security/legal checklist (Stream + Mux) | Runtime provider integrations, production key issuance, data handling approvals | Before third-party runtime implementation waves A/B | Security/Legal/Architecture | open | Must explicitly clear SOC/compliance, DPA, webhook/IP allowlist, secret rotation, incident response owners. |
+| DEP-005 | Third-party vendor security/legal checklist (Stream + Mux) | Runtime provider integrations, production key issuance, data handling approvals | Before third-party runtime implementation waves A/B | Security/Legal/Architecture | open | Must explicitly clear SOC/compliance, DPA, webhook/IP allowlist, secret rotation, incident response owners. Source of truth: `/Users/jon/compass-kpi/architecture/W13_VENDOR_SECURITY_LEGAL_CHECKLIST.md`. |
 
 ### Risk Register
 | ID | Risk | Probability | Impact | Mitigation | Trigger |

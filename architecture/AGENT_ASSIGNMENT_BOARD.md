@@ -4609,7 +4609,7 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 | 2 | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | `review` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Stream-backed chat facade. |
 | 3 | `W13-MUX-CONTRACTS-AND-TESTS-A` | `review` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Contract + acceptance depth for Mux-backed video facade/webhooks. |
 | 4 | `W13-DEP-005-VENDOR-SECURITY-LEGAL-CHECKLIST-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-005 checklist artifact + control-plane linkage completed (docs-only; no runtime changes). |
-| 5 | `W13-DEP-002-TENANCY-DECISION-PACKET-A` | `active` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-002 decision packet with candidate models, recommendation, enforcement rules, and owner sign-off block. |
+| 5 | `W13-DEP-002-TENANCY-DECISION-PACKET-A` | `committed` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-002 decision packet committed with model comparison, recommendation, Stream/Mux implications, enforcement rules, migration path, and explicit owner sign-off prompts. |
 | 6 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation block. |
 | 7 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `blocked` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation block. |
 | 8 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `blocked` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity, failures, observability, regression/perf/compliance hardening. |
@@ -4714,7 +4714,8 @@ Deepen Mux planned contracts + acceptance scenarios and provider rollout constra
 - `Flow:` `DEP-002 tenancy model decision`
 - `Owner:` `Admin-1`
 - `Execution note (2026-02-28, Admin-1):` Board updated first. Producing docs-only DEP-002 decision packet with 2-3 models, recommended schema key strategy, and explicit owner sign-off section.
-- `Current blocker status (2026-02-28, launch):` `none` (docs-only scope).
+- `Completion note (2026-02-28, Admin-1):` Added `/Users/jon/compass-kpi/architecture/W13_DEP002_TENANCY_DECISION_PACKET.md` with three tenancy models, recommended org-centric optional-team strategy, explicit enforcement rules, Stream/Mux/channel/webhook ownership implications, and decision-needed sign-off checklist.
+- `Current blocker status (2026-02-28, completion):` `none` (docs-only scope).
 
 #### Primary Objective
 Create an owner-ready DEP-002 decision packet that recommends final tenancy keys and enforcement rules for Stream/Mux contract rollout planning.
