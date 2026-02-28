@@ -4338,7 +4338,7 @@ Run a mobile regression sweep across critical routes and personas, capture pass/
 - `Validation note (2026-02-28, Admin-1):` Persona simulation mismatch report captured in `app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/mismatches.json` and summary matrix under `summary.txt`.
 - `Current blocker status (2026-02-28, completion):` `blocked` on persona-role validation determinism: runtime session resolves as `super_admin` and effective role resolution (`resolvedRoles`) cannot cleanly isolate coach/team_leader/challenge_sponsor gate behavior for canonical in-browser proof.
 - `Blocker resolution note (2026-02-28, Mobile-2):` Deterministic dev-only role override path finalized in `AdminAuthzContext` and runtime matrix rerun shows clean persona isolation: `runtime-role-determinism-summary.txt` reports `36/36` pass for `coach`, `team_leader`, `challenge_sponsor` with zero mismatches.
-- `Current blocker status (2026-02-28, latest):` `resolved`; assignment promoted to `review`.
+- `Current blocker status (2026-02-28, latest):` `resolved`; assignment accepted and moved to `committed`.
 - `Closeout note (2026-02-28, docs sync):` Assignment accepted/committed with deterministic evidence captured under `/Users/jon/compass-kpi/app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/` (`runtime-role-determinism-summary.txt`, `runtime-role-determinism-results.json`, `runtime-role-determinism-mismatches.json`).
 
 #### Primary Objective
@@ -4388,7 +4388,7 @@ Validate admin + coach route/runtime integrity and role gating after recent W11/
 - `Controller relaunch note (2026-02-28):` Complete the partial by committing the runtime override change and refreshing role-matrix evidence bundle for deterministic persona verification.
 - `Completion note (2026-02-28, Mobile-2 final):` Re-ran deterministic runtime harness with strict localStorage role override for `coach`, `team_leader`, and `challenge_sponsor`; refreshed matrix artifacts and screenshots now report `total_checks=36`, `pass=36`, `fail=0`.
 - `Validation note (2026-02-28, Mobile-2 final):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed and `cd /Users/jon/compass-kpi/app && npm run test:unit -- adminAuthz` passed after final evidence refresh.
-- `Recommendation note (2026-02-28, Mobile-2 final):` Parent assignment `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` can move from `blocked` to `review`; deterministic persona-role blocker is resolved.
+- `Recommendation note (2026-02-28, Mobile-2 final):` Parent assignment `A3-W12-ADMIN-COACH-PORTAL-RUNTIME-SPOTCHECK-A` can move from `blocked` to accepted; deterministic persona-role blocker is resolved.
 - `Current blocker status (2026-02-28, review):` `none`.
 - `Commit chain note (2026-02-28, docs sync):` Runtime determinism unblock landed in `0a00f14` (`AdminAuthzContext` + board), followed by board-closeout alignment commits `e98e2dc` and `e392497`.
 
@@ -5180,10 +5180,11 @@ Tighten W13 dependency tracker evidence quality without changing implementation 
 - `Persona:` `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor`
 - `Flow:` `admin/coach QA governance` (`closeout packaging + board/doc alignment`)
 - `Owner:` `Admin-1`
-- `Current blocker status (2026-02-28, queue):` `none` (docs-only).
+- `Current blocker status (2026-02-28, launch):` `none` (docs-only).
 - `Execution note (2026-02-28, Admin-1):` Assignment activated and executed as a docs-only closeout pass on the board A3/W12 sections.
 - `Completion note (2026-02-28, Admin-1):` Updated A3/W12 active rows and assignment-spec snapshots to accepted lifecycle language (`committed`), and clarified deterministic-role dependency chain with explicit pass counts/evidence artifacts.
 - `Validation note (2026-02-28, Admin-1):` Confirmed A3 rows/specs include explicit evidence paths and commit references (`0a00f14`, `e98e2dc`, `e392497`) and no stale `review` phrasing remains for accepted A3 spotcheck assignments.
+- `Evidence note (2026-02-28, Admin-1):` Canonical closeout artifacts are `/Users/jon/compass-kpi/app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/runtime-role-determinism-summary.txt`, `/Users/jon/compass-kpi/app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/runtime-role-determinism-results.json`, and `/Users/jon/compass-kpi/app/test-results/a3-w12-admin-coach-portal-runtime-spotcheck-a/runtime-role-determinism-mismatches.json`.
 - `Current blocker status (2026-02-28, review):` `none`.
 
 #### Primary Objective
