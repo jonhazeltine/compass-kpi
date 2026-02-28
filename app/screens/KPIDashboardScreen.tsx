@@ -7742,6 +7742,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           styles.challengeDetailsStatusPill,
                           challengeSelected.bucket === 'completed' && styles.challengeDetailsStatusPillCompleted,
                           challengeSelected.bucket === 'upcoming' && styles.challengeDetailsStatusPillUpcoming,
+                          { backgroundColor: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.35)' },
                         ]}
                       >
                         <Text
@@ -7749,6 +7750,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             styles.challengeDetailsStatusPillText,
                             challengeSelected.bucket === 'completed' && styles.challengeDetailsStatusPillTextCompleted,
                             challengeSelected.bucket === 'upcoming' && styles.challengeDetailsStatusPillTextUpcoming,
+                            { color: '#dde5ff' },
                           ]}
                         >
                           {challengeSelected.status}
@@ -7757,23 +7759,46 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     </View>
                     {challengeLeaderboardHasRealRows ? (
                       <>
-                        <View style={styles.cdLbHeroTop3}>
-                          {challengeLeaderboardPreview.slice(0, 3).map((entry) => (
-                            <View key={`cdlb-top-${entry.rank}`} style={styles.cdLbHeroTopCard}>
-                              <Text style={styles.cdLbHeroRank}>#{entry.rank}</Text>
-                              <View style={styles.cdLbHeroAvatar}>
-                                <Text style={styles.cdLbHeroAvatarText}>
-                                  {entry.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}
-                                </Text>
-                              </View>
-                              <Text numberOfLines={1} style={styles.cdLbHeroName}>{entry.name}</Text>
-                              <Text style={styles.cdLbHeroPct}>{entry.pct}%</Text>
+                        {(() => {
+                          const top3 = challengeLeaderboardPreview.slice(0, 3);
+                          const medalData: Record<number, { emoji: string; bgColor: string; size: number; isFirst: boolean }> = {
+                            1: { emoji: '🥇', bgColor: '#c8991a', size: 48, isFirst: true },
+                            2: { emoji: '🥈', bgColor: '#7c8ba1', size: 38, isFirst: false },
+                            3: { emoji: '🥉', bgColor: '#a07040', size: 34, isFirst: false },
+                          };
+                          const podiumEntries = [
+                            top3.find(e => e.rank === 2),
+                            top3.find(e => e.rank === 1),
+                            top3.find(e => e.rank === 3),
+                          ].filter((e) => e !== undefined) as typeof top3;
+                          return (
+                            <View style={styles.cdLbHeroTop3}>
+                              {podiumEntries.map((entry) => {
+                                const m = medalData[entry.rank] ?? { emoji: `#${entry.rank}`, bgColor: '#4361c2', size: 36, isFirst: false };
+                                return (
+                                  <View key={`cdlb-top-${entry.rank}`} style={[styles.cdLbHeroTopCard, m.isFirst && styles.cdLbHeroTopCardFirst]}>
+                                    <Text style={styles.cdLbHeroMedal}>{m.emoji}</Text>
+                                    <View style={[styles.cdLbHeroAvatar, { width: m.size, height: m.size, borderRadius: m.size / 2, backgroundColor: m.bgColor }]}>
+                                      <Text style={[styles.cdLbHeroAvatarText, m.isFirst && styles.cdLbHeroAvatarTextFirst]}>
+                                        {entry.name.split(' ').map((p: string) => p[0]).join('').slice(0, 2).toUpperCase()}
+                                      </Text>
+                                    </View>
+                                    <Text numberOfLines={1} style={styles.cdLbHeroName}>{entry.name.split(' ')[0]}</Text>
+                                    <Text style={[styles.cdLbHeroPct, m.isFirst && styles.cdLbHeroPctFirst]}>{entry.pct}%</Text>
+                                  </View>
+                                );
+                              })}
                             </View>
-                          ))}
-                        </View>
+                          );
+                        })()}
                         <View style={styles.cdLbHeroRows}>
                           {challengeLeaderboardPreview.map((entry) => (
-                            <View key={`cdlb-row-${entry.rank}`} style={styles.cdLbHeroRow}>
+                            <View key={`cdlb-row-${entry.rank}`} style={[
+                              styles.cdLbHeroRow,
+                              entry.rank === 1 && styles.cdLbHeroRowGold,
+                              entry.rank === 2 && styles.cdLbHeroRowSilver,
+                              entry.rank === 3 && styles.cdLbHeroRowBronze,
+                            ]}>
                               <Text style={styles.cdLbHeroRowRank}>{String(entry.rank).padStart(2, '0')}</Text>
                               <Text numberOfLines={1} style={styles.cdLbHeroRowName}>{entry.name}</Text>
                               <Text style={styles.cdLbHeroRowVal}>{entry.value} logs</Text>
@@ -7880,103 +7905,45 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <Text style={styles.cdMetaCompactText}>{challengeSelected.participants} participants</Text>
                   </View>
 
-                  <View style={styles.challengeDetailsCtaBlock}>
-                    {(() => {
-                      const isJoinSubmitting = challengeJoinSubmittingId === challengeSelected.id;
-                      const isLeaveSubmitting = challengeLeaveSubmittingId === challengeSelected.id;
-                      const canJoinLiveChallenge =
-                        challengeHasApiBackedDetail && !challengeSelected.joined && challengeSelected.bucket !== 'completed';
-                      const canLeaveJoinedActiveChallenge =
-                        challengeHasApiBackedDetail && challengeSelected.joined && !challengeIsCompleted;
-                      const primaryActionIsJoin = canJoinLiveChallenge;
-                      const primaryActionLabel = primaryActionIsJoin
-                        ? isJoinSubmitting
-                          ? 'Joining…'
-                          : 'Join Challenge'
-                        : challengeIsCompleted
-                          ? 'View Results'
-                          : 'View Full Leaderboard';
-                      const secondaryActionLabel = canLeaveJoinedActiveChallenge
-                        ? isLeaveSubmitting
-                          ? 'Leaving…'
-                          : 'Leave Challenge'
-                        : 'Back to Challenges';
-                      const challengeMutationError =
-                        challengeJoinError ??
-                        challengeLeaveError ??
-                        (!challengeHasApiBackedDetail && !challengeSelected.joined && !challengeIsCompleted
-                          ? 'This challenge is placeholder-only right now. Pull to refresh and choose a live challenge to join.'
-                          : null);
-                      return (
-                        <>
+                  {(() => {
+                    const isJoinSubmitting = challengeJoinSubmittingId === challengeSelected.id;
+                    const canJoinLiveChallenge =
+                      challengeHasApiBackedDetail && !challengeSelected.joined && challengeSelected.bucket !== 'completed';
+                    const challengeMutationError =
+                      challengeJoinError ??
+                      challengeLeaveError ??
+                      (!challengeHasApiBackedDetail && !challengeSelected.joined && !challengeIsCompleted
+                        ? 'This challenge is placeholder-only right now. Pull to refresh and choose a live challenge to join.'
+                        : null);
+                    if (!canJoinLiveChallenge && !challengeMutationError) return null;
+                    return (
+                      <View style={styles.challengeDetailsCtaBlock}>
+                        {canJoinLiveChallenge ? (
                           <TouchableOpacity
                             style={[
                               styles.challengeDetailsPrimaryCta,
-                              (primaryActionIsJoin && (isJoinSubmitting || !challengeHasApiBackedDetail)) && styles.disabled,
-                              (!primaryActionIsJoin && isLeaveSubmitting) && styles.disabled,
+                              (isJoinSubmitting || !challengeHasApiBackedDetail) && styles.disabled,
                             ]}
                             onPress={() => {
-                              if (primaryActionIsJoin) {
-                                if (!challengeHasApiBackedDetail) return;
-                                void joinChallenge(challengeSelected.id);
-                                return;
-                              }
-                              setChallengeFlowScreen('leaderboard');
+                              if (!challengeHasApiBackedDetail) return;
+                              void joinChallenge(challengeSelected.id);
                             }}
-                            disabled={
-                              isLeaveSubmitting ||
-                              isJoinSubmitting ||
-                              (primaryActionIsJoin && !challengeHasApiBackedDetail)
-                            }
+                            disabled={isJoinSubmitting || !challengeHasApiBackedDetail}
                           >
-                            <Text style={styles.challengeDetailsPrimaryCtaText}>{primaryActionLabel}</Text>
+                            <Text style={styles.challengeDetailsPrimaryCtaText}>
+                              {isJoinSubmitting ? 'Joining…' : 'Join Challenge'}
+                            </Text>
                           </TouchableOpacity>
-                          {!challengeMutationError && challengeIsPlaceholderOnly && !challengeSelected.joined
-                            ? renderKnownLimitedDataChip('join disabled on preview rows')
-                            : null}
-                    {challengeMutationError ? (
-                      <Text style={styles.challengeJoinErrorText}>{challengeMutationError}</Text>
-                    ) : null}
-                    <TouchableOpacity
-                      style={[
-                        styles.challengeDetailsSecondaryCta,
-                        canLeaveJoinedActiveChallenge && isLeaveSubmitting && styles.disabled,
-                      ]}
-                      onPress={() => {
-                        if (challengeIsCompleted) {
-                          setChallengeFlowScreen('list');
-                          return;
-                        }
-                        if (canLeaveJoinedActiveChallenge) {
-                          if (isJoinSubmitting || isLeaveSubmitting) return;
-                          Alert.alert(
-                            'Leave Challenge',
-                            'Are you sure you want to leave this challenge? Your participation progress will no longer be tracked.',
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              {
-                                text: 'Leave',
-                                style: 'destructive',
-                                onPress: () => {
-                                  void leaveChallenge(challengeSelected.id);
-                                },
-                              },
-                            ]
-                          );
-                          return;
-                        }
-                        setChallengeFlowScreen('list');
-                      }}
-                      disabled={isJoinSubmitting || isLeaveSubmitting}
-                    >
-                      <Text style={styles.challengeDetailsSecondaryCtaText}>
-                        {secondaryActionLabel}
-                      </Text>
-                    </TouchableOpacity>
-                        </>
-                      );
-                    })()}
-                  </View>
+                        ) : null}
+                        {!challengeMutationError && challengeIsPlaceholderOnly && !challengeSelected.joined
+                          ? renderKnownLimitedDataChip('join disabled on preview rows')
+                          : null}
+                        {challengeMutationError ? (
+                          <Text style={styles.challengeJoinErrorText}>{challengeMutationError}</Text>
+                        ) : null}
+                      </View>
+                    );
+                  })()}
 
                 </View>
 
@@ -8001,17 +7968,136 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   </View>
                 ) : (
                   <View style={styles.challengeSectionsWrap}>
-                    <View style={styles.challengeLoggingHeaderCard}>
-                      <Text style={styles.challengeLoggingHeaderTitle}>Challenge Logging</Text>
-                      <Text style={styles.challengeLoggingHeaderSub}>
-                        Log challenge-related KPIs below while keeping this screen focused on challenge details and progress.
-                      </Text>
-                    </View>
-                    {renderChallengeKpiSection('PC', 'Projections (PC)', challengeScopedKpiGroups.PC)}
-                    {renderChallengeKpiSection('GP', 'Growth (GP)', challengeScopedKpiGroups.GP)}
-                    {renderChallengeKpiSection('VP', 'Vitality (VP)', challengeScopedKpiGroups.VP)}
+                    {(() => {
+                      const allChallengeKpis = [
+                        ...challengeScopedKpiGroups.PC,
+                        ...(gpUnlocked ? challengeScopedKpiGroups.GP : []),
+                        ...(vpUnlocked ? challengeScopedKpiGroups.VP : []),
+                      ].slice(0, 6);
+                      if (allChallengeKpis.length === 0) return null;
+                      return (
+                        <View style={[styles.challengeSectionCard, styles.challengeSectionCardCompact]}>
+                          <View style={styles.challengeKpisCardHeader}>
+                            <Text style={styles.challengeLoggingHeaderTitle}>Challenge KPIs</Text>
+                          </View>
+                          <View style={[styles.gridWrap, styles.challengeGridWrapCompact]}>
+                            {allChallengeKpis.map((kpi) => {
+                              const successAnim = getKpiTileSuccessAnim(kpi.id);
+                              const successOpacity = successAnim.interpolate({
+                                inputRange: [0, 0.12, 1],
+                                outputRange: [0, 1, 0],
+                              });
+                              const successTranslateY = successAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [0, -14],
+                              });
+                              const successScale = successAnim.interpolate({
+                                inputRange: [0, 0.2, 1],
+                                outputRange: [0.8, 1.02, 0.96],
+                              });
+                              return (
+                                <Pressable
+                                  key={`challenge-combined-${kpi.id}`}
+                                  style={[
+                                    styles.gridItem,
+                                    styles.challengeGridItemCompact,
+                                    submitting && submittingKpiId === kpi.id && styles.disabled,
+                                  ]}
+                                  onPress={() => void onTapQuickLog(kpi, { skipTapFeedback: true })}
+                                  disabled={submitting}
+                                  onPressIn={() => runKpiTilePressInFeedback(kpi, { surface: 'log' })}
+                                  onPressOut={() => runKpiTilePressOutFeedback(kpi.id)}
+                                >
+                                  <Animated.View
+                                    style={[
+                                      styles.gridTileAnimatedWrap,
+                                      styles.challengeGridTileAnimatedWrap,
+                                      { transform: [{ scale: getKpiTileScale(kpi.id) }] },
+                                    ]}
+                                  >
+                                    <View style={styles.gridCircleWrap}>
+                                      <View
+                                        style={[
+                                          styles.gridCircle,
+                                          confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed,
+                                        ]}
+                                      >
+                                        {renderKpiIcon(kpi)}
+                                      </View>
+                                      <Animated.View
+                                        pointerEvents="none"
+                                        style={[
+                                          styles.gridSuccessBadge,
+                                          {
+                                            opacity: successOpacity,
+                                            transform: [
+                                              { translateY: successTranslateY },
+                                              { scale: successScale },
+                                            ],
+                                          },
+                                        ]}
+                                      >
+                                        <View style={styles.gridSuccessCoinOuter}>
+                                          <View style={styles.gridSuccessCoinInner} />
+                                          <View style={styles.gridSuccessCoinHighlight} />
+                                        </View>
+                                      </Animated.View>
+                                    </View>
+                                    <Text
+                                      style={[
+                                        styles.gridLabel,
+                                        confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed,
+                                      ]}
+                                    >
+                                      {kpi.name}
+                                    </Text>
+                                  </Animated.View>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      );
+                    })()}
                   </View>
                 )}
+
+                {/* ── Leave Challenge (very bottom) ── */}
+                {challengeHasApiBackedDetail && challengeSelected.joined && !challengeIsCompleted ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.challengeDetailsSecondaryCta,
+                      { marginTop: 8, marginHorizontal: 20, marginBottom: 20 },
+                      challengeLeaveSubmittingId === challengeSelected.id && styles.disabled,
+                    ]}
+                    onPress={() => {
+                      if (
+                        challengeJoinSubmittingId === challengeSelected.id ||
+                        challengeLeaveSubmittingId === challengeSelected.id
+                      ) return;
+                      Alert.alert(
+                        'Leave Challenge',
+                        'Are you sure you want to leave this challenge? Your participation progress will no longer be tracked.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Leave',
+                            style: 'destructive',
+                            onPress: () => { void leaveChallenge(challengeSelected.id); },
+                          },
+                        ]
+                      );
+                    }}
+                    disabled={
+                      challengeJoinSubmittingId === challengeSelected.id ||
+                      challengeLeaveSubmittingId === challengeSelected.id
+                    }
+                  >
+                    <Text style={styles.challengeDetailsSecondaryCtaText}>
+                      {challengeLeaveSubmittingId === challengeSelected.id ? 'Leaving…' : 'Leave Challenge'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
 
                 {/* ── KPI Contribution Drill-In Sheet ── */}
                 <Modal
@@ -13066,10 +13152,15 @@ const styles = StyleSheet.create({
   cdLbHeroCard: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#dce3f0',
+    borderColor: '#c5d0ee',
     backgroundColor: '#fff',
     marginBottom: 12,
     overflow: 'hidden',
+    shadowColor: '#3a4fc4',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
   cdLbHeroHeader: {
     flexDirection: 'row',
@@ -13078,26 +13169,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f3f8',
+    backgroundColor: '#2d3d8e',
   },
   cdLbHeroTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#1a2540',
+    color: '#fff',
   },
   cdLbHeroTop3: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingVertical: 14,
+    alignItems: 'flex-end',
+    paddingTop: 20,
+    paddingBottom: 16,
     paddingHorizontal: 8,
-    backgroundColor: '#f6f9ff',
+    backgroundColor: '#eef1ff',
     gap: 4,
   },
   cdLbHeroTopCard: {
     flex: 1,
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
+  },
+  cdLbHeroTopCardFirst: {
+    marginBottom: 10,
+  },
+  cdLbHeroMedal: {
+    fontSize: 22,
+    lineHeight: 28,
   },
   cdLbHeroRank: {
     fontSize: 11,
@@ -13105,42 +13204,64 @@ const styles = StyleSheet.create({
     color: '#4361c2',
   },
   cdLbHeroAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#4361c2',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.55)',
   },
   cdLbHeroAvatarText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
+  },
+  cdLbHeroAvatarTextFirst: {
+    fontSize: 17,
   },
   cdLbHeroName: {
     fontSize: 11,
     fontWeight: '600',
     color: '#1a2540',
     textAlign: 'center',
-    maxWidth: 72,
+    maxWidth: 80,
   },
   cdLbHeroPct: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#1a2540',
+    color: '#4361c2',
+  },
+  cdLbHeroPctFirst: {
+    fontSize: 16,
+    color: '#c8991a',
   },
   cdLbHeroRows: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 6,
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    paddingBottom: 8,
+    gap: 0,
   },
   cdLbHeroRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f5fb',
+    borderBottomColor: '#f0f3fa',
+  },
+  cdLbHeroRowGold: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#c8991a',
+    paddingLeft: 8,
+  },
+  cdLbHeroRowSilver: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#7c8ba1',
+    paddingLeft: 8,
+  },
+  cdLbHeroRowBronze: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#a07040',
+    paddingLeft: 8,
   },
   cdLbHeroRowRank: {
     fontSize: 12,
@@ -13167,9 +13288,9 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   cdLbHeroEmpty: {
-    padding: 16,
+    padding: 20,
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
   },
   cdLbHeroEmptyTitle: {
     fontSize: 13,
@@ -13184,10 +13305,11 @@ const styles = StyleSheet.create({
   },
   cdLbHeroHint: {
     fontSize: 12,
-    color: '#4361c2',
+    color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
-    paddingBottom: 12,
+    paddingVertical: 10,
     fontWeight: '600',
+    backgroundColor: '#2d3d8e',
   },
   // ── Challenge Detail Goals Section ──────────────────────────────────────
   cdGoalsSection: {
@@ -17387,6 +17509,13 @@ const styles = StyleSheet.create({
   },
   challengeSectionsWrap: {
     gap: 10,
+  },
+  challengeKpisCardHeader: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eef1f8',
   },
   challengeLoggingHeaderCard: {
     backgroundColor: '#fff',
