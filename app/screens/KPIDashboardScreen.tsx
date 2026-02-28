@@ -3422,6 +3422,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
   const todaysLogRows = useMemo(() => {
     const kpiNameById = new Map((payload?.loggable_kpis ?? []).map((kpi) => [kpi.id, kpi.name]));
+    const kpiNameFromRecentById = new Map<string, string>();
+    for (const row of payload?.recent_logs ?? []) {
+      const id = String(row.kpi_id ?? '');
+      if (!id) continue;
+      const name = String(row.kpi_name ?? '').trim();
+      if (!name) continue;
+      if (!kpiNameFromRecentById.has(id)) kpiNameFromRecentById.set(id, name);
+    }
     const counts = new Map<string, number>();
     for (const log of payload?.recent_logs ?? []) {
       if (!String(log.event_timestamp).startsWith(selectedLogDate)) continue;
@@ -3432,11 +3440,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     return [...counts.entries()]
       .map(([kpiId, count]) => ({
         kpiId,
-        name: kpiNameById.get(kpiId) ?? 'KPI',
+        name: kpiNameById.get(kpiId) ?? kpiNameFromRecentById.get(kpiId) ?? 'KPI',
         count,
       }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 3);
   }, [payload?.loggable_kpis, payload?.recent_logs, selectedLogDate]);
 
   const recentLogEntries = useMemo(() => {
