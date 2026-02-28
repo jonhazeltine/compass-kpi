@@ -154,6 +154,7 @@ Only use long custom prompts when the board is missing required details or a one
 | ID | Status | Program status | Persona | Flow | Screens | Blocker | Next action |
 |---|---|---|---|---|---|---|---|
 | `COACHING-INTEGRATION-A` | `unblocked via explicit owner approval` | `M3/M3b baseline + approved M6 planning overlap` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` | host surfaces across `Home`, `Challenge`, `Team`, `Profile` + future `Inbox/Journeys` | Former blocker resolved: owner approved pull-forward planning work; assignment spec now defined; docs-only to avoid code/sprint collision while `TEAM-MEMBER-PARITY-A` runs | Execute via `Coach-1`; update board first, then brief report back |
+| `W13-RUNTIME-PARITY-AND-HARDENING-A` | `queued` | `W13 runtime parity/hardening` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `stream+mux runtime parity and hardening` | runtime parity/hardening surfaces not yet executable | Sequenced behind runtime prerequisites (`W13-IMPLEMENT-STREAM-ADAPTER-A` and `W13-IMPLEMENT-MUX-ADAPTER-A`) and waiting for both to reach `committed`/`pushed`. | Keep queued and launch immediately after upstream runtime adapter assignments are both complete. |
 
 ## Recently Completed (Awaiting Review / Landed on Branch)
 
@@ -4736,7 +4737,7 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 | 7 | `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-004 retention/compliance decision packet + control-plane linkage completed (docs-only; no runtime changes). |
 | 8 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `queued` | `Unassigned` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A implementation is unblocked by closed deps and `Wave A = GO`; queued for worker assignment. |
 | 9 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `active` | `Admin-1` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B implementation activated: dependency gates are closed and control-plane Wave A matrix is `GO`. |
-| 10 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `queued` | `Unassigned` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Wave C/D parity/hardening queued pending completion of runtime implementation assignments 8 and 9. |
+| 10 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `queued` | `Mobile-2` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Assignment spec is now present; runtime execution remains dependency-sequenced behind Stream/Mux adapter completion (DEP gates already `CLOSED`, Wave A control-plane state remains `GO`). |
 | 11 | `W13-STREAM-MUX-READINESS-CONTRACT-LOCK-C` | `committed` | `Admin-1` | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A`, `W13-MUX-CONTRACTS-AND-TESTS-A`, `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | Committed docs lock: deterministic status/error vocabulary finalized for Stream/Mux planned paths, 1:1 contract behavior to acceptance mapping tables added, and KPI no-side-effect regression guardrails tightened (docs-only). |
 
 ### `W13-CHAT-VIDEO-ARCH-RFC-A`
@@ -5043,6 +5044,53 @@ Finalize Stream/Mux implementation-readiness in contracts/tests docs only, prese
 - Contract-to-test mapping delta
 - Remaining ambiguity list (if any)
 - Commit hash
+
+### `W13-RUNTIME-PARITY-AND-HARDENING-A`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `W13 runtime parity/hardening`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`
+- `Flow:` `stream+mux runtime parity and hardening`
+- `Owner:` `Mobile-2`
+- `Execution note (2026-02-28, Controller):` Assignment spec added to remove control-plane ambiguity and keep queue language aligned with closed dependencies and `Wave A = GO`.
+- `Current blocker status (2026-02-28, queue):` `dependency-sequenced` behind runtime adapter completion only (`W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A`); not blocked by DEP gates.
+
+#### Primary Objective
+Execute runtime parity and hardening pass after Stream and Mux adapters land, ensuring provider-backed chat/video behavior is deterministic across coach portal and mobile surfaces without expanding API families or violating persona guardrails.
+
+#### Scope In
+- `/Users/jon/compass-kpi/backend/src/integrations/stream/**` (existing family hardening only)
+- `/Users/jon/compass-kpi/backend/src/integrations/mux/**` (existing family hardening only)
+- `/Users/jon/compass-kpi/backend/src/routes/**` (in-family behavior parity only)
+- `/Users/jon/compass-kpi/app/screens/**` and `/Users/jon/compass-kpi/app/components/**` (runtime parity consumers only)
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md` (parity clarifications only if needed)
+- `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md` (coverage lock updates only if needed)
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md` (status/progress notes)
+
+#### Scope Out
+- New endpoint families.
+- Schema/table migrations unrelated to existing planned contracts.
+- Provider-agnostic architecture rewrites outside W13 parity scope.
+
+#### Hard Constraints
+- Keep dependency gate language intact: planned runtime path remains tied to `DEP-002`, `DEP-004`, `DEP-005` closure state (currently closed/`GO`).
+- Preserve sponsor/team-member KPI guardrails: no KPI logging/edit expansion from chat/video surfaces.
+- Keep role-gated messaging authority model as documented (Coach full in-scope, Team Leader team-scoped parity, sponsor scoped to sponsor/challenge contexts).
+- Preserve existing route compatibility redirects and no breaking path removals during parity hardening.
+
+#### Validation
+- Confirm Stream token/sync and Mux upload/playback/webhook runtime outcomes match W13 contracts and acceptance scenarios 1:1.
+- Re-run role-gate regression checks to ensure sponsor and team-member KPI no-side-effect constraints hold.
+- Run typecheck/tests required by runtime lanes and capture evidence artifacts for parity and failure-handling paths.
+- Verify no contradiction with `/Users/jon/compass-kpi/architecture/PROJECT_CONTROL_PLANE.md` Wave A GO/NO-GO matrix.
+
+#### Report-Back
+- Program status.
+- Files changed + line refs.
+- Runtime parity checklist (Stream/Mux behaviors matched vs deferred).
+- Remaining blockers (if any).
+- Commit hash.
 
 ### `M6-TEAM-FOCUS-KPI-CARD-DENSITY-REDUCE-A`
 
