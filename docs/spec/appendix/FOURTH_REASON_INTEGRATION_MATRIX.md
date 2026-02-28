@@ -34,6 +34,34 @@ Map the communication + coaching capabilities from `references/the fourth reason
 | Subscription hooks | RevenueCat webhook + subscription service | Defer until billing authority decision | Keep Phase 1/2 billing-agnostic; no RevenueCat webhook code in Compass pre-decision. |
 | Media/video coaching assets | Mux upload + transcript flows | Planned Wave B (`Mux` via Compass adapter/facade) | Implement direct upload + signed playback + verified webhooks, with media metadata surfaced through existing coaching/journey contracts. |
 
+## M6 Messaging Pattern Matrix (Fourth Reason -> Compass)
+
+Status vocabulary in this table is locked to:
+- `build now`
+- `defer`
+- `blocked by DEP`
+
+`No new table strategy` is mandatory per pattern and assumes Compass keeps current endpoint families/contracts as authority.
+
+| Pattern | Fourth Reason behavior | Compass equivalent | Status | No new table strategy |
+|---|---|---|---|---|
+| Inbox segmentation | Top-level communication separation (`All`, channel-driven activity, direct conversation lanes, broadcast lane) | Comms hub segmented by feed mode on existing channel/thread surfaces | build now | Use existing `channels`, `channelMemberships`, and `channelMessages`; derive tabs via query/filter on `channels.type` + message metadata. No new inbox aggregate table. |
+| Channel conversation thread | Channel timeline with membership-gated message stream | `GET /api/channels/{id}/messages` + `POST /api/channels/{id}/messages` | build now | Keep `channelMessages` as canonical thread store; no separate per-thread mirror table. |
+| Direct message lane | 1:1 messaging surfaced as dedicated conversation list | Represent DM as channel subtype (`direct`) within existing channels model | build now | Reuse `channels` + `channelMemberships` for exactly 2 members; no separate `dm_threads` table. |
+| Broadcast compose and send | Role-constrained send to scoped audiences | `POST /api/channels/{id}/broadcast` + audit/throttle behavior | build now | Persist broadcast as flagged channel message + existing audit log path; no separate broadcast content table. |
+| Unread badge and mark-seen | Unread counters in list and reset on read/open | `GET /api/messages/unread-count` + `POST /api/messages/mark-seen` | build now | Reuse existing unread counters/read model; avoid new per-screen badge cache table. |
+| Search and scope filter | Keyword + audience/scope filtering across channels | Server/client filtering on existing `/api/channels` response | build now | Filter existing channel payload fields (`name`, `type`, context metadata); no search index table in M6 scope. |
+| Mention/reply context | Highlighted mention context in message lane | Additive message metadata + client formatting in existing thread payloads | defer | Extend `channelMessages` metadata fields only (additive) when needed; no separate mentions table for M6. |
+| Typing/read-receipt presence | Real-time typing and read-state markers | Defer to provider-backed real-time phase (`Stream`) | blocked by DEP | Keep polling + unread semantics only; no presence/read-receipt table prior to dependency closure (`DEP-002`, `DEP-004`, `DEP-005`). |
+| Rich media attachment in thread | File/video attachment send + playback in thread | Use planned Mux/Upload facade and coaching media contracts | blocked by DEP | Use existing coaching/media contract extensions only; no new comms attachment table before dependency closure (`DEP-002`, `DEP-004`, `DEP-005`). |
+| Notification handoff from comms events | Message/broadcast events enqueue mobile push notifications | Existing push token + notification queue endpoints | build now | Reuse `push_tokens` + notification queue model; no new messaging-notification join table. |
+
+### Deterministic Adaptation Rules
+- Compass remains source of truth for roles/membership/access; provider state cannot escalate permissions.
+- Keep contract additions additive and in-family (`/api/channels*`, `/api/messages/*`, `/api/notifications/*`, `/api/coaching/media/*` planned).
+- Do not introduce new API family for messaging in this phase.
+- Do not introduce new table requirement as prerequisite for M6 messaging behavior parity.
+
 ## API and Integration Recommendations
 
 ### Keep / Reuse

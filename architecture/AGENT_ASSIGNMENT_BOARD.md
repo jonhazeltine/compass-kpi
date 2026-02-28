@@ -136,6 +136,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-TEAM-CHALLENGES-LIST-HERO-DRAWER-A` | `committed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges list redesign` (`hero header`, `reduced card detail`, `preview bottom drawer`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer routing behavior | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted: Team Challenges list now uses hero header treatment, simplified challenge cards with essentials-only progress rows, non-joined preview drawer (KPI list/dates/summary/join), and joined-card direct route to existing challenge detail screen (`4772f8d`, `709460a`, `ad71b1e`). |
 | `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B` | `committed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team challenges validation` (`hero/list/drawer/join-open route regression`) | `KPIDashboardScreen` Team tab `Challenges` list page + preview drawer behavior | `Mobile-2` | `codex/a2-admin-list-usability-pass` (QA-only; no code edits) | manual-spec-driven (owner-directed design pass) | Accepted QA pass: leader/member challenge list behavior verified with screenshot evidence matrix; no regressions found and no code edits required. |
 | `M6-COMMS-UX-REDESIGN-SHELL-B` | `review` | `M6 UI MVP polish (provider-ready shell, no Stream runtime switch)` | `Team Leader`, `Team Member`, `Coach`, `Solo User`, `Challenge Sponsor` | `comms shell UX redesign` (`inbox`, `channels list`, `thread readability`, `broadcast compose`) | `KPIDashboardScreen` comms surfaces only (`inbox`, `inbox_channels`, `channel_thread`, `coach_broadcast_compose`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (messaging-first visual polish) | Review-ready: messaging-first visual hierarchy pass landed for Comms Hub tabs/search/channel rows/thread bubbles/composer actions while keeping existing route/API calls and role-gated broadcast behavior unchanged. |
+| `M6-COMMS-FR-PATTERN-MATRIX-B` | `review` | `M6 comms integration planning (docs-only)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `comms architecture mapping` (`Fourth Reason behavior -> Compass adaptation matrix`) | docs-only: `FOURTH_REASON_INTEGRATION_MATRIX`, additive mapping notes in `04_api_contracts`, assignment note in board | `Mobile-2` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Completed docs pass: landed pattern-by-pattern Fourth Reason messaging matrix with `build now / defer / blocked by DEP` statuses and explicit no-new-table adaptation notes, plus additive API mapping guidance. |
 | `W13-DEP-TRACKER-EVIDENCE-SYNC-B` | `committed` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency governance` (`closeout evidence linking + status normalization`) | docs-only: `PROJECT_CONTROL_PLANE`, `W13_DEP_SIGNOFF_BRIEF` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed docs pass: placeholder evidence link removed, DEP-002/004/005 evidence references normalized across control-plane + signoff brief, and Wave A GO/NO-GO language preserved. |
 | `A3-W12-SPOTCHECK-CLOSEOUT-DOC-SYNC-B` | `committed` | `A3/W12 admin+coach hardening` | `Admin operator`, `Coach`, `Team Leader`, `Challenge Sponsor` | `admin/coach QA governance` (`closeout packaging + board/doc alignment`) | docs-only: `AGENT_ASSIGNMENT_BOARD` A3/W12 spotcheck sections | `Admin-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Accepted docs closeout sync: A3/W12 rows/specs now use accepted lifecycle status language with explicit determinism dependency chain, final pass counts (`36/36`), evidence paths, and commit references (`5dca5dc`). |
 | `M6-CHALLENGE-DETAIL-GOALS-LEADERBOARD-MVP-A` | `committed` | `M6 challenge detail UI cleanup` | `Team Leader`, `Team Member` | `challenge detail goals redesign` (`team goals`, `individual goals`, `leaderboard hero`, `kpi contribution drill-in`) | `KPIDashboardScreen` Challenge detail screen only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted: challenge detail goals/leaderboard MVP keeps leaderboard hero first, explicit Goals hierarchy, KPI-row drill-in behavior, and cumulative team-contribution meter semantics (safe fallback under thin payloads); no backend/schema/API changes (`4d67832`, `72242bb`). |
@@ -5468,3 +5469,45 @@ Redesign Comms experience to feel like a true messaging interface while preservi
 - Validation summary
 - Screenshot paths
 - Commit hash
+
+### `M6-COMMS-FR-PATTERN-MATRIX-B`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 comms integration planning (docs-only)`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor`
+- `Flow:` `comms architecture mapping` (`Fourth Reason behavior -> Compass adaptation matrix`)
+- `Owner:` `Mobile-2`
+- `Current blocker status (2026-02-28, launch):` `none` (docs-only).
+- `Execution note (2026-02-28, Mobile-2):` Assignment activated from owner directive. Executing docs-only pattern matrix pass across Fourth Reason integration doc + additive API mapping notes.
+- `Completion note (2026-02-28, Mobile-2):` Added a pattern-by-pattern messaging matrix mapping Fourth Reason behavior to Compass equivalents with explicit `build now / defer / blocked by DEP` outcomes and a mandatory no-new-table adaptation strategy per pattern.
+- `Validation note (2026-02-28, Mobile-2):` Cross-checked statuses and dependency gates against `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md` (W13 docs-first + dependency gates) and `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md` (deterministic, scope-safe constraints). No runtime/API family expansion introduced.
+- `Current blocker status (2026-02-28, review):` `none`.
+
+#### Primary Objective
+Create a Compass implementation matrix from Fourth Reason messaging behavior:
+- pattern-by-pattern mapping (`Fourth Reason behavior` -> `Compass equivalent`)
+- explicit `build now / defer / blocked by DEP` status
+- explicit `no new table` adaptation strategy for every pattern
+
+#### Scope In
+- `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+- `/Users/jon/compass-kpi/docs/spec/appendix/FOURTH_REASON_INTEGRATION_MATRIX.md`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md` (additive mapping notes only)
+
+#### Scope Out
+- Runtime code changes
+- Backend/API/schema implementation changes
+- Net-new endpoint family design
+
+#### Required Validation
+- Cross-check against:
+  - `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md`
+  - `/Users/jon/compass-kpi/architecture/NON_NEGOTIABLES.md`
+- Confirm matrix explicitly marks dependency-gated items where blocked (`DEP-*`).
+
+#### Report-Back
+- Update board status first (`active` -> `review`/`blocked`).
+- Updated files + line refs.
+- Pattern matrix summary (`build now`, `defer`, `blocked by DEP`).
+- Commit hash.
