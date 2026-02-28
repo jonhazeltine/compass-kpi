@@ -3,11 +3,20 @@
 ## Purpose
 Dependency closure checklist for third-party runtime integrations (`Stream Chat`, `Mux`) before Wave A/B implementation starts.
 
-Status: `planned/control-plane gate` until all required gates below are `PASS`.
+Dependency status: `OPEN` (control-plane gate) until all required gates below are `PASS`.
+
+Status language for this checklist:
+- Dependency status: `OPEN` or `CLOSED`.
+- Evidence status: `PRESENT` or `PENDING_EVIDENCE`.
+- Sign-off status: `SIGNED` or `PENDING_SIGNATURE`.
 
 ## Gate Decision Rule
 - `DEP-005 = PASS` only when every required gate in this file is marked `PASS`, with evidence links attached, and Architecture + Security + Legal approvals recorded.
-- Any required gate marked `FAIL` or `PENDING` keeps `DEP-005` `open` and runtime provider implementation remains blocked.
+- Any required gate marked `FAIL` or `PENDING_EVIDENCE` keeps `DEP-005` `OPEN` and runtime provider implementation remains blocked.
+
+## Missing Evidence Callouts (Current)
+- `PENDING_EVIDENCE`: all gate evidence links are still `TBD`.
+- `PENDING_SIGNATURE`: Security/Legal/Architecture approval checkpoint is not signed.
 
 ## Required Pass/Fail Gates
 
@@ -25,21 +34,21 @@ Status: `planned/control-plane gate` until all required gates below are `PASS`.
 
 | Gate ID | Owner | Due Date | Current Status | Evidence Link(s) | Notes |
 |---|---|---|---|---|---|
-| DEP5-G1 | Security | 2026-03-06 | PENDING | `TBD` | Validate SOC/control exceptions for Stream and Mux independently. |
-| DEP5-G2 | Legal | 2026-03-07 | PENDING | `TBD` | DPA must include deletion obligations aligned with `DEP-004` policy outcomes. |
-| DEP5-G3 | Legal + Architecture | 2026-03-08 | PENDING | `TBD` | Confirm region policy by tenant segment and deployment geography. |
-| DEP5-G4 | Security + Platform | 2026-03-05 | PENDING | `TBD` | Include rotation cadence + break-glass revoke procedure. |
-| DEP5-G5 | Platform + Security | 2026-03-06 | PENDING | `TBD` | Include signature + replay-window + source-control test evidence. |
-| DEP5-G6 | Security + Engineering Manager | 2026-03-05 | PENDING | `TBD` | Record primary/secondary incident owners and after-hours handoff. |
-| DEP5-G7 | Legal + Security + Platform | 2026-03-09 | PENDING | `TBD` | Ensure termination checklist covers both providers and key cleanup. |
+| DEP5-G1 | Security | 2026-03-06 | PENDING_EVIDENCE | `TBD` | Validate SOC/control exceptions for Stream and Mux independently. |
+| DEP5-G2 | Legal | 2026-03-07 | PENDING_EVIDENCE | `TBD` | DPA must include deletion obligations aligned with `DEP-004` policy outcomes. |
+| DEP5-G3 | Legal + Architecture | 2026-03-08 | PENDING_EVIDENCE | `TBD` | Confirm region policy by tenant segment and deployment geography. |
+| DEP5-G4 | Security + Platform | 2026-03-05 | PENDING_EVIDENCE | `TBD` | Include rotation cadence + break-glass revoke procedure. |
+| DEP5-G5 | Platform + Security | 2026-03-06 | PENDING_EVIDENCE | `TBD` | Include signature + replay-window + source-control test evidence. |
+| DEP5-G6 | Security + Engineering Manager | 2026-03-05 | PENDING_EVIDENCE | `TBD` | Record primary/secondary incident owners and after-hours handoff. |
+| DEP5-G7 | Legal + Security + Platform | 2026-03-09 | PENDING_EVIDENCE | `TBD` | Ensure termination checklist covers both providers and key cleanup. |
 
 ## Approval Checkpoint
 
 | Function | Approver | Date | Approval |
 |---|---|---|---|
-| Security | `TBD` | `TBD` | PENDING |
-| Legal | `TBD` | `TBD` | PENDING |
-| Architecture | `TBD` | `TBD` | PENDING |
+| Security | `TBD` | `TBD` | PENDING_SIGNATURE |
+| Legal | `TBD` | `TBD` | PENDING_SIGNATURE |
+| Architecture | `TBD` | `TBD` | PENDING_SIGNATURE |
 
 ## Runtime Gate Binding
 - Until this checklist reaches all-required `PASS`, these remain blocked:

@@ -3,14 +3,25 @@
 ## Purpose
 Owner sign-off packet for `DEP-004` (data retention/compliance policy) required before runtime Stream/Mux implementation waves.
 
-Status: `decision needed` (docs/control-plane gate).
+Dependency status: `OPEN` (docs/control-plane gate).
+
+Status language for this packet:
+- Dependency status: `OPEN` or `CLOSED`.
+- Evidence status: `PRESENT` or `PENDING_EVIDENCE`.
+- Sign-off status: `SIGNED` or `PENDING_SIGNATURE`.
 
 ## Decision Rule
 - `DEP-004 = PASS` only when all required policy decisions below are approved and signed by Product + Legal + Architecture.
-- Any unresolved required decision keeps `DEP-004` in `open` status and blocks:
+- Any unresolved required decision keeps `DEP-004` in `OPEN` status and blocks:
   - `W13-IMPLEMENT-STREAM-ADAPTER-A`
   - `W13-IMPLEMENT-MUX-ADAPTER-A`
   - `W13-RUNTIME-PARITY-AND-HARDENING-A`
+
+## Missing Evidence Callouts (Current)
+- `PENDING_EVIDENCE`: retention baseline and deletion SLA values are unresolved for all listed data classes.
+- `PENDING_EVIDENCE`: legal hold authority scope (creation/release actor policy) remains unresolved.
+- `PENDING_EVIDENCE`: provider deletion-failure exception handling policy remains unresolved.
+- `PENDING_SIGNATURE`: Product/Legal/Architecture/Security sign-off block is not completed.
 
 ## Retention/Deletion Matrix by Data Class
 
@@ -79,10 +90,10 @@ Status: `decision needed` (docs/control-plane gate).
 
 | Function | Approver | Date | Decision |
 |---|---|---|---|
-| Product | `TBD` | `TBD` | PENDING |
-| Legal | `TBD` | `TBD` | PENDING |
-| Architecture | `TBD` | `TBD` | PENDING |
-| Security | `TBD` | `TBD` | PENDING |
+| Product | `TBD` | `TBD` | PENDING_SIGNATURE |
+| Legal | `TBD` | `TBD` | PENDING_SIGNATURE |
+| Architecture | `TBD` | `TBD` | PENDING_SIGNATURE |
+| Security | `TBD` | `TBD` | PENDING_SIGNATURE |
 
 Final gate outcome:
-- `DEP-004` = `PENDING` until all required decisions are resolved and sign-off table is complete.
+- `DEP-004` = `OPEN` until all required decisions are resolved and sign-off table is complete (`SIGNED` for all required functions).

@@ -1,15 +1,26 @@
 # W13 DEP-002 Tenancy Decision Packet
 
 ## Status
+- Dependency status: `OPEN`
 - Decision type: `owner sign-off required`
 - Program slice: `W13 docs/control-plane exception`
 - Scope: contracts/governance only, no runtime implementation
 - Dependencies touched: `DEP-002` (this packet), with rollout coupling to `DEP-004` and `DEP-005`
 
+Status language for this packet:
+- Dependency status: `OPEN` or `CLOSED`.
+- Evidence status: `PRESENT` or `PENDING_EVIDENCE`.
+- Sign-off status: `SIGNED` or `PENDING_SIGNATURE`.
+
 ## Decision Needed
 Approve one tenancy model for Stream/Mux-era contracts and data ownership so Wave A/B implementation can proceed when dependency gates close.
 
 This packet provides 3 concrete models and a recommendation.
+
+## Missing Evidence Callouts (Current)
+- `PENDING_SIGNATURE`: no model is selected in the owner sign-off checklist.
+- `PENDING_SIGNATURE`: owner and architecture approval is not recorded with approver + date.
+- `PENDING_EVIDENCE`: no closure reference logged to `architecture/DECISIONS_LOG.md` yet.
 
 ---
 
@@ -195,3 +206,9 @@ This is the best balance of:
 
 Approval target date: `TBD by owner`  
 Decision log follow-up required after sign-off: `yes` (`DEP-002` closure entry)
+
+## Dependency Close Criteria (DEP-002)
+- Mark `DEP-002` as `CLOSED` only when all below are true:
+  - one tenancy model is explicitly selected in this packet;
+  - owner + architecture approvals are recorded with dates (`SIGNED`);
+  - decision closure entry exists in `architecture/DECISIONS_LOG.md`.
