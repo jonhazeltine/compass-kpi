@@ -868,10 +868,10 @@ const sty = StyleSheet.create({
   },
 
   // ── Time Chips ──
-  timeChipRow: { flexDirection: 'row', gap: 6 },
+  timeChipRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   timeChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: '#f0f2f5',
     borderWidth: 1,
@@ -894,12 +894,10 @@ const sty = StyleSheet.create({
 
   // ── Hero Canvas ──
   heroHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 8,
+    gap: 8,
   },
   heroEyebrow: {
     fontSize: 10,
