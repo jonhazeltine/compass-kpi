@@ -138,6 +138,31 @@ type CoachingBroadcastPayload = {
   message_body: string;
 };
 
+type CoachEngagementCreatePayload = {
+  coach_id: string;
+};
+
+type CoachProfileReadModel = {
+  id: string;
+  name: string;
+  specialties: string[];
+  bio: string;
+  engagement_availability: "available" | "waitlist" | "unavailable";
+};
+
+type CoachEngagementReadModel = {
+  id: string;
+  coach_id: string;
+  client_id: string;
+  status: "pending" | "active" | "ended";
+  entitlement_state: "allowed" | "pending" | "blocked" | "fallback";
+  plan_tier_label: string;
+  status_reason: string;
+  next_step_cta: string;
+  coach: { id: string; name: string; specialties: string[] } | null;
+  created_at: string;
+};
+
 type AiSuggestionCreatePayload = {
   user_id?: string;
   scope: string;
@@ -2672,6 +2697,383 @@ app.post("/api/coaching/broadcast", async (req, res) => {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/coaching/broadcast", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Coach Marketplace + Engagement (C2) ──────────────────────────────
+
+app.get("/api/coaching/coaches", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+
+    const specialtyFilterRaw = typeof req.query.specialty === "string" ? req.query.specialty : null;
+    const availabilityFilterRaw = typeof req.query.availability === "string" ? req.query.availability : null;
+    const specialtyFilter = specialtyFilterRaw?.trim() ? specialtyFilterRaw.trim() : null;
+    const availabilityFilter = availabilityFilterRaw?.trim() ? availabilityFilterRaw.trim().toLowerCase() : null;
+    if (
+      availabilityFilter &&
+      availabilityFilter !== "available" &&
+      availabilityFilter !== "waitlist" &&
+      availabilityFilter !== "unavailable"
+    ) {
+      return res.status(422).json({ error: "availability must be one of: available, waitlist, unavailable" });
+    }
+
+    // Read coach profiles from users with coaching role
+    let query = dataClient
+      .from("users")
+      .select("id,full_name,coach_specialties,coach_bio,coach_availability")
+      .eq("is_coach", true)
+      .order("full_name", { ascending: true });
+
+    if (availabilityFilter) {
+      query = query.eq("coach_availability", availabilityFilter);
+    }
+
+    const { data: rows, error } = await query;
+    if (error) {
+      return handleSupabaseError(res, "Failed to fetch coaches", error);
+    }
+
+    let coaches: CoachProfileReadModel[] = (rows ?? []).map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      name: (r.full_name as string) ?? "Coach",
+      specialties: Array.isArray(r.coach_specialties) ? (r.coach_specialties as string[]) : [],
+      bio: (r.coach_bio as string) ?? "",
+      engagement_availability: (r.coach_availability as CoachProfileReadModel["engagement_availability"]) ?? "available",
+    }));
+
+    if (specialtyFilter) {
+      coaches = coaches.filter((c) => c.specialties.some((s) => s.toLowerCase() === specialtyFilter.toLowerCase()));
+    }
+
+    const emptyState =
+      coaches.length === 0
+        ? {
+          code: "no_coaches_found",
+          message: "No coaches found for the current filters.",
+        }
+        : null;
+
+    return res.json({
+      coaches,
+      total: coaches.length,
+      empty_state: emptyState,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/coaching/coaches", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/coaching/engagements", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+
+    const payloadCheck = validateCoachEngagementCreatePayload(req.body);
+    if (!payloadCheck.ok) return res.status(payloadCheck.status).json({ error: payloadCheck.error });
+    const payload = payloadCheck.payload;
+
+    // Check existing active engagement
+    const { data: existing, error: existingError } = await dataClient
+      .from("coaching_engagements")
+      .select("id,status")
+      .eq("client_id", auth.user.id)
+      .in("status", ["pending", "active"])
+      .limit(1);
+    if (existingError) {
+      return handleSupabaseError(res, "Failed to verify existing coaching engagements", existingError);
+    }
+
+    if (existing && existing.length > 0) {
+      return res.status(409).json({ error: "You already have an active or pending coaching engagement" });
+    }
+
+    const { data: coachRow, error: coachError } = await dataClient
+      .from("users")
+      .select("id,is_coach,coach_availability")
+      .eq("id", payload.coach_id)
+      .maybeSingle();
+    if (coachError) {
+      return handleSupabaseError(res, "Failed to verify coach profile", coachError);
+    }
+    if (!coachRow || !Boolean((coachRow as { is_coach?: unknown }).is_coach)) {
+      return res.status(404).json({ error: "Coach profile not found" });
+    }
+    if ((coachRow as { coach_availability?: unknown }).coach_availability === "unavailable") {
+      return res.status(409).json({ error: "Selected coach is currently unavailable for new engagements" });
+    }
+
+    // Phase-1: shell entitlement check (always allowed)
+    const entitlementState: CoachEngagementReadModel["entitlement_state"] = "allowed";
+    const planTierLabel = "Compass Coaching";
+    const statusReason = "Engagement created — coach will confirm.";
+    const nextStepCta = "Awaiting coach confirmation";
+
+    const { data: row, error } = await dataClient
+      .from("coaching_engagements")
+      .insert({
+        coach_id: payload.coach_id,
+        client_id: auth.user.id,
+        status: "pending",
+        entitlement_state: entitlementState,
+        plan_tier_label: planTierLabel,
+        status_reason: statusReason,
+        next_step_cta: nextStepCta,
+      })
+      .select("id,coach_id,client_id,status,entitlement_state,plan_tier_label,status_reason,next_step_cta,created_at")
+      .single();
+
+    if (error) {
+      if (error.code === "23505") {
+        return res.status(409).json({ error: "You already have an active or pending coaching engagement" });
+      }
+      return handleSupabaseError(res, "Failed to create coaching engagement", error);
+    }
+
+    return res.status(201).json({ engagement: row });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/coaching/engagements", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/coaching/engagements/me", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+
+    const { data: rows, error } = await dataClient
+      .from("coaching_engagements")
+      .select("id,coach_id,client_id,status,entitlement_state,plan_tier_label,status_reason,next_step_cta,created_at")
+      .eq("client_id", auth.user.id)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      return handleSupabaseError(res, "Failed to fetch engagements", error);
+    }
+
+    // Enrich with coach profile data
+    const engagements: CoachEngagementReadModel[] = [];
+    for (const r of rows ?? []) {
+      let coach: CoachEngagementReadModel["coach"] = null;
+      if (r.coach_id) {
+        const { data: coachRow, error: coachError } = await dataClient
+          .from("users")
+          .select("id,full_name,coach_specialties")
+          .eq("id", r.coach_id)
+          .maybeSingle();
+        if (coachError) {
+          return handleSupabaseError(res, "Failed to fetch coach profile for engagement", coachError);
+        }
+        if (coachRow) {
+          coach = {
+            id: coachRow.id as string,
+            name: (coachRow.full_name as string) ?? "Coach",
+            specialties: Array.isArray(coachRow.coach_specialties) ? (coachRow.coach_specialties as string[]) : [],
+          };
+        }
+      }
+      engagements.push({
+        id: r.id as string,
+        coach_id: r.coach_id as string,
+        client_id: r.client_id as string,
+        status: r.status as CoachEngagementReadModel["status"],
+        entitlement_state: (r.entitlement_state as CoachEngagementReadModel["entitlement_state"]) ?? "allowed",
+        plan_tier_label: (r.plan_tier_label as string) ?? "Compass Coaching",
+        status_reason: (r.status_reason as string) ?? "",
+        next_step_cta: (r.next_step_cta as string) ?? "",
+        coach,
+        created_at: r.created_at as string,
+      });
+    }
+
+    // Derive engagement summary for Coach tab routing
+    const activeEngagement = engagements.find((e) => e.status === "active") ?? null;
+    const pendingEngagement = engagements.find((e) => e.status === "pending") ?? null;
+    const engagementStatus: "none" | "pending" | "active" | "ended" = activeEngagement
+      ? "active"
+      : pendingEngagement
+        ? "pending"
+        : engagements.length > 0
+          ? "ended"
+          : "none";
+
+    const emptyState =
+      engagements.length === 0
+        ? {
+          code: "no_engagements",
+          message: "No coaching engagements yet.",
+        }
+        : null;
+
+    return res.json({
+      engagements,
+      total: engagements.length,
+      empty_state: emptyState,
+      engagement_status: engagementStatus,
+      active_engagement: activeEngagement,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/coaching/engagements/me", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Unified Goals/Tasks Feed (C3) ──────────────────────────────
+
+app.get("/api/coaching/assignments/me", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+
+    const userId = auth.user.id;
+    type AssignmentItem = {
+      id: string;
+      type: "personal_goal" | "team_leader_goal" | "coach_goal" | "personal_task" | "coach_task";
+      title: string;
+      status: "pending" | "in_progress" | "completed";
+      due_at: string | null;
+      assignee_id: string | null;
+      source: "goals" | "message_linked";
+      created_at: string;
+      channel_id: string | null;
+      source_message_id: string | null;
+      last_thread_event_at: string | null;
+      thread_read_state: "unread" | "read" | "unknown";
+      rights: {
+        can_edit_fields: boolean;
+        can_update_status: boolean;
+        can_mark_complete: boolean;
+        can_reassign: boolean;
+      };
+    };
+
+    const assignments: AssignmentItem[] = [];
+
+    // 1. Fetch goals owned by or assigned to user
+    const { data: goalRows, error: goalRowsError } = await dataClient
+      .from("goals")
+      .select("id,title,status,due_at,assignee_id,created_by,created_at,goal_type")
+      .or(`assignee_id.eq.${userId},created_by.eq.${userId}`)
+      .order("due_at", { ascending: true, nullsFirst: false });
+    if (goalRowsError) {
+      if (!isRecoverableAssignmentSourceGap(goalRowsError)) {
+        return handleSupabaseError(res, "Failed to fetch goal assignments", goalRowsError);
+      }
+    }
+
+    for (const g of goalRows ?? []) {
+      const goalType = (g.goal_type as string) ?? "personal";
+      let assignmentType: AssignmentItem["type"] = "personal_goal";
+      if (goalType === "coach") {
+        assignmentType = "coach_goal";
+      } else if (goalType === "team_leader") {
+        assignmentType = "team_leader_goal";
+      }
+
+      const isOwner = (g.created_by as string) === userId;
+      const isAssignee = (g.assignee_id as string) === userId;
+
+      assignments.push({
+        id: g.id as string,
+        type: assignmentType,
+        title: (g.title as string) ?? "Untitled Goal",
+        status: normalizeGoalStatus(g.status as string),
+        due_at: (g.due_at as string) ?? null,
+        assignee_id: (g.assignee_id as string) ?? null,
+        source: "goals",
+        created_at: (g.created_at as string) ?? new Date().toISOString(),
+        channel_id: null,
+        source_message_id: null,
+        last_thread_event_at: null,
+        thread_read_state: "unknown",
+        rights: {
+          can_edit_fields: isOwner,
+          can_update_status: isOwner || isAssignee,
+          can_mark_complete: isOwner || isAssignee,
+          can_reassign: isOwner,
+        },
+      });
+    }
+
+    // 2. Fetch message-linked tasks (messages with message_kind metadata)
+    const { data: taskMsgRows, error: taskRowsError } = await dataClient
+      .from("channel_messages")
+      .select("id,channel_id,message_kind,assignment_ref,created_at")
+      .in("message_kind", ["coach_task", "personal_task"])
+      .order("created_at", { ascending: false });
+    if (taskRowsError) {
+      if (!isRecoverableAssignmentSourceGap(taskRowsError)) {
+        return handleSupabaseError(res, "Failed to fetch message-linked assignments", taskRowsError);
+      }
+    }
+
+    for (const m of taskMsgRows ?? []) {
+      const ref = (m.assignment_ref as Record<string, unknown>) ?? {};
+      const assigneeId = (ref.assignee_id as string) ?? null;
+      // Only include tasks assigned to or created by this user
+      if (assigneeId !== userId && (ref.created_by as string) !== userId) continue;
+
+      const taskType = (m.message_kind as string) === "coach_task" ? "coach_task" : "personal_task";
+      const isAssignee = assigneeId === userId;
+
+      assignments.push({
+        id: (ref.id as string) ?? (m.id as string),
+        type: taskType as AssignmentItem["type"],
+        title: (ref.title as string) ?? "Task",
+        status: normalizeGoalStatus((ref.status as string) ?? "pending"),
+        due_at: (ref.due_at as string) ?? null,
+        assignee_id: assigneeId,
+        source: "message_linked",
+        created_at: (m.created_at as string) ?? new Date().toISOString(),
+        channel_id: (m.channel_id as string) ?? null,
+        source_message_id: (m.id as string) ?? null,
+        last_thread_event_at: null,
+        thread_read_state: "unknown",
+        rights: {
+          can_edit_fields: !isAssignee && taskType === "coach_task",
+          can_update_status: true,
+          can_mark_complete: true,
+          can_reassign: !isAssignee && taskType === "coach_task",
+        },
+      });
+    }
+
+    // Sort: due_at asc (nulls last), then created_at desc
+    assignments.sort((a, b) => {
+      if (a.due_at && b.due_at) return a.due_at.localeCompare(b.due_at);
+      if (a.due_at && !b.due_at) return -1;
+      if (!a.due_at && b.due_at) return 1;
+      return b.created_at.localeCompare(a.created_at);
+    });
+
+    const emptyState =
+      assignments.length === 0
+        ? {
+          code: "no_assignments",
+          message: "No assignments available.",
+        }
+        : null;
+
+    return res.json({
+      assignments,
+      total: assignments.length,
+      empty_state: emptyState,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/coaching/assignments/me", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -5416,6 +5818,25 @@ function validateCoachingBroadcastPayload(body: unknown):
   };
 }
 
+function normalizeGoalStatus(raw: string): "pending" | "in_progress" | "completed" {
+  if (raw === "completed" || raw === "done") return "completed";
+  if (raw === "in_progress" || raw === "active") return "in_progress";
+  return "pending";
+}
+
+function validateCoachEngagementCreatePayload(body: unknown):
+  | { ok: true; payload: CoachEngagementCreatePayload }
+  | { ok: false; status: number; error: string } {
+  if (!body || typeof body !== "object") {
+    return { ok: false, status: 400, error: "Body must be a JSON object" };
+  }
+  const candidate = body as Partial<CoachEngagementCreatePayload>;
+  if (!candidate.coach_id || typeof candidate.coach_id !== "string") {
+    return { ok: false, status: 422, error: "coach_id is required" };
+  }
+  return { ok: true, payload: { coach_id: candidate.coach_id } };
+}
+
 function validateAiSuggestionCreatePayload(body: unknown):
   | { ok: true; payload: AiSuggestionCreatePayload }
   | { ok: false; status: number; error: string } {
@@ -6805,6 +7226,16 @@ function handleSupabaseError(
   }
 
   return res.status(500).json({ error: contextMessage });
+}
+
+function isRecoverableAssignmentSourceGap(error: { message?: string; code?: string } | null | undefined): boolean {
+  if (!error) return false;
+  const code = String(error.code ?? "");
+  if (code === "42P01" || code === "42703" || code === "PGRST204") {
+    return true;
+  }
+  const msg = String(error.message ?? "").toLowerCase();
+  return msg.includes("does not exist") || msg.includes("could not find");
 }
 
 if (host === "0.0.0.0") {
