@@ -132,6 +132,7 @@ type LogsReportsSubview = 'logs' | 'reports';
 type CommsHubPrimaryTab = 'all' | 'channels' | 'dms' | 'broadcast';
 type CommsHubScopeFilter = 'all' | 'team' | 'cohort' | 'segment' | 'global';
 type DrawerFilter = 'Quick' | 'PC' | 'GP' | 'VP';
+type LogOtherFilter = 'All' | 'PC' | 'GP' | 'VP';
 type HomePanel = 'Quick' | 'PC' | 'GP' | 'VP';
 type ChallengeMemberListTab = 'all' | 'completed';
 type ChallengeStateTab = 'active' | 'upcoming' | 'history';
@@ -2324,6 +2325,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [logOtherVisible, setLogOtherVisible] = useState(false);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
+  const [logOtherFilter, setLogOtherFilter] = useState<LogOtherFilter>('All');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
   const [favoriteKpiIds, setFavoriteKpiIds] = useState<string[]>([]);
   const [pendingDirectLog, setPendingDirectLog] = useState<PendingDirectLog | null>(null);
@@ -4726,6 +4728,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   };
 
   const openLogOtherDrawer = () => {
+    setLogOtherFilter(segment);
     setLogOtherVisible(true);
   };
 
@@ -4973,6 +4976,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     if (drawerFilter === 'Quick') return ordered;
     return ordered.filter((kpi) => kpi.type === drawerFilter);
   }, [allSelectableKpis, drawerFilter]);
+
+  const logOtherCatalogKpis = useMemo(() => {
+    if (logOtherFilter === 'All') return allSelectableKpis;
+    return allSelectableKpis.filter((kpi) => kpi.type === logOtherFilter);
+  }, [allSelectableKpis, logOtherFilter]);
 
   const selectedCountsByType = useMemo(() => {
     const byId = new Map(allSelectableKpis.map((kpi) => [kpi.id, kpi]));
@@ -11668,8 +11676,21 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             <Text style={styles.drawerUnlockedHint}>
               Select any KPI to log for {selectedLogDate === isoTodayLocal() ? 'today' : formatLogDateHeading(selectedLogDate)}.
             </Text>
+            <View style={styles.drawerFilterRow}>
+              {(['All', 'PC', 'GP', 'VP'] as const).map((filter) => (
+                <TouchableOpacity
+                  key={`log-other-filter-${filter}`}
+                  style={[styles.drawerFilterChip, logOtherFilter === filter && styles.drawerFilterChipActive]}
+                  onPress={() => setLogOtherFilter(filter)}
+                >
+                  <Text style={[styles.drawerFilterChipText, logOtherFilter === filter && styles.drawerFilterChipTextActive]}>
+                    {filter}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <ScrollView style={styles.drawerGridScroll} contentContainerStyle={styles.drawerList}>
-              {allSelectableKpis.map((kpi) => {
+              {logOtherCatalogKpis.map((kpi) => {
                 const locked = (kpi.type === 'GP' && !gpUnlocked) || (kpi.type === 'VP' && !vpUnlocked);
                 return (
                   <TouchableOpacity
