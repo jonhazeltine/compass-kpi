@@ -65,6 +65,8 @@ const coaches = [
   },
 ];
 
+const ALLOWED_AVAILABILITY = new Set(["available", "waitlist", "unavailable"]);
+
 async function authRequest(path, options = {}) {
   const response = await fetch(`${SUPABASE_URL}${path}`, {
     ...options,
@@ -105,6 +107,19 @@ async function ensureAuthUser(email) {
 }
 
 async function upsertProfile(userId, coach) {
+  const availability = String(coach.availability || "").toLowerCase();
+  if (!ALLOWED_AVAILABILITY.has(availability)) {
+    console.error(`  ✗ Invalid availability "${coach.availability}" for ${coach.full_name}`);
+    return false;
+  }
+  const specialties = Array.isArray(coach.specialties)
+    ? coach.specialties.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim())
+    : [];
+  if (specialties.length === 0) {
+    console.error(`  ✗ Coach ${coach.full_name} must include at least one specialty`);
+    return false;
+  }
+
   // Use the REST API to upsert into public.users
   const res = await fetch(`${SUPABASE_URL}/rest/v1/users?id=eq.${userId}`, {
     method: "PATCH",
@@ -117,9 +132,9 @@ async function upsertProfile(userId, coach) {
     body: JSON.stringify({
       full_name: coach.full_name,
       is_coach: true,
-      coach_specialties: coach.specialties,
+      coach_specialties: specialties,
       coach_bio: coach.bio,
-      coach_availability: coach.availability,
+      coach_availability: availability,
     }),
   });
   const text = await res.text();
@@ -137,9 +152,9 @@ async function upsertProfile(userId, coach) {
         id: userId,
         full_name: coach.full_name,
         is_coach: true,
-        coach_specialties: coach.specialties,
+        coach_specialties: specialties,
         coach_bio: coach.bio,
-        coach_availability: coach.availability,
+        coach_availability: availability,
       }),
     });
     const insertText = await insertRes.text();
@@ -152,7 +167,9 @@ async function upsertProfile(userId, coach) {
 }
 
 async function main() {
-  console.log("🏃 Seeding coach profiles...\n");
+  console.log("Seeding coach profiles...\n");
+  let seededCount = 0;
+  let failedCount = 0;
 
   for (const coach of coaches) {
     process.stdout.write(`  ${coach.full_name} (${coach.email})... `);
@@ -160,16 +177,24 @@ async function main() {
       const userId = await ensureAuthUser(coach.email);
       const ok = await upsertProfile(userId, coach);
       if (ok) {
-        console.log(`✓ ${coach.availability}`);
+        seededCount += 1;
+        console.log(`ok ${coach.availability}`);
+      } else {
+        failedCount += 1;
       }
     } catch (err) {
+      failedCount += 1;
       console.error(`✗ ${err.message}`);
     }
   }
 
-  console.log("\n✅ Coach seeding complete.");
-  console.log(`   ${coaches.length} coaches processed.`);
-  console.log(`   4 available, 1 waitlist, 1 unavailable.`);
+  console.log("\nCoach seeding complete.");
+  console.log(`  processed: ${coaches.length}`);
+  console.log(`  seeded: ${seededCount}`);
+  console.log(`  failed: ${failedCount}`);
+  if (failedCount > 0) {
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {
