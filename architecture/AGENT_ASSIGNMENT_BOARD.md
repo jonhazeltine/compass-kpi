@@ -4737,7 +4737,7 @@ Create an owner-ready DEP-002 decision packet that recommends final tenancy keys
 ### `W13-DEP-005-VENDOR-SECURITY-LEGAL-CHECKLIST-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `committed`
 - `Program status:` `W13 docs/control-plane exception`
 - `Persona:` `Security`, `Legal`, `Architecture`, `backend/platform planning`
 - `Flow:` `vendor security/legal dependency closure` (`DEP-005`)
