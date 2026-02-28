@@ -2170,7 +2170,7 @@ const bottomTabIconStyleByKey: Record<BottomTab, any> = {
   challenge: null,
   logs: null,
   team: null,
-  comms: null,
+  comms: { transform: [{ translateY: 2 }] },
 };
 
 const bottomTabOrder: BottomTab[] = ['comms', 'team', 'home', 'logs', 'challenge'];
