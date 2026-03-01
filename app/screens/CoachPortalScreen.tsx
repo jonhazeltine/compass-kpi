@@ -86,13 +86,30 @@ type ChannelApiRow = {
   my_role?: string;
   unread_count?: number;
   created_at?: string;
+  member_count?: number;
+  last_message_at?: string | null;
 };
 
-type ChannelMessageApiRow = {
+type JourneySummaryApiRow = {
   id: string;
-  channel_id: string;
-  body: string;
-  created_at?: string;
+  title: string;
+  description?: string | null;
+  team_id?: string | null;
+};
+
+type JourneyDetailApiRow = {
+  milestones?: Array<{
+    id: string;
+    title?: string;
+    sort_order?: number;
+    lessons?: Array<{
+      id: string;
+      title: string;
+      body?: string | null;
+      sort_order?: number;
+      is_active?: boolean;
+    }>;
+  }>;
 };
 
 type CohortDraft = {
@@ -134,15 +151,6 @@ const WORKSPACE_ROUTE_KEYS: Record<CoachWorkspaceMode, CoachRouteKey[]> = {
 
 const EMPTY_COHORTS: CohortDraft[] = [];
 const EMPTY_PEOPLE: CohortPerson[] = [];
-const DRAFT_CHANNEL_CONTEXT_ID = 'coach_portal_draft_v1';
-const DRAFT_MESSAGE_PREFIX = 'coach_portal_snapshot:';
-
-const DEFAULT_LESSONS: JourneyLesson[] = [
-  { id: 'ls-kickoff', title: 'Lesson 1: Kickoff', tasks: [] },
-  { id: 'ls-fundamentals', title: 'Lesson 2: Fundamentals', tasks: [] },
-  { id: 'ls-application', title: 'Lesson 3: Live Application', tasks: [] },
-];
-
 /* ─── Helpers (unchanged business logic) ─── */
 
 function normalizeCoachKey(routeKey: AdminRouteKey | null | undefined): CoachRouteKey | null {
@@ -170,15 +178,6 @@ function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
   const [item] = copy.splice(fromIndex, 1);
   copy.splice(toIndex, 0, item);
   return copy;
-}
-
-let lessonIdCounter = 0;
-function cloneLessons(): JourneyLesson[] {
-  return DEFAULT_LESSONS.map((lesson, i) => ({
-    ...lesson,
-    id: `ls-${Date.now()}-${lessonIdCounter++}-${i}`,
-    tasks: [],
-  }));
 }
 
 /* ─── Category color helpers ─── */
@@ -209,14 +208,19 @@ async function fetchCoachJson<T>(path: string, accessToken: string): Promise<T> 
   return (await response.json()) as T;
 }
 
-async function sendCoachJson<T>(path: string, accessToken: string, body: Record<string, unknown>): Promise<T> {
+async function sendCoachJson<T>(
+  path: string,
+  accessToken: string,
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+  body?: Record<string, unknown>
+): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
+    method,
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
-    body: JSON.stringify(body),
+    body: body ? JSON.stringify(body) : undefined,
   });
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
@@ -263,7 +267,6 @@ export default function CoachPortalScreen() {
   const [channelRows, setChannelRows] = useState<
     Array<{ id: string; c1: string; c2: string; c3: string; c4: string; segment: ChannelSegment; type: ChannelType; context_id: string | null }>
   >([]);
-  const [draftChannelId, setDraftChannelId] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalLoadError, setPortalLoadError] = useState<string | null>(null);
 
@@ -276,15 +279,10 @@ export default function CoachPortalScreen() {
   const [hoverLessonInsertIndex, setHoverLessonInsertIndex] = useState<number | null>(null);
   const [dropSuccessLessonId, setDropSuccessLessonId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
-  const [dirty, setDirty] = useState(false);
   const [saveMessage, setSaveMessage] = useState('No unsaved changes.');
   const [dropHint, setDropHint] = useState('');
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'journey' | 'lesson' | 'task'; id: string; parentId?: string; label: string } | null>(null);
-
-  const taskIdRef = useRef(0);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const savingRef = useRef(false);
 
   // Custom pointer-drag system (replaces unreliable HTML5 drag-and-drop)
   const pointerDragRef = useRef<{
@@ -365,13 +363,6 @@ export default function CoachPortalScreen() {
     filteredChannels.find((row) => row.id === selectedRowId) ?? filteredChannels[0] ?? null;
 
   /* ─── Effects (unchanged) ─── */
-
-  useEffect(
-    () => () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    },
-    []
-  );
 
   useEffect(() => {
     return () => {
@@ -470,13 +461,16 @@ export default function CoachPortalScreen() {
     setPortalLoading(true);
     setPortalLoadError(null);
     try {
-      const [channelsPayload, coachesPayload, journeysPayload] = await Promise.all([
-        fetchCoachJson<{ channels?: ChannelApiRow[] }>('/api/channels', session.access_token),
+      const [channelsPayload, cohortsPayload, coachesPayload, journeysPayload] = await Promise.all([
+        fetchCoachJson<{ channels?: ChannelApiRow[] }>('/api/coaching/channels', session.access_token),
+        fetchCoachJson<{
+          cohorts?: Array<{ id: string; name: string; member_user_ids?: string[]; leaders_count?: number; members_count?: number }>;
+        }>('/api/coaching/cohorts', session.access_token),
         fetchCoachJson<{ coaches?: Array<{ id: string; name: string; specialties?: string[] }> }>(
           '/api/coaching/coaches',
           session.access_token
         ),
-        fetchCoachJson<{ journeys?: Array<{ id: string; title: string; description?: string | null }> }>(
+        fetchCoachJson<{ journeys?: JourneySummaryApiRow[] }>(
           '/api/coaching/journeys',
           session.access_token
         ),
@@ -497,8 +491,8 @@ export default function CoachPortalScreen() {
           id: row.id,
           c1: row.name || 'Untitled channel',
           c2: `${type} scope`,
-          c3: String(row.unread_count ?? 0),
-          c4: row.created_at ? new Date(row.created_at).toLocaleDateString() : 'recent',
+          c3: String(row.member_count ?? 0),
+          c4: row.last_message_at ? new Date(row.last_message_at).toLocaleDateString() : 'recent',
           segment: seg,
           type,
           context_id: row.context_id ?? null,
@@ -506,46 +500,54 @@ export default function CoachPortalScreen() {
       });
       setChannelRows(mappedChannels);
 
-      const cohortRows = channels
-        .filter((row) => row.type === 'cohort')
+      const cohortRows = (cohortsPayload.cohorts ?? [])
         .map((row) => ({
           id: row.id,
           name: row.name || 'Untitled cohort',
-          owner: row.my_role === 'admin' ? 'Coach owner' : 'Channel admin',
-          program: row.context_id || 'Unassigned',
-          memberIds: [],
+          owner: row.leaders_count && row.leaders_count > 0 ? 'Team leader' : 'Coach owner',
+          program: 'Team cohort',
+          memberIds: row.member_user_ids ?? [],
         }));
       setCohorts(cohortRows);
-      const draftChannel = channels.find((row) => row.context_id === DRAFT_CHANNEL_CONTEXT_ID) ?? null;
-      setDraftChannelId(draftChannel?.id ?? null);
 
-      const coachPeople = (coachesPayload.coaches ?? []).map((coach) => ({
+      const knownCohortMembers = Array.from(
+        new Set(cohortRows.flatMap((cohort) => cohort.memberIds).filter(Boolean))
+      );
+      const coachPeopleBase = (coachesPayload.coaches ?? []).map((coach) => ({
         id: coach.id,
         name: coach.name,
         subtitle: (coach.specialties ?? []).slice(0, 2).join(' · ') || 'Coach',
       }));
-      setCohortPeople(coachPeople);
+      const mergedPeople = new Map<string, CohortPerson>();
+      for (const person of coachPeopleBase) mergedPeople.set(person.id, person);
+      for (const memberId of knownCohortMembers) {
+        if (!mergedPeople.has(memberId)) {
+          mergedPeople.set(memberId, { id: memberId, name: memberId.slice(0, 8), subtitle: 'Team member' });
+        }
+      }
+      setCohortPeople(Array.from(mergedPeople.values()));
 
       const journeys = journeysPayload.journeys ?? [];
       const journeyDetails = await Promise.all(
         journeys.map(async (journey) => {
-          const detail = await fetchCoachJson<{
-            milestones?: Array<{ id: string; title?: string; lessons?: Array<{ id: string; title: string }> }>;
-          }>(`/api/coaching/journeys/${journey.id}`, session.access_token as string);
-          const lessons: JourneyLesson[] =
-            detail.milestones?.flatMap((milestone) =>
-              (milestone.lessons ?? []).map((lesson, idx) => ({
-                id: lesson.id,
-                title: lesson.title || `${milestone.title ?? 'Lesson'} ${idx + 1}`,
-                tasks: [
-                  {
-                    id: `tk-${lesson.id}`,
-                    title: lesson.title || 'Lesson task',
-                    assetId: `asset-${lesson.id}`,
-                  },
-                ],
-              }))
-            ) ?? [];
+          const detail = await fetchCoachJson<JourneyDetailApiRow>(
+            `/api/coaching/journeys/${journey.id}`,
+            session.access_token as string
+          );
+          const lessons: JourneyLesson[] = (detail.milestones ?? [])
+            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+            .map((milestone, idx) => ({
+              id: milestone.id,
+              title: milestone.title || `Lesson ${idx + 1}`,
+              tasks: (milestone.lessons ?? [])
+                .filter((task) => task.is_active !== false)
+                .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                .map((task) => ({
+                  id: task.id,
+                  title: task.title,
+                  assetId: task.id,
+                })),
+            }));
           return {
             id: journey.id,
             name: journey.title,
@@ -582,43 +584,20 @@ export default function CoachPortalScreen() {
       if (journeyDetails.length > 0) {
         setSelectedJourneyId((prev) => prev && journeyDetails.some((j) => j.id === prev) ? prev : journeyDetails[0].id);
         setSelectedLessonId(journeyDetails[0].lessons[0]?.id ?? null);
+      } else {
+        setSelectedJourneyId(null);
+        setSelectedLessonId(null);
       }
       if (derivedCollections.length > 0) {
         setSelectedCollectionId((prev) => prev && derivedCollections.some((c) => c.id === prev) ? prev : derivedCollections[0].id);
         setExpandedCollectionIds([derivedCollections[0].id]);
-      }
-
-      if (draftChannel?.id) {
-        try {
-          const draftMessages = await fetchCoachJson<{ messages?: ChannelMessageApiRow[] }>(
-            `/api/channels/${draftChannel.id}/messages`,
-            session.access_token
-          );
-          const snapshotBody = [...(draftMessages.messages ?? [])]
-            .reverse()
-            .map((m) => (typeof m.body === 'string' ? m.body : ''))
-            .find((body) => body.startsWith(DRAFT_MESSAGE_PREFIX));
-          if (snapshotBody) {
-            const raw = snapshotBody.slice(DRAFT_MESSAGE_PREFIX.length);
-            const parsed = JSON.parse(raw) as {
-              assets?: LibraryAsset[];
-              collections?: LibraryCollection[];
-              journeys?: JourneyDraft[];
-              cohorts?: CohortDraft[];
-            };
-            if (Array.isArray(parsed.assets)) setAssets(parsed.assets);
-            if (Array.isArray(parsed.collections)) setCollections(parsed.collections);
-            if (Array.isArray(parsed.journeys)) setJourneys(parsed.journeys);
-            if (Array.isArray(parsed.cohorts)) setCohorts(parsed.cohorts);
-          }
-        } catch {
-          // keep baseline API data when snapshot parsing fails
-        }
+      } else {
+        setSelectedCollectionId('');
+        setExpandedCollectionIds([]);
       }
 
       setSaveState('idle');
       setSaveMessage('Connected to backend coaching endpoints.');
-      setDirty(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load coach portal data';
       setPortalLoadError(message);
@@ -626,6 +605,21 @@ export default function CoachPortalScreen() {
       setSaveMessage(message);
     } finally {
       setPortalLoading(false);
+    }
+  };
+
+  const runMutation = async (pendingLabel: string, successLabel: string, action: () => Promise<void>) => {
+    setSaveState('pending');
+    setSaveMessage(pendingLabel);
+    try {
+      await action();
+      setSaveState('saved');
+      setSaveMessage(`${successLabel} at ${new Date().toLocaleTimeString()}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Request failed';
+      setSaveState('error');
+      setSaveMessage(message);
+      throw error;
     }
   };
 
@@ -663,86 +657,8 @@ export default function CoachPortalScreen() {
 
   /* ─── Drag & drop logic (unchanged) ─── */
 
-  const persistDraftSnapshot = async () => {
-    if (!canComposeDraft) {
-      setSaveState('error');
-      setSaveMessage(composeDeniedReason);
-      return false;
-    }
-    if (!session?.access_token) {
-      setSaveState('error');
-      setSaveMessage('Missing session token for save.');
-      return false;
-    }
-    if (savingRef.current) return false;
-    savingRef.current = true;
-    setSaveState('pending');
-    setSaveMessage('Saving...');
-    try {
-      let targetChannelId =
-        draftChannelId ?? channelRows.find((row) => row.context_id === DRAFT_CHANNEL_CONTEXT_ID)?.id ?? null;
-      if (!targetChannelId) {
-        const created = await sendCoachJson<{ channel: ChannelApiRow }>(
-          '/api/channels',
-          session.access_token,
-          {
-            type: 'direct',
-            name: 'Coach Portal Drafts',
-            context_id: DRAFT_CHANNEL_CONTEXT_ID,
-          }
-        );
-        targetChannelId = created.channel.id;
-        setChannelRows((prev) => [
-          {
-            id: created.channel.id,
-            c1: created.channel.name || 'Coach Portal Drafts',
-            c2: 'direct scope',
-            c3: '0',
-            c4: created.channel.created_at ? new Date(created.channel.created_at).toLocaleDateString() : 'recent',
-            segment: 'all',
-            type: created.channel.type,
-            context_id: created.channel.context_id ?? null,
-          },
-          ...prev.filter((row) => row.id !== created.channel.id),
-        ]);
-        setDraftChannelId(targetChannelId);
-      }
-      const snapshot = {
-        version: 1,
-        updated_at: new Date().toISOString(),
-        assets,
-        collections,
-        journeys,
-        cohorts,
-      };
-      await sendCoachJson<{ message: ChannelMessageApiRow }>(
-        `/api/channels/${targetChannelId}/messages`,
-        session.access_token,
-        {
-          body: `${DRAFT_MESSAGE_PREFIX}${JSON.stringify(snapshot)}`,
-        }
-      );
-      setSaveState('saved');
-      setDirty(false);
-      setSaveMessage(`Saved at ${new Date().toLocaleTimeString()}`);
-      return true;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to save draft';
-      setSaveState('error');
-      setSaveMessage(message);
-      return false;
-    } finally {
-      savingRef.current = false;
-    }
-  };
-
   const markDraftChanged = (hint: string) => {
-    setDirty(true);
     setDropHint(hint);
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      void persistDraftSnapshot();
-    }, 800);
   };
 
   const parseDragPayload = (eventLike?: any): DragPayload => {
@@ -965,60 +881,91 @@ export default function CoachPortalScreen() {
     markDraftChanged('Asset moved into collection.');
   };
 
-  const addAssetToLesson = (payload: DragPayload, targetLessonId: string, targetIndex: number) => {
-    if (!selectedJourney) return;
-    if (payload?.type === 'asset') {
-      setJourneys((prev) =>
-        prev.map((journey) => {
-          if (journey.id !== selectedJourney.id) return journey;
-          const lessons = journey.lessons.map((lesson) => {
-            if (lesson.id !== targetLessonId) return lesson;
-            const insertAt = Math.max(0, Math.min(targetIndex, lesson.tasks.length));
-            const nextTasks = [...lesson.tasks];
-            const assetTitle = assetsById.get(payload.assetId)?.title ?? 'New Task';
-            nextTasks.splice(insertAt, 0, { id: `tk-${Date.now()}-${taskIdRef.current++}`, title: assetTitle, assetId: payload.assetId });
-            return { ...lesson, tasks: nextTasks };
-          });
-          return { ...journey, lessons };
-        })
-      );
+  const addAssetToLesson = async (payload: DragPayload, targetLessonId: string, targetIndex: number) => {
+    if (!selectedJourney || !session?.access_token || !payload) return;
+    if (payload.type === 'asset') {
+      const targetLesson = selectedJourney.lessons.find((lesson) => lesson.id === targetLessonId);
+      if (!targetLesson) return;
+      const insertAt = Math.max(0, Math.min(targetIndex, targetLesson.tasks.length));
+      const assetTitle = assetsById.get(payload.assetId)?.title ?? 'New Task';
+      await runMutation('Adding task...', 'Task added', async () => {
+        await sendCoachJson<{ task: { id: string } }>(
+          `/api/coaching/journeys/${selectedJourney.id}/lessons/${targetLessonId}/tasks`,
+          session.access_token as string,
+          'POST',
+          {
+            title: assetTitle,
+            body: payload.assetId ? `asset:${payload.assetId}` : undefined,
+            sort_order: insertAt,
+          }
+        );
+        await refreshPortalData();
+      });
       markDraftChanged('Asset added to lesson.');
       return;
     }
-    if (payload?.type === 'journey_task') {
-      setJourneys((prev) =>
-        prev.map((journey) => {
-          if (journey.id !== selectedJourney.id || payload.sourceJourneyId !== selectedJourney.id) return journey;
-          let movingTask: JourneyTask | null = null;
-          const strippedLessons = journey.lessons.map((lesson) => {
-            if (lesson.id !== payload.sourceLessonId) return lesson;
-            const remainingTasks = lesson.tasks.filter((task) => {
-              if (task.id !== payload.taskId) return true;
-              movingTask = task;
-              return false;
-            });
-            return { ...lesson, tasks: remainingTasks };
-          });
-          if (!movingTask) return journey;
-          const lessons = strippedLessons.map((lesson) => {
-            if (lesson.id !== targetLessonId) return lesson;
-            const insertAt = Math.max(0, Math.min(targetIndex, lesson.tasks.length));
-            const nextTasks = [...lesson.tasks];
-            nextTasks.splice(insertAt, 0, movingTask as JourneyTask);
-            return { ...lesson, tasks: nextTasks };
-          });
-          return { ...journey, lessons };
-        })
-      );
-      markDraftChanged('Task moved.');
-    }
+
+    if (payload.type !== 'journey_task' || payload.sourceJourneyId !== selectedJourney.id) return;
+    const sourceLesson = selectedJourney.lessons.find((lesson) => lesson.id === payload.sourceLessonId);
+    const targetLesson = selectedJourney.lessons.find((lesson) => lesson.id === targetLessonId);
+    const movingTask = sourceLesson?.tasks.find((task) => task.id === payload.taskId) ?? null;
+    if (!sourceLesson || !targetLesson || !movingTask) return;
+    const insertAt = Math.max(0, Math.min(targetIndex, targetLesson.tasks.length));
+    await runMutation('Moving task...', 'Task moved', async () => {
+      if (payload.sourceLessonId === targetLessonId) {
+        const fromIndex = targetLesson.tasks.findIndex((task) => task.id === payload.taskId);
+        if (fromIndex < 0) return;
+        const reorderedTaskIds = moveItem(targetLesson.tasks, fromIndex, insertAt).map((task) => task.id);
+        await sendCoachJson(
+          `/api/coaching/journeys/${selectedJourney.id}/lessons/${targetLessonId}/tasks/reorder`,
+          session.access_token as string,
+          'POST',
+          { task_ids: reorderedTaskIds }
+        );
+      } else {
+        const created = await sendCoachJson<{ task: { id: string } }>(
+          `/api/coaching/journeys/${selectedJourney.id}/lessons/${targetLessonId}/tasks`,
+          session.access_token as string,
+          'POST',
+          {
+            title: movingTask.title,
+            body: movingTask.assetId ? `asset:${movingTask.assetId}` : undefined,
+            sort_order: insertAt,
+          }
+        );
+        await sendCoachJson(
+          `/api/coaching/journeys/${selectedJourney.id}/lessons/${payload.sourceLessonId}/tasks/${payload.taskId}`,
+          session.access_token as string,
+          'DELETE'
+        );
+        const sourceTaskIds = sourceLesson.tasks.filter((task) => task.id !== payload.taskId).map((task) => task.id);
+        if (sourceTaskIds.length > 0) {
+          await sendCoachJson(
+            `/api/coaching/journeys/${selectedJourney.id}/lessons/${payload.sourceLessonId}/tasks/reorder`,
+            session.access_token as string,
+            'POST',
+            { task_ids: sourceTaskIds }
+          );
+        }
+        const targetTaskIds = targetLesson.tasks.map((task) => task.id);
+        targetTaskIds.splice(insertAt, 0, created.task.id);
+        await sendCoachJson(
+          `/api/coaching/journeys/${selectedJourney.id}/lessons/${targetLessonId}/tasks/reorder`,
+          session.access_token as string,
+          'POST',
+          { task_ids: targetTaskIds }
+        );
+      }
+      await refreshPortalData();
+    });
+    markDraftChanged('Task moved.');
   };
 
   const handleDropToLesson = (eventLike: any, lessonId: string, index: number) => {
     if (typeof eventLike?.preventDefault === 'function') eventLike.preventDefault();
     if (!canComposeDraft) return;
     const payload = parseDragPayload(eventLike);
-    addAssetToLesson(payload, lessonId, index);
+    void addAssetToLesson(payload, lessonId, index);
     if (payload?.type === 'asset' || payload?.type === 'journey_task') {
       setDropSuccessLessonId(lessonId);
     }
@@ -1030,7 +977,7 @@ export default function CoachPortalScreen() {
     if (!canComposeDraft) return;
     const payload = parseDragPayload(eventLike);
     if (!payload) return;
-    addAssetToLesson(payload, lessonId, insertIndex);
+    void addAssetToLesson(payload, lessonId, insertIndex);
     setDropSuccessLessonId(lessonId);
     clearAllDragState();
   };
@@ -1054,7 +1001,7 @@ export default function CoachPortalScreen() {
   const handleClickDropToLesson = (lessonId: string, taskCount: number) => {
     if (!canComposeDraft) return false;
     if (!dragPayload || (dragPayload.type !== 'asset' && dragPayload.type !== 'journey_task')) return false;
-    addAssetToLesson(dragPayload, lessonId, taskCount);
+    void addAssetToLesson(dragPayload, lessonId, taskCount);
     setDropSuccessLessonId(lessonId);
     clearAllDragState();
     return true;
@@ -1062,30 +1009,56 @@ export default function CoachPortalScreen() {
 
   const reorderLessonByDrop = (payload: DragPayload, targetLessonId: string) => {
     if (!selectedJourney || payload?.type !== 'journey_lesson' || payload.sourceJourneyId !== selectedJourney.id) return false;
+    if (!session?.access_token) return false;
     const fromIndex = selectedJourney.lessons.findIndex((row) => row.id === payload.lessonId);
     const toIndex = selectedJourney.lessons.findIndex((row) => row.id === targetLessonId);
     if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return false;
+    const reorderedLessonIds = moveItem(selectedJourney.lessons, fromIndex, toIndex).map((lesson) => lesson.id);
     setJourneys((prev) =>
       prev.map((journey) =>
         journey.id === selectedJourney.id ? { ...journey, lessons: moveItem(journey.lessons, fromIndex, toIndex) } : journey
       )
     );
+    void runMutation('Saving lesson order...', 'Lesson order updated', async () => {
+      await sendCoachJson(
+        `/api/coaching/journeys/${selectedJourney.id}/lessons/reorder`,
+        session.access_token as string,
+        'POST',
+        { lesson_ids: reorderedLessonIds }
+      );
+      await refreshPortalData();
+    }).catch(() => {
+      void refreshPortalData();
+    });
     markDraftChanged('Lesson order updated.');
     return true;
   };
 
   const reorderLessonToSlot = (payload: DragPayload, toSlot: number) => {
     if (!selectedJourney || payload?.type !== 'journey_lesson' || payload.sourceJourneyId !== selectedJourney.id) return false;
+    if (!session?.access_token) return false;
     const fromIndex = selectedJourney.lessons.findIndex((row) => row.id === payload.lessonId);
     if (fromIndex < 0) return false;
     // Adjust: inserting after the removed position means the target shifts down by 1
     const toIndex = toSlot > fromIndex ? toSlot - 1 : toSlot;
     if (fromIndex === toIndex) return false;
+    const reorderedLessonIds = moveItem(selectedJourney.lessons, fromIndex, toIndex).map((lesson) => lesson.id);
     setJourneys((prev) =>
       prev.map((journey) =>
         journey.id === selectedJourney.id ? { ...journey, lessons: moveItem(journey.lessons, fromIndex, toIndex) } : journey
       )
     );
+    void runMutation('Saving lesson order...', 'Lesson order updated', async () => {
+      await sendCoachJson(
+        `/api/coaching/journeys/${selectedJourney.id}/lessons/reorder`,
+        session.access_token as string,
+        'POST',
+        { lesson_ids: reorderedLessonIds }
+      );
+      await refreshPortalData();
+    }).catch(() => {
+      void refreshPortalData();
+    });
     markDraftChanged('Lesson order updated.');
     return true;
   };
@@ -1109,7 +1082,7 @@ export default function CoachPortalScreen() {
     }
     if (dragPayload.type === 'asset' || dragPayload.type === 'journey_task') {
       const taskCount = selectedJourney?.lessons.find((row) => row.id === lessonId)?.tasks.length ?? 0;
-      addAssetToLesson(dragPayload, lessonId, taskCount);
+      void addAssetToLesson(dragPayload, lessonId, taskCount);
       setDropSuccessLessonId(lessonId);
       clearAllDragState();
       return true;
@@ -1117,22 +1090,28 @@ export default function CoachPortalScreen() {
     return false;
   };
 
-  const addPeopleToCohort = (cohortId: string, personIds: string[]) => {
+  const addPeopleToCohort = async (cohortId: string, personIds: string[]) => {
     if (!personIds.length) return;
-    setCohorts((prev) =>
-      prev.map((cohort) =>
-        cohort.id === cohortId
-          ? { ...cohort, memberIds: Array.from(new Set([...cohort.memberIds, ...personIds])) }
-          : cohort
-      )
-    );
+    if (!session?.access_token) return;
+    const cohort = cohorts.find((row) => row.id === cohortId);
+    if (!cohort) return;
+    const memberUserIds = Array.from(new Set([...(cohort.memberIds ?? []), ...personIds]));
+    await runMutation('Updating cohort members...', 'Cohort updated', async () => {
+      await sendCoachJson(
+        `/api/coaching/cohorts/${cohortId}/members`,
+        session.access_token as string,
+        'PUT',
+        { member_user_ids: memberUserIds }
+      );
+      await refreshPortalData();
+    });
     markDraftChanged('Cohort membership updated.');
   };
 
   const handleClickAssignPersonToCohort = (cohortId: string) => {
     if (!canComposeDraft) return false;
     if (!dragPayload || dragPayload.type !== 'person') return false;
-    addPeopleToCohort(cohortId, [dragPayload.personId]);
+    void addPeopleToCohort(cohortId, [dragPayload.personId]);
     setDragPayload(null);
     return true;
   };
@@ -1143,163 +1122,138 @@ export default function CoachPortalScreen() {
       setSaveMessage(composeDeniedReason);
       return;
     }
-    if (!session?.access_token) {
-      setSaveState('error');
-      setSaveMessage('Missing session token for cohort create.');
-      return;
-    }
-    const name = newCohortName.trim();
-    if (!name) return;
-    setSaveState('pending');
-    setSaveMessage('Creating cohort...');
-    try {
-      const created = await sendCoachJson<{ channel: ChannelApiRow }>(
-        '/api/channels',
-        session.access_token,
-        {
-          type: 'cohort',
-          name,
-        }
-      );
-      const cohort: CohortDraft = {
-        id: created.channel.id,
-        name: created.channel.name || name,
-        owner: 'Coach owner',
-        program: created.channel.context_id || 'Unassigned',
-        memberIds: [],
-      };
-      setCohorts((prev) => [cohort, ...prev.filter((row) => row.id !== cohort.id)]);
-      setChannelRows((prev) => [
-        {
-          id: created.channel.id,
-          c1: created.channel.name || name,
-          c2: 'cohort scope',
-          c3: '0',
-          c4: created.channel.created_at ? new Date(created.channel.created_at).toLocaleDateString() : 'recent',
-          segment: 'new_agents',
-          type: created.channel.type,
-          context_id: created.channel.context_id ?? null,
-        },
-        ...prev.filter((row) => row.id !== created.channel.id),
-      ]);
-      setSelectedCohortId(cohort.id);
-      setNewCohortName('');
-      setSaveState('saved');
-      setSaveMessage(`Cohort created at ${new Date().toLocaleTimeString()}`);
-      setDirty(false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create cohort';
-      setSaveState('error');
-      setSaveMessage(message);
-    }
+    setSaveState('error');
+    setSaveMessage('Cohort creation is not available in the current coaching API. Use existing cohorts.');
   };
 
-  const reorderTask = (lessonId: string, taskId: string, direction: -1 | 1) => {
-    if (!canComposeDraft || !selectedJourney) return;
+  const reorderTask = async (lessonId: string, taskId: string, direction: -1 | 1) => {
+    if (!canComposeDraft || !selectedJourney || !session?.access_token) return;
+    const lesson = selectedJourney.lessons.find((row) => row.id === lessonId);
+    if (!lesson) return;
+    const fromIndex = lesson.tasks.findIndex((task) => task.id === taskId);
+    if (fromIndex < 0) return;
+    const toIndex = fromIndex + direction;
+    if (toIndex < 0 || toIndex >= lesson.tasks.length) return;
+    const reorderedTaskIds = moveItem(lesson.tasks, fromIndex, toIndex).map((task) => task.id);
     setJourneys((prev) =>
-      prev.map((journey) => {
-        if (journey.id !== selectedJourney.id) return journey;
-        const lessons = journey.lessons.map((lesson) => {
-          if (lesson.id !== lessonId) return lesson;
-          const fromIndex = lesson.tasks.findIndex((task) => task.id === taskId);
-          if (fromIndex < 0) return lesson;
-          return { ...lesson, tasks: moveItem(lesson.tasks, fromIndex, fromIndex + direction) };
-        });
-        return { ...journey, lessons };
-      })
+      prev.map((journey) =>
+        journey.id === selectedJourney.id
+          ? {
+              ...journey,
+              lessons: journey.lessons.map((row) =>
+                row.id === lessonId ? { ...row, tasks: moveItem(row.tasks, fromIndex, toIndex) } : row
+              ),
+            }
+          : journey
+      )
     );
+    await runMutation('Saving task order...', 'Task order updated', async () => {
+      await sendCoachJson(
+        `/api/coaching/journeys/${selectedJourney.id}/lessons/${lessonId}/tasks/reorder`,
+        session.access_token as string,
+        'POST',
+        { task_ids: reorderedTaskIds }
+      );
+      await refreshPortalData();
+    });
     setActiveTaskMenu(null);
     markDraftChanged('Task order updated.');
   };
 
-  const removeTask = (lessonId: string, taskId: string) => {
-    if (!canComposeDraft || !selectedJourney) return;
-    setJourneys((prev) =>
-      prev.map((journey) => {
-        if (journey.id !== selectedJourney.id) return journey;
-        const lessons = journey.lessons.map((lesson) =>
-          lesson.id === lessonId
-            ? { ...lesson, tasks: lesson.tasks.filter((task) => task.id !== taskId) }
-            : lesson
-        );
-        return { ...journey, lessons };
-      })
-    );
+  const removeTask = async (lessonId: string, taskId: string) => {
+    if (!canComposeDraft || !selectedJourney || !session?.access_token) return;
+    await runMutation('Removing task...', 'Task removed', async () => {
+      await sendCoachJson(
+        `/api/coaching/journeys/${selectedJourney.id}/lessons/${lessonId}/tasks/${taskId}`,
+        session.access_token as string,
+        'DELETE'
+      );
+      await refreshPortalData();
+    });
     setActiveTaskMenu(null);
     markDraftChanged('Task removed.');
   };
 
-  const addLesson = () => {
-    if (!canComposeDraft || !selectedJourney) return;
+  const addLesson = async () => {
+    if (!canComposeDraft || !selectedJourney || !session?.access_token) return;
     const nextCount = selectedJourney.lessons.length + 1;
-    const nextLesson: JourneyLesson = {
-      id: `ls-${Date.now()}`,
-      title: `Lesson ${nextCount}`,
-      tasks: [],
-    };
-    setJourneys((prev) =>
-      prev.map((journey) =>
-        journey.id === selectedJourney.id ? { ...journey, lessons: [...journey.lessons, nextLesson] } : journey
-      )
-    );
-    setSelectedLessonId(nextLesson.id);
+    await runMutation('Adding lesson...', 'Lesson added', async () => {
+      const created = await sendCoachJson<{ lesson: { id: string } }>(
+        `/api/coaching/journeys/${selectedJourney.id}/lessons`,
+        session.access_token as string,
+        'POST',
+        { title: `Lesson ${nextCount}`, sort_order: selectedJourney.lessons.length }
+      );
+      setSelectedLessonId(created.lesson.id);
+      await refreshPortalData();
+    });
     markDraftChanged('Lesson added.');
   };
 
-  const addTaskToLesson = (targetLessonId?: string) => {
-    if (!canComposeDraft || !selectedJourney) return;
+  const addTaskToLesson = async (targetLessonId?: string) => {
+    if (!canComposeDraft || !selectedJourney || !session?.access_token) return;
     const lessonId = targetLessonId ?? selectedLessonId;
     const lesson = selectedJourney.lessons.find((l) => l.id === lessonId);
     if (!lesson) return;
-    const nextTask: JourneyTask = {
-      id: `tk-${Date.now()}-${taskIdRef.current++}`,
-      title: `Task ${lesson.tasks.length + 1}`,
-      assetId: null,
-    };
-    setJourneys((prev) =>
-      prev.map((journey) => {
-        if (journey.id !== selectedJourney.id) return journey;
-        const lessons = journey.lessons.map((l) =>
-          l.id === lessonId ? { ...l, tasks: [...l.tasks, nextTask] } : l
-        );
-        return { ...journey, lessons };
-      })
-    );
+    await runMutation('Adding task...', 'Task added', async () => {
+      await sendCoachJson(
+        `/api/coaching/journeys/${selectedJourney.id}/lessons/${lesson.id}/tasks`,
+        session.access_token as string,
+        'POST',
+        { title: `Task ${lesson.tasks.length + 1}`, sort_order: lesson.tasks.length }
+      );
+      await refreshPortalData();
+    });
     markDraftChanged('Task added to lesson.');
   };
 
-  const createJourney = () => {
+  const createJourney = async () => {
     if (!canComposeDraft) { setSaveState('error'); setSaveMessage(composeDeniedReason); return; }
+    if (!session?.access_token) { setSaveState('error'); setSaveMessage('Missing session token.'); return; }
     const name = newJourneyName.trim();
     if (!name) { setSaveState('error'); setSaveMessage('Enter a journey name first.'); return; }
-    const id = `jr-${Date.now()}`;
-    const newJourney: JourneyDraft = { id, name, audience: 'Draft audience', lessons: [] };
-    setJourneys((prev) => [newJourney, ...prev]);
-    setSelectedJourneyId(id);
-    setNewJourneyName('');
+    await runMutation('Creating journey...', 'Journey created', async () => {
+      const created = await sendCoachJson<{ journey: { id: string } }>(
+        '/api/coaching/journeys',
+        session.access_token as string,
+        'POST',
+        { title: name }
+      );
+      setNewJourneyName('');
+      setSelectedJourneyId(created.journey.id);
+      await refreshPortalData();
+    });
     markDraftChanged('New journey created.');
   };
 
-  const deleteJourney = (journeyId: string) => {
-    if (!canComposeDraft) return;
-    setJourneys((prev) => prev.filter((j) => j.id !== journeyId));
-    if (selectedJourneyId === journeyId) {
-      setSelectedJourneyId(null);
-      setSelectedLessonId(null);
-    }
+  const deleteJourney = async (journeyId: string) => {
+    if (!canComposeDraft || !session?.access_token) return;
+    await runMutation('Deleting journey...', 'Journey deleted', async () => {
+      await sendCoachJson(
+        `/api/coaching/journeys/${journeyId}`,
+        session.access_token as string,
+        'DELETE'
+      );
+      if (selectedJourneyId === journeyId) {
+        setSelectedJourneyId(null);
+        setSelectedLessonId(null);
+      }
+      await refreshPortalData();
+    });
     setConfirmDelete(null);
     markDraftChanged('Journey deleted.');
   };
 
-  const deleteLesson = (lessonId: string) => {
-    if (!canComposeDraft || !selectedJourney) return;
-    setJourneys((prev) =>
-      prev.map((journey) =>
-        journey.id === selectedJourney.id
-          ? { ...journey, lessons: journey.lessons.filter((l) => l.id !== lessonId) }
-          : journey
-      )
-    );
+  const deleteLesson = async (lessonId: string) => {
+    if (!canComposeDraft || !selectedJourney || !session?.access_token) return;
+    await runMutation('Deleting lesson...', 'Lesson deleted', async () => {
+      await sendCoachJson(
+        `/api/coaching/journeys/${selectedJourney.id}/lessons/${lessonId}`,
+        session.access_token as string,
+        'DELETE'
+      );
+      await refreshPortalData();
+    });
     if (selectedLessonId === lessonId) setSelectedLessonId(null);
     setConfirmDelete(null);
     markDraftChanged('Lesson deleted.');
@@ -1307,20 +1261,12 @@ export default function CoachPortalScreen() {
 
   const confirmAndDelete = () => {
     if (!confirmDelete) return;
-    if (confirmDelete.type === 'journey') deleteJourney(confirmDelete.id);
-    else if (confirmDelete.type === 'lesson') deleteLesson(confirmDelete.id);
+    if (confirmDelete.type === 'journey') void deleteJourney(confirmDelete.id);
+    else if (confirmDelete.type === 'lesson') void deleteLesson(confirmDelete.id);
     else if (confirmDelete.type === 'task' && confirmDelete.parentId) {
-      removeTask(confirmDelete.parentId, confirmDelete.id);
+      void removeTask(confirmDelete.parentId, confirmDelete.id);
       setConfirmDelete(null);
     }
-  };
-
-  const saveDraft = async () => {
-    if (!canComposeDraft) { setSaveState('error'); setSaveMessage(composeDeniedReason); return; }
-    if (!selectedJourney) { setSaveState('error'); setSaveMessage('Select a journey first.'); return; }
-    if (!dirty) { setSaveState('idle'); setSaveMessage('No unsaved changes.'); return; }
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    await persistDraftSnapshot();
   };
 
   /* ════════════════════════════════════════════
