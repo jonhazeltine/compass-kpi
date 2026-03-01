@@ -281,6 +281,48 @@ type CoachingShellScreen =
   | 'coaching_journeys'
   | 'coaching_journey_detail'
   | 'coaching_lesson_detail';
+type CoachTabScreen =
+  | 'coach_marketplace'
+  | 'coach_subscription_shell'
+  | 'coach_hub_primary'
+  | 'coach_video_session'
+  | 'coach_content_library'
+  | 'coach_direct_comms'
+  | 'coach_goals_tasks'
+  | 'coach_challenges';
+type CoachEntitlementState = 'allowed' | 'pending' | 'blocked' | 'fallback';
+type CoachEngagementStatus = 'none' | 'pending' | 'active' | 'ended';
+type CoachAssignmentType = 'personal_goal' | 'team_leader_goal' | 'coach_goal' | 'personal_task' | 'coach_task';
+type CoachAssignmentStatus = 'pending' | 'in_progress' | 'completed';
+type CoachAssignment = {
+  id: string;
+  type: CoachAssignmentType;
+  title: string;
+  status: CoachAssignmentStatus;
+  due_at: string | null;
+  assignee_id: string | null;
+  source: 'goals' | 'message_linked';
+  created_at: string;
+};
+type CoachProfile = {
+  id: string;
+  name: string;
+  specialties: string[];
+  bio: string;
+  engagement_availability: 'available' | 'waitlist' | 'unavailable';
+};
+type CoachEngagement = {
+  id: string;
+  coach_id: string;
+  client_id: string;
+  status: 'pending' | 'active' | 'ended';
+  entitlement_state: CoachEntitlementState;
+  plan_tier_label: string;
+  status_reason: string;
+  next_step_cta: string;
+  coach: { id: string; name: string; specialties: string[] } | null;
+  created_at: string;
+};
 type CoachingChannelScope = 'team' | 'challenge' | 'sponsor' | 'cohort' | 'community';
 type CoachingShellEntrySource =
   | 'home'
@@ -581,6 +623,40 @@ type ChannelBroadcastWriteResponse = {
   broadcast?: ChannelMessageRow;
   error?: string;
 };
+type ChannelTokenPurpose = 'chat_read' | 'chat_write' | 'channel_admin';
+type ChannelTokenResponse = {
+  provider?: string;
+  provider_user_id?: string;
+  provider_channel_id?: string;
+  provider_token?: string;
+  expires_at?: string;
+  ttl_seconds?: number;
+  scope_grants?: {
+    chat_read?: boolean;
+    chat_write?: boolean;
+    channel_admin?: boolean;
+  };
+  provider_sync_status?: string | null;
+  provider_sync_updated_at?: string | null;
+  provider_error_code?: string | null;
+  provider_trace_id?: string | null;
+  error?: string | { code?: string; message?: string; request_id?: string };
+};
+type ChannelSyncResponse = {
+  provider?: string;
+  provider_channel_id?: string;
+  sync_status?: string;
+  sync_diff?: {
+    members_added?: number;
+    members_removed?: number;
+    roles_updated?: number;
+    metadata_updated?: boolean;
+  };
+  provider_sync_updated_at?: string | null;
+  provider_trace_id?: string | null;
+  authority_version?: number;
+  error?: string | { code?: string; message?: string; request_id?: string };
+};
 
 type PendingDirectLog = {
   kpiId: string;
@@ -714,6 +790,27 @@ function fmtMonthDayTime(iso?: string | null) {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+function getApiErrorMessage(payload: unknown, fallback: string) {
+  if (payload && typeof payload === 'object') {
+    const errorValue = (payload as { error?: unknown }).error;
+    if (typeof errorValue === 'string' && errorValue.trim()) return errorValue;
+    if (errorValue && typeof errorValue === 'object') {
+      const nested = (errorValue as { message?: unknown }).message;
+      if (typeof nested === 'string' && nested.trim()) return nested;
+    }
+  }
+  return fallback;
+}
+
+function mapCommsHttpError(status: number, fallback: string) {
+  if (status === 401) return 'Sign in is required to continue messaging (401).';
+  if (status === 403) return 'Permission denied for this messaging action in current scope (403).';
+  if (status === 409) return 'Messaging state changed. Refresh and retry (409).';
+  if (status === 422) return 'Invalid messaging request payload. Update inputs and retry (422).';
+  if (status === 503) return 'Messaging provider is temporarily unavailable. Try again shortly (503).';
+  return fallback;
 }
 
 function normalizeChannelTypeToScope(type?: string | null): CoachingChannelScope | null {
@@ -2251,6 +2348,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [teamIdentityAvatarCategory, setTeamIdentityAvatarCategory] = useState<'power' | 'animals' | 'nature' | 'sports' | 'symbols'>('power');
   const [teamLogContext, setTeamLogContext] = useState<TeamLogContext | null>(null);
   const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox');
+  const [coachTabScreen, setCoachTabScreen] = useState<CoachTabScreen>('coach_marketplace');
+  const [coachEngagementStatus, setCoachEngagementStatus] = useState<CoachEngagementStatus>('none');
+  const [coachEntitlementState, setCoachEntitlementState] = useState<CoachEntitlementState>('allowed');
+  const [coachAssignments, setCoachAssignments] = useState<CoachAssignment[]>([]);
+  const [coachGoalsTasksFilter, setCoachGoalsTasksFilter] = useState<CoachAssignmentType | 'all'>('all');
+  const [coachProfiles, setCoachProfiles] = useState<CoachProfile[]>([]);
+  const [coachMarketplaceLoading, setCoachMarketplaceLoading] = useState(false);
+  const [coachActiveEngagement, setCoachActiveEngagement] = useState<CoachEngagement | null>(null);
+  const [coachEngagementLoading, setCoachEngagementLoading] = useState(false);
+  const [coachSelectedProfile, setCoachSelectedProfile] = useState<CoachProfile | null>(null);
+  const coachTabDefault: CoachTabScreen = coachEngagementStatus === 'active' ? 'coach_hub_primary' : 'coach_marketplace';
   const [commsHubPrimaryTab, setCommsHubPrimaryTab] = useState<CommsHubPrimaryTab>('all');
   const [commsHubScopeFilter, setCommsHubScopeFilter] = useState<CommsHubScopeFilter>('all');
   const [commsHubSearchQuery, setCommsHubSearchQuery] = useState('');
@@ -2310,6 +2418,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [broadcastSubmitting, setBroadcastSubmitting] = useState(false);
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
   const [broadcastSuccessNote, setBroadcastSuccessNote] = useState<string | null>(null);
+  const commsClientSessionIdRef = useRef(
+    `mobile_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+  );
+  const commsTokenBootstrapRef = useRef<Record<string, { expiresAtMs: number; channelAdmin: boolean }>>({});
+  const commsSyncBootstrapRef = useRef<Record<string, number>>({});
   const [aiAssistVisible, setAiAssistVisible] = useState(false);
   const [aiAssistContext, setAiAssistContext] = useState<AIAssistShellContext | null>(null);
   const [aiAssistPrompt, setAiAssistPrompt] = useState('');
@@ -4913,6 +5026,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
     if (tab === 'challenge') {
       setViewMode('log');
+      setCoachTabScreen(coachTabDefault);
       return;
     }
     if (tab === 'logs') {
@@ -6684,6 +6798,115 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     void fetchAiSuggestions();
   }, [aiAssistVisible, fetchAiSuggestions]);
 
+  // ── Coach Marketplace + Engagement (C2) ──────────────────────────
+
+  const fetchCoachMarketplace = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) { setCoachProfiles([]); return; }
+    setCoachMarketplaceLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/coaching/coaches`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const body = await response.json() as { coaches: CoachProfile[] };
+        setCoachProfiles(body.coaches ?? []);
+      } else {
+        setCoachProfiles([]);
+      }
+    } catch {
+      setCoachProfiles([]);
+    } finally {
+      setCoachMarketplaceLoading(false);
+    }
+  }, [session?.access_token]);
+
+  const fetchCoachEngagement = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) return;
+    try {
+      const response = await fetch(`${API_URL}/api/coaching/engagements/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const body = await response.json() as {
+          engagements: CoachEngagement[];
+          engagement_status: CoachEngagementStatus;
+          active_engagement: CoachEngagement | null;
+        };
+        setCoachEngagementStatus(body.engagement_status);
+        setCoachActiveEngagement(body.active_engagement);
+        if (body.active_engagement) {
+          setCoachEntitlementState(body.active_engagement.entitlement_state);
+        }
+      }
+    } catch {
+      // silent — defaults remain
+    }
+  }, [session?.access_token]);
+
+  const createCoachEngagement = useCallback(async (coachId: string) => {
+    const token = session?.access_token;
+    if (!token) return;
+    setCoachEngagementLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/coaching/engagements`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coach_id: coachId }),
+      });
+      if (response.ok) {
+        const body = await response.json() as { engagement: CoachEngagement };
+        setCoachActiveEngagement(body.engagement);
+        setCoachEngagementStatus(body.engagement.status === 'active' ? 'active' : 'pending');
+        setCoachEntitlementState(body.engagement.entitlement_state);
+        // Navigate to hub if active, otherwise show pending state
+        if (body.engagement.status === 'active') {
+          setCoachTabScreen('coach_hub_primary');
+        }
+      }
+    } catch {
+      // silent
+    } finally {
+      setCoachEngagementLoading(false);
+    }
+  }, [session?.access_token]);
+
+  // Load marketplace + engagement state when coach tab becomes active
+  useEffect(() => {
+    if (activeTab === 'challenge') {
+      void fetchCoachEngagement();
+      if (coachTabScreen === 'coach_marketplace') {
+        void fetchCoachMarketplace();
+      }
+    }
+  }, [activeTab, coachTabScreen, fetchCoachMarketplace, fetchCoachEngagement]);
+
+  const fetchCoachAssignments = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) { setCoachAssignments([]); return; }
+    try {
+      const response = await fetch(`${API_URL}/api/coaching/assignments/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const body = await response.json() as { assignments: CoachAssignment[] };
+        setCoachAssignments(body.assignments ?? []);
+      } else {
+        setCoachAssignments([]);
+      }
+    } catch {
+      setCoachAssignments([]);
+    }
+  }, [session?.access_token]);
+
+  // Load assignments when goals/tasks screen becomes active
+  useEffect(() => {
+    if (activeTab === 'challenge' && coachTabScreen === 'coach_goals_tasks') {
+      void fetchCoachAssignments();
+    }
+  }, [activeTab, coachTabScreen, fetchCoachAssignments]);
+
   const fetchCoachingJourneys = useCallback(async () => {
     const token = session?.access_token;
     if (!token) {
@@ -6884,6 +7107,92 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     ]
   );
 
+  const ensureStreamChannelToken = useCallback(
+    async (channelId: string, tokenPurpose: ChannelTokenPurpose) => {
+      const token = session?.access_token;
+      if (!token) {
+        throw new Error('Sign in is required to continue messaging (401).');
+      }
+      const cacheKey = `${channelId}:${tokenPurpose}`;
+      const cached = commsTokenBootstrapRef.current[cacheKey];
+      const now = Date.now();
+      if (cached && cached.expiresAtMs - now > 30_000) {
+        return { channelAdmin: cached.channelAdmin };
+      }
+      const response = await fetch(`${API_URL}/api/channels/token`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channel_id: channelId,
+          token_purpose: tokenPurpose,
+          client_session_id: commsClientSessionIdRef.current,
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as ChannelTokenResponse;
+      if (!response.ok) {
+        const fallback = `Channel token request failed (${response.status})`;
+        throw new Error(mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback)));
+      }
+      const expiresAtMs = payload.expires_at ? Date.parse(String(payload.expires_at)) : NaN;
+      const ttlMs = Number(payload.ttl_seconds ?? 0) * 1000;
+      const effectiveExpiry =
+        Number.isFinite(expiresAtMs) && expiresAtMs > 0
+          ? expiresAtMs
+          : now + (ttlMs > 0 ? ttlMs : 10 * 60 * 1000);
+      const channelAdmin = Boolean(payload.scope_grants?.channel_admin);
+      commsTokenBootstrapRef.current[cacheKey] = {
+        expiresAtMs: effectiveExpiry,
+        channelAdmin,
+      };
+      return { channelAdmin };
+    },
+    [session?.access_token]
+  );
+
+  const ensureStreamChannelSync = useCallback(
+    async (channelId: string) => {
+      const token = session?.access_token;
+      if (!token) {
+        throw new Error('Sign in is required to continue messaging (401).');
+      }
+      const lastSyncedAt = commsSyncBootstrapRef.current[channelId] ?? 0;
+      if (Date.now() - lastSyncedAt < 60_000) return;
+      const response = await fetch(`${API_URL}/api/channels/sync`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channel_id: channelId,
+          sync_reason: 'manual_reconcile',
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as ChannelSyncResponse;
+      if (!response.ok) {
+        const fallback = `Channel sync request failed (${response.status})`;
+        throw new Error(mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback)));
+      }
+      commsSyncBootstrapRef.current[channelId] = Date.now();
+    },
+    [session?.access_token]
+  );
+
+  const bootstrapCommsStreamForSurface = useCallback(
+    async (channelId: string, surface: 'thread' | 'broadcast') => {
+      if (!channelId) return;
+      const tokenPurpose: ChannelTokenPurpose = surface === 'broadcast' ? 'channel_admin' : 'chat_write';
+      const tokenResult = await ensureStreamChannelToken(channelId, tokenPurpose);
+      const shouldSync = surface === 'broadcast' || tokenResult.channelAdmin;
+      if (!shouldSync) return;
+      await ensureStreamChannelSync(channelId);
+    },
+    [ensureStreamChannelSync, ensureStreamChannelToken]
+  );
+
   const fetchChannels = useCallback(async () => {
     const token = session?.access_token;
     if (!token) {
@@ -6902,10 +7211,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       });
       const body = (await response.json().catch(() => ({}))) as ChannelsListResponse;
       if (!response.ok) {
+        const fallback = `Channels request failed (${response.status})`;
         setChannelsError(
-          response.status === 403
-            ? 'Permission denied for channel visibility in this scope (403).'
-            : String(body.error ?? `Channels request failed (${response.status})`)
+          mapCommsHttpError(response.status, getApiErrorMessage(body, fallback))
         );
         setChannelsApiRows([]);
         setChannelsPackageVisibility(
@@ -6973,15 +7281,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setChannelMessagesLoading(true);
       setChannelMessagesError(null);
       try {
+        await bootstrapCommsStreamForSurface(channelId, 'thread');
         const response = await fetch(`${API_URL}/api/channels/${encodeURIComponent(channelId)}/messages`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const body = (await response.json().catch(() => ({}))) as ChannelMessagesResponse;
         if (!response.ok) {
+          const fallback = `Channel messages request failed (${response.status})`;
           setChannelMessagesError(
-            response.status === 403
-              ? 'Permission denied for this channel thread in current scope (403).'
-              : String(body.error ?? `Channel messages request failed (${response.status})`)
+            mapCommsHttpError(response.status, getApiErrorMessage(body, fallback))
           );
           setChannelMessages([]);
           setChannelThreadPackageVisibility(
@@ -7041,7 +7349,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         setChannelMessagesLoading(false);
       }
     },
-    [fetchChannels, selectedChannelId, selectedChannelName, session?.access_token]
+    [bootstrapCommsStreamForSurface, fetchChannels, selectedChannelId, selectedChannelName, session?.access_token]
   );
 
   const sendChannelMessage = useCallback(
@@ -7063,6 +7371,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setChannelMessageSubmitting(true);
       setChannelMessageSubmitError(null);
       try {
+        await bootstrapCommsStreamForSurface(channelId, 'thread');
         const response = await fetch(`${API_URL}/api/channels/${encodeURIComponent(channelId)}/messages`, {
           method: 'POST',
           headers: {
@@ -7073,10 +7382,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         });
         const payload = (await response.json().catch(() => ({}))) as ChannelMessageWriteResponse;
         if (!response.ok) {
+          const fallback = `Send failed (${response.status})`;
           setChannelMessageSubmitError(
-            response.status === 403
-              ? 'Permission denied to send messages in this channel (403).'
-              : String(payload.error ?? `Send failed (${response.status})`)
+            mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback))
           );
           return;
         }
@@ -7088,7 +7396,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         setChannelMessageSubmitting(false);
       }
     },
-    [channelMessageDraft, fetchChannelMessages, session?.access_token]
+    [bootstrapCommsStreamForSurface, channelMessageDraft, fetchChannelMessages, session?.access_token]
   );
 
   const sendChannelBroadcast = useCallback(
@@ -7111,6 +7419,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setBroadcastError(null);
       setBroadcastSuccessNote(null);
       try {
+        await bootstrapCommsStreamForSurface(channelId, 'broadcast');
         const response = await fetch(`${API_URL}/api/channels/${encodeURIComponent(channelId)}/broadcast`, {
           method: 'POST',
           headers: {
@@ -7121,10 +7430,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         });
         const payload = (await response.json().catch(() => ({}))) as ChannelBroadcastWriteResponse;
         if (!response.ok) {
+          const fallback = `Broadcast failed (${response.status})`;
           setBroadcastError(
-            response.status === 403
-              ? 'Permission denied to broadcast in this channel (403).'
-              : String(payload.error ?? `Broadcast failed (${response.status})`)
+            mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback))
           );
           return;
         }
@@ -7137,7 +7445,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         setBroadcastSubmitting(false);
       }
     },
-    [broadcastDraft, fetchChannelMessages, fetchChannels, session?.access_token]
+    [bootstrapCommsStreamForSurface, broadcastDraft, fetchChannelMessages, fetchChannels, session?.access_token]
   );
 
   useEffect(() => {
@@ -7221,6 +7529,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     if (!selectedChannelId) return;
     void fetchChannelMessages(selectedChannelId);
   }, [activeTab, coachingShellScreen, fetchChannelMessages, selectedChannelId]);
+
+  useEffect(() => {
+    if (activeTab !== 'comms') return;
+    if (coachingShellScreen !== 'coach_broadcast_compose') return;
+    if (!selectedChannelId) return;
+    void bootstrapCommsStreamForSurface(selectedChannelId, 'broadcast').catch((err) => {
+      setBroadcastError(err instanceof Error ? err.message : 'Failed to prepare broadcast channel');
+    });
+  }, [activeTab, bootstrapCommsStreamForSurface, coachingShellScreen, selectedChannelId]);
 
   const forcedQuickLogIdsBySegment = useMemo(() => {
     const bySegment: Record<Segment, string[]> = { PC: [], GP: [], VP: [] };
@@ -7343,6 +7660,258 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         ) : null}
         {activeTab === 'challenge' ? (
           <View style={styles.challengeSurfaceWrap}>
+            {/* ── Coach Tab IA Routing ── */}
+            {coachTabScreen === 'coach_marketplace' ? (
+              <View style={styles.coachMarketplaceWrap}>
+                <View style={styles.coachMarketplaceHeader}>
+                  <Text style={styles.coachMarketplaceTitle}>Find Your Coach</Text>
+                  <Text style={styles.coachMarketplaceSub}>Browse coaches by specialty and start your coaching journey.</Text>
+                </View>
+                {coachMarketplaceLoading ? (
+                  <View style={styles.coachMarketplaceCardPlaceholder}>
+                    <ActivityIndicator size="small" color="#4F46E5" />
+                    <Text style={styles.coachMarketplacePlaceholderText}>Loading coaches...</Text>
+                  </View>
+                ) : coachProfiles.length === 0 ? (
+                  <View style={styles.coachMarketplaceCardPlaceholder}>
+                    <Text style={styles.coachMarketplacePlaceholderText}>No coaches available at this time.</Text>
+                    <TouchableOpacity
+                      style={styles.coachMarketplaceCTA}
+                      onPress={() => void fetchCoachMarketplace()}
+                    >
+                      <Text style={styles.coachMarketplaceCTAText}>Refresh</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : coachSelectedProfile ? (
+                  <View style={styles.coachProfileDetailWrap}>
+                    <TouchableOpacity onPress={() => setCoachSelectedProfile(null)}>
+                      <Text style={styles.coachGoalsBack}>← All Coaches</Text>
+                    </TouchableOpacity>
+                    <View style={styles.coachProfileDetailCard}>
+                      <View style={styles.coachProfileDetailAvatar}>
+                        <Text style={styles.coachProfileDetailAvatarText}>
+                          {coachSelectedProfile.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text style={styles.coachProfileDetailName}>{coachSelectedProfile.name}</Text>
+                      <View style={styles.coachProfileDetailSpecialties}>
+                        {coachSelectedProfile.specialties.map((s) => (
+                          <View key={s} style={styles.coachSpecialtyChip}>
+                            <Text style={styles.coachSpecialtyChipText}>{s}</Text>
+                          </View>
+                        ))}
+                      </View>
+                      <Text style={styles.coachProfileDetailBio}>{coachSelectedProfile.bio || 'No bio available.'}</Text>
+                      <View style={styles.coachProfileDetailAvailability}>
+                        <View style={[styles.coachAvailDot, coachSelectedProfile.engagement_availability === 'available' ? styles.coachAvailDotGreen : coachSelectedProfile.engagement_availability === 'waitlist' ? styles.coachAvailDotYellow : styles.coachAvailDotRed]} />
+                        <Text style={styles.coachAvailLabel}>
+                          {coachSelectedProfile.engagement_availability === 'available' ? 'Available' : coachSelectedProfile.engagement_availability === 'waitlist' ? 'Waitlist' : 'Unavailable'}
+                        </Text>
+                      </View>
+                      {coachSelectedProfile.engagement_availability !== 'unavailable' && (
+                        <TouchableOpacity
+                          style={[styles.coachMarketplaceCTA, coachEngagementLoading && { opacity: 0.5 }]}
+                          disabled={coachEngagementLoading}
+                          onPress={() => {
+                            if (coachEntitlementState !== 'allowed') {
+                              setCoachTabScreen('coach_subscription_shell');
+                              return;
+                            }
+                            void createCoachEngagement(coachSelectedProfile.id);
+                          }}
+                        >
+                          <Text style={styles.coachMarketplaceCTAText}>
+                            {coachEngagementLoading ? 'Requesting...' : coachSelectedProfile.engagement_availability === 'waitlist' ? 'Join Waitlist' : 'Start Coaching'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.coachMarketplaceList}>
+                    {coachProfiles.map((coach) => (
+                      <TouchableOpacity
+                        key={coach.id}
+                        style={styles.coachMarketplaceCard}
+                        onPress={() => setCoachSelectedProfile(coach)}
+                      >
+                        <View style={styles.coachCardAvatar}>
+                          <Text style={styles.coachCardAvatarText}>
+                            {coach.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={styles.coachCardInfo}>
+                          <Text style={styles.coachCardName}>{coach.name}</Text>
+                          <Text style={styles.coachCardSpecialties} numberOfLines={1}>
+                            {coach.specialties.join(' · ') || 'General Coaching'}
+                          </Text>
+                          <View style={styles.coachCardAvailRow}>
+                            <View style={[styles.coachAvailDot, coach.engagement_availability === 'available' ? styles.coachAvailDotGreen : coach.engagement_availability === 'waitlist' ? styles.coachAvailDotYellow : styles.coachAvailDotRed]} />
+                            <Text style={styles.coachAvailLabel}>
+                              {coach.engagement_availability === 'available' ? 'Available' : coach.engagement_availability === 'waitlist' ? 'Waitlist' : 'Unavailable'}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={styles.coachCardChevron}>›</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                <TouchableOpacity
+                  style={styles.coachMarketplaceChallengeLink}
+                  onPress={() => setCoachTabScreen('coach_challenges')}
+                >
+                  <Text style={styles.coachMarketplaceChallengeLinkText}>View Challenges →</Text>
+                </TouchableOpacity>
+              </View>
+            ) : coachTabScreen === 'coach_subscription_shell' ? (
+              <View style={styles.coachSubscriptionWrap}>
+                <Text style={styles.coachSubscriptionTitle}>Coaching Plans</Text>
+                <Text style={styles.coachSubscriptionSub}>
+                  {coachEntitlementState === 'allowed'
+                    ? 'You are eligible for coaching.'
+                    : coachEntitlementState === 'pending'
+                      ? 'Your coaching access is being reviewed.'
+                      : coachEntitlementState === 'blocked'
+                        ? 'Coaching is not available for your current plan.'
+                        : 'Coaching is temporarily unavailable. Please try again later.'}
+                </Text>
+                <TouchableOpacity
+                  style={styles.coachSubscriptionCTA}
+                  onPress={() => setCoachTabScreen(coachTabDefault)}
+                >
+                  <Text style={styles.coachSubscriptionCTAText}>
+                    {coachEntitlementState === 'allowed' ? 'Continue' : 'Back to Coach'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : coachTabScreen === 'coach_hub_primary' ? (
+              <View style={styles.coachHubWrap}>
+                <View style={styles.coachHubHeader}>
+                  <Text style={styles.coachHubTitle}>
+                    {coachActiveEngagement?.coach?.name ? `Coach ${coachActiveEngagement.coach.name}` : 'Your Coach'}
+                  </Text>
+                  <Text style={styles.coachHubSub}>
+                    {coachEngagementStatus === 'pending'
+                      ? 'Your coaching request is being reviewed.'
+                      : 'Next session, messages, and your goals in one place.'}
+                  </Text>
+                  {coachEngagementStatus === 'pending' && (
+                    <View style={styles.coachHubPendingBadge}>
+                      <Text style={styles.coachHubPendingText}>Pending Confirmation</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.coachHubGrid}>
+                  <TouchableOpacity style={styles.coachHubCard} onPress={() => setCoachTabScreen('coach_video_session')}>
+                    <Text style={styles.coachHubCardIcon}>📹</Text>
+                    <Text style={styles.coachHubCardLabel}>Video Session</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.coachHubCard} onPress={() => setCoachTabScreen('coach_content_library')}>
+                    <Text style={styles.coachHubCardIcon}>📚</Text>
+                    <Text style={styles.coachHubCardLabel}>Content</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.coachHubCard} onPress={() => setCoachTabScreen('coach_direct_comms')}>
+                    <Text style={styles.coachHubCardIcon}>💬</Text>
+                    <Text style={styles.coachHubCardLabel}>Messages</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.coachHubCard} onPress={() => setCoachTabScreen('coach_goals_tasks')}>
+                    <Text style={styles.coachHubCardIcon}>🎯</Text>
+                    <Text style={styles.coachHubCardLabel}>Goals & Tasks</Text>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                  style={styles.coachHubChallengeLink}
+                  onPress={() => setCoachTabScreen('coach_challenges')}
+                >
+                  <Text style={styles.coachHubChallengeLinkText}>View Challenges →</Text>
+                </TouchableOpacity>
+              </View>
+            ) : coachTabScreen === 'coach_goals_tasks' ? (
+              <View style={styles.coachGoalsWrap}>
+                <View style={styles.coachGoalsHeader}>
+                  <TouchableOpacity onPress={() => setCoachTabScreen('coach_hub_primary')}>
+                    <Text style={styles.coachGoalsBack}>← Hub</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.coachGoalsTitle}>Goals & Tasks</Text>
+                </View>
+                <View style={styles.coachGoalsFilterRow}>
+                  {(['all', 'personal_goal', 'team_leader_goal', 'coach_goal', 'personal_task', 'coach_task'] as const).map((filter) => (
+                    <TouchableOpacity
+                      key={filter}
+                      style={[styles.coachGoalsFilterBtn, coachGoalsTasksFilter === filter && styles.coachGoalsFilterBtnActive]}
+                      onPress={() => setCoachGoalsTasksFilter(filter)}
+                    >
+                      <Text style={[styles.coachGoalsFilterText, coachGoalsTasksFilter === filter && styles.coachGoalsFilterTextActive]}>
+                        {filter === 'all' ? 'All' : filter === 'personal_goal' ? 'My Goals' : filter === 'team_leader_goal' ? 'Leader' : filter === 'coach_goal' ? 'Coach Goals' : filter === 'personal_task' ? 'My Tasks' : 'Coach Tasks'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.coachGoalsList}>
+                  {coachAssignments
+                    .filter((a) => coachGoalsTasksFilter === 'all' || a.type === coachGoalsTasksFilter)
+                    .map((assignment) => (
+                      <View key={assignment.id} style={styles.coachGoalCard}>
+                        <View style={styles.coachGoalCardHeader}>
+                          <Text style={styles.coachGoalCardType}>
+                            {assignment.type === 'personal_goal' ? '🎯' : assignment.type === 'team_leader_goal' ? '👥' : assignment.type === 'coach_goal' ? '🏅' : assignment.type === 'personal_task' ? '✅' : '📋'}
+                          </Text>
+                          <Text style={styles.coachGoalCardTitle}>{assignment.title}</Text>
+                        </View>
+                        <View style={styles.coachGoalCardMeta}>
+                          <Text style={[
+                            styles.coachGoalCardStatus,
+                            assignment.status === 'completed' && styles.coachGoalCardStatusDone,
+                            assignment.status === 'in_progress' && styles.coachGoalCardStatusProgress,
+                          ]}>
+                            {assignment.status === 'pending' ? 'Pending' : assignment.status === 'in_progress' ? 'In Progress' : 'Done'}
+                          </Text>
+                          {assignment.due_at ? (
+                            <Text style={styles.coachGoalCardDue}>Due {assignment.due_at.slice(0, 10)}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    ))}
+                  {coachAssignments.filter((a) => coachGoalsTasksFilter === 'all' || a.type === coachGoalsTasksFilter).length === 0 ? (
+                    <Text style={styles.coachGoalsEmpty}>No items yet. Goals and tasks from your coach will appear here.</Text>
+                  ) : null}
+                </View>
+              </View>
+            ) : coachTabScreen === 'coach_video_session' ? (
+              <View style={styles.coachPlaceholderScreen}>
+                <TouchableOpacity onPress={() => setCoachTabScreen('coach_hub_primary')}>
+                  <Text style={styles.coachGoalsBack}>← Hub</Text>
+                </TouchableOpacity>
+                <Text style={styles.coachPlaceholderTitle}>Video Sessions</Text>
+                <Text style={styles.coachPlaceholderSub}>Video coaching sessions will be available after provider activation.</Text>
+              </View>
+            ) : coachTabScreen === 'coach_content_library' ? (
+              <View style={styles.coachPlaceholderScreen}>
+                <TouchableOpacity onPress={() => setCoachTabScreen('coach_hub_primary')}>
+                  <Text style={styles.coachGoalsBack}>← Hub</Text>
+                </TouchableOpacity>
+                <Text style={styles.coachPlaceholderTitle}>Content Library</Text>
+                <Text style={styles.coachPlaceholderSub}>Your coach's curated content and resources will appear here.</Text>
+              </View>
+            ) : coachTabScreen === 'coach_direct_comms' ? (
+              <View style={styles.coachPlaceholderScreen}>
+                <TouchableOpacity onPress={() => setCoachTabScreen('coach_hub_primary')}>
+                  <Text style={styles.coachGoalsBack}>← Hub</Text>
+                </TouchableOpacity>
+                <Text style={styles.coachPlaceholderTitle}>Direct Messages</Text>
+                <Text style={styles.coachPlaceholderSub}>Direct messaging with your coach will be available after provider activation.</Text>
+              </View>
+            ) : null}
+            {/* ── Challenges sub-screen (original challenge surface) ── */}
+            {coachTabScreen === 'coach_challenges' ? (
+              <>
+                <TouchableOpacity
+                  style={styles.coachChallengesBackBtn}
+                  onPress={() => setCoachTabScreen(coachTabDefault)}
+                >
+                  <Text style={styles.coachChallengesBackText}>← Back to Coach</Text>
+                </TouchableOpacity>
             <View style={styles.teamChallengeTopTabsRow}>
               <TouchableOpacity style={styles.teamChallengeTopTab} onPress={() => setActiveTab('team')}>
                 <Text style={styles.teamChallengeTopTabText}>Team</Text>
@@ -8249,6 +8818,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 </Modal>
               </>
             )}
+              </>
+            ) : null}
           </View>
         ) : activeTab === 'team' ? (
           <View style={styles.challengeSurfaceWrap}>
@@ -20461,5 +21032,396 @@ const styles = StyleSheet.create({
   modalConfirmText: {
     color: '#fff',
     fontWeight: '700',
+  },
+  // ── Coach Tab Styles ──
+  coachMarketplaceWrap: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    gap: 16,
+  },
+  coachMarketplaceHeader: {
+    gap: 4,
+  },
+  coachMarketplaceTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1a2138',
+  },
+  coachMarketplaceSub: {
+    fontSize: 14,
+    color: '#6b7a90',
+  },
+  coachMarketplaceCardPlaceholder: {
+    backgroundColor: '#f4f7fb',
+    borderRadius: 14,
+    padding: 24,
+    alignItems: 'center',
+    gap: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  coachMarketplacePlaceholderText: {
+    fontSize: 14,
+    color: '#8896aa',
+  },
+  coachMarketplaceCTA: {
+    backgroundColor: '#3366cc',
+    borderRadius: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  coachMarketplaceCTAText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  coachMarketplaceChallengeLink: {
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  coachMarketplaceChallengeLinkText: {
+    color: '#3366cc',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  coachMarketplaceList: {
+    gap: 10,
+  },
+  coachMarketplaceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 14,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  coachCardAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#4F46E5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachCardAvatarText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  coachCardInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  coachCardName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1a2138',
+  },
+  coachCardSpecialties: {
+    fontSize: 13,
+    color: '#6b7a90',
+  },
+  coachCardAvailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
+  },
+  coachAvailDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  coachAvailDotGreen: {
+    backgroundColor: '#22c55e',
+  },
+  coachAvailDotYellow: {
+    backgroundColor: '#eab308',
+  },
+  coachAvailDotRed: {
+    backgroundColor: '#ef4444',
+  },
+  coachAvailLabel: {
+    fontSize: 12,
+    color: '#6b7a90',
+  },
+  coachCardChevron: {
+    fontSize: 22,
+    color: '#cbd5e1',
+    fontWeight: '300',
+  },
+  coachProfileDetailWrap: {
+    gap: 12,
+  },
+  coachProfileDetailCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  coachProfileDetailAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#4F46E5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachProfileDetailAvatarText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 24,
+  },
+  coachProfileDetailName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a2138',
+  },
+  coachProfileDetailSpecialties: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'center',
+  },
+  coachSpecialtyChip: {
+    backgroundColor: '#eef2ff',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  coachSpecialtyChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4F46E5',
+  },
+  coachProfileDetailBio: {
+    fontSize: 14,
+    color: '#4a5568',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  coachProfileDetailAvailability: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  coachHubPendingBadge: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  coachHubPendingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#92400e',
+  },
+  coachSubscriptionWrap: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    alignItems: 'center',
+    gap: 16,
+  },
+  coachSubscriptionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a2138',
+  },
+  coachSubscriptionSub: {
+    fontSize: 14,
+    color: '#6b7a90',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  coachSubscriptionCTA: {
+    backgroundColor: '#3366cc',
+    borderRadius: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  coachSubscriptionCTAText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  coachHubWrap: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    gap: 16,
+  },
+  coachHubHeader: {
+    gap: 4,
+  },
+  coachHubTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1a2138',
+  },
+  coachHubSub: {
+    fontSize: 14,
+    color: '#6b7a90',
+  },
+  coachHubGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  coachHubCard: {
+    width: '47%' as any,
+    backgroundColor: '#f4f7fb',
+    borderRadius: 14,
+    padding: 20,
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  coachHubCardIcon: {
+    fontSize: 28,
+  },
+  coachHubCardLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2d3748',
+  },
+  coachHubChallengeLink: {
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  coachHubChallengeLinkText: {
+    color: '#3366cc',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  coachGoalsWrap: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    gap: 12,
+  },
+  coachGoalsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  coachGoalsBack: {
+    color: '#3366cc',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  coachGoalsTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a2138',
+  },
+  coachGoalsFilterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  coachGoalsFilterBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#f0f4f8',
+  },
+  coachGoalsFilterBtnActive: {
+    backgroundColor: '#3366cc',
+  },
+  coachGoalsFilterText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6b7a90',
+  },
+  coachGoalsFilterTextActive: {
+    color: '#ffffff',
+  },
+  coachGoalsList: {
+    gap: 8,
+  },
+  coachGoalCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e8edf3',
+    gap: 6,
+  },
+  coachGoalCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  coachGoalCardType: {
+    fontSize: 16,
+  },
+  coachGoalCardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a2138',
+    flex: 1,
+  },
+  coachGoalCardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingLeft: 24,
+  },
+  coachGoalCardStatus: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#b8860b',
+  },
+  coachGoalCardStatusDone: {
+    color: '#2e7d32',
+  },
+  coachGoalCardStatusProgress: {
+    color: '#1565c0',
+  },
+  coachGoalCardDue: {
+    fontSize: 11,
+    color: '#8896aa',
+  },
+  coachGoalsEmpty: {
+    fontSize: 13,
+    color: '#8896aa',
+    textAlign: 'center',
+    paddingVertical: 24,
+  },
+  coachPlaceholderScreen: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    gap: 12,
+  },
+  coachPlaceholderTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a2138',
+  },
+  coachPlaceholderSub: {
+    fontSize: 14,
+    color: '#8896aa',
+    lineHeight: 20,
+  },
+  coachChallengesBackBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  coachChallengesBackText: {
+    color: '#3366cc',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
