@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import morgan from "morgan";
 import dotenv from "dotenv";
+import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { computeConfidence } from "./engines/confidenceEngine";
 import { computeGpVpState } from "./engines/gpVpEngine";
@@ -48,6 +49,12 @@ const authClient = supabaseUrl && supabaseAnonKey
 const dataClient = supabaseUrl && (supabaseServiceRoleKey || supabaseAnonKey)
   ? createClient(supabaseUrl, supabaseServiceRoleKey || supabaseAnonKey!)
   : null;
+
+const muxMediaStore = new Map<string, MuxMediaSessionRecord>();
+const muxMediaByUploadId = new Map<string, string>();
+const muxMediaByProviderUploadId = new Map<string, string>();
+const muxMediaByProviderAssetId = new Map<string, string>();
+const muxProcessedWebhookEventIds = new Set<string>();
 
 type KPIType = "PC" | "GP" | "VP" | "Actual" | "Pipeline_Anchor" | "Custom";
 
@@ -207,6 +214,59 @@ type NotificationEnqueuePayload = {
   payload?: Record<string, unknown>;
   scheduled_for?: string;
 };
+
+type CoachingMediaUploadUrlPayload = {
+  journey_id?: string;
+  lesson_id?: string;
+  filename: string;
+  content_type: string;
+  content_length_bytes: number;
+  idempotency_key: string;
+};
+
+type CoachingMediaPlaybackTokenPayload = {
+  media_id: string;
+  viewer_context?: "coach" | "team_leader" | "member" | "sponsor";
+};
+
+type MuxLifecycleStatus =
+  | "queued_for_upload"
+  | "uploaded"
+  | "processing"
+  | "ready"
+  | "failed"
+  | "deleted";
+
+type MuxMediaSessionRecord = {
+  media_id: string;
+  upload_id: string;
+  provider: "mux";
+  owner_user_id: string;
+  journey_id: string | null;
+  lesson_id: string | null;
+  filename: string;
+  content_type: string;
+  content_length_bytes: number;
+  provider_upload_id: string;
+  provider_asset_id: string | null;
+  playback_id: string | null;
+  upload_url: string;
+  upload_url_expires_at: string;
+  processing_status: MuxLifecycleStatus;
+  playback_ready: boolean;
+  last_provider_event_at: string | null;
+  last_provider_event_id: string | null;
+  provider_error_code: string | null;
+  verification_status: "verified" | "rejected_signature" | "rejected_replay_window" | "duplicate_ignored" | "pending";
+  created_at: string;
+  updated_at: string;
+};
+
+type MuxWebhookVerification =
+  | { ok: true; status: "verified"; timestampSeconds: number }
+  | { ok: false; status: "rejected_signature" | "rejected_replay_window"; code: "invalid_signature" | "replay_window_exceeded" };
+
+type RawBodyRequest = express.Request & { rawBody?: string };
 
 type MeProfileUpdatePayload = {
   full_name?: string;
@@ -1035,7 +1095,13 @@ type UserMetadata = {
 };
 
 app.use(cors());
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as RawBodyRequest).rawBody = buf.toString("utf8");
+    },
+  })
+);
 app.use(morgan("dev"));
 
 app.get("/health", (_req, res) => {
@@ -2698,6 +2764,253 @@ app.post("/api/coaching/broadcast", async (req, res) => {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/coaching/broadcast", err);
     return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/coaching/media/upload-url", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return errorEnvelopeResponse(res, auth.status, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    }
+
+    const payloadCheck = validateCoachingMediaUploadUrlPayload(req.body);
+    if (!payloadCheck.ok) {
+      return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+    }
+    const payload = payloadCheck.payload;
+
+    const roleCheck = await canAccessMuxMediaForRole(auth.user.id, "upload", {
+      journeyId: payload.journey_id ?? null,
+      lessonId: payload.lesson_id ?? null,
+    });
+    if (!roleCheck.ok) {
+      return errorEnvelopeResponse(res, roleCheck.status, "provider_unavailable", roleCheck.error, req.headers["x-request-id"]);
+    }
+    if (!roleCheck.allowed) {
+      return errorEnvelopeResponse(
+        res,
+        403,
+        "unauthorized_scope",
+        "Caller role does not have media upload scope for this context",
+        req.headers["x-request-id"]
+      );
+    }
+
+    const now = new Date();
+    const uploadId = `upl_${crypto.randomUUID()}`;
+    const mediaId = uploadId;
+    const providerCreate = await createMuxUploadSession({
+      uploadId,
+      ownerUserId: auth.user.id,
+      filename: payload.filename,
+      contentType: payload.content_type,
+      contentLengthBytes: payload.content_length_bytes,
+      journeyId: payload.journey_id ?? null,
+      lessonId: payload.lesson_id ?? null,
+    });
+    if (!providerCreate.ok) {
+      return errorEnvelopeResponse(res, 503, providerCreate.code, providerCreate.message, req.headers["x-request-id"]);
+    }
+
+    const record: MuxMediaSessionRecord = {
+      media_id: mediaId,
+      upload_id: uploadId,
+      provider: "mux",
+      owner_user_id: auth.user.id,
+      journey_id: payload.journey_id ?? null,
+      lesson_id: payload.lesson_id ?? null,
+      filename: payload.filename,
+      content_type: payload.content_type,
+      content_length_bytes: payload.content_length_bytes,
+      provider_upload_id: providerCreate.providerUploadId,
+      provider_asset_id: null,
+      playback_id: null,
+      upload_url: providerCreate.uploadUrl,
+      upload_url_expires_at: providerCreate.uploadUrlExpiresAt,
+      processing_status: "queued_for_upload",
+      playback_ready: false,
+      last_provider_event_at: null,
+      last_provider_event_id: null,
+      provider_error_code: null,
+      verification_status: "pending",
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    };
+    await upsertMuxMediaRecord(record);
+
+    return res.status(201).json({
+      upload_id: record.upload_id,
+      media_id: record.media_id,
+      provider: record.provider,
+      provider_upload_id: record.provider_upload_id,
+      upload_url: record.upload_url,
+      upload_url_expires_at: record.upload_url_expires_at,
+      lifecycle: {
+        processing_status: record.processing_status,
+        playback_ready: record.playback_ready,
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/coaching/media/upload-url", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.post("/api/coaching/media/playback-token", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return errorEnvelopeResponse(res, auth.status, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    }
+
+    const payloadCheck = validateCoachingMediaPlaybackTokenPayload(req.body);
+    if (!payloadCheck.ok) {
+      return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+    }
+    const payload = payloadCheck.payload;
+
+    const media = await getMuxMediaRecord(payload.media_id);
+    if (!media) {
+      return errorEnvelopeResponse(res, 404, "media_not_found", "Media asset not found", req.headers["x-request-id"]);
+    }
+
+    const roleCheck = await canAccessMuxMediaForRole(auth.user.id, "playback", {
+      journeyId: media.journey_id,
+      lessonId: media.lesson_id,
+      ownerUserId: media.owner_user_id,
+      viewerContext: payload.viewer_context,
+    });
+    if (!roleCheck.ok) {
+      return errorEnvelopeResponse(res, roleCheck.status, "provider_unavailable", roleCheck.error, req.headers["x-request-id"]);
+    }
+    if (!roleCheck.allowed) {
+      return errorEnvelopeResponse(
+        res,
+        403,
+        "unauthorized_scope",
+        "Caller role does not have media playback scope for this context",
+        req.headers["x-request-id"]
+      );
+    }
+
+    if (media.processing_status === "deleted") {
+      return errorEnvelopeResponse(res, 409, "media_deleted", "Media has been deleted", req.headers["x-request-id"]);
+    }
+    if (!media.playback_ready || media.processing_status !== "ready" || !media.playback_id) {
+      return errorEnvelopeResponse(res, 409, "media_not_ready", "Media is not ready for playback", req.headers["x-request-id"]);
+    }
+
+    const ttlSeconds = 15 * 60;
+    const issuedAtMs = Date.now();
+    const tokenExpiresAt = new Date(issuedAtMs + ttlSeconds * 1000).toISOString();
+    const token = signMuxPlaybackToken({
+      mediaId: media.media_id,
+      playbackId: media.playback_id,
+      subjectUserId: auth.user.id,
+      viewerContext: payload.viewer_context ?? inferViewerContextFromRole(roleCheck.role),
+      tokenExpiresAt,
+    });
+
+    return res.json({
+      token,
+      token_expires_at: tokenExpiresAt,
+      playback_id: media.playback_id,
+      policy: {
+        watermark_required: false,
+        allow_download: false,
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/coaching/media/playback-token", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.post("/api/webhooks/mux", async (req, res) => {
+  try {
+    const rawBody = (req as RawBodyRequest).rawBody ?? JSON.stringify(req.body ?? {});
+    const signatureHeader = req.headers["mux-signature"] ?? req.headers["x-mux-signature"];
+    const verification = verifyMuxWebhookSignature({
+      rawBody,
+      signatureHeader,
+      nowMs: Date.now(),
+    });
+    if (!verification.ok) {
+      return errorEnvelopeResponse(
+        res,
+        401,
+        verification.code,
+        verification.status === "rejected_replay_window" ? "Webhook rejected: replay window exceeded" : "Webhook signature verification failed",
+        req.headers["x-request-id"]
+      );
+    }
+
+    const event = normalizeMuxWebhookEvent(req.body);
+    if (!event.ok) {
+      return errorEnvelopeResponse(res, 422, "invalid_payload", event.error, req.headers["x-request-id"]);
+    }
+
+    if (muxProcessedWebhookEventIds.has(event.eventId)) {
+      return res.status(200).json({
+        verification_status: "duplicate_ignored",
+        event_id: event.eventId,
+      });
+    }
+
+    const transition = mapMuxWebhookEventToTransition(event.eventType);
+    if (!transition) {
+      muxProcessedWebhookEventIds.add(event.eventId);
+      return res.status(202).json({
+        verification_status: "verified",
+        event_id: event.eventId,
+        ignored: true,
+        reason: "unsupported_event_type",
+      });
+    }
+
+    const targetMedia = await resolveMuxMediaFromWebhookEvent(event.object);
+    if (!targetMedia) {
+      muxProcessedWebhookEventIds.add(event.eventId);
+      return res.status(202).json({
+        verification_status: "verified",
+        event_id: event.eventId,
+        ignored: true,
+        reason: "media_not_found_for_event",
+      });
+    }
+
+    const applied = applyMuxLifecycleTransition(targetMedia, transition.nextStatus);
+    const nowIso = new Date().toISOString();
+    const updated: MuxMediaSessionRecord = {
+      ...targetMedia,
+      processing_status: applied.status,
+      playback_ready: applied.status === "ready",
+      provider_asset_id: event.providerAssetId ?? targetMedia.provider_asset_id,
+      playback_id: event.playbackId ?? targetMedia.playback_id,
+      provider_error_code: event.providerErrorCode ?? (applied.status === "failed" ? "provider_processing_failed" : null),
+      last_provider_event_at: event.eventTimestampIso ?? nowIso,
+      last_provider_event_id: event.eventId,
+      verification_status: "verified",
+      updated_at: nowIso,
+    };
+    await upsertMuxMediaRecord(updated);
+    muxProcessedWebhookEventIds.add(event.eventId);
+
+    return res.status(200).json({
+      verification_status: "verified",
+      event_id: event.eventId,
+      media_id: updated.media_id,
+      processing_status: updated.processing_status,
+      playback_ready: updated.playback_ready,
+      transition_applied: applied.applied,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/webhooks/mux", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
   }
 });
 
@@ -6209,6 +6522,519 @@ function validateNotificationEnqueuePayload(body: unknown):
       scheduled_for: candidate.scheduled_for,
     },
   };
+}
+
+function validateCoachingMediaUploadUrlPayload(body: unknown):
+  | { ok: true; payload: CoachingMediaUploadUrlPayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body)) {
+    return { ok: false, status: 400, error: "Body must be a JSON object" };
+  }
+  const candidate = body as Record<string, unknown>;
+  const journeyId = typeof candidate.journey_id === "string" && candidate.journey_id.trim()
+    ? candidate.journey_id.trim()
+    : undefined;
+  const lessonId = typeof candidate.lesson_id === "string" && candidate.lesson_id.trim()
+    ? candidate.lesson_id.trim()
+    : undefined;
+  if ((journeyId && lessonId) || (!journeyId && !lessonId)) {
+    return { ok: false, status: 422, error: "Exactly one of journey_id or lesson_id is required" };
+  }
+  if (typeof candidate.filename !== "string" || !candidate.filename.trim()) {
+    return { ok: false, status: 422, error: "filename is required" };
+  }
+  if (typeof candidate.content_type !== "string" || !candidate.content_type.trim()) {
+    return { ok: false, status: 422, error: "content_type is required" };
+  }
+  const contentType = candidate.content_type.trim().toLowerCase();
+  const allowedTypes = new Set(["video/mp4", "video/quicktime", "video/webm", "video/x-matroska"]);
+  if (!allowedTypes.has(contentType)) {
+    return { ok: false, status: 415, error: "content_type is not supported" };
+  }
+  if (typeof candidate.content_length_bytes !== "number" || !Number.isFinite(candidate.content_length_bytes) || candidate.content_length_bytes <= 0) {
+    return { ok: false, status: 422, error: "content_length_bytes must be a positive number" };
+  }
+  const maxBytes = Number(process.env.MUX_UPLOAD_MAX_BYTES ?? 250_000_000);
+  if (candidate.content_length_bytes > maxBytes) {
+    return { ok: false, status: 413, error: "content_length_bytes exceeds upload limit" };
+  }
+  if (typeof candidate.idempotency_key !== "string" || !candidate.idempotency_key.trim()) {
+    return { ok: false, status: 422, error: "idempotency_key is required" };
+  }
+  return {
+    ok: true,
+    payload: {
+      journey_id: journeyId,
+      lesson_id: lessonId,
+      filename: candidate.filename.trim(),
+      content_type: contentType,
+      content_length_bytes: Math.round(candidate.content_length_bytes),
+      idempotency_key: candidate.idempotency_key.trim(),
+    },
+  };
+}
+
+function validateCoachingMediaPlaybackTokenPayload(body: unknown):
+  | { ok: true; payload: CoachingMediaPlaybackTokenPayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body)) {
+    return { ok: false, status: 400, error: "Body must be a JSON object" };
+  }
+  const candidate = body as Record<string, unknown>;
+  if (typeof candidate.media_id !== "string" || !candidate.media_id.trim()) {
+    return { ok: false, status: 422, error: "media_id is required" };
+  }
+  if (
+    candidate.viewer_context !== undefined &&
+    candidate.viewer_context !== "coach" &&
+    candidate.viewer_context !== "team_leader" &&
+    candidate.viewer_context !== "member" &&
+    candidate.viewer_context !== "sponsor"
+  ) {
+    return { ok: false, status: 422, error: "viewer_context must be one of: coach, team_leader, member, sponsor" };
+  }
+  return {
+    ok: true,
+    payload: {
+      media_id: candidate.media_id.trim(),
+      viewer_context: candidate.viewer_context as CoachingMediaPlaybackTokenPayload["viewer_context"],
+    },
+  };
+}
+
+async function canAccessMuxMediaForRole(
+  userId: string,
+  action: "upload" | "playback",
+  context: {
+    journeyId?: string | null;
+    lessonId?: string | null;
+    ownerUserId?: string | null;
+    viewerContext?: CoachingMediaPlaybackTokenPayload["viewer_context"];
+  }
+): Promise<
+  | { ok: true; allowed: boolean; role: string }
+  | { ok: false; status: number; error: string }
+> {
+  const roleResult = await getUserRoleForScope(userId);
+  if (!roleResult.ok) return roleResult;
+  const role = roleResult.role;
+  const allowRole = role === "admin" || role === "super_admin" || role === "coach" || role === "team_leader" || role === "challenge_sponsor";
+  if (allowRole) {
+    return { ok: true, allowed: true, role };
+  }
+  if (action === "playback" && context.ownerUserId && context.ownerUserId === userId) {
+    return { ok: true, allowed: true, role };
+  }
+  if (action === "playback" && context.viewerContext === "member" && role === "agent") {
+    return { ok: true, allowed: true, role };
+  }
+  return { ok: true, allowed: false, role };
+}
+
+async function getUserRoleForScope(userId: string): Promise<
+  | { ok: true; role: string }
+  | { ok: false; status: number; error: string }
+> {
+  if (!dataClient) {
+    return { ok: false, status: 500, error: "Supabase data client not configured" };
+  }
+  const { data, error } = await dataClient
+    .from("users")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) {
+    return { ok: false, status: 500, error: "Failed to evaluate caller role for media scope" };
+  }
+  return { ok: true, role: String((data as { role?: unknown } | null)?.role ?? "agent") };
+}
+
+function inferViewerContextFromRole(role: string): "coach" | "team_leader" | "member" | "sponsor" {
+  if (role === "coach") return "coach";
+  if (role === "team_leader") return "team_leader";
+  if (role === "challenge_sponsor") return "sponsor";
+  return "member";
+}
+
+async function createMuxUploadSession(input: {
+  uploadId: string;
+  ownerUserId: string;
+  filename: string;
+  contentType: string;
+  contentLengthBytes: number;
+  journeyId: string | null;
+  lessonId: string | null;
+}): Promise<
+  | { ok: true; providerUploadId: string; uploadUrl: string; uploadUrlExpiresAt: string }
+  | { ok: false; code: "provider_unavailable"; message: string }
+> {
+  const tokenId = process.env.MUX_TOKEN_ID;
+  const tokenSecret = process.env.MUX_TOKEN_SECRET;
+  const forcedMock = String(process.env.MUX_PROVIDER_MODE ?? "").toLowerCase() === "mock";
+  if (!forcedMock && tokenId && tokenSecret) {
+    try {
+      const response = await fetch("https://api.mux.com/video/v1/uploads", {
+        method: "POST",
+        headers: {
+          authorization: `Basic ${Buffer.from(`${tokenId}:${tokenSecret}`).toString("base64")}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          cors_origin: process.env.MUX_UPLOAD_CORS_ORIGIN ?? "*",
+          new_asset_settings: {
+            playback_policy: ["signed"],
+            passthrough: input.uploadId,
+            mp4_support: "none",
+            meta: {
+              compass_upload_id: input.uploadId,
+              compass_owner_user_id: input.ownerUserId,
+              compass_journey_id: input.journeyId ?? "",
+              compass_lesson_id: input.lessonId ?? "",
+              compass_filename: input.filename,
+              compass_content_type: input.contentType,
+              compass_content_length_bytes: String(input.contentLengthBytes),
+            },
+          },
+        }),
+      });
+      if (!response.ok) {
+        return { ok: false, code: "provider_unavailable", message: "Mux upload session request failed" };
+      }
+      const payload = await response.json();
+      const providerUploadId = String((payload as { data?: { id?: unknown } }).data?.id ?? "");
+      const uploadUrl = String((payload as { data?: { url?: unknown } }).data?.url ?? "");
+      if (!providerUploadId || !uploadUrl) {
+        return { ok: false, code: "provider_unavailable", message: "Mux upload session response was incomplete" };
+      }
+      const timeoutSeconds = toNumberOrZero((payload as { data?: { timeout?: unknown } }).data?.timeout) || 3600;
+      return {
+        ok: true,
+        providerUploadId,
+        uploadUrl,
+        uploadUrlExpiresAt: new Date(Date.now() + timeoutSeconds * 1000).toISOString(),
+      };
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("createMuxUploadSession live provider error", error);
+      return { ok: false, code: "provider_unavailable", message: "Mux provider is unavailable" };
+    }
+  }
+
+  const providerUploadId = `mux_upl_${crypto.randomUUID()}`;
+  return {
+    ok: true,
+    providerUploadId,
+    uploadUrl: `https://mock.mux.local/uploads/${providerUploadId}`,
+    uploadUrlExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  };
+}
+
+function signMuxPlaybackToken(input: {
+  mediaId: string;
+  playbackId: string;
+  subjectUserId: string;
+  viewerContext: "coach" | "team_leader" | "member" | "sponsor";
+  tokenExpiresAt: string;
+}): string {
+  const secret = process.env.MUX_PLAYBACK_TOKEN_SECRET || process.env.MUX_WEBHOOK_SECRET || "mux-dev-secret";
+  const payload = {
+    media_id: input.mediaId,
+    playback_id: input.playbackId,
+    sub: input.subjectUserId,
+    viewer_context: input.viewerContext,
+    exp: input.tokenExpiresAt,
+  };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto.createHmac("sha256", secret).update(encoded).digest("base64url");
+  return `mux.${encoded}.${signature}`;
+}
+
+function verifyMuxWebhookSignature(input: {
+  rawBody: string;
+  signatureHeader: string | string[] | undefined;
+  nowMs: number;
+}): MuxWebhookVerification {
+  const secret = process.env.MUX_WEBHOOK_SECRET;
+  if (!secret) {
+    return { ok: false, status: "rejected_signature", code: "invalid_signature" };
+  }
+  const signatureRaw = Array.isArray(input.signatureHeader) ? input.signatureHeader[0] : input.signatureHeader;
+  if (!signatureRaw || typeof signatureRaw !== "string") {
+    return { ok: false, status: "rejected_signature", code: "invalid_signature" };
+  }
+  const parsed = parseMuxSignatureHeader(signatureRaw);
+  if (!parsed) {
+    return { ok: false, status: "rejected_signature", code: "invalid_signature" };
+  }
+  const replayWindowSeconds = Number(process.env.MUX_WEBHOOK_REPLAY_WINDOW_SECONDS ?? 300);
+  const nowSeconds = Math.floor(input.nowMs / 1000);
+  if (Math.abs(nowSeconds - parsed.timestampSeconds) > replayWindowSeconds) {
+    return { ok: false, status: "rejected_replay_window", code: "replay_window_exceeded" };
+  }
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(`${parsed.timestampSeconds}.${input.rawBody}`)
+    .digest("hex");
+  if (!timingSafeEqualHex(parsed.signatureHex, expected)) {
+    return { ok: false, status: "rejected_signature", code: "invalid_signature" };
+  }
+  return { ok: true, status: "verified", timestampSeconds: parsed.timestampSeconds };
+}
+
+function parseMuxSignatureHeader(value: string): { timestampSeconds: number; signatureHex: string } | null {
+  const parts = value.split(",").map((p) => p.trim());
+  let timestampRaw: string | null = null;
+  let signatureHex: string | null = null;
+  for (const part of parts) {
+    const [key, val] = part.split("=");
+    if (key === "t") timestampRaw = val ?? null;
+    if (key === "v1") signatureHex = val ?? null;
+  }
+  const timestampSeconds = Number(timestampRaw);
+  if (!Number.isInteger(timestampSeconds) || timestampSeconds <= 0 || !signatureHex || !/^[a-f0-9]+$/i.test(signatureHex)) {
+    return null;
+  }
+  return { timestampSeconds, signatureHex: signatureHex.toLowerCase() };
+}
+
+function timingSafeEqualHex(left: string, right: string): boolean {
+  const leftBuf = Buffer.from(left, "hex");
+  const rightBuf = Buffer.from(right, "hex");
+  if (leftBuf.length !== rightBuf.length) return false;
+  return crypto.timingSafeEqual(leftBuf, rightBuf);
+}
+
+function normalizeMuxWebhookEvent(body: unknown):
+  | {
+      ok: true;
+      eventId: string;
+      eventType: string;
+      eventTimestampIso: string | null;
+      providerAssetId: string | null;
+      playbackId: string | null;
+      providerErrorCode: string | null;
+      object: Record<string, unknown>;
+    }
+  | { ok: false; error: string } {
+  if (!isRecord(body)) return { ok: false, error: "Webhook body must be a JSON object" };
+  const id = typeof body.id === "string" && body.id.trim() ? body.id.trim() : `evt_${crypto.randomUUID()}`;
+  const eventType = typeof body.type === "string" ? body.type.trim() : "";
+  if (!eventType) return { ok: false, error: "Webhook event type is required" };
+  const data = isRecord(body.data) ? body.data : null;
+  const object = data && isRecord(data.object) ? data.object : {};
+  const playbackIds = Array.isArray(object.playback_ids) ? object.playback_ids : [];
+  const firstPlaybackId = playbackIds.find((row) => isRecord(row) && typeof row.id === "string") as
+    | { id: string }
+    | undefined;
+  const eventTimestampIso = typeof body.created_at === "string" ? body.created_at : null;
+  const providerAssetId = typeof object.id === "string" ? object.id : null;
+  const providerErrorCode = typeof object.error_type === "string" ? object.error_type : null;
+  return {
+    ok: true,
+    eventId: id,
+    eventType,
+    eventTimestampIso,
+    providerAssetId,
+    playbackId: firstPlaybackId?.id ?? null,
+    providerErrorCode,
+    object,
+  };
+}
+
+function mapMuxWebhookEventToTransition(eventType: string): { nextStatus: MuxLifecycleStatus } | null {
+  const normalized = eventType.toLowerCase();
+  if (normalized.endsWith("asset.created")) return { nextStatus: "processing" };
+  if (normalized.endsWith("upload.asset_created")) return { nextStatus: "uploaded" };
+  if (normalized.endsWith("asset.ready")) return { nextStatus: "ready" };
+  if (normalized.endsWith("asset.errored") || normalized.endsWith("asset.error")) return { nextStatus: "failed" };
+  if (normalized.endsWith("asset.deleted")) return { nextStatus: "deleted" };
+  return null;
+}
+
+async function resolveMuxMediaFromWebhookEvent(
+  object: Record<string, unknown>
+): Promise<MuxMediaSessionRecord | null> {
+  const passthrough = typeof object.passthrough === "string" ? object.passthrough : null;
+  const providerUploadId = typeof object.upload_id === "string" ? object.upload_id : null;
+  const providerAssetId = typeof object.id === "string" ? object.id : null;
+
+  if (passthrough) {
+    const byUpload = await getMuxMediaRecordByUploadId(passthrough);
+    if (byUpload) return byUpload;
+  }
+  if (providerUploadId) {
+    const mediaId = muxMediaByProviderUploadId.get(providerUploadId);
+    if (mediaId) {
+      const byProviderUpload = await getMuxMediaRecord(mediaId);
+      if (byProviderUpload) return byProviderUpload;
+    }
+  }
+  if (providerAssetId) {
+    const mediaId = muxMediaByProviderAssetId.get(providerAssetId);
+    if (mediaId) {
+      const byProviderAsset = await getMuxMediaRecord(mediaId);
+      if (byProviderAsset) return byProviderAsset;
+    }
+  }
+  return null;
+}
+
+function applyMuxLifecycleTransition(
+  existing: MuxMediaSessionRecord,
+  requested: MuxLifecycleStatus
+): { status: MuxLifecycleStatus; applied: boolean } {
+  const rank: Record<MuxLifecycleStatus, number> = {
+    queued_for_upload: 0,
+    uploaded: 1,
+    processing: 2,
+    ready: 3,
+    failed: 3,
+    deleted: 4,
+  };
+  if (existing.processing_status === "deleted") {
+    return { status: "deleted", applied: false };
+  }
+  if (rank[requested] < rank[existing.processing_status]) {
+    return { status: existing.processing_status, applied: false };
+  }
+  return { status: requested, applied: requested !== existing.processing_status };
+}
+
+async function upsertMuxMediaRecord(record: MuxMediaSessionRecord): Promise<void> {
+  muxMediaStore.set(record.media_id, record);
+  muxMediaByUploadId.set(record.upload_id, record.media_id);
+  muxMediaByProviderUploadId.set(record.provider_upload_id, record.media_id);
+  if (record.provider_asset_id) {
+    muxMediaByProviderAssetId.set(record.provider_asset_id, record.media_id);
+  }
+  if (!dataClient) return;
+  const { error } = await dataClient
+    .from("coaching_media_assets")
+    .upsert(
+      {
+        media_id: record.media_id,
+        upload_id: record.upload_id,
+        provider: record.provider,
+        owner_user_id: record.owner_user_id,
+        journey_id: record.journey_id,
+        lesson_id: record.lesson_id,
+        filename: record.filename,
+        content_type: record.content_type,
+        content_length_bytes: record.content_length_bytes,
+        provider_upload_id: record.provider_upload_id,
+        provider_asset_id: record.provider_asset_id,
+        playback_id: record.playback_id,
+        upload_url: record.upload_url,
+        upload_url_expires_at: record.upload_url_expires_at,
+        processing_status: record.processing_status,
+        playback_ready: record.playback_ready,
+        last_provider_event_at: record.last_provider_event_at,
+        last_provider_event_id: record.last_provider_event_id,
+        provider_error_code: record.provider_error_code,
+        verification_status: record.verification_status,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+      },
+      { onConflict: "media_id" }
+    );
+  if (error && !isRecoverableAssignmentSourceGap(error)) {
+    // eslint-disable-next-line no-console
+    console.error("Failed to persist mux media record", error);
+  }
+}
+
+async function getMuxMediaRecord(mediaId: string): Promise<MuxMediaSessionRecord | null> {
+  const inMemory = muxMediaStore.get(mediaId);
+  if (inMemory) return inMemory;
+  if (!dataClient) return null;
+  const { data, error } = await dataClient
+    .from("coaching_media_assets")
+    .select(
+      "media_id,upload_id,provider,owner_user_id,journey_id,lesson_id,filename,content_type,content_length_bytes,provider_upload_id,provider_asset_id,playback_id,upload_url,upload_url_expires_at,processing_status,playback_ready,last_provider_event_at,last_provider_event_id,provider_error_code,verification_status,created_at,updated_at"
+    )
+    .eq("media_id", mediaId)
+    .maybeSingle();
+  if (error) {
+    if (!isRecoverableAssignmentSourceGap(error)) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to load mux media record", error);
+    }
+    return null;
+  }
+  if (!data) return null;
+  const record = mapMuxMediaRow(data);
+  await upsertMuxMediaRecord(record);
+  return record;
+}
+
+async function getMuxMediaRecordByUploadId(uploadId: string): Promise<MuxMediaSessionRecord | null> {
+  const mediaId = muxMediaByUploadId.get(uploadId);
+  if (mediaId) return getMuxMediaRecord(mediaId);
+  if (!dataClient) return null;
+  const { data, error } = await dataClient
+    .from("coaching_media_assets")
+    .select(
+      "media_id,upload_id,provider,owner_user_id,journey_id,lesson_id,filename,content_type,content_length_bytes,provider_upload_id,provider_asset_id,playback_id,upload_url,upload_url_expires_at,processing_status,playback_ready,last_provider_event_at,last_provider_event_id,provider_error_code,verification_status,created_at,updated_at"
+    )
+    .eq("upload_id", uploadId)
+    .maybeSingle();
+  if (error) {
+    if (!isRecoverableAssignmentSourceGap(error)) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to load mux media record by upload_id", error);
+    }
+    return null;
+  }
+  if (!data) return null;
+  const record = mapMuxMediaRow(data);
+  await upsertMuxMediaRecord(record);
+  return record;
+}
+
+function mapMuxMediaRow(row: Record<string, unknown>): MuxMediaSessionRecord {
+  return {
+    media_id: String(row.media_id ?? ""),
+    upload_id: String(row.upload_id ?? ""),
+    provider: "mux",
+    owner_user_id: String(row.owner_user_id ?? ""),
+    journey_id: typeof row.journey_id === "string" ? row.journey_id : null,
+    lesson_id: typeof row.lesson_id === "string" ? row.lesson_id : null,
+    filename: String(row.filename ?? ""),
+    content_type: String(row.content_type ?? ""),
+    content_length_bytes: Math.max(0, toNumberOrZero(row.content_length_bytes)),
+    provider_upload_id: String(row.provider_upload_id ?? ""),
+    provider_asset_id: typeof row.provider_asset_id === "string" ? row.provider_asset_id : null,
+    playback_id: typeof row.playback_id === "string" ? row.playback_id : null,
+    upload_url: String(row.upload_url ?? ""),
+    upload_url_expires_at: String(row.upload_url_expires_at ?? new Date().toISOString()),
+    processing_status: normalizeMuxLifecycleStatus(row.processing_status),
+    playback_ready: Boolean(row.playback_ready),
+    last_provider_event_at: typeof row.last_provider_event_at === "string" ? row.last_provider_event_at : null,
+    last_provider_event_id: typeof row.last_provider_event_id === "string" ? row.last_provider_event_id : null,
+    provider_error_code: typeof row.provider_error_code === "string" ? row.provider_error_code : null,
+    verification_status: normalizeMuxVerificationStatus(row.verification_status),
+    created_at: String(row.created_at ?? new Date().toISOString()),
+    updated_at: String(row.updated_at ?? new Date().toISOString()),
+  };
+}
+
+function normalizeMuxLifecycleStatus(value: unknown): MuxLifecycleStatus {
+  const normalized = String(value ?? "").toLowerCase();
+  if (normalized === "uploaded") return "uploaded";
+  if (normalized === "processing") return "processing";
+  if (normalized === "ready") return "ready";
+  if (normalized === "failed") return "failed";
+  if (normalized === "deleted") return "deleted";
+  return "queued_for_upload";
+}
+
+function normalizeMuxVerificationStatus(value: unknown): MuxMediaSessionRecord["verification_status"] {
+  const normalized = String(value ?? "").toLowerCase();
+  if (normalized === "verified") return "verified";
+  if (normalized === "rejected_signature") return "rejected_signature";
+  if (normalized === "rejected_replay_window") return "rejected_replay_window";
+  if (normalized === "duplicate_ignored") return "duplicate_ignored";
+  return "pending";
 }
 
 async function fetchUserProfileForCalculations(userId: string): Promise<
