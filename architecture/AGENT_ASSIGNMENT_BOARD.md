@@ -147,7 +147,9 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-TEAM-IDENTITY-CARD-ROLE-AUTH-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team identity card` (`leader edit controls`, `member read-only rendering`) | `KPIDashboardScreen` Team tab top card only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed: polished role-aware Team identity card landed with leader-only edit flow (avatar/background picker modal + save/cancel) and member read-only rendering. TypeScript clean. |
 | `M6-TEAM-FOCUS-CARD-MERGE-A` | `committed+pushed` | `M6 team UI cleanup` | `Team Leader`, `Team Member` | `team focus cards` (`merge projection+focus cards`, `leader edit trigger`, `remove focus pills`) | `KPIDashboardScreen` Team tab Team Focus section only | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted and pushed (owner-approved scope fold-in): Team Focus KPI card + Team Focus projections merged into one section with compact leader edit control; legacy focus pill block removed. |
 | `M6-TEAM-LEADER-HEALTH-SUMMARY-RESTORE-A` | `committed` | `M6 team UI cleanup` | `Team Leader` | `team leader dashboard` (`team health summary restore`) | `KPIDashboardScreen` Team tab leader view (`above Team Members list`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven (owner-directed design pass) | Accepted: Team Health Summary restored above Team Members and KPI Concern Flags removed in committed follow-on (`a45c0bd`, `2f5f1d6`). |
-| `M6-STREAM-COMMS-CLIENT-WIRING-A` | `review` | `M6 comms runtime wiring (Stream-backed Compass flow bootstrap)` | `Team Leader`, `Coach`, `Team Member` | `comms runtime integration` (`token/sync bootstrap`, `thread+broadcast stability`, `deterministic 4xx/5xx mapping`) | `KPIDashboardScreen` comms surfaces only (`inbox_channels`, `channel_thread`, `coach_broadcast_compose`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` | manual-spec-driven (no UI redesign drift) | Completed: added Stream bootstrap preflight to thread/broadcast flows using `/api/channels/token` + `/api/channels/sync`, preserved existing role gates/route behavior, mapped 401/403/409/422/503 responses to deterministic UX-safe messages, and validated TypeScript clean. |
+| `M6-STREAM-COMMS-CLIENT-WIRING-A` | `committed` | `M6 comms runtime wiring (Stream-backed Compass flow bootstrap)` | `Team Leader`, `Coach`, `Team Member` | `comms runtime integration` (`token/sync bootstrap`, `thread+broadcast stability`, `deterministic 4xx/5xx mapping`) | `KPIDashboardScreen` comms surfaces only (`inbox_channels`, `channel_thread`, `coach_broadcast_compose`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` | manual-spec-driven (no UI redesign drift) | Completed and accepted: added Stream bootstrap preflight to thread/broadcast flows using `/api/channels/token` + `/api/channels/sync`, preserved existing role gates/route behavior, mapped 401/403/409/422/503 responses to deterministic UX-safe messages, and validated TypeScript clean (`c06a5b7`). |
+| `M6-STREAM-COMMS-ROLE-POLICY-HARDENING-B` | `committed` | `M6 stream/comms runtime policy hardening` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `stream-era comms role/scope policy` | backend channel/token/sync/messages scope enforcement + acceptance coverage | `Mobile-2` | `codex/a2-admin-list-usability-pass` | runtime hardening + acceptance | Completed and accepted: role/scope hardening landed with targeted acceptance coverage for allowed/blocked outcomes across personas (`5fd3072`). |
+| `M6-STREAM-COMMS-RUNTIME-QA-MATRIX-C` | `review` | `M6 stream/comms runtime QA matrix` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `comms runtime QA` (`inbox`, `thread load/send`, `broadcast`, `denied copy`, `token/sync failure UX`) | comms surfaces + stream bootstrap failure-path handling | `Coach-1` | `codex/a2-admin-list-usability-pass` | QA-only (no product code edits unless deterministic harness fix needed) | QA pass complete: evidence bundle captured under `app/test-results/m6-stream-comms-runtime-qa-matrix-c/` with logs (`01-03`) + screenshots (`01-03`) + pass/fail matrix (`pass-fail-matrix.md`); no defects and no product code edits. |
 | `MESSAGING-AUTHZ-MATRIX-LOCK-D` | `committed` | `M6 messaging authority lock (docs/control-plane)` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`, `Admin operator` (oversight) | `messaging authority policy lock` (`coach/team-leader scope`, `challenge/sponsor/DM boundaries`, `segment/cohort authoring`) | docs-only (`04_api_contracts`, `05_acceptance_tests`, `COACHING_CAPABILITY_AND_PERSONA_MATRIX`, `COACHING_WIRING_ADDENDUM`) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (policy/control-plane lock) | Committed: canonical policy lock applied across contracts/tests/wiring/persona docs with explicit coach/team-leader/challenge-sponsor/team-member scope boundaries and no KPI authority expansion through messaging. |
 
 ## Blocked Assignments
@@ -5227,7 +5229,7 @@ Redesign Team tab `Challenges` list so it is less dense and more actionable:
 ### `M6-STREAM-COMMS-ROLE-POLICY-HARDENING-B`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `M6 stream/comms runtime policy hardening`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`
 - `Flow:` `stream-era comms role/scope policy`
@@ -5236,6 +5238,7 @@ Redesign Team tab `Challenges` list so it is less dense and more actionable:
 - `Execution note (2026-03-01, Mobile-2 start):` Assignment activated. Hardening role/scope policy behavior for channel token/sync/messages paths with targeted acceptance coverage and no KPI mutation side-effects.
 - `Completion note (2026-03-01, Mobile-2):` Added explicit stream-era channel role scope hardening across channel list/token/sync/thread/message/mark-seen paths, tightened message-linked task rights/scope filtering, and added targeted acceptance script coverage for coach/team_leader/member/challenge_sponsor allowed/blocked outcomes.
 - `Validation note (2026-03-01, Mobile-2):` `npm run -s build`, `npm run -s test:checkpoint-h-coaching-authoring`, `npm run -s test:w13-stream-wave-a`, and `npm run -s test:w13-stream-comms-role-policy` all passed.
+- `Commit:` `5fd3072`
 
 #### Scope In
 - `/Users/jon/compass-kpi/backend/src/index.ts`
@@ -5294,6 +5297,49 @@ Redesign Team tab `Challenges` list so it is less dense and more actionable:
 - Routing keys preserved (`setChallengeFlowScreen('details')`, `setChallengeSelectedId`)
 - No backend/schema/API changes
 - tsc --noEmit: 0 errors
+
+### `M6-STREAM-COMMS-RUNTIME-QA-MATRIX-C`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 stream/comms runtime QA matrix`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`
+- `Flow:` `comms runtime QA` (`inbox routing`, `thread load/send`, `broadcast gating/send`, `denied copy`, `token/sync failure UX`)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass`
+- `Execution note (2026-03-01, Coach-1 start):` Dependencies verified as committed (`M6-STREAM-COMMS-CLIENT-WIRING-A` -> `c06a5b7`, `M6-STREAM-COMMS-ROLE-POLICY-HARDENING-B` -> `5fd3072`). Running full runtime QA matrix and evidence capture.
+- `Validation note (2026-03-01, Coach-1):` `npm run -s test:w13-stream-wave-a`, `npm run -s test:w13-stream-comms-role-policy`, and `npm run -s test:w13-runtime-parity-matrix` all passed.
+- `Completion note (2026-03-01, Coach-1):` Captured QA evidence bundle in `/Users/jon/compass-kpi/app/test-results/m6-stream-comms-runtime-qa-matrix-c/`:
+  - logs: `logs/01-test-w13-stream-wave-a.log`, `logs/02-test-w13-stream-comms-role-policy.log`, `logs/03-test-w13-runtime-parity-matrix.log`
+  - screenshots: `screenshots/01-home-initial.png`, `screenshots/02-coach-channels-route.png`, `screenshots/03-coach-library-route.png`
+  - matrix: `pass-fail-matrix.md`
+- `Defect note (2026-03-01, Coach-1):` No defects found in this QA pass; no deterministic harness fixes required.
+- `Current blocker status (2026-03-01, review):` `none`.
+
+#### Scope In
+- Persona runtime QA across comms surfaces:
+  - inbox routing
+  - channel thread load/send
+  - broadcast eligibility + send path
+  - role-denied copy for blocked actions
+  - token/sync failure-path UX behavior
+- Evidence bundle under `/Users/jon/compass-kpi/app/test-results/m6-stream-comms-runtime-qa-matrix-c/`
+
+#### Scope Out
+- Product/runtime code edits (unless deterministic harness fix is strictly required)
+- Endpoint-family/schema changes
+
+#### Validation
+- `cd /Users/jon/compass-kpi/backend && npm run -s test:w13-stream-wave-a`
+- `cd /Users/jon/compass-kpi/backend && npm run -s test:w13-stream-comms-role-policy`
+- `cd /Users/jon/compass-kpi/backend && npm run -s test:w13-runtime-parity-matrix`
+- Persona/runtime evidence logs + screenshots captured in assignment evidence folder.
+
+#### Report-Back
+- Evidence paths
+- Pass/fail matrix
+- Defects with repro steps (if any)
+- Explicit confirmation of no code edits unless deterministic harness fix was required
 
 ### `M6-TEAM-CHALLENGES-LIST-REGRESSION-QA-B`
 
