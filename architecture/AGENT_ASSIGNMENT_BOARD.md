@@ -5250,6 +5250,28 @@ Redesign Team tab `Challenges` list so it is less dense and more actionable:
 - Existing channel/message endpoint families remain backward compatible.
 - No KPI source-of-truth mutation side effects.
 
+### `M6-COMMS-STREAM-UX-RUNTIME-QA-C`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 stream/comms runtime QA + regression guard`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`
+- `Flow:` `comms stream UX/runtime QA matrix`
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass`
+- `Execution note (2026-03-01, Mobile-2 start):` Assignment activated in QA-only mode. Running full comms runtime matrix (inbox/filter/search, thread read/send, broadcast role availability, denied-copy status vocabulary, stream token/sync failure paths) with evidence bundle capture.
+- `Completion note (2026-03-01, Mobile-2):` QA matrix executed with evidence bundle at `/Users/jon/compass-kpi/app/test-results/m6-comms-stream-ux-runtime-qa-c/`; backend runtime/policy scripts passed and UI smoke captured comms surfaces with two runtime UX defects recorded (missing `Open Channels` CTA in current state, broadcast tab hidden for current persona).
+- `Validation note (2026-03-01, Mobile-2):` `npm run -s build`, `npm run -s test:checkpoint-h-coaching-authoring`, `npm run -s test:w13-stream-wave-a`, and `npm run -s test:w13-stream-comms-role-policy` passed; denied-copy matrix (`401/403/409/422/503`) captured in `05-denied-copy-matrix.json`.
+
+#### Scope In
+- QA/evidence only unless deterministic harness fix required.
+- Validate inbox load/filter/search behavior, channel thread read/send, broadcast availability/send by persona, denied-copy correctness (`401/403/409/422/503`), and stream token/sync failure paths.
+
+#### Evidence
+- `/Users/jon/compass-kpi/app/test-results/m6-comms-stream-ux-runtime-qa-c/00-pass-fail-matrix.md`
+- `/Users/jon/compass-kpi/app/test-results/m6-comms-stream-ux-runtime-qa-c/ui-smoke-summary.json`
+- `/Users/jon/compass-kpi/app/test-results/m6-comms-stream-ux-runtime-qa-c/05-denied-copy-matrix.json`
+
 #### Hard Constraints
 - Keep existing role gates and challenge join logic intact.
 - Do not change endpoint families or payload contracts.
