@@ -21,6 +21,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
 import LottieSlot from '../components/LottieSlot';
+import { CommsHub } from '../components/comms';
+import type { ChannelRow as CommsChannelRow } from '../components/comms';
 import ReportsTabV2 from '../components/reports/ReportsTabV2';
 import PillGrowthBg from '../assets/figma/kpi_icon_bank/pill_growth_bg_v1.svg';
 import PillProjectionsBg from '../assets/figma/kpi_icon_bank/pill_projections_bg_v1.svg';
@@ -10328,9 +10330,168 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       : `${row.context} • optional`,
                 }));
               const fallbackChannelRowsVisible = !Array.isArray(channelsApiRows) || (channelsApiRows?.length ?? 0) === 0;
+              const isCommsScreen =
+                coachingShellScreen === 'inbox' ||
+                coachingShellScreen === 'inbox_channels' ||
+                coachingShellScreen === 'channel_thread' ||
+                coachingShellScreen === 'coach_broadcast_compose';
+
+              const commsChannelRows: CommsChannelRow[] = sortedPrimaryTabRows.map((row) => ({
+                id: String(row.id),
+                name: row.name,
+                type: row.type ?? null,
+                scope: normalizeChannelTypeToScope(row.type) ?? 'community',
+                unread_count: row.unread_count ?? null,
+                member_count: null,
+                my_role: row.my_role ?? null,
+                last_seen_at: row.last_seen_at ?? null,
+                created_at: row.created_at ?? null,
+                snippet: null,
+              }));
+
               return (
                 <>
-                  <View style={styles.coachingShellCard}>
+                  {isCommsScreen ? (
+                    <CommsHub
+                      screen={coachingShellScreen as 'inbox' | 'inbox_channels' | 'channel_thread' | 'coach_broadcast_compose'}
+                      primaryTab={commsHubPrimaryTab}
+                      scopeFilter={commsHubScopeFilter}
+                      searchQuery={commsHubSearchQuery}
+                      onChangePrimaryTab={(tab) => {
+                        setCommsHubPrimaryTab(tab);
+                        if (tab === 'all') {
+                          openCoachingShell('inbox', {
+                            source: 'user_tab',
+                            preferredChannelScope: null,
+                            preferredChannelLabel: null,
+                            threadTitle: null,
+                            threadSub: null,
+                            broadcastAudienceLabel: null,
+                            broadcastRoleAllowed: false,
+                          });
+                        } else if (tab === 'channels' || tab === 'dms') {
+                          openCoachingShell('inbox_channels', {
+                            source: 'user_tab',
+                            preferredChannelScope: null,
+                            preferredChannelLabel: null,
+                            threadTitle: null,
+                            threadSub: null,
+                            broadcastAudienceLabel: null,
+                            broadcastRoleAllowed: false,
+                          });
+                        } else {
+                          openCoachingShell('coach_broadcast_compose');
+                        }
+                      }}
+                      onChangeScopeFilter={setCommsHubScopeFilter}
+                      onChangeSearchQuery={setCommsHubSearchQuery}
+                      onOpenChannel={(chId, chName, scope) => {
+                        setSelectedChannelId(chId);
+                        setSelectedChannelName(chName);
+                        setChannelMessageSubmitError(null);
+                        setBroadcastError(null);
+                        setBroadcastSuccessNote(null);
+                        openCoachingShell('channel_thread', {
+                          preferredChannelScope: scope as any,
+                          preferredChannelLabel: chName,
+                          threadTitle: chName,
+                          threadSub: `Messages in ${chName}.`,
+                          broadcastAudienceLabel:
+                            scope === 'team' && roleCanOpenBroadcast
+                              ? chName
+                              : coachingShellContext.broadcastAudienceLabel,
+                          broadcastRoleAllowed: scope === 'team' ? roleCanOpenBroadcast : false,
+                        });
+                      }}
+                      onOpenDm={(dmId, dmName) => {
+                        openCoachingShell('channel_thread', {
+                          preferredChannelScope: 'community',
+                          preferredChannelLabel: dmName,
+                          threadTitle: dmName,
+                          threadSub: `Direct message with ${dmName}.`,
+                          broadcastAudienceLabel: null,
+                          broadcastRoleAllowed: false,
+                        });
+                      }}
+                      onOpenBroadcast={() => openCoachingShell('coach_broadcast_compose')}
+                      onBack={() => openCoachingShell('inbox_channels', {
+                        source: 'user_tab',
+                        preferredChannelScope: null,
+                        preferredChannelLabel: null,
+                        threadTitle: null,
+                        threadSub: null,
+                        broadcastAudienceLabel: null,
+                        broadcastRoleAllowed: false,
+                      })}
+                      personaVariant={commsPersonaVariant}
+                      roleCanBroadcast={roleCanOpenBroadcast}
+                      channels={commsChannelRows}
+                      channelsLoading={channelsLoading}
+                      channelsError={channelsError}
+                      onRetryChannels={() => void fetchChannels()}
+                      fallbackChannels={channelRows.map((r) => ({ scope: r.scope, label: r.label, context: r.context }))}
+                      fallbackDms={[
+                        { id: 'dm-sarah', name: 'Sarah Johnson', role: 'Team Lead' },
+                        { id: 'dm-alex', name: 'Alex Rodriguez', role: 'Member' },
+                        { id: 'dm-james', name: 'James Matew', role: 'Team Lead' },
+                      ]}
+                      useFallback={fallbackChannelRowsVisible}
+                      selectedChannelId={selectedChannelResolvedId}
+                      selectedChannelName={selectedChannelResolvedName}
+                      messages={Array.isArray(channelMessages) ? channelMessages : []}
+                      messagesLoading={channelMessagesLoading}
+                      messagesError={channelMessagesError}
+                      currentUserId={session?.user?.id ?? null}
+                      messageDraft={channelMessageDraft}
+                      onChangeMessageDraft={(text) => {
+                        setChannelMessageDraft(text);
+                        if (channelMessageSubmitError) setChannelMessageSubmitError(null);
+                      }}
+                      messageSubmitting={channelMessageSubmitting}
+                      messageSubmitError={channelMessageSubmitError}
+                      onSendMessage={() => {
+                        if (selectedChannelResolvedId) void sendChannelMessage(selectedChannelResolvedId);
+                      }}
+                      onRefreshMessages={() => {
+                        if (selectedChannelResolvedId) void fetchChannelMessages(selectedChannelResolvedId);
+                      }}
+                      onOpenAiAssist={(host) =>
+                        openAiAssistShell(
+                          {
+                            host: host as any,
+                            title: host === 'channel_thread' ? 'AI Reply Draft (Approval-First)' : 'AI Broadcast Draft (Approval-First)',
+                            sub: 'Draft only. Human send is required.',
+                            targetLabel: selectedChannelResolvedName ?? contextualThreadTitle,
+                            approvedInsertOnly: true,
+                          },
+                          {
+                            prompt: host === 'channel_thread'
+                              ? `Draft a reply for ${selectedChannelResolvedName ?? contextualThreadTitle} that is supportive and action-oriented.`
+                              : `Draft a team coaching broadcast for ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'this audience'} with a clear next action.`,
+                            draft: host === 'channel_thread' ? channelMessageDraft : broadcastDraft,
+                          }
+                        )
+                      }
+                      broadcastDraft={broadcastDraft}
+                      onChangeBroadcastDraft={setBroadcastDraft}
+                      broadcastTargetScope={effectiveBroadcastTargetScope}
+                      broadcastTargetOptions={broadcastTargetOptions}
+                      onChangeBroadcastTarget={setBroadcastTargetScope}
+                      broadcastSubmitting={broadcastSubmitting}
+                      broadcastError={broadcastError}
+                      broadcastSuccessNote={broadcastSuccessNote}
+                      onSendBroadcast={() => {
+                        const targetId =
+                          sortedBroadcastCandidateRows[0]?.id ?? selectedChannelResolvedId;
+                        if (targetId) void sendChannelBroadcast(String(targetId));
+                      }}
+                      gateBlocksActions={shellPackageGateBlocksActions}
+                      fmtTime={fmtMonthDayTime}
+                      fmtDate={fmtShortMonthDay}
+                    />
+                  ) : null}
+                  <View style={[styles.coachingShellCard, isCommsScreen && { display: 'none' } as any]}>
+                    {/* Legacy comms header — kept for non-comms coaching shell screens */}
                     <View style={styles.coachingShellTopRow}>
                       <Text style={styles.coachingShellTitle}>Comms Hub</Text>
                       <View style={styles.coachingShellBadge}>
