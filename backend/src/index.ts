@@ -55,6 +55,7 @@ const muxMediaByUploadId = new Map<string, string>();
 const muxMediaByProviderUploadId = new Map<string, string>();
 const muxMediaByProviderAssetId = new Map<string, string>();
 const muxProcessedWebhookEventIds = new Set<string>();
+const streamChannelSyncStates = new Map<string, StreamChannelSyncState>();
 
 type KPIType = "PC" | "GP" | "VP" | "Actual" | "Pipeline_Anchor" | "Custom";
 
@@ -267,6 +268,29 @@ type MuxWebhookVerification =
   | { ok: false; status: "rejected_signature" | "rejected_replay_window"; code: "invalid_signature" | "replay_window_exceeded" };
 
 type RawBodyRequest = express.Request & { rawBody?: string };
+
+type ChannelTokenPurpose = "chat_read" | "chat_write" | "channel_admin";
+
+type ChannelTokenPayload = {
+  channel_id: string;
+  token_purpose: ChannelTokenPurpose;
+  client_session_id?: string;
+};
+
+type ChannelSyncPayload = {
+  channel_id: string;
+  sync_reason: "membership_change" | "role_change" | "metadata_change" | "manual_reconcile";
+  expected_version?: number;
+};
+
+type StreamChannelSyncState = {
+  version: number;
+  memberByUserId: Map<string, "admin" | "member">;
+  metadataHash: string;
+  providerSyncUpdatedAt: string;
+};
+
+type StreamSyncStatus = "not_synced" | "syncing" | "synced" | "stale" | "error";
 
 type MeProfileUpdatePayload = {
   full_name?: string;
@@ -1901,13 +1925,23 @@ app.get("/api/channels", async (req, res) => {
       ])
     );
 
-    const channelRows = (channels ?? []).map((channel) => ({
+    const channelRows = (channels ?? []).map((channel) => {
+      const channelId = String(channel.id);
+      const syncState = streamChannelSyncStates.get(channelId);
+      return {
         ...channel,
-        my_role: membershipByChannel.get(String(channel.id)) ?? "member",
-        unread_count: unreadByChannel.get(String(channel.id))?.unread_count ?? 0,
-        last_seen_at: unreadByChannel.get(String(channel.id))?.last_seen_at ?? null,
+        my_role: membershipByChannel.get(channelId) ?? "member",
+        unread_count: unreadByChannel.get(channelId)?.unread_count ?? 0,
+        last_seen_at: unreadByChannel.get(channelId)?.last_seen_at ?? null,
         packaging_read_model: packagingReadModelForChannel(channel),
-      }));
+        provider: "stream",
+        provider_channel_id: streamProviderChannelId(channelId),
+        provider_sync_status: (syncState ? "synced" : "not_synced") as StreamSyncStatus,
+        provider_sync_updated_at: syncState?.providerSyncUpdatedAt ?? null,
+        provider_error_code: null,
+        provider_trace_id: null,
+      };
+    });
     const notificationItems = channelRows.map((channel) =>
       buildNotificationItemForChannel({
         channel,
@@ -2014,6 +2048,227 @@ app.post("/api/channels", async (req, res) => {
   }
 });
 
+app.post("/api/channels/token", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    }
+    if (!dataClient) {
+      return errorEnvelopeResponse(res, 503, "provider_unavailable", "Supabase data client not configured", req.headers["x-request-id"]);
+    }
+
+    const payloadCheck = validateChannelTokenPayload(req.body);
+    if (!payloadCheck.ok) {
+      return errorEnvelopeResponse(res, 422, "invalid_token_purpose", payloadCheck.error, req.headers["x-request-id"]);
+    }
+    const payload = payloadCheck.payload;
+
+    const membership = await checkChannelMembership(payload.channel_id, auth.user.id);
+    if (!membership.ok) {
+      return errorEnvelopeResponse(res, 503, "provider_unavailable", membership.error, req.headers["x-request-id"]);
+    }
+    if (!membership.member) {
+      return errorEnvelopeResponse(
+        res,
+        403,
+        "scope_denied",
+        "Caller is not a member of this channel",
+        req.headers["x-request-id"]
+      );
+    }
+
+    const { data: channel, error: channelError } = await dataClient
+      .from("channels")
+      .select("id,type,name,team_id,context_id,is_active")
+      .eq("id", payload.channel_id)
+      .maybeSingle();
+    if (channelError || !channel || !Boolean((channel as { is_active?: unknown }).is_active)) {
+      return errorEnvelopeResponse(
+        res,
+        403,
+        "scope_denied",
+        "Channel is not active or caller scope does not allow access",
+        req.headers["x-request-id"]
+      );
+    }
+
+    if (payload.token_purpose === "channel_admin" && String((channel as { type?: unknown }).type ?? "") === "direct") {
+      return errorEnvelopeResponse(
+        res,
+        422,
+        "invalid_token_purpose",
+        "channel_admin tokens are not available for direct channels",
+        req.headers["x-request-id"]
+      );
+    }
+
+    const platformAdmin = await isPlatformAdmin(auth.user.id);
+    const isChannelAdmin = membership.role === "admin" || platformAdmin;
+    const grants = {
+      chat_read: true,
+      chat_write: true,
+      channel_admin: isChannelAdmin,
+    };
+    if (payload.token_purpose === "channel_admin" && !grants.channel_admin) {
+      return errorEnvelopeResponse(
+        res,
+        403,
+        "scope_denied",
+        "Caller does not have channel admin scope",
+        req.headers["x-request-id"]
+      );
+    }
+
+    const snapshot = await buildChannelAuthoritySnapshot(payload.channel_id);
+    if (!snapshot.ok) {
+      const code = snapshot.status === 403 ? "scope_denied" : "provider_unavailable";
+      return errorEnvelopeResponse(res, snapshot.status, code, snapshot.error, req.headers["x-request-id"]);
+    }
+
+    const issuance = await issueStreamSessionToken({
+      userId: auth.user.id,
+      channelId: payload.channel_id,
+      tokenPurpose: payload.token_purpose,
+      scopeGrants: grants,
+      clientSessionId: payload.client_session_id,
+    });
+    if (!issuance.ok) {
+      return errorEnvelopeResponse(res, 503, "provider_unavailable", issuance.message, req.headers["x-request-id"]);
+    }
+
+    const syncReadModel = deriveStreamSyncReadModel(payload.channel_id, snapshot.snapshot);
+    const issuedByRequestId = resolveRequestId(req.headers["x-request-id"]);
+    return res.json({
+      provider: "stream",
+      provider_user_id: issuance.providerUserId,
+      provider_channel_id: streamProviderChannelId(payload.channel_id),
+      provider_token: issuance.providerToken,
+      expires_at: issuance.expiresAt,
+      ttl_seconds: issuance.ttlSeconds,
+      scope_grants: grants,
+      issued_by_request_id: issuedByRequestId,
+      provider_sync_status: syncReadModel.provider_sync_status,
+      provider_sync_updated_at: syncReadModel.provider_sync_updated_at,
+      provider_error_code: syncReadModel.provider_error_code,
+      provider_trace_id: issuance.providerTraceId,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/channels/token", err);
+    return errorEnvelopeResponse(res, 503, "provider_unavailable", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.post("/api/channels/sync", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", auth.error, req.headers["x-request-id"]);
+    }
+    if (!dataClient) {
+      return errorEnvelopeResponse(res, 503, "provider_unavailable", "Supabase data client not configured", req.headers["x-request-id"]);
+    }
+
+    const payloadCheck = validateChannelSyncPayload(req.body);
+    if (!payloadCheck.ok) {
+      return errorEnvelopeResponse(res, 409, "reconcile_conflict", payloadCheck.error, req.headers["x-request-id"]);
+    }
+    const payload = payloadCheck.payload;
+
+    const membership = await checkChannelMembership(payload.channel_id, auth.user.id);
+    if (!membership.ok) {
+      return errorEnvelopeResponse(res, 503, "provider_unavailable", membership.error, req.headers["x-request-id"]);
+    }
+    const platformAdmin = await isPlatformAdmin(auth.user.id);
+    if (!membership.member || (membership.role !== "admin" && !platformAdmin)) {
+      return errorEnvelopeResponse(
+        res,
+        403,
+        "scope_denied",
+        "Channel sync requires channel admin scope",
+        req.headers["x-request-id"]
+      );
+    }
+
+    const snapshot = await buildChannelAuthoritySnapshot(payload.channel_id);
+    if (!snapshot.ok) {
+      const code = snapshot.status === 403 ? "scope_denied" : "provider_unavailable";
+      return errorEnvelopeResponse(res, snapshot.status, code, snapshot.error, req.headers["x-request-id"]);
+    }
+
+    const current = streamChannelSyncStates.get(payload.channel_id);
+    if (
+      payload.expected_version !== undefined &&
+      payload.expected_version !== (current?.version ?? 0)
+    ) {
+      return errorEnvelopeResponse(
+        res,
+        409,
+        "reconcile_conflict",
+        "expected_version does not match current authority snapshot",
+        req.headers["x-request-id"]
+      );
+    }
+
+    const syncDispatch = await syncStreamChannelToProvider({
+      channelId: payload.channel_id,
+      channelType: snapshot.snapshot.channelType,
+      syncReason: payload.sync_reason,
+      memberByUserId: snapshot.snapshot.memberByUserId,
+      metadataHash: snapshot.snapshot.metadataHash,
+    });
+    if (!syncDispatch.ok) {
+      return errorEnvelopeResponse(res, 503, "provider_unavailable", syncDispatch.message, req.headers["x-request-id"]);
+    }
+
+    const previousMembers = current?.memberByUserId ?? new Map<string, "admin" | "member">();
+    const nextMembers = snapshot.snapshot.memberByUserId;
+    let membersAdded = 0;
+    let membersRemoved = 0;
+    let rolesUpdated = 0;
+    for (const [userId, role] of nextMembers.entries()) {
+      const prevRole = previousMembers.get(userId);
+      if (!prevRole) {
+        membersAdded += 1;
+      } else if (prevRole !== role) {
+        rolesUpdated += 1;
+      }
+    }
+    for (const userId of previousMembers.keys()) {
+      if (!nextMembers.has(userId)) membersRemoved += 1;
+    }
+
+    const metadataUpdated = !current || current.metadataHash !== snapshot.snapshot.metadataHash;
+    const providerSyncUpdatedAt = syncDispatch.providerSyncUpdatedAt;
+    streamChannelSyncStates.set(payload.channel_id, {
+      version: (current?.version ?? 0) + 1,
+      memberByUserId: new Map(nextMembers),
+      metadataHash: snapshot.snapshot.metadataHash,
+      providerSyncUpdatedAt,
+    });
+
+    return res.json({
+      provider: "stream",
+      provider_channel_id: streamProviderChannelId(payload.channel_id),
+      sync_status: "synced",
+      sync_diff: {
+        members_added: membersAdded,
+        members_removed: membersRemoved,
+        roles_updated: rolesUpdated,
+        metadata_updated: metadataUpdated,
+      },
+      provider_sync_updated_at: providerSyncUpdatedAt,
+      provider_trace_id: syncDispatch.providerTraceId,
+      authority_version: (current?.version ?? 0) + 1,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/channels/sync", err);
+    return errorEnvelopeResponse(res, 503, "provider_unavailable", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
 app.get("/api/channels/:id/messages", async (req, res) => {
   try {
     const auth = await authenticateRequest(req.headers.authorization);
@@ -2050,8 +2305,19 @@ app.get("/api/channels/:id/messages", async (req, res) => {
       channel,
       messages: (messages ?? []) as Array<{ id?: unknown; channel_id?: unknown; body?: unknown; message_type?: unknown; created_at?: unknown }>,
     });
+    const syncState = streamChannelSyncStates.get(channelId);
+    const channelWithProviderState = {
+      ...channel,
+      provider: "stream",
+      provider_channel_id: streamProviderChannelId(channelId),
+      provider_sync_status: (syncState ? "synced" : "not_synced") as StreamSyncStatus,
+      provider_sync_updated_at: syncState?.providerSyncUpdatedAt ?? null,
+      provider_error_code: null,
+      provider_trace_id: null,
+    };
+
     return res.json({
-      channel,
+      channel: channelWithProviderState,
       packaging_read_model: packagingReadModelForChannel(channel),
       messages: messages ?? [],
       notification_items: threadNotificationItems,
@@ -6011,6 +6277,72 @@ function validateChannelCreatePayload(body: unknown):
   };
 }
 
+function validateChannelTokenPayload(body: unknown):
+  | { ok: true; payload: ChannelTokenPayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body)) {
+    return { ok: false, status: 400, error: "Body must be a JSON object" };
+  }
+  const candidate = body as Record<string, unknown>;
+  if (typeof candidate.channel_id !== "string" || !candidate.channel_id.trim()) {
+    return { ok: false, status: 422, error: "channel_id is required" };
+  }
+  const tokenPurpose = typeof candidate.token_purpose === "string" ? candidate.token_purpose.trim() : "";
+  if (tokenPurpose !== "chat_read" && tokenPurpose !== "chat_write" && tokenPurpose !== "channel_admin") {
+    return { ok: false, status: 422, error: "token_purpose must be one of: chat_read, chat_write, channel_admin" };
+  }
+  if (candidate.client_session_id !== undefined && typeof candidate.client_session_id !== "string") {
+    return { ok: false, status: 422, error: "client_session_id must be a string when provided" };
+  }
+  return {
+    ok: true,
+    payload: {
+      channel_id: candidate.channel_id.trim(),
+      token_purpose: tokenPurpose as ChannelTokenPurpose,
+      client_session_id:
+        typeof candidate.client_session_id === "string" && candidate.client_session_id.trim()
+          ? candidate.client_session_id.trim()
+          : undefined,
+    },
+  };
+}
+
+function validateChannelSyncPayload(body: unknown):
+  | { ok: true; payload: ChannelSyncPayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body)) {
+    return { ok: false, status: 400, error: "Body must be a JSON object" };
+  }
+  const candidate = body as Record<string, unknown>;
+  if (typeof candidate.channel_id !== "string" || !candidate.channel_id.trim()) {
+    return { ok: false, status: 422, error: "channel_id is required" };
+  }
+  const syncReason = typeof candidate.sync_reason === "string" ? candidate.sync_reason.trim() : "";
+  const validSyncReason =
+    syncReason === "membership_change" ||
+    syncReason === "role_change" ||
+    syncReason === "metadata_change" ||
+    syncReason === "manual_reconcile";
+  if (!validSyncReason) {
+    return { ok: false, status: 422, error: "sync_reason must be one of: membership_change, role_change, metadata_change, manual_reconcile" };
+  }
+  if (
+    candidate.expected_version !== undefined &&
+    (typeof candidate.expected_version !== "number" || !Number.isInteger(candidate.expected_version) || candidate.expected_version < 0)
+  ) {
+    return { ok: false, status: 422, error: "expected_version must be a non-negative integer when provided" };
+  }
+  return {
+    ok: true,
+    payload: {
+      channel_id: candidate.channel_id.trim(),
+      sync_reason: syncReason as ChannelSyncPayload["sync_reason"],
+      expected_version:
+        typeof candidate.expected_version === "number" ? candidate.expected_version : undefined,
+    },
+  };
+}
+
 function validateChannelMessagePayload(body: unknown):
   | { ok: true; payload: ChannelMessagePayload }
   | { ok: false; status: number; error: string } {
@@ -6654,6 +6986,189 @@ function inferViewerContextFromRole(role: string): "coach" | "team_leader" | "me
   if (role === "team_leader") return "team_leader";
   if (role === "challenge_sponsor") return "sponsor";
   return "member";
+}
+
+function resolveRequestId(requestIdHeader?: string | string[]): string {
+  if (typeof requestIdHeader === "string" && requestIdHeader.trim()) {
+    return requestIdHeader.trim();
+  }
+  return `req_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+}
+
+function streamProviderChannelId(channelId: string): string {
+  return `stream_${channelId.replace(/[^a-zA-Z0-9]/g, "_")}`;
+}
+
+type ChannelAuthoritySnapshot = {
+  channelType: ChannelType;
+  metadataHash: string;
+  memberByUserId: Map<string, "admin" | "member">;
+};
+
+async function buildChannelAuthoritySnapshot(
+  channelId: string
+): Promise<
+  | { ok: true; snapshot: ChannelAuthoritySnapshot }
+  | { ok: false; status: 403 | 503; error: string }
+> {
+  if (!dataClient) {
+    return { ok: false, status: 503, error: "Supabase data client not configured" };
+  }
+  const { data: channel, error: channelError } = await dataClient
+    .from("channels")
+    .select("id,type,name,team_id,context_id,is_active")
+    .eq("id", channelId)
+    .maybeSingle();
+  if (channelError) {
+    return { ok: false, status: 503, error: "Failed to read channel authority snapshot" };
+  }
+  if (!channel || !Boolean((channel as { is_active?: unknown }).is_active)) {
+    return { ok: false, status: 403, error: "Channel is not active or not found" };
+  }
+
+  const { data: memberRows, error: memberError } = await dataClient
+    .from("channel_memberships")
+    .select("user_id,role")
+    .eq("channel_id", channelId);
+  if (memberError) {
+    return { ok: false, status: 503, error: "Failed to read channel membership authority state" };
+  }
+
+  const memberByUserId = new Map<string, "admin" | "member">();
+  const normalizedMembers: Array<{ user_id: string; role: "admin" | "member" }> = (memberRows ?? [])
+    .map((row) => ({
+      user_id: String((row as { user_id?: unknown }).user_id ?? ""),
+      role: (String((row as { role?: unknown }).role ?? "member") === "admin" ? "admin" : "member") as "admin" | "member",
+    }))
+    .filter((row) => row.user_id)
+    .sort((a, b) => a.user_id.localeCompare(b.user_id));
+  for (const row of normalizedMembers) {
+    memberByUserId.set(row.user_id, row.role);
+  }
+
+  const hashSource = JSON.stringify({
+    channel_id: channelId,
+    channel_type: String((channel as { type?: unknown }).type ?? "direct"),
+    name: String((channel as { name?: unknown }).name ?? ""),
+    team_id: String((channel as { team_id?: unknown }).team_id ?? ""),
+    context_id: String((channel as { context_id?: unknown }).context_id ?? ""),
+    members: normalizedMembers,
+  });
+  const metadataHash = crypto.createHash("sha256").update(hashSource).digest("hex");
+
+  const channelType = String((channel as { type?: unknown }).type ?? "direct") as ChannelType;
+  return {
+    ok: true,
+    snapshot: {
+      channelType,
+      metadataHash,
+      memberByUserId,
+    },
+  };
+}
+
+function deriveStreamSyncReadModel(
+  channelId: string,
+  authoritySnapshot: ChannelAuthoritySnapshot
+): {
+  provider_sync_status: StreamSyncStatus;
+  provider_sync_updated_at: string | null;
+  provider_error_code: string | null;
+} {
+  const syncState = streamChannelSyncStates.get(channelId);
+  if (!syncState) {
+    return {
+      provider_sync_status: "not_synced",
+      provider_sync_updated_at: null,
+      provider_error_code: null,
+    };
+  }
+  if (syncState.metadataHash !== authoritySnapshot.metadataHash) {
+    return {
+      provider_sync_status: "stale",
+      provider_sync_updated_at: syncState.providerSyncUpdatedAt,
+      provider_error_code: "authority_state_drift",
+    };
+  }
+  return {
+    provider_sync_status: "synced",
+    provider_sync_updated_at: syncState.providerSyncUpdatedAt,
+    provider_error_code: null,
+  };
+}
+
+async function issueStreamSessionToken(input: {
+  userId: string;
+  channelId: string;
+  tokenPurpose: ChannelTokenPurpose;
+  scopeGrants: {
+    chat_read: boolean;
+    chat_write: boolean;
+    channel_admin: boolean;
+  };
+  clientSessionId?: string;
+}): Promise<
+  | {
+      ok: true;
+      providerUserId: string;
+      providerToken: string;
+      expiresAt: string;
+      ttlSeconds: number;
+      providerTraceId: string;
+    }
+  | { ok: false; message: string }
+> {
+  const providerMode = String(process.env.STREAM_PROVIDER_MODE ?? "mock").toLowerCase();
+  if (providerMode === "down" || providerMode === "unavailable") {
+    return { ok: false, message: "Stream provider is unavailable" };
+  }
+
+  const ttlRaw = toNumberOrZero(process.env.STREAM_TOKEN_TTL_SECONDS ?? 900);
+  const ttlSeconds = Math.max(60, Math.min(3600, Math.round(ttlRaw || 900)));
+  const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+  const providerTraceId = `stream_trace_${crypto.randomUUID()}`;
+  const providerUserId = `compass_${input.userId}`;
+  const payload = {
+    provider: "stream",
+    provider_user_id: providerUserId,
+    channel_id: input.channelId,
+    token_purpose: input.tokenPurpose,
+    scope_grants: input.scopeGrants,
+    client_session_id: input.clientSessionId ?? null,
+    exp: expiresAt,
+    trace_id: providerTraceId,
+  };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const secret = process.env.STREAM_TOKEN_SIGNING_SECRET || "stream-dev-signing-secret";
+  const signature = crypto.createHmac("sha256", secret).update(encoded).digest("base64url");
+  return {
+    ok: true,
+    providerUserId,
+    providerToken: `stream.${encoded}.${signature}`,
+    expiresAt,
+    ttlSeconds,
+    providerTraceId,
+  };
+}
+
+async function syncStreamChannelToProvider(input: {
+  channelId: string;
+  channelType: ChannelType;
+  syncReason: ChannelSyncPayload["sync_reason"];
+  memberByUserId: Map<string, "admin" | "member">;
+  metadataHash: string;
+}): Promise<
+  | { ok: true; providerSyncUpdatedAt: string; providerTraceId: string }
+  | { ok: false; message: string }
+> {
+  const providerMode = String(process.env.STREAM_PROVIDER_MODE ?? "mock").toLowerCase();
+  if (providerMode === "down" || providerMode === "unavailable") {
+    return { ok: false, message: "Stream provider is unavailable" };
+  }
+  const providerTraceId = `stream_sync_${crypto.randomUUID()}`;
+  const providerSyncUpdatedAt = new Date().toISOString();
+  void input;
+  return { ok: true, providerSyncUpdatedAt, providerTraceId };
 }
 
 async function createMuxUploadSession(input: {

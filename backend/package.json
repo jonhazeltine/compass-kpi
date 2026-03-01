@@ -22,6 +22,7 @@
     "ops:summary": "npm run build && node scripts/ops_summaries.js",
     "test:algorithms": "npm run build && node scripts/algorithm_acceptance.js",
     "test:coaching-endpoint-hardening": "npm run build && node scripts/coaching_endpoint_hardening_acceptance.js",
+    "test:w13-stream-wave-a": "npm run build && node scripts/w13_stream_wave_a_acceptance.js",
     "test:w13-mux-wave-b": "npm run build && node scripts/w13_mux_wave_b_acceptance.js",
     "seed:coaching:realism:reset": "npm run build && node scripts/coaching_sample_content_seed.js --reset-only",
     "seed:coaching:realism": "npm run build && node scripts/coaching_sample_content_seed.js",
