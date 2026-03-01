@@ -5,7 +5,8 @@ const crypto = require("crypto");
 const { spawn } = require("child_process");
 const { Client } = require("pg");
 
-const BACKEND_PORT = process.env.W13_MUX_TEST_PORT || "4012";
+const BACKEND_PORT =
+  process.env.W13_MUX_TEST_PORT || String(4500 + Math.floor(Math.random() * 200));
 const BACKEND_URL = `http://127.0.0.1:${BACKEND_PORT}`;
 
 function assert(condition, message) {
