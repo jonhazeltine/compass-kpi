@@ -4011,6 +4011,7 @@ export default function AdminShellScreen() {
   const [reportsLastCheckedAt, setReportsLastCheckedAt] = useState<string | null>(null);
   const [analyticsOverviewStatus, setAnalyticsOverviewStatus] = useState<EndpointProbeStatus>({ kind: 'idle' });
   const [analyticsDetailedStatus, setAnalyticsDetailedStatus] = useState<EndpointProbeStatus>({ kind: 'idle' });
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   const effectiveRoles = useMemo(() => {
     if (!__DEV__ || devRolePreview === 'live') return resolvedRoles;
@@ -4040,6 +4041,47 @@ export default function AdminShellScreen() {
   const isCoachingTransitionRoute = COACH_PORTAL_TRANSITION_ROUTE_KEYS.includes(activeRoute.key as CoachingPortalSurfaceKey);
   const showCoachPortalExperience = hasCoachFacingRole && !effectiveHasAdminAccess && isCoachingTransitionRoute;
   const visibleRoutes = showCoachPortalExperience ? coachingTransitionRoutes : ADMIN_ROUTES;
+  const accountInitial = (session?.user?.email?.trim().charAt(0) || backendRole?.trim().charAt(0) || 'A').toUpperCase();
+  const accountLabel = session?.user?.email || 'Signed-in account';
+  const backendRoleLabel = backendRole ? `Backend role: ${backendRole}` : 'Role source: session metadata';
+
+  const renderAccountMenu = (coachTone = false) => (
+    <View style={styles.accountMenuWrap}>
+      <Pressable
+        style={[
+          styles.avatarButton,
+          coachTone && styles.avatarButtonCoach,
+          accountMenuOpen && styles.avatarButtonOpen,
+        ]}
+        onPress={() => setAccountMenuOpen((prev) => !prev)}
+        accessibilityRole="button"
+        accessibilityLabel="Open account menu"
+      >
+        <Text style={styles.avatarButtonText}>{accountInitial}</Text>
+        <Text style={styles.avatarChevron}>▾</Text>
+      </Pressable>
+      {accountMenuOpen ? (
+        <View style={styles.accountDropdown}>
+          <Text style={styles.accountMenuLabel}>Account</Text>
+          <Text style={styles.accountMenuValue} numberOfLines={1}>
+            {accountLabel}
+          </Text>
+          <Text style={styles.accountMenuRole}>{backendRoleLabel}</Text>
+          <TouchableOpacity
+            style={styles.accountMenuSignOut}
+            onPress={() => {
+              setAccountMenuOpen(false);
+              void signOut();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+          >
+            <Text style={styles.accountMenuSignOutText}>Sign out</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -4722,16 +4764,7 @@ export default function AdminShellScreen() {
                       {backendRole ? `Role: ${backendRole}` : `Scope: ${coachScopeLabel}`}
                     </Text>
                   </View>
-                  <TouchableOpacity
-                    style={[styles.signOutButton, styles.signOutButtonCoach]}
-                    onPress={() => {
-                      void signOut();
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Sign out"
-                  >
-                    <Text style={styles.signOutButtonText}>Sign out</Text>
-                  </TouchableOpacity>
+                  {renderAccountMenu(true)}
                 </View>
               </View>
             ) : (
@@ -4749,16 +4782,7 @@ export default function AdminShellScreen() {
                       {backendRole ? `Backend role: ${backendRole}` : 'Role source: session metadata'}
                     </Text>
                   </View>
-                  <TouchableOpacity
-                    style={styles.signOutButton}
-                    onPress={() => {
-                      void signOut();
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Sign out"
-                  >
-                    <Text style={styles.signOutButtonText}>Sign out</Text>
-                  </TouchableOpacity>
+                  {renderAccountMenu()}
                 </View>
               </View>
             )}
@@ -5451,6 +5475,7 @@ const styles = StyleSheet.create({
     gap: 10,
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
+    zIndex: 30,
   },
   headerTitle: {
     fontSize: 20,
@@ -5478,6 +5503,89 @@ const styles = StyleSheet.create({
     color: '#293548',
     fontWeight: '600',
     fontSize: 14,
+  },
+  accountMenuWrap: {
+    position: 'relative',
+    alignItems: 'flex-end',
+  },
+  avatarButton: {
+    borderWidth: 1,
+    borderColor: '#D9E1EF',
+    backgroundColor: '#F4F7FF',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    minWidth: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  avatarButtonCoach: {
+    borderColor: '#CAE8D8',
+    backgroundColor: '#ECF8F1',
+  },
+  avatarButtonOpen: {
+    borderColor: '#2B4C9A',
+  },
+  avatarButtonText: {
+    color: '#243754',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  avatarChevron: {
+    color: '#4A5D7A',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 1,
+  },
+  accountDropdown: {
+    position: 'absolute',
+    top: 42,
+    right: 0,
+    borderWidth: 1,
+    borderColor: '#D6E2FF',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    minWidth: 220,
+    padding: 10,
+    gap: 6,
+    shadowColor: '#10213A',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
+    zIndex: 40,
+  },
+  accountMenuLabel: {
+    color: '#64738A',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    fontWeight: '700',
+  },
+  accountMenuValue: {
+    color: '#223043',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  accountMenuRole: {
+    color: '#5A6A83',
+    fontSize: 11,
+  },
+  accountMenuSignOut: {
+    borderWidth: 1,
+    borderColor: '#D9E1EF',
+    borderRadius: 8,
+    backgroundColor: '#F4F7FF',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 2,
+  },
+  accountMenuSignOutText: {
+    color: '#27384F',
+    fontSize: 12,
+    fontWeight: '700',
   },
   roleBadge: {
     flexDirection: 'row',

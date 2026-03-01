@@ -175,7 +175,7 @@ function cloneMilestones(): JourneyMilestone[] {
 export default function CoachPortalScreen() {
   const { width } = useWindowDimensions();
   const isCompact = width < 980;
-  const { signOut } = useAuth();
+  const { signOut, session } = useAuth();
   const { backendRole, backendRoleLoading, resolvedRoles } = useAdminAuthz();
   const [activeKey, setActiveKey] = useState<CoachRouteKey>(
     () => getCoachRouteKeyFromPath(typeof window !== 'undefined' ? window.location.pathname : undefined) ?? 'coachingLibrary'
@@ -222,6 +222,7 @@ export default function CoachPortalScreen() {
   const [dirty, setDirty] = useState(false);
   const [saveMessage, setSaveMessage] = useState('No unsaved changes.');
   const [dropHint, setDropHint] = useState('Drag an asset into a collection or journey milestone.');
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   const blockIdRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -253,6 +254,43 @@ export default function CoachPortalScreen() {
   const activeWorkspace = getWorkspaceModeForRoute(activeKey);
   const activeSurface = COACH_WORKSPACES[activeWorkspace];
   const activeRoutePath = getAdminRouteByKey(activeKey).path;
+  const accountInitial = (session?.user?.email?.trim().charAt(0) || backendRole?.trim().charAt(0) || 'A').toUpperCase();
+  const accountLabel = session?.user?.email || 'Signed-in account';
+  const roleLabel = backendRole ? `Role: ${backendRole}` : 'Role from session';
+
+  const renderAccountMenu = (tone: 'coach' | 'default' = 'default') => (
+    <View style={styles.accountMenuWrap}>
+      <Pressable
+        style={[styles.avatarButton, tone === 'coach' && styles.avatarButtonCoach, accountMenuOpen && styles.avatarButtonOpen]}
+        onPress={() => setAccountMenuOpen((prev) => !prev)}
+        accessibilityRole="button"
+        accessibilityLabel="Open account menu"
+      >
+        <Text style={styles.avatarButtonText}>{accountInitial}</Text>
+        <Text style={styles.avatarChevron}>▾</Text>
+      </Pressable>
+      {accountMenuOpen ? (
+        <View style={styles.accountDropdown}>
+          <Text style={styles.accountMenuLabel}>Account</Text>
+          <Text style={styles.accountMenuValue} numberOfLines={1}>
+            {accountLabel}
+          </Text>
+          <Text style={styles.accountMenuRole}>{roleLabel}</Text>
+          <TouchableOpacity
+            style={styles.accountMenuSignOut}
+            onPress={() => {
+              setAccountMenuOpen(false);
+              void signOut();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+          >
+            <Text style={styles.accountMenuSignOutText}>Sign out</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
   const visibleWorkspaceModes = useMemo(() => {
     const modes: CoachWorkspaceMode[] = [];
     (Object.keys(WORKSPACE_ROUTE_KEYS) as CoachWorkspaceMode[]).forEach((mode) => {
@@ -761,6 +799,7 @@ export default function CoachPortalScreen() {
   if (!visibleRoutes.length) {
     return (
       <SafeAreaView style={styles.screen}>
+        <View style={styles.centerTopBar}>{renderAccountMenu()}</View>
         <View style={styles.centerCard}>
           <Text style={styles.centerTitle}>Coach Portal Access Required</Text>
           <Text style={styles.centerBody}>This account does not have access to the coach portal routes at this time.</Text>
@@ -773,6 +812,7 @@ export default function CoachPortalScreen() {
   if (notFoundPath) {
     return (
       <SafeAreaView style={styles.screen}>
+        <View style={styles.centerTopBar}>{renderAccountMenu()}</View>
         <View style={styles.centerCard}>
           <Text style={styles.centerTitle}>Route Not Found</Text>
           <Text style={styles.centerBody}>The requested coach route is not available. Continue in the coach portal routes.</Text>
@@ -803,15 +843,13 @@ export default function CoachPortalScreen() {
               </View>
             </View>
             <View style={styles.heroActions}>
-              <View style={styles.roleBadge}>
-                {backendRoleLoading ? <ActivityIndicator size="small" color="#1E5A42" /> : null}
-                <Text style={styles.roleBadgeText}>{backendRole ? `Role: ${backendRole}` : 'Role from session'}</Text>
+                <View style={styles.roleBadge}>
+                  {backendRoleLoading ? <ActivityIndicator size="small" color="#1E5A42" /> : null}
+                  <Text style={styles.roleBadgeText}>{backendRole ? `Role: ${backendRole}` : 'Role from session'}</Text>
+                </View>
+                {renderAccountMenu('coach')}
               </View>
-              <TouchableOpacity style={styles.signOutButton} onPress={() => void signOut()}>
-                <Text style={styles.signOutButtonText}>Sign out</Text>
-              </TouchableOpacity>
             </View>
-          </View>
           <Text style={styles.scopeText}>{scopeSummary}</Text>
           <Text style={styles.compatText}>
             Compatibility aliases remain active: `/coach/uploads` and `/admin/coaching/*` map to canonical `/coach/*` routes.
@@ -1440,6 +1478,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 8,
     minWidth: 240,
+    zIndex: 30,
   },
   roleBadge: {
     borderWidth: 1,
@@ -1469,6 +1508,89 @@ const styles = StyleSheet.create({
     color: '#2A4337',
     fontSize: 13,
     fontWeight: '600',
+  },
+  accountMenuWrap: {
+    position: 'relative',
+    alignItems: 'flex-end',
+  },
+  avatarButton: {
+    borderWidth: 1,
+    borderColor: '#CEE3D6',
+    backgroundColor: '#F7FCF9',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    minWidth: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  avatarButtonCoach: {
+    borderColor: '#B8D9C7',
+    backgroundColor: '#F3FBF7',
+  },
+  avatarButtonOpen: {
+    borderColor: '#1F7A52',
+  },
+  avatarButtonText: {
+    color: '#1E4A37',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  avatarChevron: {
+    color: '#3D6453',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 1,
+  },
+  accountDropdown: {
+    position: 'absolute',
+    top: 42,
+    right: 0,
+    borderWidth: 1,
+    borderColor: '#CFE3D7',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    minWidth: 220,
+    padding: 10,
+    gap: 6,
+    shadowColor: '#0B2A1A',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
+    zIndex: 40,
+  },
+  accountMenuLabel: {
+    color: '#5C7D6C',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    fontWeight: '700',
+  },
+  accountMenuValue: {
+    color: '#1F3A2E',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  accountMenuRole: {
+    color: '#4F6B5C',
+    fontSize: 11,
+  },
+  accountMenuSignOut: {
+    borderWidth: 1,
+    borderColor: '#D8E9E0',
+    borderRadius: 8,
+    backgroundColor: '#F7FCF9',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 2,
+  },
+  accountMenuSignOutText: {
+    color: '#224434',
+    fontSize: 12,
+    fontWeight: '700',
   },
   scopeText: {
     color: '#2E4F41',
@@ -2157,6 +2279,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     padding: 16,
     gap: 8,
+  },
+  centerTopBar: {
+    marginTop: 16,
+    marginRight: 20,
+    alignItems: 'flex-end',
+    zIndex: 30,
   },
   centerTitle: {
     color: '#243B31',
