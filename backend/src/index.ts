@@ -1989,7 +1989,15 @@ app.get("/api/channels", async (req, res) => {
         provider_trace_id: null,
       };
     });
-    const notificationItems = channelRows.map((channel) =>
+    const scopedChannelRows: typeof channelRows = [];
+    for (const channel of channelRows) {
+      const scopeCheck = await evaluateRoleScopeForChannel(auth.user.id, String((channel as { id?: unknown }).id ?? ""));
+      if (!scopeCheck.ok) return res.status(scopeCheck.status).json({ error: scopeCheck.error });
+      if (scopeCheck.result.allowed) {
+        scopedChannelRows.push(channel);
+      }
+    }
+    const notificationItems = scopedChannelRows.map((channel) =>
       buildNotificationItemForChannel({
         channel,
         unread_count: toNumberOrZero((channel as { unread_count?: unknown }).unread_count),
@@ -1998,7 +2006,7 @@ app.get("/api/channels", async (req, res) => {
     );
 
     return res.json({
-      channels: channelRows,
+      channels: scopedChannelRows,
       notification_items: notificationItems,
       notification_summary_read_model: buildNotificationSummaryReadModel({
         items: notificationItems,
@@ -2124,6 +2132,19 @@ app.post("/api/channels/token", async (req, res) => {
         req.headers["x-request-id"]
       );
     }
+    const roleScopeCheck = await evaluateRoleScopeForChannel(auth.user.id, payload.channel_id);
+    if (!roleScopeCheck.ok) {
+      return errorEnvelopeResponse(res, 503, "provider_unavailable", roleScopeCheck.error, req.headers["x-request-id"]);
+    }
+    if (!roleScopeCheck.result.allowed) {
+      return errorEnvelopeResponse(
+        res,
+        403,
+        "scope_denied",
+        roleScopeCheck.result.reason ?? "Caller role scope does not allow this channel",
+        req.headers["x-request-id"]
+      );
+    }
 
     const { data: channel, error: channelError } = await dataClient
       .from("channels")
@@ -2237,6 +2258,21 @@ app.post("/api/channels/sync", async (req, res) => {
         req.headers["x-request-id"]
       );
     }
+    const roleScopeCheck = await evaluateRoleScopeForChannel(auth.user.id, payload.channel_id, {
+      requireLeaderForTeamScopedAdmin: true,
+    });
+    if (!roleScopeCheck.ok) {
+      return errorEnvelopeResponse(res, 503, "provider_unavailable", roleScopeCheck.error, req.headers["x-request-id"]);
+    }
+    if (!roleScopeCheck.result.allowed) {
+      return errorEnvelopeResponse(
+        res,
+        403,
+        "scope_denied",
+        roleScopeCheck.result.reason ?? "Caller role scope does not allow channel sync",
+        req.headers["x-request-id"]
+      );
+    }
 
     const snapshot = await buildChannelAuthoritySnapshot(payload.channel_id);
     if (!snapshot.ok) {
@@ -2328,6 +2364,11 @@ app.get("/api/channels/:id/messages", async (req, res) => {
     const membership = await checkChannelMembership(channelId, auth.user.id);
     if (!membership.ok) return res.status(membership.status).json({ error: membership.error });
     if (!membership.member) return res.status(403).json({ error: "Not a channel member" });
+    const roleScopeCheck = await evaluateRoleScopeForChannel(auth.user.id, channelId);
+    if (!roleScopeCheck.ok) return res.status(roleScopeCheck.status).json({ error: roleScopeCheck.error });
+    if (!roleScopeCheck.result.allowed) {
+      return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
+    }
 
     const { data: channel, error: channelError } = await dataClient
       .from("channels")
@@ -2398,6 +2439,11 @@ app.post("/api/channels/:id/messages", async (req, res) => {
     const membership = await checkChannelMembership(channelId, auth.user.id);
     if (!membership.ok) return res.status(membership.status).json({ error: membership.error });
     if (!membership.member) return res.status(403).json({ error: "Not a channel member" });
+    const roleScopeCheck = await evaluateRoleScopeForChannel(auth.user.id, channelId);
+    if (!roleScopeCheck.ok) return res.status(roleScopeCheck.status).json({ error: roleScopeCheck.error });
+    if (!roleScopeCheck.result.allowed) {
+      return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
+    }
 
     const { data: message, error: messageError } = await dataClient
       .from("channel_messages")
@@ -2476,6 +2522,11 @@ app.post("/api/messages/mark-seen", async (req, res) => {
     const membership = await checkChannelMembership(channelId, auth.user.id);
     if (!membership.ok) return res.status(membership.status).json({ error: membership.error });
     if (!membership.member) return res.status(403).json({ error: "Not a channel member" });
+    const roleScopeCheck = await evaluateRoleScopeForChannel(auth.user.id, channelId);
+    if (!roleScopeCheck.ok) return res.status(roleScopeCheck.status).json({ error: roleScopeCheck.error });
+    if (!roleScopeCheck.result.allowed) {
+      return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
+    }
 
     const nowIso = new Date().toISOString();
     const { data: row, error } = await dataClient
@@ -4387,10 +4438,20 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
     }
 
     // 2. Fetch message-linked tasks (messages with message_kind metadata)
+    const { data: memberChannelRows, error: memberChannelRowsError } = await dataClient
+      .from("channel_memberships")
+      .select("channel_id")
+      .eq("user_id", userId);
+    if (memberChannelRowsError) {
+      return handleSupabaseError(res, "Failed to fetch channel scope for message-linked assignments", memberChannelRowsError);
+    }
+    const allowedChannelIds = (memberChannelRows ?? []).map((row) => String((row as { channel_id?: unknown }).channel_id ?? "")).filter(Boolean);
+
     const { data: taskMsgRows, error: taskRowsError } = await dataClient
       .from("channel_messages")
       .select("id,channel_id,message_kind,assignment_ref,created_at")
       .in("message_kind", ["coach_task", "personal_task"])
+      .in("channel_id", allowedChannelIds.length > 0 ? allowedChannelIds : ["00000000-0000-0000-0000-000000000000"])
       .order("created_at", { ascending: false });
     if (taskRowsError) {
       if (!isRecoverableAssignmentSourceGap(taskRowsError)) {
@@ -4407,6 +4468,13 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
       const taskType = (m.message_kind as string) === "coach_task" ? "coach_task" : "personal_task";
       const isAssignee = assigneeId === userId;
 
+      const roleScopeCheck = await evaluateRoleScopeForChannel(userId, String((m.channel_id as string) ?? ""));
+      if (!roleScopeCheck.ok) return res.status(roleScopeCheck.status).json({ error: roleScopeCheck.error });
+      if (!roleScopeCheck.result.allowed) continue;
+
+      const role = roleScopeCheck.result.role;
+      const canManageCoachTask = taskType === "coach_task" && (role === "coach" || role === "team_leader" || role === "admin" || role === "super_admin");
+
       assignments.push({
         id: (ref.id as string) ?? (m.id as string),
         type: taskType as AssignmentItem["type"],
@@ -4421,10 +4489,10 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
         last_thread_event_at: null,
         thread_read_state: "unknown",
         rights: {
-          can_edit_fields: !isAssignee && taskType === "coach_task",
+          can_edit_fields: !isAssignee && canManageCoachTask,
           can_update_status: true,
           can_mark_complete: true,
-          can_reassign: !isAssignee && taskType === "coach_task",
+          can_reassign: !isAssignee && canManageCoachTask,
         },
       });
     }
@@ -9068,6 +9136,12 @@ type CoachingAccessContext = {
   memberTeamIds: Set<string>;
 };
 
+type ChannelScopeEvaluation = {
+  allowed: boolean;
+  reason?: string;
+  role: string;
+};
+
 async function getCoachingAccessContext(userId: string): Promise<
   | { ok: true; context: CoachingAccessContext }
   | { ok: false; status: number; error: string }
@@ -9137,7 +9211,11 @@ async function canBroadcastToChannel(channelId: string, userId: string): Promise
   const membership = await checkChannelMembership(channelId, userId);
   if (!membership.ok) return membership;
   if (!membership.member) return { ok: true, allowed: false };
-  if (membership.role === "admin") return { ok: true, allowed: true };
+  if (membership.role === "admin") {
+    const scope = await evaluateRoleScopeForChannel(userId, channelId, { requireLeaderForTeamScopedAdmin: true });
+    if (!scope.ok) return scope;
+    return { ok: true, allowed: scope.result.allowed };
+  }
 
   const platformAdmin = await isPlatformAdmin(userId);
   if (platformAdmin) return { ok: true, allowed: true };
@@ -9156,6 +9234,82 @@ async function canBroadcastToChannel(channelId: string, userId: string): Promise
   const teamLeader = await checkTeamLeader(teamId, userId);
   if (!teamLeader.ok) return teamLeader;
   return { ok: true, allowed: teamLeader.isLeader };
+}
+
+async function evaluateRoleScopeForChannel(
+  userId: string,
+  channelId: string,
+  options: { requireLeaderForTeamScopedAdmin?: boolean } = {}
+): Promise<
+  | { ok: true; result: ChannelScopeEvaluation }
+  | { ok: false; status: number; error: string }
+> {
+  if (!dataClient) {
+    return { ok: false, status: 500, error: "Supabase data client not configured" };
+  }
+  const roleResult = await getUserRoleForScope(userId);
+  if (!roleResult.ok) return roleResult;
+  const role = roleResult.role;
+  if (role === "admin" || role === "super_admin" || role === "coach") {
+    return { ok: true, result: { allowed: true, role } };
+  }
+
+  const { data: channel, error: channelError } = await dataClient
+    .from("channels")
+    .select("id,type,team_id,context_id,is_active")
+    .eq("id", channelId)
+    .maybeSingle();
+  if (channelError) {
+    return { ok: false, status: 500, error: "Failed to load channel context for role scope" };
+  }
+  if (!channel || !Boolean((channel as { is_active?: unknown }).is_active)) {
+    return { ok: true, result: { allowed: false, reason: "Channel is not active", role } };
+  }
+
+  const channelType = String((channel as { type?: unknown }).type ?? "direct");
+  const teamId = String((channel as { team_id?: unknown }).team_id ?? "");
+
+  if (role === "challenge_sponsor") {
+    const sponsorAllowed = channelType === "sponsor" || channelType === "challenge";
+    return {
+      ok: true,
+      result: sponsorAllowed
+        ? { allowed: true, role }
+        : {
+            allowed: false,
+            reason: "challenge_sponsor scope is limited to sponsor/challenge channels",
+            role,
+          },
+    };
+  }
+
+  if (channelType === "sponsor") {
+    return {
+      ok: true,
+      result: {
+        allowed: false,
+        reason: `${role} scope does not include sponsor channels`,
+        role,
+      },
+    };
+  }
+
+  if (role === "team_leader" && options.requireLeaderForTeamScopedAdmin && teamId) {
+    const leaderCheck = await checkTeamLeader(teamId, userId);
+    if (!leaderCheck.ok) return leaderCheck;
+    if (!leaderCheck.isLeader) {
+      return {
+        ok: true,
+        result: {
+          allowed: false,
+          reason: "team_leader channel admin scope is limited to leader-owned team channels",
+          role,
+        },
+      };
+    }
+  }
+
+  return { ok: true, result: { allowed: true, role } };
 }
 
 async function canLeaderTargetUserForAiSuggestion(

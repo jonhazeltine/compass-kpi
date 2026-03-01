@@ -24,6 +24,7 @@
     "test:coaching-endpoint-hardening": "npm run build && node scripts/coaching_endpoint_hardening_acceptance.js",
     "test:checkpoint-h-coaching-authoring": "npm run build && node scripts/coaching_authoring_runtime_contract_acceptance.js",
     "test:w13-stream-wave-a": "npm run build && node scripts/w13_stream_wave_a_acceptance.js",
+    "test:w13-stream-comms-role-policy": "npm run build && node scripts/w13_stream_comms_role_policy_acceptance.js",
     "test:w13-mux-wave-b": "npm run build && node scripts/w13_mux_wave_b_acceptance.js",
     "test:w13-runtime-parity-matrix": "npm run build && node scripts/w13_runtime_parity_matrix.js",
     "seed:coaching:realism:reset": "npm run build && node scripts/coaching_sample_content_seed.js --reset-only",

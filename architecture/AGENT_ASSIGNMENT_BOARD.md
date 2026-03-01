@@ -5224,6 +5224,29 @@ Redesign Team tab `Challenges` list so it is less dense and more actionable:
 4. Joined challenge tap behavior:
    - open existing challenge detail screen directly.
 
+### `M6-STREAM-COMMS-ROLE-POLICY-HARDENING-B`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 stream/comms runtime policy hardening`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`
+- `Flow:` `stream-era comms role/scope policy`
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass`
+- `Execution note (2026-03-01, Mobile-2 start):` Assignment activated. Hardening role/scope policy behavior for channel token/sync/messages paths with targeted acceptance coverage and no KPI mutation side-effects.
+- `Completion note (2026-03-01, Mobile-2):` Added explicit stream-era channel role scope hardening across channel list/token/sync/thread/message/mark-seen paths, tightened message-linked task rights/scope filtering, and added targeted acceptance script coverage for coach/team_leader/member/challenge_sponsor allowed/blocked outcomes.
+- `Validation note (2026-03-01, Mobile-2):` `npm run -s build`, `npm run -s test:checkpoint-h-coaching-authoring`, `npm run -s test:w13-stream-wave-a`, and `npm run -s test:w13-stream-comms-role-policy` all passed.
+
+#### Scope In
+- `/Users/jon/compass-kpi/backend/src/index.ts`
+- `/Users/jon/compass-kpi/backend/scripts/*stream*` acceptance coverage for changed behavior
+- minimal harness/package script updates only
+
+#### Constraints
+- Deterministic status vocabulary preserved.
+- Existing channel/message endpoint families remain backward compatible.
+- No KPI source-of-truth mutation side effects.
+
 #### Hard Constraints
 - Keep existing role gates and challenge join logic intact.
 - Do not change endpoint families or payload contracts.
