@@ -2171,8 +2171,23 @@ app.post("/api/channels/token", async (req, res) => {
       );
     }
 
-    const platformAdmin = await isPlatformAdmin(auth.user.id);
-    const isChannelAdmin = membership.role === "admin" || platformAdmin;
+    const roleAdminScopeCheck = await evaluateRoleScopeForChannel(auth.user.id, payload.channel_id, {
+      requireLeaderForTeamScopedAdmin: true,
+    });
+    if (!roleAdminScopeCheck.ok) {
+      return errorEnvelopeResponse(res, 503, "provider_unavailable", roleAdminScopeCheck.error, req.headers["x-request-id"]);
+    }
+    const roleAdminScopeAllowed = roleAdminScopeCheck.result.allowed;
+    const roleAdminScopeRole = roleAdminScopeCheck.result.role;
+    const channelTeamId = String((channel as { team_id?: unknown }).team_id ?? "");
+    const platformAdmin = roleAdminScopeRole === "admin" || roleAdminScopeRole === "super_admin";
+    const roleProvidesAdminScope =
+      roleAdminScopeAllowed &&
+      (roleAdminScopeRole === "coach" ||
+        roleAdminScopeRole === "admin" ||
+        roleAdminScopeRole === "super_admin" ||
+        (roleAdminScopeRole === "team_leader" && Boolean(channelTeamId)));
+    const isChannelAdmin = membership.role === "admin" || platformAdmin || roleProvidesAdminScope;
     const grants = {
       chat_read: true,
       chat_write: true,
@@ -2248,13 +2263,12 @@ app.post("/api/channels/sync", async (req, res) => {
     if (!membership.ok) {
       return errorEnvelopeResponse(res, 503, "provider_unavailable", membership.error, req.headers["x-request-id"]);
     }
-    const platformAdmin = await isPlatformAdmin(auth.user.id);
-    if (!membership.member || (membership.role !== "admin" && !platformAdmin)) {
+    if (!membership.member) {
       return errorEnvelopeResponse(
         res,
         403,
         "scope_denied",
-        "Channel sync requires channel admin scope",
+        "Channel sync requires channel membership",
         req.headers["x-request-id"]
       );
     }
@@ -2270,6 +2284,36 @@ app.post("/api/channels/sync", async (req, res) => {
         403,
         "scope_denied",
         roleScopeCheck.result.reason ?? "Caller role scope does not allow channel sync",
+        req.headers["x-request-id"]
+      );
+    }
+    const role = roleScopeCheck.result.role;
+    const { data: channelForAdminScope, error: channelForAdminScopeError } = await dataClient
+      .from("channels")
+      .select("team_id")
+      .eq("id", payload.channel_id)
+      .maybeSingle();
+    if (channelForAdminScopeError || !channelForAdminScope) {
+      return errorEnvelopeResponse(
+        res,
+        403,
+        "scope_denied",
+        "Channel is not active or caller scope does not allow access",
+        req.headers["x-request-id"]
+      );
+    }
+    const teamIdForAdminScope = String((channelForAdminScope as { team_id?: unknown }).team_id ?? "");
+    const isRoleAdmin =
+      role === "coach" ||
+      role === "admin" ||
+      role === "super_admin" ||
+      (role === "team_leader" && Boolean(teamIdForAdminScope));
+    if (!(membership.role === "admin" || isRoleAdmin)) {
+      return errorEnvelopeResponse(
+        res,
+        403,
+        "scope_denied",
+        "Channel sync requires channel admin scope",
         req.headers["x-request-id"]
       );
     }
@@ -9211,29 +9255,40 @@ async function canBroadcastToChannel(channelId: string, userId: string): Promise
   const membership = await checkChannelMembership(channelId, userId);
   if (!membership.ok) return membership;
   if (!membership.member) return { ok: true, allowed: false };
-  if (membership.role === "admin") {
-    const scope = await evaluateRoleScopeForChannel(userId, channelId, { requireLeaderForTeamScopedAdmin: true });
-    if (!scope.ok) return scope;
-    return { ok: true, allowed: scope.result.allowed };
-  }
-
-  const platformAdmin = await isPlatformAdmin(userId);
-  if (platformAdmin) return { ok: true, allowed: true };
+  const scope = await evaluateRoleScopeForChannel(userId, channelId, { requireLeaderForTeamScopedAdmin: true });
+  if (!scope.ok) return scope;
+  if (!scope.result.allowed) return { ok: true, allowed: false };
 
   const { data: channel, error: channelError } = await dataClient
     .from("channels")
-    .select("team_id")
+    .select("type,team_id,is_active")
     .eq("id", channelId)
     .maybeSingle();
   if (channelError) {
     return { ok: false, status: 500, error: "Failed to load channel for broadcast permission" };
   }
-  const teamId = String((channel as { team_id?: unknown } | null)?.team_id ?? "");
-  if (!teamId) return { ok: true, allowed: false };
-
-  const teamLeader = await checkTeamLeader(teamId, userId);
-  if (!teamLeader.ok) return teamLeader;
-  return { ok: true, allowed: teamLeader.isLeader };
+  if (!channel || !Boolean((channel as { is_active?: unknown }).is_active)) {
+    return { ok: true, allowed: false };
+  }
+  const role = scope.result.role;
+  if (role === "admin" || role === "super_admin" || role === "coach") {
+    return { ok: true, allowed: true };
+  }
+  if (role === "team_leader") {
+    const teamId = String((channel as { team_id?: unknown }).team_id ?? "");
+    if (!teamId) return { ok: true, allowed: false };
+    const teamLeader = await checkTeamLeader(teamId, userId);
+    if (!teamLeader.ok) return teamLeader;
+    return { ok: true, allowed: teamLeader.isLeader && membership.role === "admin" };
+  }
+  if (role === "challenge_sponsor") {
+    const channelType = String((channel as { type?: unknown }).type ?? "");
+    return {
+      ok: true,
+      allowed: membership.role === "admin" && (channelType === "sponsor" || channelType === "challenge"),
+    };
+  }
+  return { ok: true, allowed: false };
 }
 
 async function evaluateRoleScopeForChannel(
