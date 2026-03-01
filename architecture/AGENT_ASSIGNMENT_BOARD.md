@@ -154,7 +154,7 @@ Only use long custom prompts when the board is missing required details or a one
 | ID | Status | Program status | Persona | Flow | Screens | Blocker | Next action |
 |---|---|---|---|---|---|---|---|
 | `COACHING-INTEGRATION-A` | `unblocked via explicit owner approval` | `M3/M3b baseline + approved M6 planning overlap` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` | host surfaces across `Home`, `Challenge`, `Team`, `Profile` + future `Inbox/Journeys` | Former blocker resolved: owner approved pull-forward planning work; assignment spec now defined; docs-only to avoid code/sprint collision while `TEAM-MEMBER-PARITY-A` runs | Execute via `Coach-1`; update board first, then brief report back |
-| `W13-RUNTIME-PARITY-AND-HARDENING-A` | `review` | `W13 runtime parity/hardening` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `stream+mux runtime parity and hardening` | runtime parity/hardening surfaces in checkpoint validation/review | Runtime checkpoints landed and are under control-plane acceptance review (`c8d85ea`, `dd89e15`, `103d725`, `8cdfa78`). | Validate checkpoint evidence against assignment acceptance criteria and close out or relaunch targeted deltas only. |
+| `W13-RUNTIME-PARITY-AND-HARDENING-A` | `committed` | `W13 runtime parity/hardening` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `stream+mux runtime parity and hardening` | runtime parity/hardening surfaces accepted with checkpoint evidence | Runtime checkpoints accepted with evidence (`c8d85ea`, `dd89e15`, `103d725`, `8cdfa78`, `app/test-results/w13-runtime-parity-and-hardening-a/checkpoint-f-runtime-matrix-summary.json`). | Closed for this wave; open only targeted follow-up bugfix assignments if regressions are found. |
 
 ## Recently Completed (Awaiting Review / Landed on Branch)
 
@@ -4728,7 +4728,7 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 
 | Order | Assignment ID | Status | Owner | Depends On | Notes |
 |---|---|---|---|---|---|
-| 1 | `W13-CHAT-VIDEO-ARCH-RFC-A` | `review` | `Controller` | none | Docs/control-plane planning slice implemented on 2026-02-28; runtime code explicitly out-of-scope. |
+| 1 | `W13-CHAT-VIDEO-ARCH-RFC-A` | `committed` | `Controller` | none | Docs/control-plane planning slice implemented on 2026-02-28; runtime code explicitly out-of-scope. |
 | 2 | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Planned Stream token/sync contracts + acceptance depth merged (docs-only). |
 | 3 | `W13-MUX-CONTRACTS-AND-TESTS-A` | `committed` | `Admin-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | Planned Mux upload/playback/webhook contracts + acceptance depth merged (docs-only). |
 | 4 | `W13-DEP-005-VENDOR-SECURITY-LEGAL-CHECKLIST-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-005 checklist artifact + control-plane linkage completed (docs-only; no runtime changes). |
@@ -4737,7 +4737,7 @@ Execution order is strict and dependency-gated. Board ownership/status here is t
 | 7 | `W13-DEP-004-RETENTION-COMPLIANCE-DECISION-PACKET-A` | `committed` | `Coach-1` | `W13-CHAT-VIDEO-ARCH-RFC-A` | DEP-004 retention/compliance decision packet + control-plane linkage completed (docs-only; no runtime changes). |
 | 8 | `W13-IMPLEMENT-STREAM-ADAPTER-A` | `committed` | `Admin-1` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A` | Runtime Wave A completion checkpoint refreshed with deterministic Stream token issuance + channel sync authority/drift handling, additive provider sync metadata on channel read models, and acceptance evidence via `npm run test:w13-stream-wave-a` (2026-03-01 follow-through). |
 | 9 | `W13-IMPLEMENT-MUX-ADAPTER-A` | `committed` | `Admin-1` | `DEP-002`, `DEP-004`, `DEP-005`, `W13-MUX-CONTRACTS-AND-TESTS-A` | Runtime Wave B checkpoint landed with deterministic upload/playback/webhook handling; evidence commit `8cdfa78` and acceptance log `/Users/jon/compass-kpi/app/test-results/w13-runtime-parity-and-hardening-a/checkpoint-c-mux-wave-b.log`. |
-| 10 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `review` | `Mobile-2` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Checkpoint F complete: full Stream+Mux runtime parity/failure/authz matrix passed with KPI no-side-effect guardrails confirmed; evidence at `/Users/jon/compass-kpi/app/test-results/w13-runtime-parity-and-hardening-a/checkpoint-f-runtime-matrix-summary.json` and `/Users/jon/compass-kpi/app/test-results/w13-runtime-parity-and-hardening-a/checkpoint-f-runtime-parity-matrix.log`. |
+| 10 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `committed` | `Mobile-2` | `W13-IMPLEMENT-STREAM-ADAPTER-A`, `W13-IMPLEMENT-MUX-ADAPTER-A` | Checkpoint F accepted: full Stream+Mux runtime parity/failure/authz matrix passed with KPI no-side-effect guardrails confirmed; evidence at `/Users/jon/compass-kpi/app/test-results/w13-runtime-parity-and-hardening-a/checkpoint-f-runtime-matrix-summary.json` and `/Users/jon/compass-kpi/app/test-results/w13-runtime-parity-and-hardening-a/checkpoint-f-runtime-parity-matrix.log`. |
 | 11 | `W13-STREAM-MUX-READINESS-CONTRACT-LOCK-C` | `committed` | `Admin-1` | `W13-STREAM-CHAT-CONTRACTS-AND-TESTS-A`, `W13-MUX-CONTRACTS-AND-TESTS-A`, `W13-DEP-GATES-CLOSEOUT-TRACKER-A` | Committed docs lock: deterministic status/error vocabulary finalized for Stream/Mux planned paths, 1:1 contract behavior to acceptance mapping tables added, and KPI no-side-effect regression guardrails tightened (docs-only). |
 
 ### `W13-CHAT-VIDEO-ARCH-RFC-A`
@@ -5048,7 +5048,7 @@ Finalize Stream/Mux implementation-readiness in contracts/tests docs only, prese
 ### `W13-RUNTIME-PARITY-AND-HARDENING-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `committed`
 - `Program status:` `W13 runtime parity/hardening`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`
 - `Flow:` `stream+mux runtime parity and hardening`
@@ -5061,7 +5061,8 @@ Finalize Stream/Mux implementation-readiness in contracts/tests docs only, prese
 - `Validation note (2026-02-28, Mobile-2 Checkpoint C):` `npm --prefix /Users/jon/compass-kpi/backend run build` and `npm --prefix /Users/jon/compass-kpi/backend run test:w13-mux-wave-b` passed; runtime evidence log recorded at `/Users/jon/compass-kpi/app/test-results/w13-runtime-parity-and-hardening-a/checkpoint-c-mux-wave-b.log`.
 - `Execution note (2026-03-01, Mobile-2 Checkpoint F):` Executed full runtime parity matrix after Stream and Mux commits were on branch, including Stream token/sync authz/failure paths, Mux upload/playback/webhook lifecycle paths, and KPI no-side-effect guardrail checks.
 - `Validation note (2026-03-01, Mobile-2 Checkpoint F):` `npm --prefix /Users/jon/compass-kpi/backend run test:w13-stream-wave-a`, `npm --prefix /Users/jon/compass-kpi/backend run test:w13-mux-wave-b`, and `npm --prefix /Users/jon/compass-kpi/backend run test:w13-runtime-parity-matrix` all passed; evidence pack recorded at `/Users/jon/compass-kpi/app/test-results/w13-runtime-parity-and-hardening-a/checkpoint-f-runtime-parity-matrix.log` and `/Users/jon/compass-kpi/app/test-results/w13-runtime-parity-and-hardening-a/checkpoint-f-runtime-matrix-summary.json`.
-- `Current blocker status (2026-03-01, review):` `none` from dependency gating (`DEP-002`/`DEP-004`/`DEP-005` are `CLOSED`); awaiting controller acceptance.
+- `Completion note (2026-03-01, Controller acceptance):` Owner-approved and controller-accepted runtime parity checkpoint; assignment moved to `committed` with evidence locked to checkpoint C/F artifacts and runtime commits (`c8d85ea`, `dd89e15`, `103d725`, `8cdfa78`).
+- `Current blocker status (2026-03-01, committed):` `none`.
 
 #### Primary Objective
 Execute runtime parity and hardening pass after Stream and Mux adapters land, ensuring provider-backed chat/video behavior is deterministic across coach portal and mobile surfaces without expanding API families or violating persona guardrails.
