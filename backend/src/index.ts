@@ -146,6 +146,53 @@ type CoachingBroadcastPayload = {
   message_body: string;
 };
 
+type CoachingJourneyCreatePayload = {
+  title: string;
+  description?: string;
+  team_id?: string;
+};
+
+type CoachingJourneyUpdatePayload = {
+  title?: string;
+  description?: string;
+  team_id?: string | null;
+  is_active?: boolean;
+};
+
+type CoachingLessonCreatePayload = {
+  title: string;
+  sort_order?: number;
+};
+
+type CoachingLessonUpdatePayload = {
+  title?: string;
+  sort_order?: number;
+};
+
+type CoachingLessonReorderPayload = {
+  lesson_ids: string[];
+};
+
+type CoachingTaskCreatePayload = {
+  title: string;
+  body?: string;
+  sort_order?: number;
+};
+
+type CoachingTaskUpdatePayload = {
+  title?: string;
+  body?: string | null;
+  sort_order?: number;
+};
+
+type CoachingTaskReorderPayload = {
+  task_ids: string[];
+};
+
+type CoachingCohortMembershipUpdatePayload = {
+  member_user_ids: string[];
+};
+
 type CoachEngagementCreatePayload = {
   coach_id: string;
 };
@@ -2558,8 +2605,13 @@ app.post("/api/push-tokens", async (req, res) => {
 app.get("/api/coaching/journeys", async (req, res) => {
   try {
     const auth = await authenticateRequest(req.headers.authorization);
-    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
-    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) {
+      return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    }
+    const access = accessResult.context;
 
     const { data: journeys, error: journeysError } = await dataClient
       .from("journeys")
@@ -2567,38 +2619,13 @@ app.get("/api/coaching/journeys", async (req, res) => {
       .eq("is_active", true)
       .order("created_at", { ascending: false });
     if (journeysError) {
-      return handleSupabaseError(res, "Failed to fetch coaching journeys", journeysError);
+      return errorEnvelopeResponse(res, 500, "journey_fetch_failed", "Failed to fetch coaching journeys", req.headers["x-request-id"]);
     }
 
-    const platformAdmin = await isPlatformAdmin(auth.user.id);
-    let visibleJourneys = journeys ?? [];
-    if (!platformAdmin) {
-      const scopedTeamIds = Array.from(
-        new Set(
-          visibleJourneys
-            .map((j) => String((j as { team_id?: unknown }).team_id ?? ""))
-            .filter(Boolean)
-        )
-      );
-
-      let memberTeamIds = new Set<string>();
-      if (scopedTeamIds.length > 0) {
-        const { data: memberships, error: membershipsError } = await dataClient
-          .from("team_memberships")
-          .select("team_id")
-          .eq("user_id", auth.user.id)
-          .in("team_id", scopedTeamIds);
-        if (membershipsError) {
-          return handleSupabaseError(res, "Failed to evaluate coaching journey visibility", membershipsError);
-        }
-        memberTeamIds = new Set((memberships ?? []).map((m) => String(m.team_id)));
-      }
-
-      visibleJourneys = visibleJourneys.filter((j) => {
-        const teamId = String((j as { team_id?: unknown }).team_id ?? "");
-        return !teamId || memberTeamIds.has(teamId);
-      });
-    }
+    const visibleJourneys = (journeys ?? []).filter((j) => {
+      const teamId = String((j as { team_id?: unknown }).team_id ?? "") || null;
+      return canReadJourneyByTeam(access, teamId);
+    });
 
     const journeyIds = visibleJourneys.map((j) => String(j.id));
     if (journeyIds.length === 0) {
@@ -2718,18 +2745,23 @@ app.get("/api/coaching/journeys", async (req, res) => {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in GET /api/coaching/journeys", err);
-    return res.status(500).json({ error: "Internal server error" });
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
   }
 });
 
 app.get("/api/coaching/journeys/:id", async (req, res) => {
   try {
     const auth = await authenticateRequest(req.headers.authorization);
-    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
-    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) {
+      return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    }
+    const access = accessResult.context;
 
     const journeyId = req.params.id;
-    if (!journeyId) return res.status(422).json({ error: "journey id is required" });
+    if (!journeyId) return errorEnvelopeResponse(res, 422, "invalid_request", "journey id is required", req.headers["x-request-id"]);
 
     const { data: journey, error: journeyError } = await dataClient
       .from("journeys")
@@ -2737,14 +2769,11 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
       .eq("id", journeyId)
       .single();
     if (journeyError) {
-      return handleSupabaseError(res, "Failed to fetch journey", journeyError);
+      return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
     }
-    const platformAdmin = await isPlatformAdmin(auth.user.id);
     const scopedTeamId = String((journey as { team_id?: unknown } | null)?.team_id ?? "");
-    if (scopedTeamId && !platformAdmin) {
-      const membership = await checkTeamMembership(scopedTeamId, auth.user.id);
-      if (!membership.ok) return res.status(membership.status).json({ error: membership.error });
-      if (!membership.member) return res.status(403).json({ error: "You are not allowed to view this journey" });
+    if (!canReadJourneyByTeam(access, scopedTeamId || null)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "You are not allowed to view this journey", req.headers["x-request-id"]);
     }
 
     const { data: milestones, error: milestonesError } = await dataClient
@@ -2752,9 +2781,7 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
       .select("id,journey_id,title,sort_order")
       .eq("journey_id", journeyId)
       .order("sort_order", { ascending: true });
-    if (milestonesError) {
-      return handleSupabaseError(res, "Failed to fetch milestones", milestonesError);
-    }
+    if (milestonesError) return errorEnvelopeResponse(res, 500, "journey_fetch_failed", "Failed to fetch milestones", req.headers["x-request-id"]);
 
     const milestoneIds = (milestones ?? []).map((m) => String(m.id));
     let lessons: Array<{ id: string; milestone_id: string; title: string; body: string | null; sort_order: number }> = [];
@@ -2765,9 +2792,7 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
         .eq("is_active", true)
         .in("milestone_id", milestoneIds)
         .order("sort_order", { ascending: true });
-      if (lessonError) {
-        return handleSupabaseError(res, "Failed to fetch lessons", lessonError);
-      }
+      if (lessonError) return errorEnvelopeResponse(res, 500, "journey_fetch_failed", "Failed to fetch lessons", req.headers["x-request-id"]);
       lessons = (lessonRows ?? []) as Array<{ id: string; milestone_id: string; title: string; body: string | null; sort_order: number }>;
     }
 
@@ -2779,9 +2804,7 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
         .select("lesson_id,status,completed_at")
         .eq("user_id", auth.user.id)
         .in("lesson_id", lessonIds);
-      if (progressError) {
-        return handleSupabaseError(res, "Failed to fetch lesson progress", progressError);
-      }
+      if (progressError) return errorEnvelopeResponse(res, 500, "journey_fetch_failed", "Failed to fetch lesson progress", req.headers["x-request-id"]);
       progressRows = (progress ?? []) as Array<{ lesson_id: string; status: string; completed_at: string | null }>;
     }
     const progressByLesson = new Map(progressRows.map((p) => [String(p.lesson_id), p]));
@@ -2821,7 +2844,784 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in GET /api/coaching/journeys/:id", err);
-    return res.status(500).json({ error: "Internal server error" });
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.post("/api/coaching/journeys", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const payloadCheck = validateCoachingJourneyCreatePayload(req.body);
+    if (!payloadCheck.ok) {
+      return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+    }
+    const payload = payloadCheck.payload;
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) {
+      return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    }
+    const access = accessResult.context;
+    if (!canWriteJourneyByTeam(access, payload.team_id ?? null)) {
+      return errorEnvelopeResponse(
+        res,
+        403,
+        "scope_denied",
+        "Caller role cannot create journey in this scope",
+        req.headers["x-request-id"]
+      );
+    }
+
+    await ensureUserRow(auth.user.id);
+    const nowIso = new Date().toISOString();
+    const { data: row, error } = await dataClient
+      .from("journeys")
+      .insert({
+        title: payload.title,
+        description: payload.description ?? null,
+        team_id: payload.team_id ?? null,
+        created_by: auth.user.id,
+        is_active: true,
+        created_at: nowIso,
+        updated_at: nowIso,
+      })
+      .select("id,title,description,team_id,is_active,created_by,created_at,updated_at")
+      .single();
+    if (error) {
+      return errorEnvelopeResponse(res, 500, "journey_create_failed", "Failed to create journey", req.headers["x-request-id"]);
+    }
+    return res.status(201).json({ journey: row });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/coaching/journeys", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.patch("/api/coaching/journeys/:id", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const journeyId = req.params.id;
+    if (!journeyId) return errorEnvelopeResponse(res, 422, "invalid_request", "journey id is required", req.headers["x-request-id"]);
+    const payloadCheck = validateCoachingJourneyUpdatePayload(req.body);
+    if (!payloadCheck.ok) {
+      return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+    }
+    const payload = payloadCheck.payload;
+
+    const { data: journey, error: journeyError } = await dataClient
+      .from("journeys")
+      .select("id,team_id,is_active")
+      .eq("id", journeyId)
+      .maybeSingle();
+    if (journeyError || !journey) {
+      return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
+    }
+
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) {
+      return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    }
+    const access = accessResult.context;
+    const currentTeamId = String((journey as { team_id?: unknown }).team_id ?? "") || null;
+    if (!canWriteJourneyByTeam(access, currentTeamId)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot update this journey", req.headers["x-request-id"]);
+    }
+    const nextTeamId = payload.team_id === undefined ? currentTeamId : payload.team_id;
+    if (!canWriteJourneyByTeam(access, nextTeamId ?? null)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot move journey to requested scope", req.headers["x-request-id"]);
+    }
+
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (payload.title !== undefined) patch.title = payload.title;
+    if (payload.description !== undefined) patch.description = payload.description || null;
+    if (payload.team_id !== undefined) patch.team_id = payload.team_id;
+    if (payload.is_active !== undefined) patch.is_active = payload.is_active;
+
+    const { data: updated, error: updateError } = await dataClient
+      .from("journeys")
+      .update(patch)
+      .eq("id", journeyId)
+      .select("id,title,description,team_id,is_active,created_by,created_at,updated_at")
+      .single();
+    if (updateError) {
+      return errorEnvelopeResponse(res, 500, "journey_update_failed", "Failed to update journey", req.headers["x-request-id"]);
+    }
+    return res.json({ journey: updated });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in PATCH /api/coaching/journeys/:id", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.delete("/api/coaching/journeys/:id", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const journeyId = req.params.id;
+    if (!journeyId) return errorEnvelopeResponse(res, 422, "invalid_request", "journey id is required", req.headers["x-request-id"]);
+
+    const { data: journey, error: journeyError } = await dataClient
+      .from("journeys")
+      .select("id,team_id,is_active")
+      .eq("id", journeyId)
+      .maybeSingle();
+    if (journeyError || !journey) {
+      return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
+    }
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) {
+      return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    }
+    const teamId = String((journey as { team_id?: unknown }).team_id ?? "") || null;
+    if (!canWriteJourneyByTeam(accessResult.context, teamId)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot delete this journey", req.headers["x-request-id"]);
+    }
+    const { error: deleteError } = await dataClient
+      .from("journeys")
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq("id", journeyId);
+    if (deleteError) {
+      return errorEnvelopeResponse(res, 500, "journey_delete_failed", "Failed to delete journey", req.headers["x-request-id"]);
+    }
+    return res.json({ deleted: true, journey_id: journeyId });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in DELETE /api/coaching/journeys/:id", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.post("/api/coaching/journeys/:id/lessons", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const journeyId = req.params.id;
+    if (!journeyId) return errorEnvelopeResponse(res, 422, "invalid_request", "journey id is required", req.headers["x-request-id"]);
+    const payloadCheck = validateCoachingLessonCreatePayload(req.body);
+    if (!payloadCheck.ok) {
+      return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+    }
+
+    const { data: journey, error: journeyError } = await dataClient
+      .from("journeys")
+      .select("id,team_id")
+      .eq("id", journeyId)
+      .maybeSingle();
+    if (journeyError || !journey) return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    const teamId = String((journey as { team_id?: unknown }).team_id ?? "") || null;
+    if (!canWriteJourneyByTeam(accessResult.context, teamId)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot modify lessons in this journey", req.headers["x-request-id"]);
+    }
+
+    const payload = payloadCheck.payload;
+    let sortOrder = payload.sort_order;
+    if (sortOrder === undefined) {
+      const { data: sortRows, error: sortError } = await dataClient
+        .from("milestones")
+        .select("sort_order")
+        .eq("journey_id", journeyId)
+        .order("sort_order", { ascending: false })
+        .limit(1);
+      if (sortError) return errorEnvelopeResponse(res, 500, "lesson_create_failed", "Failed to compute lesson sort order", req.headers["x-request-id"]);
+      sortOrder = toNumberOrZero((sortRows?.[0] as { sort_order?: unknown } | undefined)?.sort_order) + 1;
+    }
+    const nowIso = new Date().toISOString();
+    const { data: row, error } = await dataClient
+      .from("milestones")
+      .insert({
+        journey_id: journeyId,
+        title: payload.title,
+        sort_order: sortOrder,
+        created_at: nowIso,
+        updated_at: nowIso,
+      })
+      .select("id,journey_id,title,sort_order,created_at,updated_at")
+      .single();
+    if (error) return errorEnvelopeResponse(res, 500, "lesson_create_failed", "Failed to create lesson", req.headers["x-request-id"]);
+    return res.status(201).json({ lesson: row });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/coaching/journeys/:id/lessons", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.patch("/api/coaching/journeys/:id/lessons/:lessonId", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const journeyId = req.params.id;
+    const lessonId = req.params.lessonId;
+    if (!journeyId || !lessonId) return errorEnvelopeResponse(res, 422, "invalid_request", "journey id and lesson id are required", req.headers["x-request-id"]);
+    const payloadCheck = validateCoachingLessonUpdatePayload(req.body);
+    if (!payloadCheck.ok) return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+
+    const { data: milestone, error: milestoneError } = await dataClient
+      .from("milestones")
+      .select("id,journey_id,title,sort_order,created_at,updated_at")
+      .eq("id", lessonId)
+      .eq("journey_id", journeyId)
+      .maybeSingle();
+    if (milestoneError || !milestone) return errorEnvelopeResponse(res, 404, "not_found", "Lesson not found", req.headers["x-request-id"]);
+    const { data: journey, error: journeyError } = await dataClient
+      .from("journeys")
+      .select("team_id")
+      .eq("id", journeyId)
+      .maybeSingle();
+    if (journeyError || !journey) return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    const teamId = String((journey as { team_id?: unknown }).team_id ?? "") || null;
+    if (!canWriteJourneyByTeam(accessResult.context, teamId)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot modify lessons in this journey", req.headers["x-request-id"]);
+    }
+
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (payloadCheck.payload.title !== undefined) patch.title = payloadCheck.payload.title;
+    if (payloadCheck.payload.sort_order !== undefined) patch.sort_order = payloadCheck.payload.sort_order;
+    const { data: updated, error: updateError } = await dataClient
+      .from("milestones")
+      .update(patch)
+      .eq("id", lessonId)
+      .select("id,journey_id,title,sort_order,created_at,updated_at")
+      .single();
+    if (updateError) return errorEnvelopeResponse(res, 500, "lesson_update_failed", "Failed to update lesson", req.headers["x-request-id"]);
+    return res.json({ lesson: updated });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in PATCH /api/coaching/journeys/:id/lessons/:lessonId", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.delete("/api/coaching/journeys/:id/lessons/:lessonId", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const journeyId = req.params.id;
+    const lessonId = req.params.lessonId;
+    if (!journeyId || !lessonId) return errorEnvelopeResponse(res, 422, "invalid_request", "journey id and lesson id are required", req.headers["x-request-id"]);
+
+    const { data: journey, error: journeyError } = await dataClient
+      .from("journeys")
+      .select("team_id")
+      .eq("id", journeyId)
+      .maybeSingle();
+    if (journeyError || !journey) return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    const teamId = String((journey as { team_id?: unknown }).team_id ?? "") || null;
+    if (!canWriteJourneyByTeam(accessResult.context, teamId)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot modify lessons in this journey", req.headers["x-request-id"]);
+    }
+    const { error } = await dataClient
+      .from("milestones")
+      .delete()
+      .eq("id", lessonId)
+      .eq("journey_id", journeyId);
+    if (error) return errorEnvelopeResponse(res, 500, "lesson_delete_failed", "Failed to delete lesson", req.headers["x-request-id"]);
+    return res.json({ deleted: true, lesson_id: lessonId });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in DELETE /api/coaching/journeys/:id/lessons/:lessonId", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.post("/api/coaching/journeys/:id/lessons/reorder", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const journeyId = req.params.id;
+    if (!journeyId) return errorEnvelopeResponse(res, 422, "invalid_request", "journey id is required", req.headers["x-request-id"]);
+    const payloadCheck = validateCoachingLessonReorderPayload(req.body);
+    if (!payloadCheck.ok) return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+
+    const { data: journey, error: journeyError } = await dataClient
+      .from("journeys")
+      .select("team_id")
+      .eq("id", journeyId)
+      .maybeSingle();
+    if (journeyError || !journey) return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    const teamId = String((journey as { team_id?: unknown }).team_id ?? "") || null;
+    if (!canWriteJourneyByTeam(accessResult.context, teamId)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot reorder lessons in this journey", req.headers["x-request-id"]);
+    }
+
+    const lessonIds = payloadCheck.payload.lesson_ids;
+    const { data: milestones, error: milestonesError } = await dataClient
+      .from("milestones")
+      .select("id")
+      .eq("journey_id", journeyId);
+    if (milestonesError) return errorEnvelopeResponse(res, 500, "lesson_reorder_failed", "Failed to load lessons", req.headers["x-request-id"]);
+    const existingIds = new Set((milestones ?? []).map((row) => String((row as { id?: unknown }).id ?? "")));
+    if (existingIds.size !== lessonIds.length || lessonIds.some((id) => !existingIds.has(id))) {
+      return errorEnvelopeResponse(
+        res,
+        409,
+        "reconcile_conflict",
+        "lesson_ids must include every lesson id for the journey exactly once",
+        req.headers["x-request-id"]
+      );
+    }
+    for (let i = 0; i < lessonIds.length; i += 1) {
+      const lessonId = lessonIds[i];
+      const { error } = await dataClient
+        .from("milestones")
+        .update({ sort_order: i, updated_at: new Date().toISOString() })
+        .eq("id", lessonId)
+        .eq("journey_id", journeyId);
+      if (error) return errorEnvelopeResponse(res, 500, "lesson_reorder_failed", "Failed to reorder lessons", req.headers["x-request-id"]);
+    }
+    return res.json({ reordered: true, lesson_ids: lessonIds });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/coaching/journeys/:id/lessons/reorder", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.post("/api/coaching/journeys/:id/lessons/:lessonId/tasks", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const journeyId = req.params.id;
+    const lessonId = req.params.lessonId;
+    if (!journeyId || !lessonId) return errorEnvelopeResponse(res, 422, "invalid_request", "journey id and lesson id are required", req.headers["x-request-id"]);
+    const payloadCheck = validateCoachingTaskCreatePayload(req.body);
+    if (!payloadCheck.ok) return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+    const { data: milestone, error: milestoneError } = await dataClient
+      .from("milestones")
+      .select("id,journey_id")
+      .eq("id", lessonId)
+      .eq("journey_id", journeyId)
+      .maybeSingle();
+    if (milestoneError || !milestone) return errorEnvelopeResponse(res, 404, "not_found", "Lesson not found", req.headers["x-request-id"]);
+    const { data: journey, error: journeyError } = await dataClient
+      .from("journeys")
+      .select("team_id")
+      .eq("id", journeyId)
+      .maybeSingle();
+    if (journeyError || !journey) return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    const teamId = String((journey as { team_id?: unknown }).team_id ?? "") || null;
+    if (!canWriteJourneyByTeam(accessResult.context, teamId)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot modify tasks in this lesson", req.headers["x-request-id"]);
+    }
+    const payload = payloadCheck.payload;
+    let sortOrder = payload.sort_order;
+    if (sortOrder === undefined) {
+      const { data: sortRows, error: sortError } = await dataClient
+        .from("lessons")
+        .select("sort_order")
+        .eq("milestone_id", lessonId)
+        .eq("is_active", true)
+        .order("sort_order", { ascending: false })
+        .limit(1);
+      if (sortError) return errorEnvelopeResponse(res, 500, "task_create_failed", "Failed to compute task sort order", req.headers["x-request-id"]);
+      sortOrder = toNumberOrZero((sortRows?.[0] as { sort_order?: unknown } | undefined)?.sort_order) + 1;
+    }
+    const nowIso = new Date().toISOString();
+    const { data: row, error } = await dataClient
+      .from("lessons")
+      .insert({
+        milestone_id: lessonId,
+        title: payload.title,
+        body: payload.body ?? null,
+        sort_order: sortOrder,
+        is_active: true,
+        created_at: nowIso,
+        updated_at: nowIso,
+      })
+      .select("id,milestone_id,title,body,sort_order,is_active,created_at,updated_at")
+      .single();
+    if (error) return errorEnvelopeResponse(res, 500, "task_create_failed", "Failed to create task", req.headers["x-request-id"]);
+    return res.status(201).json({ task: row });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/coaching/journeys/:id/lessons/:lessonId/tasks", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.patch("/api/coaching/journeys/:id/lessons/:lessonId/tasks/:taskId", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const { id: journeyId, lessonId, taskId } = req.params;
+    if (!journeyId || !lessonId || !taskId) {
+      return errorEnvelopeResponse(res, 422, "invalid_request", "journey id, lesson id, and task id are required", req.headers["x-request-id"]);
+    }
+    const payloadCheck = validateCoachingTaskUpdatePayload(req.body);
+    if (!payloadCheck.ok) return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+
+    const { data: journey, error: journeyError } = await dataClient
+      .from("journeys")
+      .select("team_id")
+      .eq("id", journeyId)
+      .maybeSingle();
+    if (journeyError || !journey) return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    const teamId = String((journey as { team_id?: unknown }).team_id ?? "") || null;
+    if (!canWriteJourneyByTeam(accessResult.context, teamId)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot modify tasks in this lesson", req.headers["x-request-id"]);
+    }
+
+    const { data: taskRow, error: taskLookupError } = await dataClient
+      .from("lessons")
+      .select("id,milestone_id")
+      .eq("id", taskId)
+      .eq("milestone_id", lessonId)
+      .maybeSingle();
+    if (taskLookupError || !taskRow) return errorEnvelopeResponse(res, 404, "not_found", "Task not found", req.headers["x-request-id"]);
+
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (payloadCheck.payload.title !== undefined) patch.title = payloadCheck.payload.title;
+    if (payloadCheck.payload.body !== undefined) patch.body = payloadCheck.payload.body;
+    if (payloadCheck.payload.sort_order !== undefined) patch.sort_order = payloadCheck.payload.sort_order;
+    const { data: updated, error: updateError } = await dataClient
+      .from("lessons")
+      .update(patch)
+      .eq("id", taskId)
+      .eq("milestone_id", lessonId)
+      .select("id,milestone_id,title,body,sort_order,is_active,created_at,updated_at")
+      .single();
+    if (updateError) return errorEnvelopeResponse(res, 500, "task_update_failed", "Failed to update task", req.headers["x-request-id"]);
+    return res.json({ task: updated });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in PATCH /api/coaching/journeys/:id/lessons/:lessonId/tasks/:taskId", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.delete("/api/coaching/journeys/:id/lessons/:lessonId/tasks/:taskId", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const { id: journeyId, lessonId, taskId } = req.params;
+    if (!journeyId || !lessonId || !taskId) {
+      return errorEnvelopeResponse(res, 422, "invalid_request", "journey id, lesson id, and task id are required", req.headers["x-request-id"]);
+    }
+    const { data: journey, error: journeyError } = await dataClient
+      .from("journeys")
+      .select("team_id")
+      .eq("id", journeyId)
+      .maybeSingle();
+    if (journeyError || !journey) return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    const teamId = String((journey as { team_id?: unknown }).team_id ?? "") || null;
+    if (!canWriteJourneyByTeam(accessResult.context, teamId)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot modify tasks in this lesson", req.headers["x-request-id"]);
+    }
+
+    const { error } = await dataClient
+      .from("lessons")
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq("id", taskId)
+      .eq("milestone_id", lessonId);
+    if (error) return errorEnvelopeResponse(res, 500, "task_delete_failed", "Failed to delete task", req.headers["x-request-id"]);
+    return res.json({ deleted: true, task_id: taskId });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in DELETE /api/coaching/journeys/:id/lessons/:lessonId/tasks/:taskId", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.post("/api/coaching/journeys/:id/lessons/:lessonId/tasks/reorder", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const { id: journeyId, lessonId } = req.params;
+    if (!journeyId || !lessonId) {
+      return errorEnvelopeResponse(res, 422, "invalid_request", "journey id and lesson id are required", req.headers["x-request-id"]);
+    }
+    const payloadCheck = validateCoachingTaskReorderPayload(req.body);
+    if (!payloadCheck.ok) return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+    const { data: journey, error: journeyError } = await dataClient
+      .from("journeys")
+      .select("team_id")
+      .eq("id", journeyId)
+      .maybeSingle();
+    if (journeyError || !journey) return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    const teamId = String((journey as { team_id?: unknown }).team_id ?? "") || null;
+    if (!canWriteJourneyByTeam(accessResult.context, teamId)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot reorder tasks in this lesson", req.headers["x-request-id"]);
+    }
+
+    const taskIds = payloadCheck.payload.task_ids;
+    const { data: taskRows, error: taskFetchError } = await dataClient
+      .from("lessons")
+      .select("id")
+      .eq("milestone_id", lessonId)
+      .eq("is_active", true);
+    if (taskFetchError) return errorEnvelopeResponse(res, 500, "task_reorder_failed", "Failed to load tasks", req.headers["x-request-id"]);
+    const existingIds = new Set((taskRows ?? []).map((row) => String((row as { id?: unknown }).id ?? "")));
+    if (existingIds.size !== taskIds.length || taskIds.some((id) => !existingIds.has(id))) {
+      return errorEnvelopeResponse(
+        res,
+        409,
+        "reconcile_conflict",
+        "task_ids must include every task id for the lesson exactly once",
+        req.headers["x-request-id"]
+      );
+    }
+    for (let i = 0; i < taskIds.length; i += 1) {
+      const taskId = taskIds[i];
+      const { error } = await dataClient
+        .from("lessons")
+        .update({ sort_order: i, updated_at: new Date().toISOString() })
+        .eq("id", taskId)
+        .eq("milestone_id", lessonId);
+      if (error) return errorEnvelopeResponse(res, 500, "task_reorder_failed", "Failed to reorder tasks", req.headers["x-request-id"]);
+    }
+    return res.json({ reordered: true, task_ids: taskIds });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/coaching/journeys/:id/lessons/:lessonId/tasks/reorder", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.get("/api/coaching/cohorts", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    const access = accessResult.context;
+    let query = dataClient
+      .from("teams")
+      .select("id,name,created_by,created_at,updated_at")
+      .order("created_at", { ascending: false });
+    if (!access.canAuthorGlobal) {
+      const scopedTeamIds = Array.from(new Set([...access.leaderTeamIds, ...access.memberTeamIds]));
+      if (scopedTeamIds.length === 0) return res.json({ cohorts: [] });
+      query = query.in("id", scopedTeamIds);
+    }
+    const { data: teams, error: teamsError } = await query;
+    if (teamsError) return errorEnvelopeResponse(res, 500, "cohort_fetch_failed", "Failed to fetch cohorts", req.headers["x-request-id"]);
+    const teamIds = (teams ?? []).map((row) => String((row as { id?: unknown }).id ?? ""));
+    let memberships: Array<{ team_id: string; user_id: string; role: string }> = [];
+    if (teamIds.length > 0) {
+      const { data: rows, error } = await dataClient
+        .from("team_memberships")
+        .select("team_id,user_id,role")
+        .in("team_id", teamIds);
+      if (error) return errorEnvelopeResponse(res, 500, "cohort_fetch_failed", "Failed to fetch cohort memberships", req.headers["x-request-id"]);
+      memberships = (rows ?? []).map((row) => ({
+        team_id: String((row as { team_id?: unknown }).team_id ?? ""),
+        user_id: String((row as { user_id?: unknown }).user_id ?? ""),
+        role: String((row as { role?: unknown }).role ?? "member"),
+      }));
+    }
+    const membersByTeam = new Map<string, Array<{ user_id: string; role: string }>>();
+    for (const row of memberships) {
+      const list = membersByTeam.get(row.team_id) ?? [];
+      list.push({ user_id: row.user_id, role: row.role });
+      membersByTeam.set(row.team_id, list);
+    }
+    const cohorts = (teams ?? []).map((team) => {
+      const teamId = String((team as { id?: unknown }).id ?? "");
+      const members = membersByTeam.get(teamId) ?? [];
+      const myMembership = members.find((row) => row.user_id === auth.user.id);
+      return {
+        ...team,
+        members_count: members.length,
+        leaders_count: members.filter((row) => row.role === "team_leader").length,
+        member_user_ids: members.map((row) => row.user_id),
+        my_membership_role: myMembership?.role ?? null,
+      };
+    });
+    return res.json({ cohorts });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/coaching/cohorts", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.put("/api/coaching/cohorts/:id/members", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const cohortId = req.params.id;
+    if (!cohortId) return errorEnvelopeResponse(res, 422, "invalid_request", "cohort id is required", req.headers["x-request-id"]);
+    const payloadCheck = validateCoachingCohortMembershipUpdatePayload(req.body);
+    if (!payloadCheck.ok) return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    if (!canWriteJourneyByTeam(accessResult.context, cohortId)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot update this cohort", req.headers["x-request-id"]);
+    }
+    const { data: team, error: teamError } = await dataClient
+      .from("teams")
+      .select("id")
+      .eq("id", cohortId)
+      .maybeSingle();
+    if (teamError || !team) return errorEnvelopeResponse(res, 404, "not_found", "Cohort not found", req.headers["x-request-id"]);
+
+    const targetSet = new Set(payloadCheck.payload.member_user_ids);
+    const { data: existingRows, error: existingError } = await dataClient
+      .from("team_memberships")
+      .select("user_id,role")
+      .eq("team_id", cohortId);
+    if (existingError) return errorEnvelopeResponse(res, 500, "cohort_update_failed", "Failed to load existing memberships", req.headers["x-request-id"]);
+    const existing = (existingRows ?? []).map((row) => ({
+      user_id: String((row as { user_id?: unknown }).user_id ?? ""),
+      role: String((row as { role?: unknown }).role ?? "member"),
+    }));
+    const leaderIds = new Set(existing.filter((row) => row.role === "team_leader").map((row) => row.user_id));
+    for (const leaderId of leaderIds) targetSet.add(leaderId);
+    const removeIds = existing
+      .filter((row) => row.role !== "team_leader" && !targetSet.has(row.user_id))
+      .map((row) => row.user_id);
+    if (removeIds.length > 0) {
+      const { error } = await dataClient
+        .from("team_memberships")
+        .delete()
+        .eq("team_id", cohortId)
+        .in("user_id", removeIds);
+      if (error) return errorEnvelopeResponse(res, 500, "cohort_update_failed", "Failed to remove cohort members", req.headers["x-request-id"]);
+    }
+    const upsertRows = Array.from(targetSet)
+      .filter((userId) => !!userId)
+      .map((userId) => ({
+        team_id: cohortId,
+        user_id: userId,
+        role: leaderIds.has(userId) ? "team_leader" : "member",
+      }));
+    if (upsertRows.length > 0) {
+      const { error } = await dataClient
+        .from("team_memberships")
+        .upsert(upsertRows, { onConflict: "team_id,user_id" });
+      if (error) return errorEnvelopeResponse(res, 500, "cohort_update_failed", "Failed to upsert cohort members", req.headers["x-request-id"]);
+    }
+    return res.json({
+      cohort_id: cohortId,
+      member_user_ids: Array.from(targetSet),
+      leaders_preserved: Array.from(leaderIds),
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in PUT /api/coaching/cohorts/:id/members", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.get("/api/coaching/channels", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const accessResult = await getCoachingAccessContext(auth.user.id);
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    const access = accessResult.context;
+
+    const { data: membershipRows, error: membershipError } = await dataClient
+      .from("channel_memberships")
+      .select("channel_id,user_id,role")
+      .eq("user_id", auth.user.id);
+    if (membershipError) {
+      return errorEnvelopeResponse(res, 500, "channel_fetch_failed", "Failed to resolve channel scope", req.headers["x-request-id"]);
+    }
+    const directMemberChannelIds = new Set((membershipRows ?? []).map((row) => String((row as { channel_id?: unknown }).channel_id ?? "")));
+    let channelsQuery = dataClient
+      .from("channels")
+      .select("id,type,name,team_id,context_id,is_active,created_at")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false });
+    if (!access.canAuthorGlobal) {
+      const scopedTeamIds = Array.from(new Set([...access.leaderTeamIds, ...access.memberTeamIds]));
+      if (scopedTeamIds.length > 0) {
+        channelsQuery = channelsQuery.or(
+          `team_id.in.(${scopedTeamIds.join(",")}),id.in.(${Array.from(directMemberChannelIds).join(",") || "00000000-0000-0000-0000-000000000000"})`
+        );
+      } else if (directMemberChannelIds.size > 0) {
+        channelsQuery = channelsQuery.in("id", Array.from(directMemberChannelIds));
+      } else {
+        return res.json({ channels: [] });
+      }
+    }
+    const { data: channels, error: channelsError } = await channelsQuery;
+    if (channelsError) return errorEnvelopeResponse(res, 500, "channel_fetch_failed", "Failed to fetch channels", req.headers["x-request-id"]);
+    const channelIds = (channels ?? []).map((row) => String((row as { id?: unknown }).id ?? ""));
+    let memberCounts = new Map<string, number>();
+    if (channelIds.length > 0) {
+      const { data: members, error: membersError } = await dataClient
+        .from("channel_memberships")
+        .select("channel_id")
+        .in("channel_id", channelIds);
+      if (membersError) return errorEnvelopeResponse(res, 500, "channel_fetch_failed", "Failed to fetch channel membership counts", req.headers["x-request-id"]);
+      for (const row of members ?? []) {
+        const channelId = String((row as { channel_id?: unknown }).channel_id ?? "");
+        memberCounts.set(channelId, (memberCounts.get(channelId) ?? 0) + 1);
+      }
+    }
+    let lastMessageAt = new Map<string, string | null>();
+    if (channelIds.length > 0) {
+      const { data: messages, error: messagesError } = await dataClient
+        .from("channel_messages")
+        .select("channel_id,created_at")
+        .in("channel_id", channelIds)
+        .order("created_at", { ascending: false });
+      if (messagesError) return errorEnvelopeResponse(res, 500, "channel_fetch_failed", "Failed to fetch channel message metadata", req.headers["x-request-id"]);
+      for (const row of messages ?? []) {
+        const channelId = String((row as { channel_id?: unknown }).channel_id ?? "");
+        if (!lastMessageAt.has(channelId)) {
+          lastMessageAt.set(channelId, String((row as { created_at?: unknown }).created_at ?? null));
+        }
+      }
+    }
+    const scopedChannels = (channels ?? [])
+      .filter((channel) => {
+        if (access.canAuthorGlobal) return true;
+        const channelId = String((channel as { id?: unknown }).id ?? "");
+        const teamId = String((channel as { team_id?: unknown }).team_id ?? "");
+        if (directMemberChannelIds.has(channelId)) return true;
+        if (teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId))) return true;
+        return false;
+      })
+      .map((channel) => {
+        const channelId = String((channel as { id?: unknown }).id ?? "");
+        return {
+          ...channel,
+          member_count: memberCounts.get(channelId) ?? 0,
+          last_message_at: lastMessageAt.get(channelId) ?? null,
+          can_author: access.canAuthorGlobal || access.leaderTeamIds.has(String((channel as { team_id?: unknown }).team_id ?? "")),
+        };
+      });
+    return res.json({ channels: scopedChannels });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/coaching/channels", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
   }
 });
 
@@ -6757,6 +7557,193 @@ function validateAdminKpiPayload(
   return { ok: true, payload };
 }
 
+function validateCoachingJourneyCreatePayload(body: unknown):
+  | { ok: true; payload: CoachingJourneyCreatePayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body)) return { ok: false, status: 400, error: "Body must be a JSON object" };
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  if (!title) return { ok: false, status: 422, error: "title is required" };
+  if (body.description !== undefined && typeof body.description !== "string") {
+    return { ok: false, status: 422, error: "description must be a string when provided" };
+  }
+  if (body.team_id !== undefined && typeof body.team_id !== "string") {
+    return { ok: false, status: 422, error: "team_id must be a string when provided" };
+  }
+  return {
+    ok: true,
+    payload: {
+      title,
+      description: typeof body.description === "string" ? body.description.trim() : undefined,
+      team_id: typeof body.team_id === "string" && body.team_id.trim() ? body.team_id.trim() : undefined,
+    },
+  };
+}
+
+function validateCoachingJourneyUpdatePayload(body: unknown):
+  | { ok: true; payload: CoachingJourneyUpdatePayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body)) return { ok: false, status: 400, error: "Body must be a JSON object" };
+  const payload: CoachingJourneyUpdatePayload = {};
+  if (body.title !== undefined) {
+    if (typeof body.title !== "string" || !body.title.trim()) {
+      return { ok: false, status: 422, error: "title must be a non-empty string when provided" };
+    }
+    payload.title = body.title.trim();
+  }
+  if (body.description !== undefined) {
+    if (typeof body.description !== "string") {
+      return { ok: false, status: 422, error: "description must be a string when provided" };
+    }
+    payload.description = body.description.trim();
+  }
+  if (body.team_id !== undefined) {
+    if (body.team_id !== null && typeof body.team_id !== "string") {
+      return { ok: false, status: 422, error: "team_id must be a string or null when provided" };
+    }
+    payload.team_id = body.team_id === null ? null : body.team_id.trim();
+  }
+  if (body.is_active !== undefined) {
+    if (typeof body.is_active !== "boolean") {
+      return { ok: false, status: 422, error: "is_active must be boolean when provided" };
+    }
+    payload.is_active = body.is_active;
+  }
+  if (Object.keys(payload).length === 0) {
+    return { ok: false, status: 422, error: "At least one mutable field is required" };
+  }
+  return { ok: true, payload };
+}
+
+function validateCoachingLessonCreatePayload(body: unknown):
+  | { ok: true; payload: CoachingLessonCreatePayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body)) return { ok: false, status: 400, error: "Body must be a JSON object" };
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  if (!title) return { ok: false, status: 422, error: "title is required" };
+  if (body.sort_order !== undefined && (typeof body.sort_order !== "number" || !Number.isInteger(body.sort_order) || body.sort_order < 0)) {
+    return { ok: false, status: 422, error: "sort_order must be a non-negative integer when provided" };
+  }
+  return {
+    ok: true,
+    payload: {
+      title,
+      sort_order: typeof body.sort_order === "number" ? body.sort_order : undefined,
+    },
+  };
+}
+
+function validateCoachingLessonUpdatePayload(body: unknown):
+  | { ok: true; payload: CoachingLessonUpdatePayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body)) return { ok: false, status: 400, error: "Body must be a JSON object" };
+  const payload: CoachingLessonUpdatePayload = {};
+  if (body.title !== undefined) {
+    if (typeof body.title !== "string" || !body.title.trim()) {
+      return { ok: false, status: 422, error: "title must be a non-empty string when provided" };
+    }
+    payload.title = body.title.trim();
+  }
+  if (body.sort_order !== undefined) {
+    if (typeof body.sort_order !== "number" || !Number.isInteger(body.sort_order) || body.sort_order < 0) {
+      return { ok: false, status: 422, error: "sort_order must be a non-negative integer when provided" };
+    }
+    payload.sort_order = body.sort_order;
+  }
+  if (Object.keys(payload).length === 0) {
+    return { ok: false, status: 422, error: "At least one mutable field is required" };
+  }
+  return { ok: true, payload };
+}
+
+function validateCoachingLessonReorderPayload(body: unknown):
+  | { ok: true; payload: CoachingLessonReorderPayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body) || !Array.isArray(body.lesson_ids)) {
+    return { ok: false, status: 422, error: "lesson_ids array is required" };
+  }
+  const lessonIds = body.lesson_ids
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+  if (lessonIds.length === 0) return { ok: false, status: 422, error: "lesson_ids must include at least one id" };
+  return { ok: true, payload: { lesson_ids: Array.from(new Set(lessonIds)) } };
+}
+
+function validateCoachingTaskCreatePayload(body: unknown):
+  | { ok: true; payload: CoachingTaskCreatePayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body)) return { ok: false, status: 400, error: "Body must be a JSON object" };
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  if (!title) return { ok: false, status: 422, error: "title is required" };
+  if (body.body !== undefined && typeof body.body !== "string") {
+    return { ok: false, status: 422, error: "body must be a string when provided" };
+  }
+  if (body.sort_order !== undefined && (typeof body.sort_order !== "number" || !Number.isInteger(body.sort_order) || body.sort_order < 0)) {
+    return { ok: false, status: 422, error: "sort_order must be a non-negative integer when provided" };
+  }
+  return {
+    ok: true,
+    payload: {
+      title,
+      body: typeof body.body === "string" ? body.body : undefined,
+      sort_order: typeof body.sort_order === "number" ? body.sort_order : undefined,
+    },
+  };
+}
+
+function validateCoachingTaskUpdatePayload(body: unknown):
+  | { ok: true; payload: CoachingTaskUpdatePayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body)) return { ok: false, status: 400, error: "Body must be a JSON object" };
+  const payload: CoachingTaskUpdatePayload = {};
+  if (body.title !== undefined) {
+    if (typeof body.title !== "string" || !body.title.trim()) {
+      return { ok: false, status: 422, error: "title must be a non-empty string when provided" };
+    }
+    payload.title = body.title.trim();
+  }
+  if (body.body !== undefined) {
+    if (body.body !== null && typeof body.body !== "string") {
+      return { ok: false, status: 422, error: "body must be a string or null when provided" };
+    }
+    payload.body = body.body === null ? null : body.body;
+  }
+  if (body.sort_order !== undefined) {
+    if (typeof body.sort_order !== "number" || !Number.isInteger(body.sort_order) || body.sort_order < 0) {
+      return { ok: false, status: 422, error: "sort_order must be a non-negative integer when provided" };
+    }
+    payload.sort_order = body.sort_order;
+  }
+  if (Object.keys(payload).length === 0) {
+    return { ok: false, status: 422, error: "At least one mutable field is required" };
+  }
+  return { ok: true, payload };
+}
+
+function validateCoachingTaskReorderPayload(body: unknown):
+  | { ok: true; payload: CoachingTaskReorderPayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body) || !Array.isArray(body.task_ids)) {
+    return { ok: false, status: 422, error: "task_ids array is required" };
+  }
+  const taskIds = body.task_ids
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+  if (taskIds.length === 0) return { ok: false, status: 422, error: "task_ids must include at least one id" };
+  return { ok: true, payload: { task_ids: Array.from(new Set(taskIds)) } };
+}
+
+function validateCoachingCohortMembershipUpdatePayload(body: unknown):
+  | { ok: true; payload: CoachingCohortMembershipUpdatePayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body) || !Array.isArray(body.member_user_ids)) {
+    return { ok: false, status: 422, error: "member_user_ids array is required" };
+  }
+  const memberUserIds = body.member_user_ids
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+  return { ok: true, payload: { member_user_ids: Array.from(new Set(memberUserIds)) } };
+}
+
 function validateAdminChallengeTemplatePayload(
   body: unknown,
   requireName: boolean
@@ -8070,6 +9057,74 @@ async function isPlatformAdmin(userId: string): Promise<boolean> {
   if (error || !data) return false;
   const role = String((data as { role?: unknown }).role ?? "");
   return role === "admin" || role === "super_admin";
+}
+
+type CoachingAccessContext = {
+  role: string;
+  platformAdmin: boolean;
+  canAuthorGlobal: boolean;
+  sponsorReadOnly: boolean;
+  leaderTeamIds: Set<string>;
+  memberTeamIds: Set<string>;
+};
+
+async function getCoachingAccessContext(userId: string): Promise<
+  | { ok: true; context: CoachingAccessContext }
+  | { ok: false; status: number; error: string }
+> {
+  const roleResult = await getUserRoleForScope(userId);
+  if (!roleResult.ok) return roleResult;
+  const role = roleResult.role;
+  const platformAdmin = role === "admin" || role === "super_admin";
+  if (!dataClient) {
+    return { ok: false, status: 500, error: "Supabase data client not configured" };
+  }
+  const { data: teamRows, error: teamError } = await dataClient
+    .from("team_memberships")
+    .select("team_id,role")
+    .eq("user_id", userId);
+  if (teamError) {
+    return { ok: false, status: 500, error: "Failed to load team scope for coaching access" };
+  }
+  const leaderTeamIds = new Set<string>();
+  const memberTeamIds = new Set<string>();
+  for (const row of teamRows ?? []) {
+    const teamId = String((row as { team_id?: unknown }).team_id ?? "");
+    if (!teamId) continue;
+    memberTeamIds.add(teamId);
+    if (String((row as { role?: unknown }).role ?? "") === "team_leader") {
+      leaderTeamIds.add(teamId);
+    }
+  }
+  const coachRole = role === "coach";
+  const canAuthorGlobal = platformAdmin || coachRole;
+  const sponsorReadOnly = role === "challenge_sponsor";
+  return {
+    ok: true,
+    context: {
+      role,
+      platformAdmin,
+      canAuthorGlobal,
+      sponsorReadOnly,
+      leaderTeamIds,
+      memberTeamIds,
+    },
+  };
+}
+
+function canReadJourneyByTeam(access: CoachingAccessContext, teamId: string | null): boolean {
+  if (!teamId) return access.platformAdmin || access.role === "coach";
+  if (access.canAuthorGlobal) return true;
+  if (access.leaderTeamIds.has(teamId)) return true;
+  if (access.memberTeamIds.has(teamId)) return true;
+  return false;
+}
+
+function canWriteJourneyByTeam(access: CoachingAccessContext, teamId: string | null): boolean {
+  if (access.sponsorReadOnly) return false;
+  if (access.canAuthorGlobal) return true;
+  if (!teamId) return false;
+  return access.leaderTeamIds.has(teamId);
 }
 
 async function canBroadcastToChannel(channelId: string, userId: string): Promise<

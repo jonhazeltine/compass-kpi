@@ -14,6 +14,7 @@ import {
 import CompassMark from '../assets/brand/compass_mark.svg';
 import { useAdminAuthz } from '../contexts/AdminAuthzContext';
 import { useAuth } from '../contexts/AuthContext';
+import { API_URL } from '../lib/supabase';
 import {
   LEGACY_ADMIN_COACHING_PATH_BY_ROUTE_KEY,
   canAccessAdminRoute,
@@ -28,6 +29,7 @@ type CoachWorkspaceMode = 'journeys' | 'people';
 type SaveState = 'idle' | 'pending' | 'saved' | 'error';
 type ChannelSegment = 'all' | 'top_producers' | 'new_agents' | 'sponsor_leads';
 type PeoplePanelTab = 'cohorts' | 'channels';
+type ChannelType = 'team' | 'challenge' | 'sponsor' | 'cohort' | 'direct';
 
 type CoachSurface = {
   key: CoachWorkspaceMode;
@@ -50,29 +52,47 @@ type LibraryCollection = {
   assetIds: string[];
 };
 
-type JourneyBlock = {
-  id: string;
-  assetId: string;
-};
-
-type JourneyMilestone = {
+type JourneyTask = {
   id: string;
   title: string;
-  kind: 'lesson' | 'task';
-  blocks: JourneyBlock[];
+  assetId: string | null;
+};
+
+type JourneyLesson = {
+  id: string;
+  title: string;
+  tasks: JourneyTask[];
 };
 
 type JourneyDraft = {
   id: string;
   name: string;
   audience: string;
-  milestones: JourneyMilestone[];
+  lessons: JourneyLesson[];
 };
 
 type CohortPerson = {
   id: string;
   name: string;
   subtitle: string;
+};
+
+type ChannelApiRow = {
+  id: string;
+  type: ChannelType;
+  name: string;
+  team_id: string | null;
+  context_id: string | null;
+  my_role?: string;
+  unread_count?: number;
+  created_at?: string;
+};
+
+type ChannelMessageApiRow = {
+  id: string;
+  channel_id: string;
+  body: string;
+  created_at?: string;
 };
 
 type CohortDraft = {
@@ -85,8 +105,8 @@ type CohortDraft = {
 
 type DragPayload =
   | { type: 'asset'; assetId: string; sourceCollectionId: string | null }
-  | { type: 'journey_block'; sourceJourneyId: string; sourceMilestoneId: string; blockId: string; assetId: string }
-  | { type: 'journey_milestone'; sourceJourneyId: string; milestoneId: string }
+  | { type: 'journey_task'; sourceJourneyId: string; sourceLessonId: string; taskId: string; assetId: string | null }
+  | { type: 'journey_lesson'; sourceJourneyId: string; lessonId: string }
   | { type: 'person'; personId: string }
   | null;
 
@@ -96,16 +116,14 @@ const COACH_WORKSPACES: Record<CoachWorkspaceMode, CoachSurface> = {
   journeys: {
     key: 'journeys',
     label: 'Journeys',
-    headline: 'Journeys workspace',
-    summary:
-      'Manage the Library folder tree and Journey Builder together. Drag assets from collections into lesson and task milestones.',
+    headline: 'Journey Builder',
+    summary: 'Build learning paths by dragging content from the library into milestone steps.',
   },
   people: {
     key: 'people',
-    label: 'People',
-    headline: 'People workspace',
-    summary:
-      'Manage people, cohort membership, and channel operations together in one split view for assignment and communication planning.',
+    label: 'People & Channels',
+    headline: 'People & Channels',
+    summary: 'Organize members into cohorts and manage communication channels.',
   },
 };
 
@@ -114,32 +132,18 @@ const WORKSPACE_ROUTE_KEYS: Record<CoachWorkspaceMode, CoachRouteKey[]> = {
   people: ['coachingCohorts', 'coachingChannels'],
 };
 
-const INITIAL_COHORTS: CohortDraft[] = [
-  { id: 'co-1', name: 'Q1 Rising Agents', owner: 'Coach Avery', program: 'Listing Accelerator', memberIds: [] },
-  { id: 'co-2', name: 'Sponsor Elite Leads', owner: 'Sponsor North', program: 'Lead Conversion', memberIds: [] },
-  { id: 'co-3', name: 'Team Velocity', owner: 'TL Jamie', program: 'Production Sprint', memberIds: [] },
+const EMPTY_COHORTS: CohortDraft[] = [];
+const EMPTY_PEOPLE: CohortPerson[] = [];
+const DRAFT_CHANNEL_CONTEXT_ID = 'coach_portal_draft_v1';
+const DRAFT_MESSAGE_PREFIX = 'coach_portal_snapshot:';
+
+const DEFAULT_LESSONS: JourneyLesson[] = [
+  { id: 'ls-kickoff', title: 'Lesson 1: Kickoff', tasks: [] },
+  { id: 'ls-fundamentals', title: 'Lesson 2: Fundamentals', tasks: [] },
+  { id: 'ls-application', title: 'Lesson 3: Live Application', tasks: [] },
 ];
 
-const COHORT_PEOPLE: CohortPerson[] = [
-  { id: 'p-1', name: 'Lena Ortiz', subtitle: 'Top producer' },
-  { id: 'p-2', name: 'Mark Rivera', subtitle: 'New agent' },
-  { id: 'p-3', name: 'Jules Carter', subtitle: 'Sponsor lead' },
-  { id: 'p-4', name: 'Nina Shah', subtitle: 'Top producer' },
-  { id: 'p-5', name: 'Caleb Kim', subtitle: 'New agent' },
-];
-
-const CHANNEL_ROWS = [
-  { id: 'ch-1', c1: 'Listing Accelerator Hub', c2: 'Coach', c3: '42', c4: '2h ago', segment: 'all' as ChannelSegment },
-  { id: 'ch-2', c1: 'Top Producers Pulse', c2: 'Coach scoped', c3: '18', c4: '1h ago', segment: 'top_producers' as ChannelSegment },
-  { id: 'ch-3', c1: 'New Agent Sprint', c2: 'Team scoped', c3: '22', c4: '3h ago', segment: 'new_agents' as ChannelSegment },
-  { id: 'ch-4', c1: 'Sponsor Lead Briefing', c2: 'Sponsor scoped', c3: '19', c4: '4h ago', segment: 'sponsor_leads' as ChannelSegment },
-];
-
-const DEFAULT_MILESTONES: JourneyMilestone[] = [
-  { id: 'ms-kickoff', title: 'Lesson 1: Kickoff', kind: 'lesson', blocks: [] },
-  { id: 'ms-practice', title: 'Task 1: Practice', kind: 'task', blocks: [] },
-  { id: 'ms-application', title: 'Lesson 2: Live Application', kind: 'lesson', blocks: [] },
-];
+/* ─── Helpers (unchanged business logic) ─── */
 
 function normalizeCoachKey(routeKey: AdminRouteKey | null | undefined): CoachRouteKey | null {
   if (!routeKey) return null;
@@ -168,8 +172,63 @@ function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
   return copy;
 }
 
-function cloneMilestones(): JourneyMilestone[] {
-  return DEFAULT_MILESTONES.map((milestone) => ({ ...milestone, blocks: [] }));
+let lessonIdCounter = 0;
+function cloneLessons(): JourneyLesson[] {
+  return DEFAULT_LESSONS.map((lesson, i) => ({
+    ...lesson,
+    id: `ls-${Date.now()}-${lessonIdCounter++}-${i}`,
+    tasks: [],
+  }));
+}
+
+/* ─── Category color helpers ─── */
+const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
+  'Lesson Pack': { bg: '#EFF6FF', text: '#1D4ED8' },
+  Campaign: { bg: '#FEF3C7', text: '#B45309' },
+  Onboarding: { bg: '#F0FDF4', text: '#15803D' },
+  Workshop: { bg: '#FDF2F8', text: '#BE185D' },
+};
+function getCategoryColor(category: string) {
+  return CATEGORY_COLORS[category] ?? { bg: '#F1F5F9', text: '#475569' };
+}
+
+async function fetchCoachJson<T>(path: string, accessToken: string): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const payload = (await response.json()) as { error?: unknown };
+      if (typeof payload.error === 'string' && payload.error) message = payload.error;
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as T;
+}
+
+async function sendCoachJson<T>(path: string, accessToken: string, body: Record<string, unknown>): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const payload = (await response.json()) as { error?: unknown };
+      if (typeof payload.error === 'string' && payload.error) message = payload.error;
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as T;
 }
 
 export default function CoachPortalScreen() {
@@ -183,49 +242,60 @@ export default function CoachPortalScreen() {
   const [notFoundPath, setNotFoundPath] = useState<string | null>(null);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
 
-  const [assets, setAssets] = useState<LibraryAsset[]>([
-    { id: 'asset-1', title: 'Buyer Follow-Up Kit', category: 'Lesson Pack', scope: 'All teams', duration: '14 min' },
-    { id: 'asset-2', title: 'Sponsor Event Promo', category: 'Campaign', scope: 'Sponsor cohort', duration: '8 min' },
-    { id: 'asset-3', title: 'New Agent Sprint', category: 'Onboarding', scope: 'Cohort based', duration: '22 min' },
-    { id: 'asset-4', title: 'Weekly Objection Handling', category: 'Workshop', scope: 'Team scoped', duration: '16 min' },
-    { id: 'asset-5', title: 'Price-Point Discovery Script', category: 'Lesson Pack', scope: 'All teams', duration: '10 min' },
-  ]);
-  const [collections, setCollections] = useState<LibraryCollection[]>([
-    { id: 'col-1', name: 'Listing Accelerator', assetIds: ['asset-1', 'asset-4'] },
-    { id: 'col-2', name: 'Sponsor Conversion', assetIds: ['asset-2', 'asset-5'] },
-    { id: 'col-3', name: 'Onboarding Essentials', assetIds: ['asset-3'] },
-  ]);
+  const [assets, setAssets] = useState<LibraryAsset[]>([]);
+  const [collections, setCollections] = useState<LibraryCollection[]>([]);
   const [libraryQuery, setLibraryQuery] = useState('');
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string>('col-1');
-  const [expandedCollectionIds, setExpandedCollectionIds] = useState<string[]>(['col-1']);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string>('');
+  const [expandedCollectionIds, setExpandedCollectionIds] = useState<string[]>([]);
 
-  const [journeys, setJourneys] = useState<JourneyDraft[]>([
-    { id: 'jr-1', name: '30-Day Listing Accelerator', audience: 'New agents', milestones: cloneMilestones() },
-    { id: 'jr-2', name: 'Sponsor Lead Conversion', audience: 'Sponsor cohort', milestones: cloneMilestones() },
-  ]);
-  const [selectedJourneyId, setSelectedJourneyId] = useState('jr-1');
+  const [journeys, setJourneys] = useState<JourneyDraft[]>([]);
+  const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
   const [newJourneyName, setNewJourneyName] = useState('');
-  const [selectedMilestoneId, setSelectedMilestoneId] = useState(DEFAULT_MILESTONES[0].id);
-  const [activeBlockMenu, setActiveBlockMenu] = useState<{ milestoneId: string; blockId: string } | null>(null);
-  const [cohorts, setCohorts] = useState<CohortDraft[]>(INITIAL_COHORTS);
-  const [selectedCohortId, setSelectedCohortId] = useState(INITIAL_COHORTS[0].id);
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
+  const [activeTaskMenu, setActiveTaskMenu] = useState<{ lessonId: string; taskId: string } | null>(null);
+  const [cohorts, setCohorts] = useState<CohortDraft[]>(EMPTY_COHORTS);
+  const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null);
   const [newCohortName, setNewCohortName] = useState('');
   const [checkedPeopleIds, setCheckedPeopleIds] = useState<string[]>([]);
   const [channelSegment, setChannelSegment] = useState<ChannelSegment>('all');
   const [peoplePanelTab, setPeoplePanelTab] = useState<PeoplePanelTab>('cohorts');
+  const [cohortPeople, setCohortPeople] = useState<CohortPerson[]>(EMPTY_PEOPLE);
+  const [channelRows, setChannelRows] = useState<
+    Array<{ id: string; c1: string; c2: string; c3: string; c4: string; segment: ChannelSegment; type: ChannelType; context_id: string | null }>
+  >([]);
+  const [draftChannelId, setDraftChannelId] = useState<string | null>(null);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalLoadError, setPortalLoadError] = useState<string | null>(null);
 
   const [dragPayload, setDragPayload] = useState<DragPayload>(null);
   const [draggingAssetId, setDraggingAssetId] = useState<string | null>(null);
-  const [hoverMilestoneId, setHoverMilestoneId] = useState<string | null>(null);
-  const [dropSuccessMilestoneId, setDropSuccessMilestoneId] = useState<string | null>(null);
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [draggingLessonId, setDraggingLessonId] = useState<string | null>(null);
+  const [hoverLessonId, setHoverLessonId] = useState<string | null>(null);
+  const [hoverTaskInsert, setHoverTaskInsert] = useState<{ lessonId: string; index: number } | null>(null);
+  const [hoverLessonInsertIndex, setHoverLessonInsertIndex] = useState<number | null>(null);
+  const [dropSuccessLessonId, setDropSuccessLessonId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [dirty, setDirty] = useState(false);
   const [saveMessage, setSaveMessage] = useState('No unsaved changes.');
-  const [dropHint, setDropHint] = useState('Drag an asset into a collection or journey milestone.');
+  const [dropHint, setDropHint] = useState('');
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ type: 'journey' | 'lesson' | 'task'; id: string; parentId?: string; label: string } | null>(null);
 
-  const blockIdRef = useRef(0);
+  const taskIdRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingRef = useRef(false);
+
+  // Custom pointer-drag system (replaces unreliable HTML5 drag-and-drop)
+  const pointerDragRef = useRef<{
+    payload: DragPayload;
+    label: string;
+    startX: number;
+    startY: number;
+    started: boolean;
+    ghostEl: HTMLElement | null;
+    lastHoverCheck: number;
+  } | null>(null);
 
   const effectiveRoles = resolvedRoles.length > 0 ? resolvedRoles : (['unknown'] as AdminRole[]);
   const visibleRoutes = useMemo(
@@ -240,57 +310,14 @@ export default function CoachPortalScreen() {
   const sponsorOnly = effectiveRoles.includes('challenge_sponsor') && !coachCanCompose && !teamLeaderCanCompose;
   const canComposeDraft = coachCanCompose || teamLeaderCanCompose;
   const composeDeniedReason = sponsorOnly
-    ? 'Sponsor access is scoped for visibility only. Drag/drop authoring and KPI logging are unavailable.'
+    ? 'Sponsor access is scoped for visibility only.'
     : 'Current role cannot edit journey drafts on this route.';
-
-  const scopeSummary = coachCanCompose
-    ? 'Coach access: full authoring controls enabled for Library and Journeys.'
-    : teamLeaderCanCompose
-      ? 'Team Leader access: authoring controls are team-scoped only.'
-      : sponsorOnly
-        ? 'Sponsor access: sponsor-scoped visibility only. No KPI logging actions are available.'
-        : 'Access is limited to currently authorized coach portal sections.';
 
   const activeWorkspace = getWorkspaceModeForRoute(activeKey);
   const activeSurface = COACH_WORKSPACES[activeWorkspace];
-  const activeRoutePath = getAdminRouteByKey(activeKey).path;
   const accountInitial = (session?.user?.email?.trim().charAt(0) || backendRole?.trim().charAt(0) || 'A').toUpperCase();
   const accountLabel = session?.user?.email || 'Signed-in account';
-  const roleLabel = backendRole ? `Role: ${backendRole}` : 'Role from session';
 
-  const renderAccountMenu = (tone: 'coach' | 'default' = 'default') => (
-    <View style={styles.accountMenuWrap}>
-      <Pressable
-        style={[styles.avatarButton, tone === 'coach' && styles.avatarButtonCoach, accountMenuOpen && styles.avatarButtonOpen]}
-        onPress={() => setAccountMenuOpen((prev) => !prev)}
-        accessibilityRole="button"
-        accessibilityLabel="Open account menu"
-      >
-        <Text style={styles.avatarButtonText}>{accountInitial}</Text>
-        <Text style={styles.avatarChevron}>▾</Text>
-      </Pressable>
-      {accountMenuOpen ? (
-        <View style={styles.accountDropdown}>
-          <Text style={styles.accountMenuLabel}>Account</Text>
-          <Text style={styles.accountMenuValue} numberOfLines={1}>
-            {accountLabel}
-          </Text>
-          <Text style={styles.accountMenuRole}>{roleLabel}</Text>
-          <TouchableOpacity
-            style={styles.accountMenuSignOut}
-            onPress={() => {
-              setAccountMenuOpen(false);
-              void signOut();
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Sign out"
-          >
-            <Text style={styles.accountMenuSignOutText}>Sign out</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-    </View>
-  );
   const visibleWorkspaceModes = useMemo(() => {
     const modes: CoachWorkspaceMode[] = [];
     (Object.keys(WORKSPACE_ROUTE_KEYS) as CoachWorkspaceMode[]).forEach((mode) => {
@@ -333,9 +360,11 @@ export default function CoachPortalScreen() {
   );
 
   const selectedCohort = cohorts.find((row) => row.id === selectedCohortId) ?? cohorts[0] ?? null;
-  const filteredChannels = CHANNEL_ROWS.filter((row) => channelSegment === 'all' || row.segment === channelSegment);
+  const filteredChannels = channelRows.filter((row) => channelSegment === 'all' || row.segment === channelSegment);
   const selectedGenericRow =
     filteredChannels.find((row) => row.id === selectedRowId) ?? filteredChannels[0] ?? null;
+
+  /* ─── Effects (unchanged) ─── */
 
   useEffect(
     () => () => {
@@ -345,10 +374,19 @@ export default function CoachPortalScreen() {
   );
 
   useEffect(() => {
-    if (!dropSuccessMilestoneId) return;
-    const timer = setTimeout(() => setDropSuccessMilestoneId(null), 1200);
+    return () => {
+      if (pointerDragRef.current?.ghostEl) {
+        try { document.body.removeChild(pointerDragRef.current.ghostEl); } catch (_) {}
+      }
+      pointerDragRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!dropSuccessLessonId) return;
+    const timer = setTimeout(() => setDropSuccessLessonId(null), 1200);
     return () => clearTimeout(timer);
-  }, [dropSuccessMilestoneId]);
+  }, [dropSuccessLessonId]);
 
   useEffect(() => {
     if (!selectedJourney && journeys.length > 0) {
@@ -368,15 +406,15 @@ export default function CoachPortalScreen() {
   }, [collections]);
 
   useEffect(() => {
-    setActiveBlockMenu(null);
+    setActiveTaskMenu(null);
   }, [selectedJourneyId]);
 
   useEffect(() => {
-    if (!selectedJourney?.milestones.length) return;
-    if (!selectedJourney.milestones.some((m) => m.id === selectedMilestoneId)) {
-      setSelectedMilestoneId(selectedJourney.milestones[0].id);
+    if (!selectedJourney?.lessons.length) return;
+    if (!selectedJourney.lessons.some((l) => l.id === selectedLessonId)) {
+      setSelectedLessonId(selectedJourney.lessons[0].id);
     }
-  }, [selectedJourney, selectedMilestoneId]);
+  }, [selectedJourney, selectedLessonId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -386,19 +424,11 @@ export default function CoachPortalScreen() {
       const sourceRouteKey = sourceRoute?.key ?? null;
       const routeKey = normalizeCoachKey(sourceRouteKey);
       const isCoachPath = pathname.startsWith('/coach') || pathname.startsWith('/admin/coaching');
-      if (!isCoachPath) {
-        setNotFoundPath(null);
-        return;
-      }
-      if (!routeKey) {
-        setNotFoundPath(pathname);
-        return;
-      }
+      if (!isCoachPath) { setNotFoundPath(null); return; }
+      if (!routeKey) { setNotFoundPath(pathname); return; }
       setNotFoundPath(null);
       if (sourceRouteKey === 'coachingUploads') {
-        if (pathname !== '/coach/library') {
-          window.history.replaceState({}, '', '/coach/library');
-        }
+        if (pathname !== '/coach/library') window.history.replaceState({}, '', '/coach/library');
         setActiveKey('coachingLibrary');
         return;
       }
@@ -409,7 +439,6 @@ export default function CoachPortalScreen() {
       }
       setActiveKey((prev) => (prev === routeKey ? prev : routeKey));
     };
-
     sync();
     window.addEventListener('popstate', sync);
     window.addEventListener('codex:pathchange', sync as EventListener);
@@ -429,6 +458,183 @@ export default function CoachPortalScreen() {
       window.history.replaceState({}, '', fallback.path);
     }
   }, [activeKey, effectiveRoles, visibleRoutes]);
+
+  useEffect(() => {
+    if (!selectedCohort && cohorts.length > 0) {
+      setSelectedCohortId(cohorts[0].id);
+    }
+  }, [cohorts, selectedCohort]);
+
+  const refreshPortalData = async () => {
+    if (!session?.access_token) return;
+    setPortalLoading(true);
+    setPortalLoadError(null);
+    try {
+      const [channelsPayload, coachesPayload, journeysPayload] = await Promise.all([
+        fetchCoachJson<{ channels?: ChannelApiRow[] }>('/api/channels', session.access_token),
+        fetchCoachJson<{ coaches?: Array<{ id: string; name: string; specialties?: string[] }> }>(
+          '/api/coaching/coaches',
+          session.access_token
+        ),
+        fetchCoachJson<{ journeys?: Array<{ id: string; title: string; description?: string | null }> }>(
+          '/api/coaching/journeys',
+          session.access_token
+        ),
+      ]);
+
+      const channels = channelsPayload.channels ?? [];
+      const mappedChannels = channels.map((row) => {
+        const type = row.type ?? 'team';
+        const seg: ChannelSegment =
+          type === 'team'
+            ? 'top_producers'
+            : type === 'cohort'
+              ? 'new_agents'
+              : type === 'sponsor'
+                ? 'sponsor_leads'
+                : 'all';
+        return {
+          id: row.id,
+          c1: row.name || 'Untitled channel',
+          c2: `${type} scope`,
+          c3: String(row.unread_count ?? 0),
+          c4: row.created_at ? new Date(row.created_at).toLocaleDateString() : 'recent',
+          segment: seg,
+          type,
+          context_id: row.context_id ?? null,
+        };
+      });
+      setChannelRows(mappedChannels);
+
+      const cohortRows = channels
+        .filter((row) => row.type === 'cohort')
+        .map((row) => ({
+          id: row.id,
+          name: row.name || 'Untitled cohort',
+          owner: row.my_role === 'admin' ? 'Coach owner' : 'Channel admin',
+          program: row.context_id || 'Unassigned',
+          memberIds: [],
+        }));
+      setCohorts(cohortRows);
+      const draftChannel = channels.find((row) => row.context_id === DRAFT_CHANNEL_CONTEXT_ID) ?? null;
+      setDraftChannelId(draftChannel?.id ?? null);
+
+      const coachPeople = (coachesPayload.coaches ?? []).map((coach) => ({
+        id: coach.id,
+        name: coach.name,
+        subtitle: (coach.specialties ?? []).slice(0, 2).join(' · ') || 'Coach',
+      }));
+      setCohortPeople(coachPeople);
+
+      const journeys = journeysPayload.journeys ?? [];
+      const journeyDetails = await Promise.all(
+        journeys.map(async (journey) => {
+          const detail = await fetchCoachJson<{
+            milestones?: Array<{ id: string; title?: string; lessons?: Array<{ id: string; title: string }> }>;
+          }>(`/api/coaching/journeys/${journey.id}`, session.access_token as string);
+          const lessons: JourneyLesson[] =
+            detail.milestones?.flatMap((milestone) =>
+              (milestone.lessons ?? []).map((lesson, idx) => ({
+                id: lesson.id,
+                title: lesson.title || `${milestone.title ?? 'Lesson'} ${idx + 1}`,
+                tasks: [
+                  {
+                    id: `tk-${lesson.id}`,
+                    title: lesson.title || 'Lesson task',
+                    assetId: `asset-${lesson.id}`,
+                  },
+                ],
+              }))
+            ) ?? [];
+          return {
+            id: journey.id,
+            name: journey.title,
+            audience: journey.description?.trim() || 'Team scoped',
+            lessons,
+          } satisfies JourneyDraft;
+        })
+      );
+      setJourneys(journeyDetails);
+
+      const derivedAssets: LibraryAsset[] = [];
+      const derivedCollections: LibraryCollection[] = [];
+      for (const journey of journeyDetails) {
+        const assetIds: string[] = [];
+        for (const lesson of journey.lessons) {
+          const assetId = `asset-${lesson.id}`;
+          assetIds.push(assetId);
+          derivedAssets.push({
+            id: assetId,
+            title: lesson.title,
+            category: 'Lesson Pack',
+            scope: journey.name,
+            duration: '--',
+          });
+        }
+        derivedCollections.push({
+          id: `col-${journey.id}`,
+          name: journey.name,
+          assetIds,
+        });
+      }
+      setAssets(derivedAssets);
+      setCollections(derivedCollections);
+      if (journeyDetails.length > 0) {
+        setSelectedJourneyId((prev) => prev && journeyDetails.some((j) => j.id === prev) ? prev : journeyDetails[0].id);
+        setSelectedLessonId(journeyDetails[0].lessons[0]?.id ?? null);
+      }
+      if (derivedCollections.length > 0) {
+        setSelectedCollectionId((prev) => prev && derivedCollections.some((c) => c.id === prev) ? prev : derivedCollections[0].id);
+        setExpandedCollectionIds([derivedCollections[0].id]);
+      }
+
+      if (draftChannel?.id) {
+        try {
+          const draftMessages = await fetchCoachJson<{ messages?: ChannelMessageApiRow[] }>(
+            `/api/channels/${draftChannel.id}/messages`,
+            session.access_token
+          );
+          const snapshotBody = [...(draftMessages.messages ?? [])]
+            .reverse()
+            .map((m) => (typeof m.body === 'string' ? m.body : ''))
+            .find((body) => body.startsWith(DRAFT_MESSAGE_PREFIX));
+          if (snapshotBody) {
+            const raw = snapshotBody.slice(DRAFT_MESSAGE_PREFIX.length);
+            const parsed = JSON.parse(raw) as {
+              assets?: LibraryAsset[];
+              collections?: LibraryCollection[];
+              journeys?: JourneyDraft[];
+              cohorts?: CohortDraft[];
+            };
+            if (Array.isArray(parsed.assets)) setAssets(parsed.assets);
+            if (Array.isArray(parsed.collections)) setCollections(parsed.collections);
+            if (Array.isArray(parsed.journeys)) setJourneys(parsed.journeys);
+            if (Array.isArray(parsed.cohorts)) setCohorts(parsed.cohorts);
+          }
+        } catch {
+          // keep baseline API data when snapshot parsing fails
+        }
+      }
+
+      setSaveState('idle');
+      setSaveMessage('Connected to backend coaching endpoints.');
+      setDirty(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load coach portal data';
+      setPortalLoadError(message);
+      setSaveState('error');
+      setSaveMessage(message);
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshPortalData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token]);
+
+  /* ─── Navigation (unchanged) ─── */
 
   const navigate = (nextKey: CoachRouteKey) => {
     const nextRoute = getAdminRouteByKey(nextKey);
@@ -455,11 +661,88 @@ export default function CoachPortalScreen() {
     );
   };
 
+  /* ─── Drag & drop logic (unchanged) ─── */
+
+  const persistDraftSnapshot = async () => {
+    if (!canComposeDraft) {
+      setSaveState('error');
+      setSaveMessage(composeDeniedReason);
+      return false;
+    }
+    if (!session?.access_token) {
+      setSaveState('error');
+      setSaveMessage('Missing session token for save.');
+      return false;
+    }
+    if (savingRef.current) return false;
+    savingRef.current = true;
+    setSaveState('pending');
+    setSaveMessage('Saving...');
+    try {
+      let targetChannelId =
+        draftChannelId ?? channelRows.find((row) => row.context_id === DRAFT_CHANNEL_CONTEXT_ID)?.id ?? null;
+      if (!targetChannelId) {
+        const created = await sendCoachJson<{ channel: ChannelApiRow }>(
+          '/api/channels',
+          session.access_token,
+          {
+            type: 'direct',
+            name: 'Coach Portal Drafts',
+            context_id: DRAFT_CHANNEL_CONTEXT_ID,
+          }
+        );
+        targetChannelId = created.channel.id;
+        setChannelRows((prev) => [
+          {
+            id: created.channel.id,
+            c1: created.channel.name || 'Coach Portal Drafts',
+            c2: 'direct scope',
+            c3: '0',
+            c4: created.channel.created_at ? new Date(created.channel.created_at).toLocaleDateString() : 'recent',
+            segment: 'all',
+            type: created.channel.type,
+            context_id: created.channel.context_id ?? null,
+          },
+          ...prev.filter((row) => row.id !== created.channel.id),
+        ]);
+        setDraftChannelId(targetChannelId);
+      }
+      const snapshot = {
+        version: 1,
+        updated_at: new Date().toISOString(),
+        assets,
+        collections,
+        journeys,
+        cohorts,
+      };
+      await sendCoachJson<{ message: ChannelMessageApiRow }>(
+        `/api/channels/${targetChannelId}/messages`,
+        session.access_token,
+        {
+          body: `${DRAFT_MESSAGE_PREFIX}${JSON.stringify(snapshot)}`,
+        }
+      );
+      setSaveState('saved');
+      setDirty(false);
+      setSaveMessage(`Saved at ${new Date().toLocaleTimeString()}`);
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save draft';
+      setSaveState('error');
+      setSaveMessage(message);
+      return false;
+    } finally {
+      savingRef.current = false;
+    }
+  };
+
   const markDraftChanged = (hint: string) => {
     setDirty(true);
-    setSaveState('idle');
-    setSaveMessage('Unsaved changes. Save draft to persist this arrangement.');
     setDropHint(hint);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      void persistDraftSnapshot();
+    }, 800);
   };
 
   const parseDragPayload = (eventLike?: any): DragPayload => {
@@ -468,16 +751,16 @@ export default function CoachPortalScreen() {
       const [, assetId, sourceCollectionId] = text.split(':');
       return { type: 'asset', assetId, sourceCollectionId: sourceCollectionId === 'none' ? null : sourceCollectionId };
     }
-    if (text.startsWith('journey-block:')) {
-      const [, sourceJourneyId, sourceMilestoneId, blockId, assetId] = text.split(':');
-      if (sourceJourneyId && sourceMilestoneId && blockId && assetId) {
-        return { type: 'journey_block', sourceJourneyId, sourceMilestoneId, blockId, assetId };
+    if (text.startsWith('journey-task:')) {
+      const [, sourceJourneyId, sourceLessonId, taskId, assetId] = text.split(':');
+      if (sourceJourneyId && sourceLessonId && taskId) {
+        return { type: 'journey_task', sourceJourneyId, sourceLessonId, taskId, assetId: assetId === 'null' ? null : (assetId || null) };
       }
     }
-    if (text.startsWith('journey-milestone:')) {
-      const [, sourceJourneyId, milestoneId] = text.split(':');
-      if (sourceJourneyId && milestoneId) {
-        return { type: 'journey_milestone', sourceJourneyId, milestoneId };
+    if (text.startsWith('journey-lesson:')) {
+      const [, sourceJourneyId, lessonId] = text.split(':');
+      if (sourceJourneyId && lessonId) {
+        return { type: 'journey_lesson', sourceJourneyId, lessonId };
       }
     }
     if (text.startsWith('person:')) {
@@ -494,12 +777,177 @@ export default function CoachPortalScreen() {
     }
   };
 
+  const clearAllDragState = () => {
+    setDragPayload(null);
+    setDraggingAssetId(null);
+    setDraggingTaskId(null);
+    setDraggingLessonId(null);
+    setHoverLessonId(null);
+    setHoverTaskInsert(null);
+    setHoverLessonInsertIndex(null);
+  };
+
+  /* ─── Pointer-based drag system ─── */
+  const onGrabPointerDown = (e: any, payload: DragPayload, label: string) => {
+    if (!canComposeDraft && payload?.type !== 'person') return;
+    if (typeof document === 'undefined') return;
+    const cx: number = e.clientX ?? e.nativeEvent?.clientX ?? 0;
+    const cy: number = e.clientY ?? e.nativeEvent?.clientY ?? 0;
+    pointerDragRef.current = { payload, label, startX: cx, startY: cy, started: false, ghostEl: null, lastHoverCheck: 0 };
+
+    const onMove = (me: PointerEvent) => {
+      const ref = pointerDragRef.current;
+      if (!ref) return;
+      const dx = me.clientX - ref.startX;
+      const dy = me.clientY - ref.startY;
+
+      // Threshold: only enter drag mode after 5 px of movement
+      if (!ref.started) {
+        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+        ref.started = true;
+        setDragPayload(ref.payload);
+        if (ref.payload?.type === 'asset') setDraggingAssetId(ref.payload.assetId);
+        if (ref.payload?.type === 'journey_lesson') setDraggingLessonId(ref.payload.lessonId);
+        if (ref.payload?.type === 'journey_task') setDraggingTaskId(ref.payload.taskId);
+        setDropSuccessLessonId(null);
+        // Create ghost card (raw DOM for performance — no React re-render per pixel)
+        const ghost = document.createElement('div');
+        ghost.style.cssText =
+          'position:fixed;z-index:9999;pointer-events:none;background:#fff;border:2px solid #2563EB;' +
+          'border-radius:8px;padding:8px 14px;box-shadow:0 8px 24px rgba(37,99,235,0.18);' +
+          'font-size:13px;font-weight:700;color:#0F172A;max-width:220px;white-space:nowrap;' +
+          'overflow:hidden;text-overflow:ellipsis;transition:none;';
+        ghost.textContent = '⠿  ' + ref.label;
+        document.body.appendChild(ghost);
+        ref.ghostEl = ghost;
+      }
+
+      // Move the ghost card to follow the cursor
+      if (ref.ghostEl) {
+        ref.ghostEl.style.left = `${me.clientX + 14}px`;
+        ref.ghostEl.style.top = `${me.clientY - 18}px`;
+      }
+
+      // Throttle hover-target detection to every 40 ms
+      const now = Date.now();
+      if (now - ref.lastHoverCheck < 40) return;
+      ref.lastHoverCheck = now;
+
+      // Lesson reorder: scan ALL lesson cards for a single, unambiguous insertion index
+      if (ref.payload?.type === 'journey_lesson') {
+        const lessonEls = document.querySelectorAll('[data-drop-lesson]');
+        let bestInsert = 0;
+        let foundAny = false;
+        lessonEls.forEach((el) => {
+          const id = (el as HTMLElement).dataset.dropLesson;
+          if (!id) return;
+          const rect = el.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          const lessonIdx = selectedJourney?.lessons.findIndex((l) => l.id === id) ?? -1;
+          if (lessonIdx < 0) return;
+          foundAny = true;
+          if (me.clientY >= midY) bestInsert = lessonIdx + 1;
+        });
+        setHoverLessonInsertIndex(foundAny ? bestInsert : null);
+        setHoverLessonId(null);
+        setHoverTaskInsert(null);
+      } else {
+        // Asset / task / person drag: point-based detection
+        const els = document.elementsFromPoint(me.clientX, me.clientY);
+        let hovLesson: string | null = null;
+        let hovSlot: { lessonId: string; index: number } | null = null;
+        for (const el of els) {
+          const d = (el as HTMLElement).dataset;
+          if (d?.dropTaskSlot) {
+            const parts = d.dropTaskSlot.split(':');
+            hovSlot = { lessonId: parts[0], index: parseInt(parts[1], 10) };
+            hovLesson = parts[0];
+            break;
+          }
+          if (d?.dropLesson) { hovLesson = d.dropLesson; break; }
+          if (d?.dropCollection) break;
+          if (d?.dropCohort) break;
+        }
+        setHoverLessonId(hovLesson);
+        setHoverTaskInsert(hovSlot);
+        setHoverLessonInsertIndex(null);
+      }
+    };
+
+    const onUp = (ue: PointerEvent) => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      const ref = pointerDragRef.current;
+      pointerDragRef.current = null;
+      // Remove ghost
+      if (ref?.ghostEl) { try { document.body.removeChild(ref.ghostEl); } catch (_) {} }
+      if (!ref?.started) { clearAllDragState(); return; }
+
+      const p = ref.payload;
+
+      // Lesson reorder: use same full-scan approach as hover
+      if (p?.type === 'journey_lesson') {
+        const lessonEls = document.querySelectorAll('[data-drop-lesson]');
+        let bestInsert = 0;
+        let foundAny = false;
+        lessonEls.forEach((el) => {
+          const id = (el as HTMLElement).dataset.dropLesson;
+          if (!id) return;
+          const rect = el.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          const lessonIdx = selectedJourney?.lessons.findIndex((l) => l.id === id) ?? -1;
+          if (lessonIdx < 0) return;
+          foundAny = true;
+          if (ue.clientY >= midY) bestInsert = lessonIdx + 1;
+        });
+        if (foundAny) reorderLessonToSlot(p, bestInsert);
+        clearAllDragState();
+        return;
+      }
+
+      // Asset / task / person drop: point-based detection
+      const els = document.elementsFromPoint(ue.clientX, ue.clientY);
+      for (const el of els) {
+        const d = (el as HTMLElement).dataset;
+        if (d?.dropTaskSlot) {
+          const parts = d.dropTaskSlot.split(':');
+          if (p?.type === 'asset' || p?.type === 'journey_task') {
+            addAssetToLesson(p, parts[0], parseInt(parts[1], 10));
+            setDropSuccessLessonId(parts[0]);
+          }
+          break;
+        }
+        if (d?.dropLesson) {
+          if (p?.type === 'asset' || p?.type === 'journey_task') {
+            const tc = selectedJourney?.lessons.find((l) => l.id === d.dropLesson)?.tasks.length ?? 0;
+            addAssetToLesson(p, d.dropLesson, tc);
+            setDropSuccessLessonId(d.dropLesson);
+          }
+          break;
+        }
+        if (d?.dropCollection) {
+          if (p?.type === 'asset') assignAssetToCollection(d.dropCollection, p);
+          break;
+        }
+        if (d?.dropCohort) {
+          if (p?.type === 'person') addPeopleToCohort(d.dropCohort, [p.personId]);
+          break;
+        }
+      }
+      clearAllDragState();
+    };
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  };
+
   const startAssetDrag = (assetId: string, sourceCollectionId: string | null) => {
     if (!canComposeDraft) return;
     setDragPayload({ type: 'asset', assetId, sourceCollectionId });
     setDraggingAssetId(assetId);
-    setDropSuccessMilestoneId(null);
-    setDropHint('Asset in hand. Drop on a folder or journey milestone.');
+    setDraggingTaskId(null);
+    setDraggingLessonId(null);
+    setDropSuccessLessonId(null);
   };
 
   const assignAssetToCollection = (collectionId: string, payload: DragPayload) => {
@@ -509,9 +957,7 @@ export default function CoachPortalScreen() {
     setCollections((prev) =>
       prev.map((collection) => {
         const filteredIds = collection.assetIds.filter((assetId) => assetId !== payload.assetId);
-        if (collection.id !== collectionId) {
-          return { ...collection, assetIds: filteredIds };
-        }
+        if (collection.id !== collectionId) return { ...collection, assetIds: filteredIds };
         return { ...collection, assetIds: [...filteredIds, payload.assetId] };
       })
     );
@@ -519,71 +965,74 @@ export default function CoachPortalScreen() {
     markDraftChanged('Asset moved into collection.');
   };
 
-  const addAssetToMilestone = (payload: DragPayload, targetMilestoneId: string, targetIndex: number) => {
+  const addAssetToLesson = (payload: DragPayload, targetLessonId: string, targetIndex: number) => {
     if (!selectedJourney) return;
-
     if (payload?.type === 'asset') {
       setJourneys((prev) =>
         prev.map((journey) => {
           if (journey.id !== selectedJourney.id) return journey;
-          const milestones = journey.milestones.map((milestone) => {
-            if (milestone.id !== targetMilestoneId) return milestone;
-            const insertAt = Math.max(0, Math.min(targetIndex, milestone.blocks.length));
-            const nextBlocks = [...milestone.blocks];
-            nextBlocks.splice(insertAt, 0, {
-              id: `jb-${Date.now()}-${blockIdRef.current++}`,
-              assetId: payload.assetId,
-            });
-            return { ...milestone, blocks: nextBlocks };
+          const lessons = journey.lessons.map((lesson) => {
+            if (lesson.id !== targetLessonId) return lesson;
+            const insertAt = Math.max(0, Math.min(targetIndex, lesson.tasks.length));
+            const nextTasks = [...lesson.tasks];
+            const assetTitle = assetsById.get(payload.assetId)?.title ?? 'New Task';
+            nextTasks.splice(insertAt, 0, { id: `tk-${Date.now()}-${taskIdRef.current++}`, title: assetTitle, assetId: payload.assetId });
+            return { ...lesson, tasks: nextTasks };
           });
-          return { ...journey, milestones };
+          return { ...journey, lessons };
         })
       );
-      markDraftChanged('Asset assigned to journey milestone.');
+      markDraftChanged('Asset added to lesson.');
       return;
     }
-
-    if (payload?.type === 'journey_block') {
+    if (payload?.type === 'journey_task') {
       setJourneys((prev) =>
         prev.map((journey) => {
           if (journey.id !== selectedJourney.id || payload.sourceJourneyId !== selectedJourney.id) return journey;
-          let movingBlock: JourneyBlock | null = null;
-          const strippedMilestones = journey.milestones.map((milestone) => {
-            if (milestone.id !== payload.sourceMilestoneId) return milestone;
-            const remainingBlocks = milestone.blocks.filter((block) => {
-              if (block.id !== payload.blockId) return true;
-              movingBlock = block;
+          let movingTask: JourneyTask | null = null;
+          const strippedLessons = journey.lessons.map((lesson) => {
+            if (lesson.id !== payload.sourceLessonId) return lesson;
+            const remainingTasks = lesson.tasks.filter((task) => {
+              if (task.id !== payload.taskId) return true;
+              movingTask = task;
               return false;
             });
-            return { ...milestone, blocks: remainingBlocks };
+            return { ...lesson, tasks: remainingTasks };
           });
-          if (!movingBlock) return journey;
-
-          const milestones = strippedMilestones.map((milestone) => {
-            if (milestone.id !== targetMilestoneId) return milestone;
-            const insertAt = Math.max(0, Math.min(targetIndex, milestone.blocks.length));
-            const nextBlocks = [...milestone.blocks];
-            nextBlocks.splice(insertAt, 0, movingBlock as JourneyBlock);
-            return { ...milestone, blocks: nextBlocks };
+          if (!movingTask) return journey;
+          const lessons = strippedLessons.map((lesson) => {
+            if (lesson.id !== targetLessonId) return lesson;
+            const insertAt = Math.max(0, Math.min(targetIndex, lesson.tasks.length));
+            const nextTasks = [...lesson.tasks];
+            nextTasks.splice(insertAt, 0, movingTask as JourneyTask);
+            return { ...lesson, tasks: nextTasks };
           });
-          return { ...journey, milestones };
+          return { ...journey, lessons };
         })
       );
-      markDraftChanged('Journey block moved.');
+      markDraftChanged('Task moved.');
     }
   };
 
-  const handleDropToMilestone = (eventLike: any, milestoneId: string, index: number) => {
+  const handleDropToLesson = (eventLike: any, lessonId: string, index: number) => {
     if (typeof eventLike?.preventDefault === 'function') eventLike.preventDefault();
     if (!canComposeDraft) return;
     const payload = parseDragPayload(eventLike);
-    addAssetToMilestone(payload, milestoneId, index);
-    if (payload?.type === 'asset' || payload?.type === 'journey_block') {
-      setDropSuccessMilestoneId(milestoneId);
-      setHoverMilestoneId(null);
+    addAssetToLesson(payload, lessonId, index);
+    if (payload?.type === 'asset' || payload?.type === 'journey_task') {
+      setDropSuccessLessonId(lessonId);
     }
-    setDraggingAssetId(null);
-    setDragPayload(null);
+    clearAllDragState();
+  };
+
+  const handleDropToTaskSlot = (eventLike: any, lessonId: string, insertIndex: number) => {
+    if (typeof eventLike?.preventDefault === 'function') eventLike.preventDefault();
+    if (!canComposeDraft) return;
+    const payload = parseDragPayload(eventLike);
+    if (!payload) return;
+    addAssetToLesson(payload, lessonId, insertIndex);
+    setDropSuccessLessonId(lessonId);
+    clearAllDragState();
   };
 
   const handleDropToCollection = (eventLike: any, collectionId: string) => {
@@ -591,72 +1040,78 @@ export default function CoachPortalScreen() {
     if (!canComposeDraft) return;
     const payload = parseDragPayload(eventLike);
     assignAssetToCollection(collectionId, payload);
-    setDraggingAssetId(null);
-    setDragPayload(null);
+    clearAllDragState();
   };
 
   const handleClickDropToCollection = (collectionId: string) => {
     if (!canComposeDraft) return false;
     if (!dragPayload || dragPayload.type !== 'asset') return false;
     assignAssetToCollection(collectionId, dragPayload);
-    setDraggingAssetId(null);
-    setDragPayload(null);
+    clearAllDragState();
     return true;
   };
 
-  const handleClickDropToMilestone = (milestoneId: string, blockCount: number) => {
+  const handleClickDropToLesson = (lessonId: string, taskCount: number) => {
     if (!canComposeDraft) return false;
-    if (!dragPayload || (dragPayload.type !== 'asset' && dragPayload.type !== 'journey_block')) return false;
-    addAssetToMilestone(dragPayload, milestoneId, blockCount);
-    setDropSuccessMilestoneId(milestoneId);
-    setHoverMilestoneId(null);
-    setDraggingAssetId(null);
-    setDragPayload(null);
+    if (!dragPayload || (dragPayload.type !== 'asset' && dragPayload.type !== 'journey_task')) return false;
+    addAssetToLesson(dragPayload, lessonId, taskCount);
+    setDropSuccessLessonId(lessonId);
+    clearAllDragState();
     return true;
   };
 
-  const reorderMilestoneByDrop = (payload: DragPayload, targetMilestoneId: string) => {
-    if (!selectedJourney || payload?.type !== 'journey_milestone' || payload.sourceJourneyId !== selectedJourney.id) return false;
-    const fromIndex = selectedJourney.milestones.findIndex((row) => row.id === payload.milestoneId);
-    const toIndex = selectedJourney.milestones.findIndex((row) => row.id === targetMilestoneId);
+  const reorderLessonByDrop = (payload: DragPayload, targetLessonId: string) => {
+    if (!selectedJourney || payload?.type !== 'journey_lesson' || payload.sourceJourneyId !== selectedJourney.id) return false;
+    const fromIndex = selectedJourney.lessons.findIndex((row) => row.id === payload.lessonId);
+    const toIndex = selectedJourney.lessons.findIndex((row) => row.id === targetLessonId);
     if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return false;
     setJourneys((prev) =>
       prev.map((journey) =>
-        journey.id === selectedJourney.id ? { ...journey, milestones: moveItem(journey.milestones, fromIndex, toIndex) } : journey
+        journey.id === selectedJourney.id ? { ...journey, lessons: moveItem(journey.lessons, fromIndex, toIndex) } : journey
       )
     );
-    markDraftChanged('Lesson/task order updated.');
+    markDraftChanged('Lesson order updated.');
     return true;
   };
 
-  const handleDropToMilestoneCard = (eventLike: any, milestoneId: string) => {
+  const reorderLessonToSlot = (payload: DragPayload, toSlot: number) => {
+    if (!selectedJourney || payload?.type !== 'journey_lesson' || payload.sourceJourneyId !== selectedJourney.id) return false;
+    const fromIndex = selectedJourney.lessons.findIndex((row) => row.id === payload.lessonId);
+    if (fromIndex < 0) return false;
+    // Adjust: inserting after the removed position means the target shifts down by 1
+    const toIndex = toSlot > fromIndex ? toSlot - 1 : toSlot;
+    if (fromIndex === toIndex) return false;
+    setJourneys((prev) =>
+      prev.map((journey) =>
+        journey.id === selectedJourney.id ? { ...journey, lessons: moveItem(journey.lessons, fromIndex, toIndex) } : journey
+      )
+    );
+    markDraftChanged('Lesson order updated.');
+    return true;
+  };
+
+  const handleDropToLessonCard = (eventLike: any, lessonId: string) => {
     if (typeof eventLike?.preventDefault === 'function') eventLike.preventDefault();
     if (!canComposeDraft) return;
     const payload = parseDragPayload(eventLike);
-    if (payload?.type !== 'journey_milestone') return;
-    if (reorderMilestoneByDrop(payload, milestoneId)) {
-      setHoverMilestoneId(null);
-      setDragPayload(null);
+    if (payload?.type !== 'journey_lesson') return;
+    if (reorderLessonByDrop(payload, lessonId)) {
+      clearAllDragState();
     }
   };
 
-  const handlePointerDropToMilestone = (milestoneId: string) => {
+  const handlePointerDropToLesson = (lessonId: string) => {
     if (!canComposeDraft || !dragPayload) return false;
-    if (dragPayload.type === 'journey_milestone') {
-      const reordered = reorderMilestoneByDrop(dragPayload, milestoneId);
-      if (reordered) {
-        setHoverMilestoneId(null);
-        setDragPayload(null);
-      }
+    if (dragPayload.type === 'journey_lesson') {
+      const reordered = reorderLessonByDrop(dragPayload, lessonId);
+      if (reordered) clearAllDragState();
       return reordered;
     }
-    if (dragPayload.type === 'asset' || dragPayload.type === 'journey_block') {
-      const blockCount = selectedJourney?.milestones.find((row) => row.id === milestoneId)?.blocks.length ?? 0;
-      addAssetToMilestone(dragPayload, milestoneId, blockCount);
-      setDropSuccessMilestoneId(milestoneId);
-      setHoverMilestoneId(null);
-      setDraggingAssetId(null);
-      setDragPayload(null);
+    if (dragPayload.type === 'asset' || dragPayload.type === 'journey_task') {
+      const taskCount = selectedJourney?.lessons.find((row) => row.id === lessonId)?.tasks.length ?? 0;
+      addAssetToLesson(dragPayload, lessonId, taskCount);
+      setDropSuccessLessonId(lessonId);
+      clearAllDragState();
       return true;
     }
     return false;
@@ -671,6 +1126,7 @@ export default function CoachPortalScreen() {
           : cohort
       )
     );
+    markDraftChanged('Cohort membership updated.');
   };
 
   const handleClickAssignPersonToCohort = (cohortId: string) => {
@@ -681,129 +1137,203 @@ export default function CoachPortalScreen() {
     return true;
   };
 
-  const createCohort = () => {
+  const createCohort = async () => {
+    if (!canComposeDraft) {
+      setSaveState('error');
+      setSaveMessage(composeDeniedReason);
+      return;
+    }
+    if (!session?.access_token) {
+      setSaveState('error');
+      setSaveMessage('Missing session token for cohort create.');
+      return;
+    }
     const name = newCohortName.trim();
     if (!name) return;
-    const id = `co-${Date.now()}`;
-    setCohorts((prev) => [{ id, name, owner: 'Coach', program: 'Unassigned', memberIds: [] }, ...prev]);
-    setSelectedCohortId(id);
-    setNewCohortName('');
+    setSaveState('pending');
+    setSaveMessage('Creating cohort...');
+    try {
+      const created = await sendCoachJson<{ channel: ChannelApiRow }>(
+        '/api/channels',
+        session.access_token,
+        {
+          type: 'cohort',
+          name,
+        }
+      );
+      const cohort: CohortDraft = {
+        id: created.channel.id,
+        name: created.channel.name || name,
+        owner: 'Coach owner',
+        program: created.channel.context_id || 'Unassigned',
+        memberIds: [],
+      };
+      setCohorts((prev) => [cohort, ...prev.filter((row) => row.id !== cohort.id)]);
+      setChannelRows((prev) => [
+        {
+          id: created.channel.id,
+          c1: created.channel.name || name,
+          c2: 'cohort scope',
+          c3: '0',
+          c4: created.channel.created_at ? new Date(created.channel.created_at).toLocaleDateString() : 'recent',
+          segment: 'new_agents',
+          type: created.channel.type,
+          context_id: created.channel.context_id ?? null,
+        },
+        ...prev.filter((row) => row.id !== created.channel.id),
+      ]);
+      setSelectedCohortId(cohort.id);
+      setNewCohortName('');
+      setSaveState('saved');
+      setSaveMessage(`Cohort created at ${new Date().toLocaleTimeString()}`);
+      setDirty(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create cohort';
+      setSaveState('error');
+      setSaveMessage(message);
+    }
   };
 
-  const reorderBlock = (milestoneId: string, blockId: string, direction: -1 | 1) => {
+  const reorderTask = (lessonId: string, taskId: string, direction: -1 | 1) => {
     if (!canComposeDraft || !selectedJourney) return;
     setJourneys((prev) =>
       prev.map((journey) => {
         if (journey.id !== selectedJourney.id) return journey;
-        const milestones = journey.milestones.map((milestone) => {
-          if (milestone.id !== milestoneId) return milestone;
-          const fromIndex = milestone.blocks.findIndex((block) => block.id === blockId);
-          if (fromIndex < 0) return milestone;
-          const toIndex = fromIndex + direction;
-          return { ...milestone, blocks: moveItem(milestone.blocks, fromIndex, toIndex) };
+        const lessons = journey.lessons.map((lesson) => {
+          if (lesson.id !== lessonId) return lesson;
+          const fromIndex = lesson.tasks.findIndex((task) => task.id === taskId);
+          if (fromIndex < 0) return lesson;
+          return { ...lesson, tasks: moveItem(lesson.tasks, fromIndex, fromIndex + direction) };
         });
-        return { ...journey, milestones };
+        return { ...journey, lessons };
       })
     );
-    setActiveBlockMenu(null);
-    markDraftChanged('Journey step order updated.');
+    setActiveTaskMenu(null);
+    markDraftChanged('Task order updated.');
   };
 
-  const removeBlock = (milestoneId: string, blockId: string) => {
+  const removeTask = (lessonId: string, taskId: string) => {
     if (!canComposeDraft || !selectedJourney) return;
     setJourneys((prev) =>
       prev.map((journey) => {
         if (journey.id !== selectedJourney.id) return journey;
-        const milestones = journey.milestones.map((milestone) =>
-          milestone.id === milestoneId
-            ? { ...milestone, blocks: milestone.blocks.filter((block) => block.id !== blockId) }
-            : milestone
+        const lessons = journey.lessons.map((lesson) =>
+          lesson.id === lessonId
+            ? { ...lesson, tasks: lesson.tasks.filter((task) => task.id !== taskId) }
+            : lesson
         );
-        return { ...journey, milestones };
+        return { ...journey, lessons };
       })
     );
-    setActiveBlockMenu(null);
-    markDraftChanged('Journey step removed.');
+    setActiveTaskMenu(null);
+    markDraftChanged('Task removed.');
   };
 
-  const addJourneyItem = (kind: 'lesson' | 'task') => {
+  const addLesson = () => {
     if (!canComposeDraft || !selectedJourney) return;
-    const prefix = kind === 'lesson' ? 'Lesson' : 'Task';
-    const nextCount = selectedJourney.milestones.filter((row) => row.kind === kind).length + 1;
-    const nextItem: JourneyMilestone = {
-      id: `ms-${kind}-${Date.now()}`,
-      title: `${prefix} ${nextCount}`,
-      kind,
-      blocks: [],
+    const nextCount = selectedJourney.lessons.length + 1;
+    const nextLesson: JourneyLesson = {
+      id: `ls-${Date.now()}`,
+      title: `Lesson ${nextCount}`,
+      tasks: [],
     };
     setJourneys((prev) =>
       prev.map((journey) =>
-        journey.id === selectedJourney.id ? { ...journey, milestones: [...journey.milestones, nextItem] } : journey
+        journey.id === selectedJourney.id ? { ...journey, lessons: [...journey.lessons, nextLesson] } : journey
       )
     );
-    setSelectedMilestoneId(nextItem.id);
-    markDraftChanged(`${prefix} added to selected journey.`);
+    setSelectedLessonId(nextLesson.id);
+    markDraftChanged('Lesson added.');
+  };
+
+  const addTaskToLesson = (targetLessonId?: string) => {
+    if (!canComposeDraft || !selectedJourney) return;
+    const lessonId = targetLessonId ?? selectedLessonId;
+    const lesson = selectedJourney.lessons.find((l) => l.id === lessonId);
+    if (!lesson) return;
+    const nextTask: JourneyTask = {
+      id: `tk-${Date.now()}-${taskIdRef.current++}`,
+      title: `Task ${lesson.tasks.length + 1}`,
+      assetId: null,
+    };
+    setJourneys((prev) =>
+      prev.map((journey) => {
+        if (journey.id !== selectedJourney.id) return journey;
+        const lessons = journey.lessons.map((l) =>
+          l.id === lessonId ? { ...l, tasks: [...l.tasks, nextTask] } : l
+        );
+        return { ...journey, lessons };
+      })
+    );
+    markDraftChanged('Task added to lesson.');
   };
 
   const createJourney = () => {
-    if (!canComposeDraft) {
-      setSaveState('error');
-      setSaveMessage(composeDeniedReason);
-      return;
-    }
+    if (!canComposeDraft) { setSaveState('error'); setSaveMessage(composeDeniedReason); return; }
     const name = newJourneyName.trim();
-    if (!name) {
-      setSaveState('error');
-      setSaveMessage('Enter a journey name to create a blank journey.');
-      return;
-    }
+    if (!name) { setSaveState('error'); setSaveMessage('Enter a journey name first.'); return; }
     const id = `jr-${Date.now()}`;
-    const newJourney: JourneyDraft = {
-      id,
-      name,
-      audience: 'Draft audience',
-      milestones: cloneMilestones(),
-    };
+    const newJourney: JourneyDraft = { id, name, audience: 'Draft audience', lessons: [] };
     setJourneys((prev) => [newJourney, ...prev]);
     setSelectedJourneyId(id);
     setNewJourneyName('');
-    markDraftChanged('New blank journey created. Add assets to milestones and save.');
+    markDraftChanged('New journey created.');
   };
 
-  const saveDraft = () => {
-    if (!canComposeDraft) {
-      setSaveState('error');
-      setSaveMessage(composeDeniedReason);
-      return;
+  const deleteJourney = (journeyId: string) => {
+    if (!canComposeDraft) return;
+    setJourneys((prev) => prev.filter((j) => j.id !== journeyId));
+    if (selectedJourneyId === journeyId) {
+      setSelectedJourneyId(null);
+      setSelectedLessonId(null);
     }
-    if (!selectedJourney) {
-      setSaveState('error');
-      setSaveMessage('Create or select a journey before saving.');
-      return;
-    }
-    if (!dirty) {
-      setSaveState('idle');
-      setSaveMessage('No unsaved changes.');
-      return;
-    }
-    setSaveState('pending');
-    setSaveMessage('Saving journey draft...');
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      setSaveState('saved');
-      setDirty(false);
-      setSaveMessage(`Draft saved at ${new Date().toLocaleTimeString()}.`);
-    }, 700);
+    setConfirmDelete(null);
+    markDraftChanged('Journey deleted.');
   };
+
+  const deleteLesson = (lessonId: string) => {
+    if (!canComposeDraft || !selectedJourney) return;
+    setJourneys((prev) =>
+      prev.map((journey) =>
+        journey.id === selectedJourney.id
+          ? { ...journey, lessons: journey.lessons.filter((l) => l.id !== lessonId) }
+          : journey
+      )
+    );
+    if (selectedLessonId === lessonId) setSelectedLessonId(null);
+    setConfirmDelete(null);
+    markDraftChanged('Lesson deleted.');
+  };
+
+  const confirmAndDelete = () => {
+    if (!confirmDelete) return;
+    if (confirmDelete.type === 'journey') deleteJourney(confirmDelete.id);
+    else if (confirmDelete.type === 'lesson') deleteLesson(confirmDelete.id);
+    else if (confirmDelete.type === 'task' && confirmDelete.parentId) {
+      removeTask(confirmDelete.parentId, confirmDelete.id);
+      setConfirmDelete(null);
+    }
+  };
+
+  const saveDraft = async () => {
+    if (!canComposeDraft) { setSaveState('error'); setSaveMessage(composeDeniedReason); return; }
+    if (!selectedJourney) { setSaveState('error'); setSaveMessage('Select a journey first.'); return; }
+    if (!dirty) { setSaveState('idle'); setSaveMessage('No unsaved changes.'); return; }
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    await persistDraftSnapshot();
+  };
+
+  /* ════════════════════════════════════════════
+     RENDER
+     ════════════════════════════════════════════ */
 
   if (!visibleRoutes.length) {
     return (
-      <SafeAreaView style={styles.screen}>
-        <View style={styles.centerTopBar}>{renderAccountMenu()}</View>
-        <View style={styles.centerCard}>
-          <Text style={styles.centerTitle}>Coach Portal Access Required</Text>
-          <Text style={styles.centerBody}>This account does not have access to the coach portal routes at this time.</Text>
-          <Text style={styles.centerMeta}>Current roles: {effectiveRoles.join(', ')}</Text>
+      <SafeAreaView style={s.screen}>
+        <View style={s.emptyState}>
+          <Text style={s.emptyTitle}>Access Required</Text>
+          <Text style={s.emptyBody}>This account does not have coach portal access.</Text>
+          <Text style={s.emptyMeta}>Roles: {effectiveRoles.join(', ')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -811,14 +1341,12 @@ export default function CoachPortalScreen() {
 
   if (notFoundPath) {
     return (
-      <SafeAreaView style={styles.screen}>
-        <View style={styles.centerTopBar}>{renderAccountMenu()}</View>
-        <View style={styles.centerCard}>
-          <Text style={styles.centerTitle}>Route Not Found</Text>
-          <Text style={styles.centerBody}>The requested coach route is not available. Continue in the coach portal routes.</Text>
-          <Text style={styles.centerMeta}>{notFoundPath}</Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={() => navigate(visibleRoutes[0].key as CoachRouteKey)}>
-            <Text style={styles.primaryButtonText}>Open Coach Portal</Text>
+      <SafeAreaView style={s.screen}>
+        <View style={s.emptyState}>
+          <Text style={s.emptyTitle}>Route Not Found</Text>
+          <Text style={s.emptyBody}>{notFoundPath}</Text>
+          <TouchableOpacity style={s.btnPrimary} onPress={() => navigate(visibleRoutes[0].key as CoachRouteKey)}>
+            <Text style={s.btnPrimaryText}>Go to Coach Portal</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -826,1478 +1354,1815 @@ export default function CoachPortalScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <View style={styles.bgOrbOne} />
-      <View style={styles.bgOrbTwo} />
-      <ScrollView style={styles.shellScroll} contentContainerStyle={styles.shell} showsVerticalScrollIndicator>
-        <View style={styles.heroCard}>
-          <View style={styles.heroTopRow}>
-            <View style={styles.heroBrandWrap}>
-              <View style={styles.logoWrap}>
-                <CompassMark width={38} height={38} />
-              </View>
-              <View style={styles.heroCopy}>
-                <Text style={styles.eyebrow}>Compass Coach</Text>
-                <Text style={styles.heroTitle}>Coach Portal</Text>
-                <Text style={styles.heroSubtitle}>Two workspace modes only: Journeys and People.</Text>
-              </View>
-            </View>
-            <View style={styles.heroActions}>
-                <View style={styles.roleBadge}>
-                  {backendRoleLoading ? <ActivityIndicator size="small" color="#1E5A42" /> : null}
-                  <Text style={styles.roleBadgeText}>{backendRole ? `Role: ${backendRole}` : 'Role from session'}</Text>
-                </View>
-                {renderAccountMenu('coach')}
-              </View>
-            </View>
-          <Text style={styles.scopeText}>{scopeSummary}</Text>
-          <Text style={styles.compatText}>
-            Compatibility aliases remain active: `/coach/uploads` and `/admin/coaching/*` map to canonical `/coach/*` routes.
-          </Text>
+    <SafeAreaView style={s.screen}>
+      {/* ── Top Navigation Bar ── */}
+      <View style={s.topBar}>
+        <View style={s.topBarLeft}>
+          <View style={s.logoBox}><CompassMark width={28} height={28} /></View>
+          <View>
+            <Text style={s.topBarTitle}>Coach Portal</Text>
+            <Text style={s.topBarSub}>{backendRole ? backendRole : 'Loading role...'}</Text>
+          </View>
         </View>
-
-        <View style={[styles.navCard, isCompact && styles.navCardCompact]}>
-          {visibleWorkspaceModes.map((mode) => {
-            const selected = mode === activeWorkspace;
-            const routeOptions = WORKSPACE_ROUTE_KEYS[mode]
-              .map((key) => getAdminRouteByKey(key).path)
-              .join(' + ');
-            return (
-              <Pressable key={mode} style={[styles.navPill, selected && styles.navPillSelected]} onPress={() => navigateWorkspace(mode)}>
-                <Text style={[styles.navPillLabel, selected && styles.navPillLabelSelected]}>{COACH_WORKSPACES[mode].label}</Text>
-                <Text style={styles.navPillPath}>{routeOptions}</Text>
-              </Pressable>
-            );
-          })}
+        <View style={s.topBarRight}>
+          {/* Workspace mode tabs */}
+          <View style={s.modeTabs}>
+            {visibleWorkspaceModes.map((mode) => {
+              const selected = mode === activeWorkspace;
+              return (
+                <Pressable key={mode} style={[s.modeTab, selected && s.modeTabActive]} onPress={() => navigateWorkspace(mode)}>
+                  <Text style={[s.modeTabText, selected && s.modeTabTextActive]}>
+                    {mode === 'journeys' ? '📚' : '👥'} {COACH_WORKSPACES[mode].label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {/* Account */}
+          <View style={s.accountWrap}>
+            <Pressable style={[s.avatarBtn, accountMenuOpen && s.avatarBtnOpen]} onPress={() => setAccountMenuOpen((p) => !p)}>
+              <Text style={s.avatarBtnText}>{accountInitial}</Text>
+            </Pressable>
+            {accountMenuOpen ? (
+              <View style={s.accountDrop}>
+                <Text style={s.accountDropLabel}>{accountLabel}</Text>
+                <Text style={s.accountDropRole}>{backendRole ?? 'Role from session'}</Text>
+                <TouchableOpacity style={s.accountDropSignOut} onPress={() => { setAccountMenuOpen(false); void signOut(); }}>
+                  <Text style={s.accountDropSignOutText}>Sign Out</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </View>
         </View>
+      </View>
 
-        <View style={styles.contentCard}>
-          <Text style={styles.sectionTitle}>{activeSurface.headline}</Text>
-          <Text style={styles.sectionBody}>{activeSurface.summary}</Text>
-          <Text style={styles.routeMetaText}>
-            Active route: {activeRoutePath} ({activeWorkspace === 'journeys' ? 'Journeys mode' : 'People mode'})
-          </Text>
+      {portalLoading ? (
+        <View style={s.runtimeBanner}>
+          <ActivityIndicator size="small" color="#1D4ED8" />
+          <Text style={s.runtimeBannerText}>Loading coach workspace data...</Text>
+        </View>
+      ) : null}
+      {portalLoadError ? (
+        <View style={s.runtimeBannerError}>
+          <Text style={s.runtimeBannerErrorText}>{portalLoadError}</Text>
+          <TouchableOpacity style={s.runtimeRetryBtn} onPress={() => { void refreshPortalData(); }}>
+            <Text style={s.runtimeRetryBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
-          {activeWorkspace === 'journeys' ? (
-            <View style={[styles.builderWrap, isCompact && styles.builderWrapCompact]}>
-              <View style={styles.libraryRail}>
-                <Text style={styles.panelTitle}>Library (Collections + Assets)</Text>
-                <Text style={styles.panelHint}>
-                  Expand folders to browse nested assets. Drag files to a different folder or into journey milestones.
-                </Text>
-                <TextInput
-                  value={libraryQuery}
-                  onChangeText={setLibraryQuery}
-                  placeholder="Search folders or files"
-                  placeholderTextColor="#7A9085"
-                  style={styles.searchInput}
-                />
-                <View style={styles.collectionList}>
-                  {collections.map((collection) => {
-                    const selected = collection.id === selectedCollectionId;
-                    const expanded = expandedCollectionIds.includes(collection.id);
-                    const nestedAssets = collection.assetIds
-                      .map((assetId) => assetsById.get(assetId))
-                      .filter((asset): asset is LibraryAsset => Boolean(asset))
-                      .filter((asset) => !libraryQuery.trim() || filteredAssetIds.has(asset.id));
-                    return (
-                      <View key={`journey-folder-${collection.id}`} style={styles.treeFolderGroup}>
-                        <Pressable
-                          style={[styles.collectionCard, selected && styles.collectionCardSelected]}
-                          onPress={() => {
-                            const dropped = handleClickDropToCollection(collection.id);
-                            if (dropped) return;
-                            setSelectedCollectionId(collection.id);
-                            toggleCollectionExpanded(collection.id);
-                          }}
-                          {...({
-                            onDragOver: handleDragOver,
-                            onDrop: (event: any) => handleDropToCollection(event, collection.id),
-                          } as any)}
-                        >
-                          <Text style={styles.collectionTitle}>{expanded ? '📂' : '📁'} {collection.name}</Text>
-                          <Text style={styles.collectionMeta}>{collection.assetIds.length} files</Text>
-                        </Pressable>
-                        {expanded ? (
-                          <View style={styles.treeAssetsList}>
-                            {nestedAssets.length ? (
-                              nestedAssets.map((asset) => (
+      {/* ── Main Content Area ── */}
+      <View style={s.mainRow}>
+        {/* ════ JOURNEYS MODE ════ */}
+        {activeWorkspace === 'journeys' ? (
+          <>
+            {/* ── Library Sidebar ── */}
+            <View style={[s.sidebar, isCompact && s.sidebarCompact]}>
+              <Text style={s.sidebarTitle}>Content Library</Text>
+              <TextInput
+                value={libraryQuery}
+                onChangeText={setLibraryQuery}
+                placeholder="Search content..."
+                placeholderTextColor="#94A3B8"
+                style={s.sidebarSearch}
+              />
+              {/* Selected-asset banner: visible when an asset is click-selected and waiting for drop target */}
+              {dragPayload?.type === 'asset' && (() => {
+                const selAsset = assetsById.get(dragPayload.assetId);
+                return (
+                  <View style={s.selectedAssetBanner}>
+                    <Text style={s.selectedAssetBannerText} numberOfLines={1}>
+                      📎 {selAsset?.title ?? 'Asset'} selected — click a lesson to place it
+                    </Text>
+                    <Pressable onPress={() => { setDragPayload(null); setDraggingAssetId(null); }}>
+                      <Text style={s.selectedAssetBannerClose}>✕</Text>
+                    </Pressable>
+                  </View>
+                );
+              })()}
+              <View style={s.sidebarScroll}>
+                {collections.map((collection) => {
+                  const expanded = expandedCollectionIds.includes(collection.id);
+                  const selected = collection.id === selectedCollectionId;
+                  const nestedAssets = collection.assetIds
+                    .map((id) => assetsById.get(id))
+                    .filter((a): a is LibraryAsset => Boolean(a))
+                    .filter((a) => !libraryQuery.trim() || filteredAssetIds.has(a.id));
+                  return (
+                    <View key={collection.id} style={s.folderGroup}>
+                      <Pressable
+                        style={[s.folderRow, selected && s.folderRowActive]}
+                        onPress={() => { if (!handleClickDropToCollection(collection.id)) { setSelectedCollectionId(collection.id); toggleCollectionExpanded(collection.id); } }}
+                        {...({ dataSet: { dropCollection: collection.id } } as any)}
+                      >
+                        <Text style={s.folderIcon}>{expanded ? '▾' : '▸'}</Text>
+                        <Text style={[s.folderName, selected && s.folderNameActive]}>{collection.name}</Text>
+                        <View style={s.folderCount}><Text style={s.folderCountText}>{collection.assetIds.length}</Text></View>
+                      </Pressable>
+                      {expanded ? (
+                        <View style={s.assetList}>
+                          {nestedAssets.length ? nestedAssets.map((asset) => {
+                            const catColor = getCategoryColor(asset.category);
+                            const isSelected = draggingAssetId === asset.id;
+                            return (
+                              <View
+                                key={asset.id}
+                                style={[s.assetRow, isSelected && s.assetRowDragging, { userSelect: 'none', cursor: 'grab' } as any]}
+                                {...({
+                                  onPointerDown: (e: any) => onGrabPointerDown(e, { type: 'asset', assetId: asset.id, sourceCollectionId: collection.id }, asset.title),
+                                } as any)}
+                              >
+                                <Text style={s.dragHandle}>{isSelected ? '✓' : '⠿'}</Text>
                                 <Pressable
-                                  key={`journey-asset-${collection.id}-${asset.id}`}
-                                  style={[styles.folderAssetRow, draggingAssetId === asset.id && styles.folderAssetRowDragging]}
-                                  onPress={() => startAssetDrag(asset.id, collection.id)}
-                                  {...({
-                                    draggable: canComposeDraft,
-                                    onMouseDown: () => startAssetDrag(asset.id, collection.id),
-                                    onDragStart: (event: any) => {
-                                      startAssetDrag(asset.id, collection.id);
-                                      event?.dataTransfer?.setData?.('text/plain', `asset:${asset.id}:${collection.id}`);
-                                    },
-                                    onDragEnd: () => {
-                                      setDraggingAssetId(null);
-                                      setHoverMilestoneId(null);
-                                      setDragPayload(null);
-                                    },
-                                  } as any)}
+                                  style={s.assetInfo}
+                                  onPress={() => {
+                                    if (draggingAssetId === asset.id) { clearAllDragState(); }
+                                    else startAssetDrag(asset.id, collection.id);
+                                  }}
                                 >
-                                  <Text style={styles.collectionItemText}>• {asset.title}</Text>
-                                  <Text style={styles.libraryCardMeta}>{asset.category} • {asset.duration}</Text>
+                                  <Text style={s.assetTitle} numberOfLines={1}>{asset.title}</Text>
+                                  <View style={s.assetMeta}>
+                                    <View style={[s.categoryBadge, { backgroundColor: catColor.bg }]}>
+                                      <Text style={[s.categoryBadgeText, { color: catColor.text }]}>{asset.category}</Text>
+                                    </View>
+                                    <Text style={s.assetDuration}>{asset.duration}</Text>
+                                  </View>
                                 </Pressable>
-                              ))
-                            ) : (
-                              <Text style={styles.panelHint}>No files match the current search.</Text>
-                            )}
-                          </View>
+                              </View>
+                            );
+                          }) : (
+                            <Text style={s.emptyHint}>No matching content</Text>
+                          )}
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* ── Builder Canvas ── */}
+            <ScrollView style={s.canvas} contentContainerStyle={s.canvasInner} showsVerticalScrollIndicator>
+              {/* Journey selector */}
+              <View style={s.canvasSection}>
+                <View style={s.canvasSectionHeader}>
+                  <Text style={s.canvasSectionTitle}>Journeys</Text>
+                  <Text style={s.canvasSectionCount}>{journeys.length} total</Text>
+                </View>
+                <View style={s.journeyChips}>
+                  {journeys.map((j) => {
+                    const sel = j.id === selectedJourney?.id;
+                    return (
+                      <View key={j.id} style={[s.journeyChip, sel && s.journeyChipActive]}>
+                        <Pressable style={s.journeyChipBody} onPress={() => setSelectedJourneyId(j.id)}>
+                          <Text style={[s.journeyChipText, sel && s.journeyChipTextActive]}>{j.name}</Text>
+                          <Text style={s.journeyChipMeta}>{j.audience} · {j.lessons.length} lessons</Text>
+                        </Pressable>
+                        {canComposeDraft ? (
+                          <Pressable
+                            style={s.chipDeleteBtn}
+                            onPress={() => setConfirmDelete({ type: 'journey', id: j.id, label: j.name })}
+                          >
+                            <Text style={s.chipDeleteBtnText}>✕</Text>
+                          </Pressable>
                         ) : null}
                       </View>
                     );
                   })}
                 </View>
+                {/* Inline + Journey */}
+                {canComposeDraft ? (
+                  <View style={s.inlineCreateRow}>
+                    <TextInput value={newJourneyName} onChangeText={setNewJourneyName} placeholder="New journey name..." placeholderTextColor="#94A3B8" style={s.inlineCreateInput} />
+                    <TouchableOpacity style={s.btnSecondary} onPress={createJourney}><Text style={s.btnSecondaryText}>+ Journey</Text></TouchableOpacity>
+                  </View>
+                ) : null}
               </View>
 
-              <View style={styles.journeyCanvas}>
-                <View style={styles.journeySelectorSection}>
-                  <View style={styles.selectorHeaderRow}>
-                    <Text style={styles.detailTitle}>Journeys</Text>
-                    <Text style={styles.detailMeta}>{journeys.length} total</Text>
+              {!canComposeDraft ? (
+                <View style={s.deniedBanner}>
+                  <Text style={s.deniedBannerText}>{composeDeniedReason}</Text>
+                </View>
+              ) : null}
+
+              {dropHint ? <Text style={s.dropHintText}>{dropHint}</Text> : null}
+
+              {/* Lessons */}
+              <View style={s.milestoneList}>
+                {/* Inline + Lesson at top of journey + save status */}
+                {canComposeDraft && selectedJourney ? (
+                  <View style={s.lessonToolbarRow}>
+                    <Pressable style={s.inlineAddLessonBtn} onPress={addLesson}>
+                      <Text style={s.inlineAddLessonBtnText}>+ Lesson</Text>
+                    </Pressable>
+                    {saveState === 'pending' ? <Text style={s.autoSaveHint}>Saving...</Text> : null}
+                    {saveState === 'saved' ? <Text style={s.autoSaveHint}>✓ Saved</Text> : null}
+                    {saveState === 'error' ? <Text style={s.autoSaveError}>{saveMessage}</Text> : null}
                   </View>
-                  <View style={styles.journeyListRows}>
-                    {journeys.map((journey) => {
-                      const selected = journey.id === selectedJourney?.id;
+                ) : null}
+                {selectedJourney?.lessons.map((lesson, lsIndex) => {
+                  const isSelected = selectedLessonId === lesson.id;
+                  const isHover = hoverLessonId === lesson.id;
+                  const isSuccess = dropSuccessLessonId === lesson.id;
+                  const isDropTarget = dragPayload?.type === 'asset' || dragPayload?.type === 'journey_task';
+                  const isLessonDrag = dragPayload?.type === 'journey_lesson';
+                  const isDraggingThis = draggingLessonId === lesson.id;
+                  const dragSourceIdx = draggingLessonId ? (selectedJourney?.lessons.findIndex((l) => l.id === draggingLessonId) ?? -1) : -1;
+                  const showInsertBefore = hoverLessonInsertIndex === lsIndex && draggingLessonId && lsIndex !== dragSourceIdx && lsIndex !== dragSourceIdx + 1;
+                  return (
+                    <View key={lesson.id}>
+                      {/* Lesson insertion line BEFORE this card */}
+                      {showInsertBefore ? <View style={s.lessonInsertLine} /> : null}
+                      <View
+                        style={[
+                          s.milestone,
+                          isSelected && s.milestoneSelected,
+                          isHover && !isLessonDrag && s.milestoneHover,
+                          isSuccess && s.milestoneSuccess,
+                          isDropTarget && !isHover && s.milestoneDropReady,
+                          isDraggingThis && s.milestoneDragging,
+                          { userSelect: 'none', cursor: 'grab' } as any,
+                        ]}
+                        {...({ dataSet: { dropLesson: lesson.id } } as any)}
+                      >
+                      {/* Lesson header row — click to select */}
+                      <Pressable
+                        style={s.milestoneHeaderRow}
+                        onPress={() => { if (!handleClickDropToLesson(lesson.id, lesson.tasks.length)) setSelectedLessonId(lesson.id); }}
+                      >
+                        <Text
+                          style={s.grabHandleText}
+                          {...({ onPointerDown: (e: any) => { e.stopPropagation(); selectedJourney && onGrabPointerDown(e, { type: 'journey_lesson', sourceJourneyId: selectedJourney.id, lessonId: lesson.id }, lesson.title); } } as any)}
+                        >⠿</Text>
+                        <View style={s.stepNumber}><Text style={s.stepNumberText}>{lsIndex + 1}</Text></View>
+                        <View style={s.kindBadgeLesson}><Text style={s.kindBadgeLessonText}>📘 Lesson</Text></View>
+                        <Text style={s.milestoneTitle}>{lesson.title}</Text>
+                        <Text style={{ fontSize: 11, color: '#94A3B8', marginLeft: 'auto' } as any}>{lesson.tasks.length} tasks</Text>
+                        {canComposeDraft ? (
+                          <Pressable
+                            style={s.lessonDeleteBtn}
+                            onPress={(e: any) => { e.stopPropagation?.(); setConfirmDelete({ type: 'lesson', id: lesson.id, label: lesson.title }); }}
+                          >
+                            <Text style={s.lessonDeleteBtnText}>✕</Text>
+                          </Pressable>
+                        ) : null}
+                      </Pressable>
+
+                      {/* Task list with drop slots */}
+                      <View style={[s.dropZone, isDropTarget && !isHover && s.dropZoneReady, isHover && !isLessonDrag && s.dropZoneHover, isSuccess && s.dropZoneSuccess]}>
+                        {lesson.tasks.length === 0 ? (
+                          <Pressable
+                            onPress={() => handleClickDropToLesson(lesson.id, 0)}
+                            {...({ dataSet: { dropTaskSlot: `${lesson.id}:0` } } as any)}
+                          >
+                            <Text style={[s.dropZoneHint, isDropTarget && s.dropZoneHintActive]}>
+                              {isDropTarget ? '⬇ Drop here to add a task' : 'Drag content here or click + Task'}
+                            </Text>
+                          </Pressable>
+                        ) : (
+                          <>
+                            {lesson.tasks.map((task, idx) => {
+                              const asset = task.assetId ? assetsById.get(task.assetId) : null;
+                              const catColor = asset ? getCategoryColor(asset.category) : { bg: '#FEF3C7', text: '#B45309' };
+                              const isDraggingTask = draggingTaskId === task.id;
+                              const showInsertBefore = hoverTaskInsert?.lessonId === lesson.id && hoverTaskInsert?.index === idx;
+                              return (
+                                <View key={task.id}>
+                                  {/* Drop slot BEFORE this task */}
+                                  <View
+                                    style={[s.blockDropSlot, isDropTarget && s.blockDropSlotExpanded, showInsertBefore && s.blockDropSlotActive]}
+                                    {...({ dataSet: { dropTaskSlot: `${lesson.id}:${idx}` } } as any)}
+                                  />
+                                  {/* Task card — grab handle triggers pointer drag */}
+                                  <View
+                                    style={[s.blockCard, isDraggingTask && s.blockCardDragging, { userSelect: 'none' } as any]}
+                                    {...({ dataSet: { dropTaskSlot: `${lesson.id}:${idx}` } } as any)}
+                                  >
+                                    <Text
+                                      style={[s.blockGrabText, { cursor: 'grab' } as any]}
+                                      {...({ onPointerDown: (e: any) => { e.stopPropagation(); selectedJourney && onGrabPointerDown(e, { type: 'journey_task', sourceJourneyId: selectedJourney.id, sourceLessonId: lesson.id, taskId: task.id, assetId: task.assetId }, task.title); } } as any)}
+                                    >⠿</Text>
+                                    <View style={s.blockIndex}><Text style={s.blockIndexText}>{idx + 1}</Text></View>
+                                    <View style={s.blockInfo}>
+                                      <Text style={s.blockTitle}>{task.title}</Text>
+                                      {asset ? (
+                                        <View style={[s.blockCatBadge, { backgroundColor: catColor.bg }]}>
+                                          <Text style={[s.blockCatText, { color: catColor.text }]}>{asset.category} · {asset.duration}</Text>
+                                        </View>
+                                      ) : (
+                                        <Text style={{ fontSize: 10, color: '#94A3B8', fontStyle: 'italic' }}>No asset linked</Text>
+                                      )}
+                                    </View>
+                                    <Pressable
+                                      style={s.blockRemoveBtn}
+                                      onPress={() => setConfirmDelete({ type: 'task', id: task.id, parentId: lesson.id, label: task.title })}
+                                    >
+                                      <Text style={s.blockRemoveBtnText}>✕</Text>
+                                    </Pressable>
+                                    <Pressable
+                                      style={s.blockMenuBtn}
+                                      onPress={() => setActiveTaskMenu((prev) => prev?.taskId === task.id && prev?.lessonId === lesson.id ? null : { lessonId: lesson.id, taskId: task.id })}
+                                    >
+                                      <Text style={s.blockMenuBtnText}>···</Text>
+                                    </Pressable>
+                                    {activeTaskMenu?.taskId === task.id && activeTaskMenu?.lessonId === lesson.id ? (
+                                      <View style={s.blockPopover}>
+                                        <Pressable style={s.blockPopoverItem} onPress={() => reorderTask(lesson.id, task.id, -1)}><Text style={s.blockPopoverText}>↑ Move Up</Text></Pressable>
+                                        <Pressable style={s.blockPopoverItem} onPress={() => reorderTask(lesson.id, task.id, 1)}><Text style={s.blockPopoverText}>↓ Move Down</Text></Pressable>
+                                        <Pressable style={s.blockPopoverDanger} onPress={() => removeTask(lesson.id, task.id)}><Text style={s.blockPopoverDangerText}>Remove</Text></Pressable>
+                                      </View>
+                                    ) : null}
+                                  </View>
+                                </View>
+                              );
+                            })}
+                            {/* Drop slot AFTER last task */}
+                            <View
+                              style={[s.blockDropSlot, isDropTarget && s.blockDropSlotExpanded, hoverTaskInsert?.lessonId === lesson.id && hoverTaskInsert?.index === lesson.tasks.length && s.blockDropSlotActive]}
+                              {...({ dataSet: { dropTaskSlot: `${lesson.id}:${lesson.tasks.length}` } } as any)}
+                            />
+                          </>
+                        )}
+                      </View>
+                      {/* Inline + Task button */}
+                      {canComposeDraft ? (
+                        <Pressable style={s.inlineAddTaskBtn} onPress={() => addTaskToLesson(lesson.id)}>
+                          <Text style={s.inlineAddTaskBtnText}>+ Task</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </View>
+                  );
+                })}
+                {/* Lesson insertion line AFTER last card */}
+                {(() => {
+                  const total = selectedJourney?.lessons.length ?? 0;
+                  const srcIdx = draggingLessonId ? (selectedJourney?.lessons.findIndex((l) => l.id === draggingLessonId) ?? -1) : -1;
+                  const show = hoverLessonInsertIndex === total && draggingLessonId && total !== srcIdx && total !== srcIdx + 1;
+                  return show ? <View style={s.lessonInsertLine} /> : null;
+                })()}
+              </View>
+            </ScrollView>
+          </>
+        ) : (
+          /* ════ PEOPLE MODE ════ */
+          <>
+            {/* ── People Sidebar ── */}
+            <View style={[s.sidebar, isCompact && s.sidebarCompact]}>
+              <Text style={s.sidebarTitle}>People</Text>
+              <View style={s.sidebarScroll}>
+                {cohortPeople.map((person) => {
+                  const checked = checkedPeopleIds.includes(person.id);
+                  return (
+                    <View key={person.id} style={s.personRow}>
+                      <Pressable
+                        style={[s.checkBox, checked && s.checkBoxChecked]}
+                        onPress={() => setCheckedPeopleIds((prev) => prev.includes(person.id) ? prev.filter((id) => id !== person.id) : [...prev, person.id])}
+                      >
+                        {checked ? <Text style={s.checkMark}>✓</Text> : null}
+                      </Pressable>
+                      <Pressable
+                        style={[s.personCard, { cursor: 'grab' } as any]}
+                        onPress={() => setDragPayload({ type: 'person', personId: person.id })}
+                        {...({
+                          onPointerDown: (e: any) => onGrabPointerDown(e, { type: 'person', personId: person.id }, person.name),
+                        } as any)}
+                      >
+                        <View style={s.personAvatar}><Text style={s.personAvatarText}>{person.name.charAt(0)}</Text></View>
+                        <View>
+                          <Text style={s.personName}>{person.name}</Text>
+                          <Text style={s.personSub}>{person.subtitle}</Text>
+                        </View>
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* ── Cohorts / Channels Canvas ── */}
+            <ScrollView style={s.canvas} contentContainerStyle={s.canvasInner} showsVerticalScrollIndicator>
+              {/* Panel tabs */}
+              <View style={s.panelTabs}>
+                <Pressable style={[s.panelTab, peoplePanelTab === 'cohorts' && s.panelTabActive]} onPress={() => setPeoplePanelTab('cohorts')}>
+                  <Text style={[s.panelTabText, peoplePanelTab === 'cohorts' && s.panelTabTextActive]}>Cohorts</Text>
+                </Pressable>
+                <Pressable style={[s.panelTab, peoplePanelTab === 'channels' && s.panelTabActive]} onPress={() => setPeoplePanelTab('channels')}>
+                  <Text style={[s.panelTabText, peoplePanelTab === 'channels' && s.panelTabTextActive]}>Channels</Text>
+                </Pressable>
+              </View>
+
+              {peoplePanelTab === 'cohorts' ? (
+                <View style={s.cohortContent}>
+                  {/* Cohort toolbar */}
+                  <View style={s.toolbar}>
+                    <TextInput value={newCohortName} onChangeText={setNewCohortName} placeholder="New cohort name..." placeholderTextColor="#94A3B8" style={s.toolbarInput} />
+                    <TouchableOpacity style={s.btnSecondary} onPress={createCohort}><Text style={s.btnSecondaryText}>+ Cohort</Text></TouchableOpacity>
+                    <TouchableOpacity style={s.btnPrimary} onPress={() => { if (selectedCohort) { addPeopleToCohort(selectedCohort.id, checkedPeopleIds); setCheckedPeopleIds([]); } }}>
+                      <Text style={s.btnPrimaryText}>Add Selected</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Cohort list */}
+                  <View style={s.cohortGrid}>
+                    {cohorts.map((cohort) => {
+                      const sel = selectedCohort?.id === cohort.id;
                       return (
                         <Pressable
-                          key={journey.id}
-                          style={[styles.journeySelectRow, selected && styles.journeySelectRowSelected]}
-                          onPress={() => setSelectedJourneyId(journey.id)}
+                          key={cohort.id}
+                          style={[s.cohortCard, sel && s.cohortCardActive]}
+                          onPress={() => { if (!handleClickAssignPersonToCohort(cohort.id)) setSelectedCohortId(cohort.id); }}
+                          {...({ dataSet: { dropCohort: cohort.id } } as any)}
                         >
-                          <View style={styles.journeySelectCopy}>
-                            <Text style={[styles.journeySelectLabel, selected && styles.journeySelectLabelSelected]}>{journey.name}</Text>
-                            <Text style={styles.journeySelectMeta}>{journey.audience}</Text>
+                          <Text style={s.cohortName}>{cohort.name}</Text>
+                          <Text style={s.cohortMeta}>{cohort.program}</Text>
+                          <View style={s.cohortFooter}>
+                            <Text style={s.cohortMembers}>{cohort.memberIds.length} members</Text>
                           </View>
-                          <Text style={styles.journeySelectHint}>{selected ? 'Selected' : 'Select'}</Text>
                         </Pressable>
                       );
                     })}
                   </View>
-                </View>
 
-                <View style={styles.journeyBuilderSection}>
-                  <View style={styles.selectorHeaderRow}>
-                    <Text style={styles.detailTitle}>Builder</Text>
-                    <Text style={styles.detailMeta}>Selected: {selectedJourney?.name ?? 'None'}</Text>
-                  </View>
-                  <View style={styles.builderActionBar}>
-                    <TextInput
-                      value={newJourneyName}
-                      onChangeText={setNewJourneyName}
-                      placeholder="New journey name"
-                      placeholderTextColor="#72887C"
-                      style={styles.createJourneyInput}
-                    />
-                    <TouchableOpacity style={styles.secondaryButton} onPress={createJourney}>
-                      <Text style={styles.secondaryButtonText}>Create New Journey</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.secondaryButton} onPress={() => addJourneyItem('lesson')}>
-                      <Text style={styles.secondaryButtonText}>Add Lesson</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.secondaryButton} onPress={() => addJourneyItem('task')}>
-                      <Text style={styles.secondaryButtonText}>Add Task</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.primaryButton} onPress={saveDraft}>
-                      <Text style={styles.primaryButtonText}>Save Draft</Text>
-                    </TouchableOpacity>
-                    <Text
-                      style={[
-                        styles.saveStateChip,
-                        saveState === 'pending' && styles.saveStateChipPending,
-                        saveState === 'saved' && styles.saveStateChipSaved,
-                        saveState === 'error' && styles.saveStateChipError,
-                      ]}
-                    >
-                      {saveState === 'pending' ? 'PENDING' : saveState === 'saved' ? 'SAVED' : saveState === 'error' ? 'ERROR' : 'IDLE'}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.panelHint}>{dropHint} Selected milestone: {selectedMilestoneId}</Text>
-                <Text style={styles.saveMessage}>{saveMessage}</Text>
-
-                {!canComposeDraft ? (
-                  <View style={styles.deniedCard}>
-                    <Text style={styles.deniedTitle}>Authoring controls locked</Text>
-                    <Text style={styles.deniedBody}>{composeDeniedReason}</Text>
-                  </View>
-                ) : null}
-
-                {selectedJourney?.milestones.map((milestone) => (
-                  <Pressable
-                    key={milestone.id}
-                    style={[
-                      styles.milestoneCard,
-                      selectedMilestoneId === milestone.id && styles.milestoneCardSelected,
-                      hoverMilestoneId === milestone.id && styles.milestoneCardHover,
-                      dropSuccessMilestoneId === milestone.id && styles.milestoneCardSuccess,
-                    ]}
-                    onPress={() => {
-                      const dropped = handleClickDropToMilestone(milestone.id, milestone.blocks.length);
-                      if (!dropped) setSelectedMilestoneId(milestone.id);
-                    }}
-                    {...({
-                      draggable: canComposeDraft,
-                      onMouseDown: () => {
-                        if (!selectedJourney || !canComposeDraft) return;
-                        setDragPayload({ type: 'journey_milestone', sourceJourneyId: selectedJourney.id, milestoneId: milestone.id });
-                      },
-                      onDragStart: (event: any) => {
-                        if (!selectedJourney || !canComposeDraft) return;
-                        setDragPayload({ type: 'journey_milestone', sourceJourneyId: selectedJourney.id, milestoneId: milestone.id });
-                        event?.dataTransfer?.setData?.('text/plain', `journey-milestone:${selectedJourney.id}:${milestone.id}`);
-                      },
-                      onDragOver: (event: any) => {
-                        handleDragOver(event);
-                        const payload = parseDragPayload(event);
-                        if (payload?.type === 'journey_milestone' && payload.milestoneId !== milestone.id) {
-                          setHoverMilestoneId(milestone.id);
-                        }
-                      },
-                      onMouseEnter: () => {
-                        if (!dragPayload) return;
-                        if (dragPayload.type === 'journey_milestone' && dragPayload.milestoneId !== milestone.id) {
-                          setHoverMilestoneId(milestone.id);
-                        }
-                      },
-                      onMouseUp: () => {
-                        handlePointerDropToMilestone(milestone.id);
-                      },
-                      onDragLeave: () => {
-                        if (hoverMilestoneId === milestone.id) setHoverMilestoneId(null);
-                      },
-                      onMouseLeave: () => {
-                        if (hoverMilestoneId === milestone.id) setHoverMilestoneId(null);
-                      },
-                      onDrop: (event: any) => handleDropToMilestoneCard(event, milestone.id),
-                      onDragEnd: () => {
-                        setHoverMilestoneId(null);
-                        setDragPayload(null);
-                      },
-                    } as any)}
-                  >
-                    <Text style={styles.milestoneTitle}>
-                      {milestone.kind === 'lesson' ? 'Lesson' : 'Task'} • {milestone.title}
-                    </Text>
-                    <Pressable
-                      style={[
-                        styles.dropZone,
-                        hoverMilestoneId === milestone.id && styles.dropZoneHover,
-                        dropSuccessMilestoneId === milestone.id && styles.dropZoneSuccess,
-                      ]}
-                      onPress={() => {
-                        handleClickDropToMilestone(milestone.id, milestone.blocks.length);
-                      }}
-                      {...({
-                        onDragOver: (event: any) => {
-                          handleDragOver(event);
-                          const payload = parseDragPayload(event);
-                          if (payload?.type === 'asset' || payload?.type === 'journey_block') {
-                            setHoverMilestoneId(milestone.id);
-                          }
-                        },
-                        onMouseEnter: () => {
-                          if (!dragPayload) return;
-                          if (dragPayload.type === 'asset' || dragPayload.type === 'journey_block') {
-                            setHoverMilestoneId(milestone.id);
-                          }
-                        },
-                        onMouseUp: () => {
-                          handlePointerDropToMilestone(milestone.id);
-                        },
-                        onDragLeave: () => {
-                          if (hoverMilestoneId === milestone.id) setHoverMilestoneId(null);
-                        },
-                        onMouseLeave: () => {
-                          if (hoverMilestoneId === milestone.id) setHoverMilestoneId(null);
-                        },
-                        onDrop: (event: any) => handleDropToMilestone(event, milestone.id, milestone.blocks.length),
-                      } as any)}
-                    >
-                      {milestone.blocks.length === 0 ? (
-                        <Text style={styles.dropZoneHint}>Drop an asset or collection item here</Text>
+                  {/* Selected cohort detail */}
+                  {selectedCohort ? (
+                    <View style={s.cohortDetail}>
+                      <Text style={s.cohortDetailTitle}>{selectedCohort.name}</Text>
+                      <Text style={s.cohortDetailMeta}>{selectedCohort.program} · {selectedCohort.owner}</Text>
+                      {selectedCohort.memberIds.length === 0 ? (
+                        <Text style={s.emptyHint}>No members yet. Check people on the left, then click "Add Selected".</Text>
                       ) : (
-                        milestone.blocks.map((block, index) => {
-                          const asset = assetsById.get(block.assetId);
+                        selectedCohort.memberIds.map((memberId) => {
+                          const person = cohortPeople.find((p) => p.id === memberId);
                           return (
-                            <View
-                              key={block.id}
-                              style={styles.journeyBlockCard}
-                              {...({
-                                draggable: canComposeDraft,
-                                onMouseDown: () => {
-                                  if (!selectedJourney || !canComposeDraft) return;
-                                  setDragPayload({
-                                    type: 'journey_block',
-                                    sourceJourneyId: selectedJourney.id,
-                                    sourceMilestoneId: milestone.id,
-                                    blockId: block.id,
-                                    assetId: block.assetId,
-                                  });
-                                },
-                                onDragStart: (event: any) => {
-                                  if (!selectedJourney) return;
-                                  setDragPayload({
-                                    type: 'journey_block',
-                                    sourceJourneyId: selectedJourney.id,
-                                    sourceMilestoneId: milestone.id,
-                                    blockId: block.id,
-                                    assetId: block.assetId,
-                                  });
-                                  event?.dataTransfer?.setData?.(
-                                    'text/plain',
-                                    `journey-block:${selectedJourney.id}:${milestone.id}:${block.id}:${block.assetId}`
-                                  );
-                                },
-                                onDragEnd: () => {
-                                  setHoverMilestoneId(null);
-                                  setDragPayload(null);
-                                },
-                              } as any)}
-                            >
-                              <View style={styles.journeyBlockCopy}>
-                                <Text style={styles.journeyBlockTitle}>{asset?.title ?? 'Unknown asset'}</Text>
-                                <Text style={styles.journeyBlockMeta}>Step {index + 1} • {asset?.category ?? 'Asset'}</Text>
-                              </View>
-                              <View style={styles.blockActions}>
-                                <Pressable
-                                  style={styles.menuTrigger}
-                                  onPress={() =>
-                                    setActiveBlockMenu((prev) =>
-                                      prev?.blockId === block.id && prev?.milestoneId === milestone.id
-                                        ? null
-                                        : { milestoneId: milestone.id, blockId: block.id }
-                                    )
-                                  }
-                                >
-                                  <Text style={styles.menuTriggerText}>Actions ▾</Text>
-                                </Pressable>
-                                {activeBlockMenu?.blockId === block.id && activeBlockMenu?.milestoneId === milestone.id ? (
-                                  <View style={styles.blockMenu}>
-                                    <Pressable style={styles.blockMenuItem} onPress={() => reorderBlock(milestone.id, block.id, -1)}>
-                                      <Text style={styles.blockMenuItemText}>Move Up</Text>
-                                    </Pressable>
-                                    <Pressable style={styles.blockMenuItem} onPress={() => reorderBlock(milestone.id, block.id, 1)}>
-                                      <Text style={styles.blockMenuItemText}>Move Down</Text>
-                                    </Pressable>
-                                    <Pressable style={styles.blockMenuItemDanger} onPress={() => removeBlock(milestone.id, block.id)}>
-                                      <Text style={styles.blockMenuItemDangerText}>Delete Step</Text>
-                                    </Pressable>
-                                  </View>
-                                ) : null}
-                              </View>
+                            <View key={memberId} style={s.cohortMemberRow}>
+                              <View style={s.cohortMemberAvatar}><Text style={s.cohortMemberAvatarText}>{person?.name.charAt(0) ?? '?'}</Text></View>
+                              <Text style={s.cohortMemberName}>{person?.name ?? memberId}</Text>
                             </View>
                           );
                         })
                       )}
-                    </Pressable>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          ) : (
-            <View style={[styles.builderWrap, isCompact && styles.builderWrapCompact]}>
-              <View style={styles.libraryRail}>
-                <Text style={styles.panelTitle}>People Directory</Text>
-                <Text style={styles.panelHint}>Use row checkboxes or drag a person into a cohort on the right.</Text>
-                <View style={styles.libraryList}>
-                  {COHORT_PEOPLE.map((person) => {
-                    const checked = checkedPeopleIds.includes(person.id);
-                    return (
-                      <View key={person.id} style={styles.personRow}>
-                        <Pressable
-                          style={[styles.checkbox, checked && styles.checkboxChecked]}
-                          onPress={() =>
-                            setCheckedPeopleIds((prev) =>
-                              prev.includes(person.id) ? prev.filter((id) => id !== person.id) : [...prev, person.id]
-                            )
-                          }
-                        >
-                          <Text style={styles.checkboxText}>{checked ? '✓' : ''}</Text>
-                        </Pressable>
-                        <Pressable
-                          style={[styles.libraryCard, { flex: 1 }]}
-                          onPress={() => setDragPayload({ type: 'person', personId: person.id })}
-                          {...({
-                            draggable: true,
-                            onMouseDown: () => setDragPayload({ type: 'person', personId: person.id }),
-                            onDragStart: (event: any) => {
-                              setDragPayload({ type: 'person', personId: person.id });
-                              event?.dataTransfer?.setData?.('text/plain', `person:${person.id}`);
-                            },
-                            onDragEnd: () => setDragPayload(null),
-                          } as any)}
-                        >
-                          <Text style={styles.libraryCardTitle}>{person.name}</Text>
-                          <Text style={styles.libraryCardMeta}>{person.subtitle}</Text>
-                        </Pressable>
-                      </View>
-                    );
-                  })}
+                    </View>
+                  ) : null}
                 </View>
-              </View>
-
-              <View style={styles.collectionRail}>
-                <View style={styles.segmentedTabs}>
-                  <Pressable
-                    style={[styles.segmentTab, peoplePanelTab === 'cohorts' && styles.segmentTabSelected]}
-                    onPress={() => setPeoplePanelTab('cohorts')}
-                  >
-                    <Text style={[styles.segmentTabText, peoplePanelTab === 'cohorts' && styles.segmentTabTextSelected]}>Cohorts</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.segmentTab, peoplePanelTab === 'channels' && styles.segmentTabSelected]}
-                    onPress={() => setPeoplePanelTab('channels')}
-                  >
-                    <Text style={[styles.segmentTabText, peoplePanelTab === 'channels' && styles.segmentTabTextSelected]}>Channels</Text>
-                  </Pressable>
-                </View>
-
-                {peoplePanelTab === 'cohorts' ? (
-                  <View style={styles.detailCard}>
-                    <Text style={styles.detailTitle}>Cohorts</Text>
-                    <Text style={styles.detailMeta}>Select a cohort row to load members. Drag/drop from People for quick assignment.</Text>
-                    <View style={styles.builderActionBar}>
-                      <TextInput
-                        value={newCohortName}
-                        onChangeText={setNewCohortName}
-                        placeholder="Create new cohort"
-                        placeholderTextColor="#72887C"
-                        style={styles.createJourneyInput}
-                      />
-                      <TouchableOpacity style={styles.secondaryButton} onPress={createCohort}>
-                        <Text style={styles.secondaryButtonText}>Create New</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.primaryButton}
-                        onPress={() => {
-                          if (!selectedCohort) return;
-                          addPeopleToCohort(selectedCohort.id, checkedPeopleIds);
-                          setCheckedPeopleIds([]);
-                        }}
-                      >
-                        <Text style={styles.primaryButtonText}>Add Selected</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.collectionList}>
-                      {cohorts.map((cohort) => (
-                        <Pressable
-                          key={cohort.id}
-                          style={[styles.collectionCard, selectedCohort?.id === cohort.id && styles.collectionCardSelected]}
-                          onPress={() => {
-                            const assigned = handleClickAssignPersonToCohort(cohort.id);
-                            if (assigned) return;
-                            setSelectedCohortId(cohort.id);
-                          }}
-                          {...({
-                            onDragOver: handleDragOver,
-                            onDrop: (event: any) => {
-                              if (typeof event?.preventDefault === 'function') event.preventDefault();
-                              const payload = parseDragPayload(event);
-                              if (payload?.type === 'person') addPeopleToCohort(cohort.id, [payload.personId]);
-                              setDragPayload(null);
-                            },
-                          } as any)}
-                        >
-                          <Text style={styles.collectionTitle}>{cohort.name}</Text>
-                          <Text style={styles.collectionMeta}>{cohort.memberIds.length} members</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-
-                    <View style={styles.detailCard}>
-                      <Text style={styles.detailTitle}>{selectedCohort?.name ?? 'Cohort'}</Text>
-                      <Text style={styles.detailMeta}>{selectedCohort?.program ?? ''}</Text>
-                      {(selectedCohort?.memberIds ?? []).map((memberId) => {
-                        const person = COHORT_PEOPLE.find((p) => p.id === memberId);
-                        return <Text key={memberId} style={styles.detailMeta}>• {person?.name ?? memberId}</Text>;
-                      })}
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.detailCard}>
-                    <Text style={styles.detailTitle}>Channels</Text>
-                    <Text style={styles.detailMeta}>Secondary communication controls stay in People mode for cohort handoff context.</Text>
-                    <View style={styles.segmentedTabs}>
-                      <Pressable style={[styles.segmentTab, channelSegment === 'all' && styles.segmentTabSelected]} onPress={() => setChannelSegment('all')}>
-                        <Text style={[styles.segmentTabText, channelSegment === 'all' && styles.segmentTabTextSelected]}>All</Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.segmentTab, channelSegment === 'top_producers' && styles.segmentTabSelected]}
-                        onPress={() => setChannelSegment('top_producers')}
-                      >
-                        <Text style={[styles.segmentTabText, channelSegment === 'top_producers' && styles.segmentTabTextSelected]}>
-                          Top Producers
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.segmentTab, channelSegment === 'new_agents' && styles.segmentTabSelected]}
-                        onPress={() => setChannelSegment('new_agents')}
-                      >
-                        <Text style={[styles.segmentTabText, channelSegment === 'new_agents' && styles.segmentTabTextSelected]}>New Agents</Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.segmentTab, channelSegment === 'sponsor_leads' && styles.segmentTabSelected]}
-                        onPress={() => setChannelSegment('sponsor_leads')}
-                      >
-                        <Text style={[styles.segmentTabText, channelSegment === 'sponsor_leads' && styles.segmentTabTextSelected]}>
-                          Sponsor Leads
-                        </Text>
-                      </Pressable>
-                    </View>
-                    <View style={styles.tableHeader}>
-                      <Text style={[styles.colLabel, styles.colWide]}>Channel</Text>
-                      <Text style={[styles.colLabel, styles.colWide]}>Scope</Text>
-                      <Text style={[styles.colLabel, styles.colWide]}>Members</Text>
-                      <Text style={[styles.colLabel, styles.colNarrow]}>Activity</Text>
-                    </View>
-                    {filteredChannels.map((row) => {
-                      const selected = selectedGenericRow?.id === row.id;
+              ) : (
+                /* Channels panel */
+                <View style={s.channelContent}>
+                  <View style={s.channelFilters}>
+                    {(['all', 'top_producers', 'new_agents', 'sponsor_leads'] as ChannelSegment[]).map((seg) => {
+                      const labels: Record<ChannelSegment, string> = { all: 'All', top_producers: 'Top Producers', new_agents: 'New Agents', sponsor_leads: 'Sponsor Leads' };
+                      const active = channelSegment === seg;
                       return (
-                        <Pressable key={row.id} style={[styles.tableRow, selected && styles.tableRowSelected]} onPress={() => setSelectedRowId(row.id)}>
-                          <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c1}</Text>
-                          <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c2}</Text>
-                          <Text style={[styles.colValue, styles.colWide]} numberOfLines={1}>{row.c3}</Text>
-                          <Text style={[styles.colValue, styles.colNarrow]} numberOfLines={1}>{row.c4}</Text>
+                        <Pressable key={seg} style={[s.filterChip, active && s.filterChipActive]} onPress={() => setChannelSegment(seg)}>
+                          <Text style={[s.filterChipText, active && s.filterChipTextActive]}>{labels[seg]}</Text>
                         </Pressable>
                       );
                     })}
-
-                    <View style={styles.detailCard}>
-                      <Text style={styles.detailTitle}>{selectedGenericRow?.c1 ?? 'Selection'}</Text>
-                      <Text style={styles.detailMeta}>{selectedGenericRow?.c2 ?? ''}</Text>
-                      <Text style={styles.detailMeta}>{selectedGenericRow?.c3 ?? ''}</Text>
-                      <Text style={styles.detailMeta}>{selectedGenericRow?.c4 ?? ''}</Text>
-                    </View>
                   </View>
-                )}
-              </View>
+                  {/* Channel table */}
+                  <View style={s.channelTable}>
+                    <View style={s.channelTableHead}>
+                      <Text style={[s.thCell, { flex: 2 }]}>Channel</Text>
+                      <Text style={[s.thCell, { flex: 1 }]}>Scope</Text>
+                      <Text style={[s.thCell, { flex: 0.6 }]}>Members</Text>
+                      <Text style={[s.thCell, { flex: 0.6 }]}>Activity</Text>
+                    </View>
+                    {filteredChannels.map((row) => {
+                      const sel = selectedGenericRow?.id === row.id;
+                      return (
+                        <Pressable key={row.id} style={[s.channelTableRow, sel && s.channelTableRowActive]} onPress={() => setSelectedRowId(row.id)}>
+                          <Text style={[s.tdCell, { flex: 2, fontWeight: '600' }]} numberOfLines={1}>{row.c1}</Text>
+                          <Text style={[s.tdCell, { flex: 1 }]}>{row.c2}</Text>
+                          <Text style={[s.tdCell, { flex: 0.6 }]}>{row.c3}</Text>
+                          <Text style={[s.tdCell, { flex: 0.6, color: '#64748B' }]}>{row.c4}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {selectedGenericRow ? (
+                    <View style={s.channelDetail}>
+                      <Text style={s.channelDetailTitle}>{selectedGenericRow.c1}</Text>
+                      <Text style={s.channelDetailMeta}>{selectedGenericRow.c2} · {selectedGenericRow.c3} members · Last active {selectedGenericRow.c4}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              )}
+            </ScrollView>
+          </>
+        )}
+      </View>
+
+      {/* ── Delete confirmation modal ── */}
+      {confirmDelete ? (
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Delete {confirmDelete.type}?</Text>
+            <Text style={s.modalBody}>
+              Are you sure you want to delete{' '}
+              <Text style={{ fontWeight: '700' }}>"{confirmDelete.label}"</Text>?
+              {confirmDelete.type === 'journey'
+                ? ' All lessons and tasks in this journey will be removed. Library assets are not affected.'
+                : confirmDelete.type === 'lesson'
+                ? ' All tasks in this lesson will be removed. Library assets are not affected.'
+                : ' The task will be removed from this lesson. The library asset is not affected.'}
+            </Text>
+            <View style={s.modalActions}>
+              <Pressable style={s.modalCancelBtn} onPress={() => setConfirmDelete(null)}>
+                <Text style={s.modalCancelBtnText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={s.modalDeleteBtn} onPress={confirmAndDelete}>
+                <Text style={s.modalDeleteBtnText}>Delete</Text>
+              </Pressable>
             </View>
-          )}
+          </View>
         </View>
-      </ScrollView>
+      ) : null}
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+/* ════════════════════════════════════════════
+   STYLES — Clean, professional design system
+
+   Palette:
+   - Background:  #F8FAFC (cool gray-50)
+   - Sidebar:     #1E293B (slate-800)
+   - Cards:       #FFFFFF
+   - Primary:     #2563EB (blue-600)
+   - Lesson:      #3B82F6 (blue-500)
+   - Task:        #F59E0B (amber-500)
+   - Success:     #10B981 (emerald-500)
+   - Text:        #0F172A (slate-900)
+   - Secondary:   #64748B (slate-500)
+   ════════════════════════════════════════════ */
+
+const s = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#EEF7F2',
+    backgroundColor: '#F8FAFC',
   },
-  bgOrbOne: {
-    position: 'absolute',
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    top: -70,
-    right: -40,
-    backgroundColor: '#CCE9D9',
-    opacity: 0.85,
-  },
-  bgOrbTwo: {
-    position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    bottom: -30,
-    left: -50,
-    backgroundColor: '#DCEFD2',
-    opacity: 0.8,
-  },
-  shellScroll: {
-    flex: 1,
-  },
-  shell: {
-    padding: 16,
-    gap: 12,
-    paddingBottom: 28,
-  },
-  heroCard: {
+
+  /* ── Top Bar ── */
+  topBar: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D4E6DB',
-    borderRadius: 18,
-    padding: 16,
-    gap: 10,
-  },
-  heroTopRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 12,
-    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    zIndex: 20,
   },
-  heroBrandWrap: {
+  topBarLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    minWidth: 260,
-    flex: 1,
   },
-  logoWrap: {
-    width: 50,
-    height: 50,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#D2E8DB',
-    backgroundColor: '#F3FBF7',
+  logoBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroCopy: {
-    flex: 1,
-  },
-  eyebrow: {
-    color: '#3E7A62',
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  heroTitle: {
-    color: '#1E342A',
-    fontSize: 25,
+  topBarTitle: {
+    fontSize: 18,
     fontWeight: '800',
-    marginTop: 2,
+    color: '#0F172A',
   },
-  heroSubtitle: {
-    color: '#4F6B5C',
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 6,
-  },
-  heroActions: {
-    alignItems: 'flex-end',
-    gap: 8,
-    minWidth: 240,
-    zIndex: 30,
-  },
-  roleBadge: {
-    borderWidth: 1,
-    borderColor: '#CFE7D8',
-    backgroundColor: '#EFFAF3',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  roleBadgeText: {
-    color: '#255A45',
+  topBarSub: {
     fontSize: 12,
-    fontWeight: '600',
+    color: '#64748B',
+    fontWeight: '500',
+    textTransform: 'capitalize',
   },
-  signOutButton: {
-    borderWidth: 1,
-    borderColor: '#CEE3D6',
-    backgroundColor: '#F7FCF9',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  signOutButtonText: {
-    color: '#2A4337',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  accountMenuWrap: {
-    position: 'relative',
-    alignItems: 'flex-end',
-  },
-  avatarButton: {
-    borderWidth: 1,
-    borderColor: '#CEE3D6',
-    backgroundColor: '#F7FCF9',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    minWidth: 52,
+  topBarRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
+    gap: 16,
   },
-  avatarButtonCoach: {
-    borderColor: '#B8D9C7',
-    backgroundColor: '#F3FBF7',
-  },
-  avatarButtonOpen: {
-    borderColor: '#1F7A52',
-  },
-  avatarButtonText: {
-    color: '#1E4A37',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  avatarChevron: {
-    color: '#3D6453',
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 1,
-  },
-  accountDropdown: {
-    position: 'absolute',
-    top: 42,
-    right: 0,
-    borderWidth: 1,
-    borderColor: '#CFE3D7',
+  modeTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
     borderRadius: 10,
+    padding: 3,
+  },
+  modeTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  modeTabActive: {
     backgroundColor: '#FFFFFF',
-    minWidth: 220,
-    padding: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  modeTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  modeTabTextActive: {
+    color: '#0F172A',
+  },
+
+  /* ── Account ── */
+  accountWrap: {
+    position: 'relative',
+  },
+  avatarBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#2563EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarBtnOpen: {
+    backgroundColor: '#1D4ED8',
+  },
+  avatarBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  accountDrop: {
+    position: 'absolute',
+    top: 44,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 12,
     gap: 6,
-    shadowColor: '#0B2A1A',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
+    minWidth: 220,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
     zIndex: 40,
   },
-  accountMenuLabel: {
-    color: '#5C7D6C',
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    fontWeight: '700',
-  },
-  accountMenuValue: {
-    color: '#1F3A2E',
+  accountDropLabel: {
     fontSize: 12,
     fontWeight: '600',
+    color: '#0F172A',
   },
-  accountMenuRole: {
-    color: '#4F6B5C',
+  accountDropRole: {
     fontSize: 11,
+    color: '#64748B',
   },
-  accountMenuSignOut: {
-    borderWidth: 1,
-    borderColor: '#D8E9E0',
-    borderRadius: 8,
-    backgroundColor: '#F7FCF9',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginTop: 2,
-  },
-  accountMenuSignOutText: {
-    color: '#224434',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  scopeText: {
-    color: '#2E4F41',
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: '600',
-  },
-  compatText: {
-    color: '#627B70',
-    fontSize: 12,
-  },
-  navCard: {
-    borderWidth: 1,
-    borderColor: '#D4E6DB',
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    padding: 10,
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  navCardCompact: {
-    flexDirection: 'column',
-  },
-  navPill: {
-    borderWidth: 1,
-    borderColor: '#D5E9DE',
-    borderRadius: 12,
-    backgroundColor: '#F8FCFA',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    minWidth: 170,
-    flex: 1,
-  },
-  navPillSelected: {
-    borderColor: '#3D8E68',
-    backgroundColor: '#EAF8F0',
-  },
-  navPillLabel: {
-    color: '#2A4639',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  navPillLabelSelected: {
-    color: '#1D6C49',
-  },
-  navPillPath: {
-    color: '#637D72',
-    fontSize: 11,
-    marginTop: 2,
-  },
-  contentCard: {
-    borderWidth: 1,
-    borderColor: '#D4E6DB',
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    padding: 14,
-    gap: 10,
-    minHeight: 440,
-  },
-  sectionTitle: {
-    color: '#1F3329',
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  sectionBody: {
-    color: '#50695D',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  routeMetaText: {
-    color: '#5C756A',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  builderWrap: {
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'flex-start',
-  },
-  builderWrapCompact: {
-    flexDirection: 'column',
-  },
-  segmentedTabs: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 6,
-    flexWrap: 'wrap',
-  },
-  segmentTab: {
-    borderWidth: 1,
-    borderColor: '#D4E6DB',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: '#F7FCF9',
-  },
-  segmentTabSelected: {
-    borderColor: '#2F845E',
-    backgroundColor: '#EAF8F1',
-  },
-  segmentTabText: {
-    color: '#335246',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  segmentTabTextSelected: {
-    color: '#1D6C49',
-  },
-  libraryRail: {
-    width: 330,
-    borderWidth: 1,
-    borderColor: '#DDECE4',
-    backgroundColor: '#F8FCF9',
-    borderRadius: 12,
-    padding: 10,
-    gap: 8,
-  },
-  collectionRail: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#DDECE4',
-    backgroundColor: '#FCFEFD',
-    borderRadius: 12,
-    padding: 10,
-    gap: 8,
-  },
-  panelTitle: {
-    color: '#244034',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  panelHint: {
-    color: '#5D786C',
-    fontSize: 12,
-  },
-  searchInput: {
-    borderWidth: 1,
-    borderColor: '#CFE1D8',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
-    color: '#264236',
-    backgroundColor: '#FFFFFF',
-  },
-  libraryList: {
-    gap: 8,
-    paddingBottom: 4,
-  },
-  libraryCard: {
-    borderWidth: 1,
-    borderColor: '#D5E7DD',
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    padding: 10,
-    gap: 2,
-  },
-  libraryCardSelected: {
-    borderColor: '#2F845E',
-    backgroundColor: '#ECF8F1',
-  },
-  libraryCardTitle: {
-    color: '#1F3A2D',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  libraryCardMeta: {
-    color: '#617A6F',
-    fontSize: 12,
-  },
-  collectionList: {
-    gap: 8,
-  },
-  treeFolderGroup: {
-    gap: 6,
-  },
-  treeAssetsList: {
-    paddingLeft: 10,
-    gap: 6,
-  },
-  collectionCard: {
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#CFE2D8',
-    borderRadius: 10,
-    padding: 10,
-    backgroundColor: '#FFFFFF',
-    gap: 2,
-  },
-  collectionCardSelected: {
-    borderColor: '#2F845E',
-    backgroundColor: '#ECF8F1',
-    borderStyle: 'solid',
-  },
-  collectionTitle: {
-    color: '#214033',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  collectionMeta: {
-    color: '#5C756A',
-    fontSize: 12,
-  },
-  collectionDetailCard: {
-    borderWidth: 1,
-    borderColor: '#D7E9DF',
-    borderRadius: 12,
-    backgroundColor: '#F9FCFA',
-    padding: 12,
-    gap: 6,
+  accountDropSignOut: {
     marginTop: 4,
-  },
-  collectionItemsList: {
-    gap: 6,
-  },
-  folderAssetsList: {
-    paddingLeft: 10,
-    paddingTop: 4,
-    gap: 6,
-  },
-  breadcrumbRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-  },
-  breadcrumbText: {
-    color: '#5C756A',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  folderAssetRow: {
     borderWidth: 1,
-    borderColor: '#D8E8DF',
+    borderColor: '#E2E8F0',
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    backgroundColor: '#FFFFFF',
-  },
-  folderAssetRowDragging: {
-    borderColor: '#2F845E',
-    backgroundColor: '#EAF8F1',
-  },
-  folderAssetActionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  collectionItemChip: {
-    borderWidth: 1,
-    borderColor: '#D2E6DB',
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 9,
     paddingVertical: 7,
+    alignItems: 'center',
   },
-  collectionItemText: {
-    color: '#2A473A',
+  accountDropSignOutText: {
     fontSize: 12,
     fontWeight: '600',
+    color: '#DC2626',
   },
-  inlineAddButton: {
-    borderWidth: 1,
-    borderColor: '#C9DDD1',
-    borderRadius: 8,
-    backgroundColor: '#F4FBF7',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  inlineAddButtonText: {
-    color: '#28553F',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  journeyCanvas: {
+
+  /* ── Main Layout ── */
+  mainRow: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#DDECE4',
-    borderRadius: 12,
-    backgroundColor: '#FCFEFD',
-    padding: 10,
+    flexDirection: 'row',
+  },
+
+  /* ── Sidebar (dark) ── */
+  sidebar: {
+    width: 300,
+    backgroundColor: '#1E293B',
+    paddingTop: 16,
+    paddingHorizontal: 12,
     gap: 10,
   },
-  journeySelectorSection: {
-    borderWidth: 1,
-    borderColor: '#D7E9DF',
-    borderRadius: 10,
-    backgroundColor: '#F9FCFA',
-    padding: 8,
-    gap: 8,
+  sidebarCompact: {
+    width: '100%' as any,
+    maxHeight: 260,
   },
-  journeyBuilderSection: {
-    borderWidth: 1,
-    borderColor: '#D7E9DF',
-    borderRadius: 10,
-    backgroundColor: '#F9FCFA',
-    padding: 8,
-    gap: 8,
+  sidebarTitle: {
+    color: '#F1F5F9',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    marginBottom: 2,
   },
-  selectorHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  journeyListRows: {
-    width: '100%',
-    gap: 7,
-  },
-  journeySelectRow: {
-    borderWidth: 1,
-    borderColor: '#D4E6DC',
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 11,
+  sidebarSearch: {
+    backgroundColor: '#334155',
+    borderRadius: 8,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
+    fontSize: 13,
+    color: '#F1F5F9',
   },
-  journeySelectRowSelected: {
-    borderColor: '#2F845E',
-    backgroundColor: '#ECF8F1',
-  },
-  journeySelectCopy: {
+  sidebarScroll: {
     flex: 1,
+    overflow: 'auto' as any,
   },
-  journeySelectLabel: {
-    color: '#2A473A',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  journeySelectLabelSelected: {
-    color: '#1D6C49',
-  },
-  journeySelectMeta: {
-    color: '#647E73',
-    fontSize: 11,
-  },
-  journeySelectHint: {
-    color: '#688378',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  builderActionBar: {
+
+  /* ── Selected-asset banner ── */
+  selectedAssetBanner: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#1D4ED8',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     gap: 8,
-    flexWrap: 'wrap',
+  },
+  selectedAssetBannerText: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  selectedAssetBannerClose: {
+    color: '#93C5FD',
+    fontSize: 14,
+    fontWeight: '700',
+    paddingHorizontal: 4,
+  },
+
+  /* ── Folder tree ── */
+  folderGroup: {
+    marginBottom: 4,
+  },
+  folderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 6,
+  },
+  folderRowActive: {
+    backgroundColor: '#334155',
+  },
+  folderIcon: {
+    color: '#94A3B8',
+    fontSize: 12,
+    width: 14,
+  },
+  folderName: {
+    flex: 1,
+    color: '#CBD5E1',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  folderNameActive: {
+    color: '#F1F5F9',
+  },
+  folderCount: {
+    backgroundColor: '#475569',
+    borderRadius: 10,
+    paddingHorizontal: 7,
     paddingVertical: 2,
   },
-  createJourneyInput: {
-    minWidth: 220,
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#CFE1D8',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
-    color: '#264236',
-    backgroundColor: '#FFFFFF',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: '#C9DDD1',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    backgroundColor: '#F4FBF7',
-  },
-  secondaryButtonText: {
-    color: '#28553F',
-    fontSize: 12,
+  folderCountText: {
+    color: '#CBD5E1',
+    fontSize: 10,
     fontWeight: '700',
   },
-  saveStateChip: {
-    borderWidth: 1,
-    borderColor: '#D3E6DC',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: '#F5FBF8',
-    color: '#5B776A',
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  saveStateChipPending: {
-    borderColor: '#ABCFB9',
-    color: '#2A6348',
-  },
-  saveStateChipSaved: {
-    borderColor: '#8FCBAA',
-    color: '#1E7B50',
-    backgroundColor: '#EAF8F1',
-  },
-  saveStateChipError: {
-    borderColor: '#E4B9B9',
-    color: '#8E4040',
-    backgroundColor: '#FDF0F0',
-  },
-  sourceCollectionsBox: {
-    borderWidth: 1,
-    borderColor: '#D7E9DF',
-    borderRadius: 10,
-    backgroundColor: '#F9FCFA',
-    padding: 8,
-    gap: 6,
+
+  /* ── Asset rows in sidebar ── */
+  assetList: {
+    paddingLeft: 20,
+    gap: 3,
     marginTop: 2,
+    marginBottom: 6,
   },
-  sourceCollectionsTitle: {
-    color: '#284436',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  deniedCard: {
-    borderWidth: 1,
-    borderColor: '#E7C6B4',
-    borderRadius: 10,
-    backgroundColor: '#FFF8F5',
-    padding: 10,
-    gap: 4,
-  },
-  deniedTitle: {
-    color: '#7A3E2A',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  deniedBody: {
-    color: '#8C5845',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  milestoneCard: {
-    borderWidth: 1,
-    borderColor: '#D6E8DF',
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    padding: 10,
-    gap: 8,
-  },
-  milestoneCardSelected: {
-    borderColor: '#2F845E',
-    backgroundColor: '#F2FBF6',
-  },
-  milestoneCardHover: {
-    borderColor: '#2F845E',
-    borderStyle: 'dashed',
-  },
-  milestoneCardSuccess: {
-    borderColor: '#22724D',
-    backgroundColor: '#EAF8F1',
-  },
-  milestoneTitle: {
-    color: '#1F3A2D',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  dropZone: {
-    borderWidth: 1,
-    borderColor: '#CFE2D8',
-    borderStyle: 'dashed',
-    borderRadius: 8,
-    padding: 8,
-    gap: 8,
-    backgroundColor: '#FBFEFC',
-    minHeight: 56,
-  },
-  dropZoneHint: {
-    color: '#658073',
-    fontSize: 12,
-  },
-  dropZoneHover: {
-    borderColor: '#2F845E',
-    backgroundColor: '#F1FBF6',
-  },
-  dropZoneSuccess: {
-    borderColor: '#1C6E49',
-    backgroundColor: '#E5F6ED',
-  },
-  journeyBlockCard: {
-    borderWidth: 1,
-    borderColor: '#D4E7DD',
-    borderRadius: 8,
-    backgroundColor: '#F7FCF9',
-    padding: 8,
+  assetRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    borderRadius: 6,
+    backgroundColor: 'transparent',
   },
-  journeyBlockCopy: {
+  assetRowDragging: {
+    backgroundColor: '#334155',
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+  },
+  assetInfo: {
     flex: 1,
     gap: 2,
   },
-  journeyBlockTitle: {
-    color: '#234133',
+  assetTitle: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  assetMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  categoryBadge: {
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  categoryBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  assetDuration: {
+    color: '#64748B',
+    fontSize: 10,
+  },
+  dragHandle: {
+    color: '#64748B',
+    fontSize: 16,
+    marginLeft: 6,
+    cursor: 'grab' as any,
+    userSelect: 'none' as any,
+  },
+
+  /* ── Canvas ── */
+  canvas: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  canvasInner: {
+    padding: 24,
+    gap: 16,
+    paddingBottom: 40,
+  },
+
+  /* ── Canvas sections ── */
+  canvasSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    gap: 12,
+  },
+  canvasSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  canvasSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  canvasSectionCount: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+
+  /* ── Journey selector chips ── */
+  journeyChips: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  journeyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingLeft: 14,
+    paddingRight: 6,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+    minWidth: 180,
+  },
+  journeyChipActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  journeyChipBody: {
+    flex: 1,
+  },
+  journeyChipText: {
     fontSize: 13,
     fontWeight: '700',
+    color: '#334155',
   },
-  journeyBlockMeta: {
-    color: '#5F7A6E',
-    fontSize: 12,
+  journeyChipTextActive: {
+    color: '#1D4ED8',
   },
-  blockActions: {
-    position: 'relative',
-    alignItems: 'flex-end',
-  },
-  menuTrigger: {
-    borderWidth: 1,
-    borderColor: '#CEE2D8',
-    borderRadius: 6,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    backgroundColor: '#FFFFFF',
-  },
-  menuTriggerText: {
-    color: '#2C4A3B',
+  journeyChipMeta: {
     fontSize: 11,
-    fontWeight: '700',
+    color: '#64748B',
+    marginTop: 2,
   },
-  blockMenu: {
-    position: 'absolute',
-    top: 34,
-    right: 0,
-    borderWidth: 1,
-    borderColor: '#D2E6DB',
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    minWidth: 130,
-    overflow: 'hidden',
-    zIndex: 5,
-  },
-  blockMenuItem: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E7F0EB',
-  },
-  blockMenuItemText: {
-    color: '#2B473B',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  blockMenuItemDanger: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: '#FFF3F3',
-  },
-  blockMenuItemDangerText: {
-    color: '#974444',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  inlineNavLink: {
-    marginTop: 6,
-    color: '#1D6C49',
-    fontSize: 12,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
-  },
-  inlineActionButtonDanger: {
-    borderWidth: 1,
-    borderColor: '#E8C7C7',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    backgroundColor: '#FFF3F3',
-  },
-  inlineActionTextDanger: {
-    color: '#974444',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  saveMessage: {
-    color: '#4F6B5C',
-    fontSize: 12,
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: '#E0ECE5',
-    borderBottomWidth: 0,
-    backgroundColor: '#F6FBF8',
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-    overflow: 'hidden',
-  },
-  personRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  checkbox: {
+  chipDeleteBtn: {
     width: 22,
     height: 22,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#BED6CA',
-    backgroundColor: '#FFFFFF',
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 6,
   },
-  checkboxChecked: {
-    borderColor: '#2F845E',
-    backgroundColor: '#EAF8F1',
-  },
-  checkboxText: {
-    color: '#1D6C49',
+  chipDeleteBtnText: {
+    color: '#94A3B8',
     fontSize: 12,
-    fontWeight: '800',
-  },
-  tableRow: {
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: '#E0ECE5',
-    borderTopWidth: 0,
-    backgroundColor: '#FFFFFF',
-  },
-  tableRowSelected: {
-    backgroundColor: '#ECF8F1',
-  },
-  colWide: {
-    flex: 1.2,
-  },
-  colNarrow: {
-    flex: 0.8,
-  },
-  colLabel: {
-    color: '#667D72',
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    fontWeight: '700',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  colValue: {
-    color: '#2C463A',
-    fontSize: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-  },
-  detailCard: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#D8EAE0',
-    borderRadius: 12,
-    backgroundColor: '#F9FCFA',
-    padding: 12,
-    gap: 4,
-  },
-  detailTitle: {
-    color: '#243C31',
-    fontSize: 15,
     fontWeight: '700',
   },
-  detailMeta: {
-    color: '#597266',
-    fontSize: 12,
+  lessonDeleteBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
   },
-  actionRow: {
-    marginTop: 8,
+  lessonDeleteBtnText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  /* ── Toolbar ── */
+  toolbar: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 8,
+    flexWrap: 'wrap',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 12,
   },
-  primaryButton: {
-    backgroundColor: '#24744F',
-    borderRadius: 10,
+  toolbarInput: {
+    flex: 1,
+    minWidth: 180,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
     paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#0F172A',
+    backgroundColor: '#F8FAFC',
+  },
+  toolbarSpacer: {
+    flex: 1,
+    minWidth: 8,
+  },
+
+  /* ── Buttons ── */
+  btnPrimary: {
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    paddingHorizontal: 16,
     paddingVertical: 9,
   },
-  primaryButtonText: {
+  btnPrimaryDisabled: {
+    backgroundColor: '#93C5FD',
+  },
+  btnPrimaryText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
   },
-  centerCard: {
-    margin: 20,
+  btnSecondary: {
     borderWidth: 1,
-    borderColor: '#D5E8DD',
-    borderRadius: 14,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     backgroundColor: '#FFFFFF',
+  },
+  btnSecondaryText: {
+    color: '#334155',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  btnOutlineBlue: {
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    backgroundColor: '#EFF6FF',
+  },
+  btnOutlineBlueText: {
+    color: '#1D4ED8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  btnOutlineAmber: {
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    backgroundColor: '#FFFBEB',
+  },
+  btnOutlineAmberText: {
+    color: '#B45309',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  /* ── Status indicators ── */
+  saveIndicator: {
+    color: '#10B981',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  errorIndicator: {
+    color: '#DC2626',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dropHintText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  deniedBanner: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    padding: 12,
+  },
+  deniedBannerText: {
+    color: '#991B1B',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  /* ── Milestones ── */
+  milestoneList: {
+    gap: 12,
+  },
+  milestone: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    gap: 12,
+  },
+  milestoneSelected: {
+    borderColor: '#2563EB',
+    shadowColor: '#2563EB',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  milestoneHover: {
+    borderColor: '#3B82F6',
+    borderStyle: 'dashed',
+  },
+  milestoneSuccess: {
+    borderColor: '#10B981',
+    backgroundColor: '#F0FDF4',
+  },
+  milestoneDropReady: {
+    borderColor: '#93C5FD',
+    borderStyle: 'dashed',
+    backgroundColor: '#F8FAFF',
+  },
+  milestoneDragging: {
+    opacity: 0.4,
+    borderColor: '#94A3B8',
+    borderStyle: 'dashed',
+  },
+  lessonInsertLine: {
+    height: 3,
+    backgroundColor: '#2563EB',
+    borderRadius: 2,
+    marginVertical: 4,
+  },
+  milestoneHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  milestoneHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  stepNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepNumberText: {
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  milestoneTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+
+  /* ── Kind badges ── */
+  kindBadgeLesson: {
+    backgroundColor: '#DBEAFE',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  kindBadgeLessonText: {
+    color: '#1D4ED8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  kindBadgeTask: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  kindBadgeTaskText: {
+    color: '#B45309',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  /* ── Drop zone ── */
+  dropZone: {
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    borderRadius: 10,
+    padding: 10,
+    gap: 6,
+    minHeight: 52,
+    backgroundColor: '#FAFBFC',
+  },
+  dropZoneHover: {
+    borderColor: '#3B82F6',
+    backgroundColor: '#EFF6FF',
+  },
+  dropZoneReady: {
+    borderColor: '#93C5FD',
+    backgroundColor: '#EFF6FF',
+  },
+  dropZoneSuccess: {
+    borderColor: '#10B981',
+    backgroundColor: '#F0FDF4',
+  },
+  dropZoneHint: {
+    color: '#94A3B8',
+    fontSize: 12,
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+  dropZoneHintActive: {
+    color: '#2563EB',
+    fontWeight: '600',
+  },
+
+  /* ── Grab handles ── */
+  grabHandle: {
+    width: 24,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 4,
+    cursor: 'grab' as any,
+  },
+  grabHandleText: {
+    color: '#94A3B8',
+    fontSize: 18,
+    fontWeight: '700',
+    userSelect: 'none' as any,
+    cursor: 'grab' as any,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+
+  /* ── Block drop slots (insertion lines) ── */
+  blockDropSlot: {
+    height: 4,
+    borderRadius: 2,
+    marginVertical: 1,
+    backgroundColor: 'transparent',
+  },
+  blockDropSlotExpanded: {
+    height: 14,
+    marginVertical: 3,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderStyle: 'dashed',
+    borderRadius: 4,
+  },
+  blockDropSlotActive: {
+    height: 14,
+    backgroundColor: '#3B82F6',
+    borderRadius: 4,
+    marginVertical: 3,
+  },
+
+  /* ── Block cards inside milestones ── */
+  blockCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    padding: 10,
+    gap: 8,
+    position: 'relative',
+  },
+  blockCardDragging: {
+    opacity: 0.35,
+    borderColor: '#94A3B8',
+    borderStyle: 'dashed',
+  },
+  blockGrabHandle: {
+    width: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'grab' as any,
+    marginRight: 2,
+  },
+  blockGrabText: {
+    color: '#CBD5E1',
+    fontSize: 14,
+    fontWeight: '700',
+    userSelect: 'none' as any,
+  },
+  blockInfo: {
+    flex: 1,
+  },
+  blockIndex: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  blockIndexText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748B',
+  },
+  blockTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  blockCatBadge: {
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    marginTop: 2,
+    alignSelf: 'flex-start',
+  },
+  blockCatText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  inlineCreateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  inlineCreateInput: {
+    flex: 1,
+    height: 32,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    fontSize: 12,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+  },
+  lessonToolbarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  autoSaveHint: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '600',
+  },
+  autoSaveError: {
+    fontSize: 11,
+    color: '#DC2626',
+    fontWeight: '600',
+  },
+  inlineAddLessonBtn: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+    marginBottom: 8,
+  },
+  inlineAddLessonBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  inlineAddTaskBtn: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    marginTop: 6,
+  },
+  inlineAddTaskBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  blockRemoveBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 2,
+  },
+  blockRemoveBtnText: {
+    color: '#DC2626',
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 14,
+  },
+  blockMenuBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  blockMenuBtnText: {
+    color: '#94A3B8',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  blockPopover: {
+    position: 'absolute',
+    top: '100%',
+    right: 0,
+    marginTop: 4,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    overflow: 'hidden',
+    minWidth: 130,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  blockPopoverItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  blockPopoverText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  blockPopoverDanger: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  blockPopoverDangerText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+
+  /* ── People mode ── */
+  personRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  checkBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#475569',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkBoxChecked: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  checkMark: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  personCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  personAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#475569',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  personAvatarText: {
+    color: '#F1F5F9',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  personName: {
+    color: '#E2E8F0',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  personSub: {
+    color: '#94A3B8',
+    fontSize: 11,
+  },
+
+  /* ── Panel tabs ── */
+  panelTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    padding: 3,
+    alignSelf: 'flex-start',
+  },
+  panelTab: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  panelTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  panelTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  panelTabTextActive: {
+    color: '#0F172A',
+  },
+
+  /* ── Cohorts ── */
+  cohortContent: {
+    gap: 16,
+  },
+  cohortGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  cohortCard: {
+    minWidth: 200,
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 16,
+    gap: 6,
+  },
+  cohortCardActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  cohortName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  cohortMeta: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  cohortFooter: {
+    marginTop: 4,
+  },
+  cohortMembers: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  cohortDetail: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
     padding: 16,
     gap: 8,
   },
-  centerTopBar: {
-    marginTop: 16,
-    marginRight: 20,
-    alignItems: 'flex-end',
-    zIndex: 30,
+  cohortDetailTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
   },
-  centerTitle: {
-    color: '#243B31',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  centerBody: {
-    color: '#556E62',
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  centerMeta: {
-    color: '#6E847A',
+  cohortDetailMeta: {
     fontSize: 12,
+    color: '#64748B',
+  },
+  cohortMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 4,
+  },
+  cohortMemberAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cohortMemberAvatarText: {
+    color: '#2563EB',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  cohortMemberName: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#334155',
+  },
+
+  /* ── Channels ── */
+  channelContent: {
+    gap: 16,
+  },
+  channelFilters: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    backgroundColor: '#FFFFFF',
+  },
+  filterChipActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  filterChipTextActive: {
+    color: '#1D4ED8',
+  },
+  channelTable: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  channelTableHead: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  thCell: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    color: '#64748B',
+  },
+  channelTableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  channelTableRowActive: {
+    backgroundColor: '#EFF6FF',
+  },
+  tdCell: {
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 13,
+    color: '#334155',
+  },
+  channelDetail: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 16,
+    gap: 4,
+  },
+  channelDetailTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  channelDetailMeta: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  runtimeBanner: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  runtimeBannerText: {
+    fontSize: 12,
+    color: '#1E3A8A',
+    fontWeight: '600',
+  },
+  runtimeBannerError: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  runtimeBannerErrorText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#991B1B',
+    fontWeight: '600',
+  },
+  runtimeRetryBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#DC2626',
+  },
+  runtimeRetryBtnText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+
+  /* ── Empty/error states ── */
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  emptyBody: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+  },
+  emptyMeta: {
+    fontSize: 12,
+    color: '#94A3B8',
+  },
+  emptyHint: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+    paddingVertical: 4,
+  },
+
+  /* ── Delete confirmation modal ── */
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+  },
+  modalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 24,
+    maxWidth: 380,
+    width: '90%',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 8,
+  },
+  modalBody: {
+    fontSize: 13,
+    color: '#475569',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  modalCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+  },
+  modalCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  modalDeleteBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#DC2626',
+  },
+  modalDeleteBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
