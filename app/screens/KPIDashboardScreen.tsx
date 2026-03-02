@@ -313,7 +313,9 @@ type CoachTabScreen =
   | 'coach_content_library'
   | 'coach_direct_comms'
   | 'coach_goals_tasks'
-  | 'coach_challenges';
+  | 'coach_challenges'
+  | 'coach_offer_dm_coaching'
+  | 'coach_offer_fourth_reason';
 type CoachEntitlementState = 'allowed' | 'pending' | 'blocked' | 'fallback';
 type CoachEngagementStatus = 'none' | 'pending' | 'active' | 'ended';
 type CoachAssignmentType = 'personal_goal' | 'team_leader_goal' | 'coach_goal' | 'personal_task' | 'coach_task';
@@ -837,6 +839,7 @@ const PIPELINE_LOST_ENCOURAGEMENT_MESSAGES = [
   'Reset the count, keep the reps high, and the next win comes faster.',
 ] as const;
 const MAX_KPIS_PER_TYPE = 8;
+const UUID_LIKE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function fmtUsd(v: number) {
   const safe = Number.isFinite(v) ? v : 0;
@@ -2473,6 +2476,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [coachWorkflowAssignJourneyId, setCoachWorkflowAssignJourneyId] = useState<string | null>(null);
   const [coachWorkflowAssignTargetCohortId, setCoachWorkflowAssignTargetCohortId] = useState<string | null>(null);
   const [coachWorkflowAssignTargetUserId, setCoachWorkflowAssignTargetUserId] = useState<string | null>(null);
+  const [coachInviteLinkCopied, setCoachInviteLinkCopied] = useState(false);
   const coachSegmentPresets: CoachSegmentPreset[] = useMemo(() => [
     { id: 'seg-kpi', label: 'KPI Completion', rule: 'kpi_completion', status: 'preview', description: 'Members meeting KPI completion thresholds' },
     { id: 'seg-gci', label: 'GCI Direction', rule: 'gci_direction', status: 'preview', description: 'Members trending up/down in GCI performance' },
@@ -5927,17 +5931,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     ],
     [challengeKpiGroups.GP.length, challengeKpiGroups.PC.length, challengeKpiGroups.VP.length]
   );
-  const teamRuntimeId = useMemo(() => {
-    const fromChallenges =
-      challengeListItems.find((item) => Boolean(item.raw?.team_id))?.raw?.team_id ??
-      challengeListItems.find((item) => item.challengeModeLabel === 'Team' && Boolean(item.raw?.team_id))?.raw?.team_id ??
-      null;
-    if (fromChallenges) return String(fromChallenges);
-    const fromChannels = (Array.isArray(channelsApiRows) ? channelsApiRows : []).find(
-      (row) => String(row.type ?? '').toLowerCase() === 'team' && row.team_id
-    )?.team_id;
-    return fromChannels ? String(fromChannels) : null;
+  const teamRuntimeCandidateIds = useMemo(() => {
+    const orderedIds: string[] = [];
+    const pushCandidate = (value: unknown) => {
+      const candidate = String(value ?? '').trim();
+      if (!candidate || !UUID_LIKE_RE.test(candidate)) return;
+      if (!orderedIds.includes(candidate)) orderedIds.push(candidate);
+    };
+    (Array.isArray(channelsApiRows) ? channelsApiRows : [])
+      .filter((row) => String(row.type ?? '').toLowerCase() === 'team')
+      .forEach((row) => pushCandidate(row.team_id));
+    challengeListItems.forEach((item) => pushCandidate(item.raw?.team_id ?? null));
+    return orderedIds;
   }, [challengeListItems, channelsApiRows]);
+  const teamRuntimeId = useMemo(() => {
+    return teamRuntimeCandidateIds[0] ?? null;
+  }, [teamRuntimeCandidateIds]);
   const fallbackTeamMemberDirectory = useMemo<TeamDirectoryMember[]>(
     () => [
       {
@@ -6968,7 +6977,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
   const fetchTeamRoster = useCallback(async () => {
     const token = session?.access_token;
-    if (!token || !teamRuntimeId) {
+    if (!token || teamRuntimeCandidateIds.length === 0) {
       setTeamRosterMembers([]);
       setTeamRosterName(null);
       setTeamRosterError(null);
@@ -6977,32 +6986,38 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
     try {
       setTeamRosterError(null);
-      const response = await fetch(`${API_URL}/teams/${encodeURIComponent(teamRuntimeId)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const body = (await response.json().catch(() => ({}))) as TeamDetailResponse;
-      if (!response.ok) {
-        const fallback = `Team roster request failed (${response.status})`;
-        setTeamRosterError(mapCommsHttpError(response.status, getApiErrorMessage(body, fallback)));
-        setTeamRosterMembers([]);
-        setTeamRosterName(null);
-        setTeamRosterTeamId(teamRuntimeId);
+      let lastFailure: string | null = null;
+      for (const candidateTeamId of teamRuntimeCandidateIds) {
+        const response = await fetch(`${API_URL}/teams/${encodeURIComponent(candidateTeamId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = (await response.json().catch(() => ({}))) as TeamDetailResponse;
+        if (!response.ok) {
+          const fallback = `Team roster request failed (${response.status})`;
+          lastFailure = mapCommsHttpError(response.status, getApiErrorMessage(body, fallback));
+          continue;
+        }
+        const members = (Array.isArray(body.members) ? body.members : []).filter(
+          (member): member is TeamApiMemberSummary =>
+            typeof member?.user_id === 'string' && String(member.user_id).trim().length > 0
+        );
+        setTeamRosterMembers(members);
+        setTeamRosterName(body.team?.name ? String(body.team.name) : null);
+        setTeamRosterTeamId(candidateTeamId);
+        setTeamRosterError(null);
         return;
       }
-      const members = (Array.isArray(body.members) ? body.members : []).filter(
-        (member): member is TeamApiMemberSummary =>
-          typeof member?.user_id === 'string' && String(member.user_id).trim().length > 0
-      );
-      setTeamRosterMembers(members);
-      setTeamRosterName(body.team?.name ? String(body.team.name) : null);
-      setTeamRosterTeamId(teamRuntimeId);
+      setTeamRosterMembers([]);
+      setTeamRosterName(null);
+      setTeamRosterError(lastFailure ?? 'Team roster unavailable in your current scope.');
+      setTeamRosterTeamId(teamRuntimeCandidateIds[0] ?? null);
     } catch (err) {
       setTeamRosterError(err instanceof Error ? err.message : 'Failed to load team roster');
       setTeamRosterMembers([]);
       setTeamRosterName(null);
-      setTeamRosterTeamId(teamRuntimeId);
+      setTeamRosterTeamId(teamRuntimeCandidateIds[0] ?? null);
     }
-  }, [session?.access_token, teamRuntimeId]);
+  }, [session?.access_token, teamRuntimeCandidateIds]);
 
   const queueAiSuggestionForApproval = useCallback(async () => {
     const token = session?.access_token;
@@ -8128,38 +8143,43 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       if (localMatch?.user_id) return String(localMatch.user_id);
 
       const token = session?.access_token;
-      if (!token || !teamRuntimeId) return null;
+      if (!token || teamRuntimeCandidateIds.length === 0) return null;
 
       try {
-        const response = await fetch(`${API_URL}/teams/${encodeURIComponent(teamRuntimeId)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const body = (await response.json().catch(() => ({}))) as TeamDetailResponse;
-        if (!response.ok) return null;
+        for (const candidateTeamId of teamRuntimeCandidateIds) {
+          const response = await fetch(`${API_URL}/teams/${encodeURIComponent(candidateTeamId)}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const body = (await response.json().catch(() => ({}))) as TeamDetailResponse;
+          if (!response.ok) continue;
 
-        const fetchedMembers = (Array.isArray(body.members) ? body.members : []).filter(
-          (row): row is TeamApiMemberSummary =>
-            typeof row?.user_id === 'string' && String(row.user_id).trim().length > 0
-        );
-        if (fetchedMembers.length > 0) {
-          setTeamRosterMembers(fetchedMembers);
-          setTeamRosterName(body.team?.name ? String(body.team.name) : null);
-          setTeamRosterTeamId(teamRuntimeId);
-          setTeamRosterError(null);
+          const fetchedMembers = (Array.isArray(body.members) ? body.members : []).filter(
+            (row): row is TeamApiMemberSummary =>
+              typeof row?.user_id === 'string' && String(row.user_id).trim().length > 0
+          );
+          if (fetchedMembers.length > 0) {
+            setTeamRosterMembers(fetchedMembers);
+            setTeamRosterName(body.team?.name ? String(body.team.name) : null);
+            setTeamRosterTeamId(candidateTeamId);
+            setTeamRosterError(null);
+          }
+
+          const fetchedMatch = fetchedMembers.find((row) => {
+            const rowNameKey = normalizeValue(row.full_name);
+            const rowEmailKey = String(row.email ?? '').trim().toLowerCase();
+            if (memberEmailKey && rowEmailKey && memberEmailKey === rowEmailKey) return true;
+            return Boolean(memberNameKey) && rowNameKey === memberNameKey;
+          });
+          if (fetchedMatch?.user_id && UUID_LIKE_RE.test(String(fetchedMatch.user_id))) {
+            return String(fetchedMatch.user_id);
+          }
         }
-
-        const fetchedMatch = fetchedMembers.find((row) => {
-          const rowNameKey = normalizeValue(row.full_name);
-          const rowEmailKey = String(row.email ?? '').trim().toLowerCase();
-          if (memberEmailKey && rowEmailKey && memberEmailKey === rowEmailKey) return true;
-          return Boolean(memberNameKey) && rowNameKey === memberNameKey;
-        });
-        return fetchedMatch?.user_id ? String(fetchedMatch.user_id) : null;
+        return null;
       } catch {
         return null;
       }
     },
-    [session?.access_token, teamRosterMembers, teamRuntimeId]
+    [session?.access_token, teamRosterMembers, teamRuntimeCandidateIds]
   );
 
   useEffect(() => {
@@ -8241,10 +8261,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
   useEffect(() => {
     if (activeTab !== 'team' && activeTab !== 'comms') return;
-    if (!teamRuntimeId) return;
-    if (teamRosterTeamId === teamRuntimeId && (teamRosterMembers.length > 0 || teamRosterError)) return;
+    if (teamRuntimeCandidateIds.length === 0) return;
+    const rosterTeamStillCandidate =
+      !!teamRosterTeamId && teamRuntimeCandidateIds.includes(String(teamRosterTeamId));
+    if (rosterTeamStillCandidate && (teamRosterMembers.length > 0 || teamRosterError)) return;
     void fetchTeamRoster();
-  }, [activeTab, fetchTeamRoster, teamRosterError, teamRosterMembers.length, teamRosterTeamId, teamRuntimeId]);
+  }, [activeTab, fetchTeamRoster, teamRosterError, teamRosterMembers.length, teamRosterTeamId, teamRuntimeCandidateIds]);
 
   useEffect(() => {
     if (activeTab !== 'comms') return;
@@ -8416,108 +8438,278 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             {/* ── Coach Tab IA Routing ── */}
             {activeTab === 'coach' ? (
             coachTabScreen === 'coach_marketplace' ? (
-              <View style={styles.coachMarketplaceWrap}>
-                <View style={styles.coachMarketplaceHeader}>
-                  <Text style={styles.coachMarketplaceTitle}>Find Your Coach</Text>
-                  <Text style={styles.coachMarketplaceSub}>Browse coaches by specialty and start your coaching journey.</Text>
+              /* ── No-Coach Hero Marketing Surface ── */
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+                {/* Hero Banner */}
+                <View style={{ backgroundColor: '#1e1b4b', borderRadius: 16, marginHorizontal: 16, marginTop: 16, paddingVertical: 32, paddingHorizontal: 24, alignItems: 'center' as const }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#a5b4fc', letterSpacing: 1.2, textTransform: 'uppercase' as const, marginBottom: 8 }}>Coaching</Text>
+                  <Text style={{ fontSize: 24, fontWeight: '700' as const, color: '#ffffff', textAlign: 'center' as const, marginBottom: 8 }}>Accelerate Your Growth</Text>
+                  <Text style={{ fontSize: 14, color: '#c7d2fe', textAlign: 'center' as const, lineHeight: 20 }}>
+                    Get personalized coaching to reach your goals faster. Choose the path that fits your journey.
+                  </Text>
                 </View>
-                {coachMarketplaceLoading ? (
-                  <View style={styles.coachMarketplaceCardPlaceholder}>
-                    <ActivityIndicator size="small" color="#4F46E5" />
-                    <Text style={styles.coachMarketplacePlaceholderText}>Loading coaches...</Text>
-                  </View>
-                ) : coachProfiles.length === 0 ? (
-                  <View style={styles.coachMarketplaceCardPlaceholder}>
-                    <Text style={styles.coachMarketplacePlaceholderText}>No coaches available at this time.</Text>
-                    <TouchableOpacity
-                      style={styles.coachMarketplaceCTA}
-                      onPress={() => void fetchCoachMarketplace()}
-                    >
-                      <Text style={styles.coachMarketplaceCTAText}>Refresh</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : coachSelectedProfile ? (
-                  <View style={styles.coachProfileDetailWrap}>
-                    <TouchableOpacity onPress={() => setCoachSelectedProfile(null)}>
-                      <Text style={styles.coachGoalsBack}>← All Coaches</Text>
-                    </TouchableOpacity>
-                    <View style={styles.coachProfileDetailCard}>
-                      <View style={styles.coachProfileDetailAvatar}>
-                        <Text style={styles.coachProfileDetailAvatarText}>
-                          {coachSelectedProfile.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
-                        </Text>
-                      </View>
-                      <Text style={styles.coachProfileDetailName}>{coachSelectedProfile.name}</Text>
-                      <View style={styles.coachProfileDetailSpecialties}>
-                        {coachSelectedProfile.specialties.map((s) => (
-                          <View key={s} style={styles.coachSpecialtyChip}>
-                            <Text style={styles.coachSpecialtyChipText}>{s}</Text>
-                          </View>
-                        ))}
-                      </View>
-                      <Text style={styles.coachProfileDetailBio}>{coachSelectedProfile.bio || 'No bio available.'}</Text>
-                      <View style={styles.coachProfileDetailAvailability}>
-                        <View style={[styles.coachAvailDot, coachSelectedProfile.engagement_availability === 'available' ? styles.coachAvailDotGreen : coachSelectedProfile.engagement_availability === 'waitlist' ? styles.coachAvailDotYellow : styles.coachAvailDotRed]} />
-                        <Text style={styles.coachAvailLabel}>
-                          {coachSelectedProfile.engagement_availability === 'available' ? 'Available' : coachSelectedProfile.engagement_availability === 'waitlist' ? 'Waitlist' : 'Unavailable'}
-                        </Text>
-                      </View>
-                      {coachSelectedProfile.engagement_availability !== 'unavailable' && (
-                        <TouchableOpacity
-                          style={[styles.coachMarketplaceCTA, coachEngagementLoading && { opacity: 0.5 }]}
-                          disabled={coachEngagementLoading}
-                          onPress={() => {
-                            if (coachEntitlementState !== 'allowed') {
-                              setCoachTabScreen('coach_subscription_shell');
-                              return;
-                            }
-                            void createCoachEngagement(coachSelectedProfile.id);
-                          }}
-                        >
-                          <Text style={styles.coachMarketplaceCTAText}>
-                            {coachEngagementLoading ? 'Requesting...' : coachSelectedProfile.engagement_availability === 'waitlist' ? 'Join Waitlist' : 'Start Coaching'}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
+
+                {/* Offering Card 1 — Real Human DM Coaching */}
+                <View style={{ backgroundColor: '#ffffff', borderRadius: 14, marginHorizontal: 16, marginTop: 16, padding: 20, borderWidth: 1, borderColor: '#e0e7ff', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
+                  <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 12 }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: '#eef2ff', alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 12 }}>
+                      <Text style={{ fontSize: 20 }}>💬</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 17, fontWeight: '700' as const, color: '#1e1b4b' }}>Real Human DM Coaching</Text>
                     </View>
                   </View>
-                ) : (
-                  <View style={styles.coachMarketplaceList}>
-                    {coachProfiles.map((coach) => (
-                      <TouchableOpacity
-                        key={coach.id}
-                        style={styles.coachMarketplaceCard}
-                        onPress={() => setCoachSelectedProfile(coach)}
-                      >
-                        <View style={styles.coachCardAvatar}>
-                          <Text style={styles.coachCardAvatarText}>
-                            {coach.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
-                          </Text>
-                        </View>
-                        <View style={styles.coachCardInfo}>
-                          <Text style={styles.coachCardName}>{coach.name}</Text>
-                          <Text style={styles.coachCardSpecialties} numberOfLines={1}>
-                            {coach.specialties.join(' · ') || 'General Coaching'}
-                          </Text>
-                          <View style={styles.coachCardAvailRow}>
-                            <View style={[styles.coachAvailDot, coach.engagement_availability === 'available' ? styles.coachAvailDotGreen : coach.engagement_availability === 'waitlist' ? styles.coachAvailDotYellow : styles.coachAvailDotRed]} />
-                            <Text style={styles.coachAvailLabel}>
-                              {coach.engagement_availability === 'available' ? 'Available' : coach.engagement_availability === 'waitlist' ? 'Waitlist' : 'Unavailable'}
-                            </Text>
-                          </View>
-                        </View>
-                        <Text style={styles.coachCardChevron}>›</Text>
-                      </TouchableOpacity>
+                  <Text style={{ fontSize: 13, color: '#4338ca', fontWeight: '600' as const, marginBottom: 6 }}>Tailored KPI Acceleration</Text>
+                  <Text style={{ fontSize: 13.5, color: '#475569', lineHeight: 20, marginBottom: 16 }}>
+                    Work 1-on-1 with a dedicated coach through direct messaging. Get real-time feedback on your KPIs, personalized action plans, and accountability that drives results.
+                  </Text>
+                  <View style={{ flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6, marginBottom: 16 }}>
+                    {['Direct messaging', 'KPI review', 'Action plans', 'Accountability'].map((tag) => (
+                      <View key={tag} style={{ backgroundColor: '#eef2ff', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                        <Text style={{ fontSize: 11.5, color: '#4338ca', fontWeight: '500' as const }}>{tag}</Text>
+                      </View>
                     ))}
                   </View>
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#4338ca', borderRadius: 10, paddingVertical: 13, alignItems: 'center' as const }}
+                    onPress={() => setCoachTabScreen('coach_offer_dm_coaching')}
+                  >
+                    <Text style={{ fontSize: 15, fontWeight: '600' as const, color: '#ffffff' }}>Sign Up</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Offering Card 2 — Fourth Reason Coaching */}
+                <View style={{ backgroundColor: '#ffffff', borderRadius: 14, marginHorizontal: 16, marginTop: 12, padding: 20, borderWidth: 1, borderColor: '#fce7f3', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
+                  <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 12 }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: '#fdf2f8', alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 12 }}>
+                      <Text style={{ fontSize: 20 }}>✦</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 17, fontWeight: '700' as const, color: '#1e1b4b' }}>Fourth Reason Coaching</Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 13, color: '#be185d', fontWeight: '600' as const, marginBottom: 6 }}>Beyond Wealth, Time & Family</Text>
+                  <Text style={{ fontSize: 13.5, color: '#475569', lineHeight: 20, marginBottom: 16 }}>
+                    Discover your deeper purpose — the fourth reason that drives lasting fulfillment. Guided coaching journeys that go beyond metrics to build the life you actually want.
+                  </Text>
+                  <View style={{ flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6, marginBottom: 16 }}>
+                    {['Purpose discovery', 'Guided journeys', 'Life design', 'Fulfillment'].map((tag) => (
+                      <View key={tag} style={{ backgroundColor: '#fdf2f8', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                        <Text style={{ fontSize: 11.5, color: '#be185d', fontWeight: '500' as const }}>{tag}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#be185d', borderRadius: 10, paddingVertical: 13, alignItems: 'center' as const }}
+                    onPress={() => setCoachTabScreen('coach_offer_fourth_reason')}
+                  >
+                    <Text style={{ fontSize: 15, fontWeight: '600' as const, color: '#ffffff' }}>Sign Up</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Browse All Coaches link (preserves existing marketplace fallback) */}
+                {coachProfiles.length > 0 && (
+                  <View style={{ marginHorizontal: 16, marginTop: 16, padding: 16, backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0' }}>
+                    <Text style={{ fontSize: 13, color: '#64748b', marginBottom: 8 }}>Or browse available coaches directly:</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                      {coachProfiles.slice(0, 5).map((coach) => (
+                        <TouchableOpacity
+                          key={coach.id}
+                          style={{ flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#e2e8f0' }}
+                          onPress={() => { setCoachSelectedProfile(coach); }}
+                        >
+                          <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#eef2ff', alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 6 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700' as const, color: '#4338ca' }}>
+                              {coach.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: 12.5, color: '#334155', fontWeight: '500' as const }} numberOfLines={1}>{coach.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
                 )}
+
+                {/* View Challenges link */}
                 <TouchableOpacity
-                  style={styles.coachMarketplaceChallengeLink}
+                  style={{ marginHorizontal: 16, marginTop: 16, paddingVertical: 10, alignItems: 'center' as const }}
                   onPress={() => setActiveTab('challenge')}
                 >
-                  <Text style={styles.coachMarketplaceChallengeLinkText}>View Challenges →</Text>
+                  <Text style={{ fontSize: 13, color: '#4338ca', fontWeight: '600' as const }}>View Challenges →</Text>
                 </TouchableOpacity>
-              </View>
+              </ScrollView>
+            ) : coachTabScreen === 'coach_offer_dm_coaching' ? (
+              /* ── Offer Detail: Real Human DM Coaching ── */
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+                <TouchableOpacity onPress={() => setCoachTabScreen('coach_marketplace')} style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: '#4338ca', fontWeight: '500' as const }}>← Back to Coaching</Text>
+                </TouchableOpacity>
+
+                {/* Hero */}
+                <View style={{ backgroundColor: '#eef2ff', borderRadius: 16, marginHorizontal: 16, marginTop: 8, paddingVertical: 28, paddingHorizontal: 20, alignItems: 'center' as const }}>
+                  <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: '#4338ca', alignItems: 'center' as const, justifyContent: 'center' as const, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 28, color: '#ffffff' }}>💬</Text>
+                  </View>
+                  <Text style={{ fontSize: 22, fontWeight: '700' as const, color: '#1e1b4b', textAlign: 'center' as const, marginBottom: 6 }}>Real Human DM Coaching</Text>
+                  <Text style={{ fontSize: 14, color: '#4338ca', fontWeight: '600' as const, marginBottom: 8 }}>Tailored KPI Acceleration</Text>
+                  <Text style={{ fontSize: 13.5, color: '#475569', textAlign: 'center' as const, lineHeight: 20 }}>
+                    Connect directly with a certified coach who understands your KPIs, your market, and your goals.
+                  </Text>
+                </View>
+
+                {/* What You Get */}
+                <View style={{ marginHorizontal: 16, marginTop: 20 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700' as const, color: '#1e1b4b', marginBottom: 12 }}>What You Get</Text>
+                  {[
+                    { icon: '📱', title: 'Direct Message Access', desc: 'Unlimited async DM access to your personal coach — get answers when you need them.' },
+                    { icon: '📊', title: 'Weekly KPI Review', desc: 'Your coach reviews your dashboard metrics weekly and provides targeted guidance.' },
+                    { icon: '📋', title: 'Custom Action Plans', desc: 'Receive tailored action plans based on your specific goals and current performance.' },
+                    { icon: '🤝', title: 'Accountability Partner', desc: 'Regular check-ins to keep you on track and celebrate your wins.' },
+                  ].map((item) => (
+                    <View key={item.title} style={{ flexDirection: 'row' as const, marginBottom: 14, alignItems: 'flex-start' as const }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#eef2ff', alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 12 }}>
+                        <Text style={{ fontSize: 16 }}>{item.icon}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#1e1b4b', marginBottom: 2 }}>{item.title}</Text>
+                        <Text style={{ fontSize: 12.5, color: '#64748b', lineHeight: 18 }}>{item.desc}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Choose Coach CTA */}
+                <View style={{ marginHorizontal: 16, marginTop: 16 }}>
+                  {coachMarketplaceLoading ? (
+                    <View style={{ padding: 20, alignItems: 'center' as const }}>
+                      <ActivityIndicator size="small" color="#4338ca" />
+                      <Text style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>Loading available coaches...</Text>
+                    </View>
+                  ) : coachProfiles.length > 0 ? (
+                    <>
+                      <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#1e1b4b', marginBottom: 10 }}>Choose Your Coach</Text>
+                      {coachProfiles.map((coach) => (
+                        <TouchableOpacity
+                          key={coach.id}
+                          style={{ flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: '#ffffff', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#e0e7ff' }}
+                          onPress={() => {
+                            if (coachEntitlementState !== 'allowed') { setCoachTabScreen('coach_subscription_shell'); return; }
+                            void createCoachEngagement(coach.id);
+                          }}
+                        >
+                          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#eef2ff', alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 10 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700' as const, color: '#4338ca' }}>
+                              {coach.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#1e1b4b' }}>{coach.name}</Text>
+                            <Text style={{ fontSize: 12, color: '#64748b' }} numberOfLines={1}>{coach.specialties.join(' · ') || 'General Coaching'}</Text>
+                          </View>
+                          <View style={{ backgroundColor: '#4338ca', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+                            <Text style={{ fontSize: 12, fontWeight: '600' as const, color: '#ffffff' }}>
+                              {coachEngagementLoading ? '...' : 'Start'}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </>
+                  ) : (
+                    <View style={{ padding: 20, backgroundColor: '#f8fafc', borderRadius: 12, alignItems: 'center' as const }}>
+                      <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center' as const }}>No coaches available right now. Check back soon!</Text>
+                      <TouchableOpacity onPress={() => void fetchCoachMarketplace()} style={{ marginTop: 10, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#eef2ff', borderRadius: 8 }}>
+                        <Text style={{ fontSize: 13, color: '#4338ca', fontWeight: '600' as const }}>Refresh</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
+            ) : coachTabScreen === 'coach_offer_fourth_reason' ? (
+              /* ── Offer Detail: Fourth Reason Coaching ── */
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+                <TouchableOpacity onPress={() => setCoachTabScreen('coach_marketplace')} style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: '#be185d', fontWeight: '500' as const }}>← Back to Coaching</Text>
+                </TouchableOpacity>
+
+                {/* Hero */}
+                <View style={{ backgroundColor: '#fdf2f8', borderRadius: 16, marginHorizontal: 16, marginTop: 8, paddingVertical: 28, paddingHorizontal: 20, alignItems: 'center' as const }}>
+                  <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: '#be185d', alignItems: 'center' as const, justifyContent: 'center' as const, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 28, color: '#ffffff' }}>✦</Text>
+                  </View>
+                  <Text style={{ fontSize: 22, fontWeight: '700' as const, color: '#1e1b4b', textAlign: 'center' as const, marginBottom: 6 }}>Fourth Reason Coaching</Text>
+                  <Text style={{ fontSize: 14, color: '#be185d', fontWeight: '600' as const, marginBottom: 8 }}>Beyond Wealth, Time & Family</Text>
+                  <Text style={{ fontSize: 13.5, color: '#475569', textAlign: 'center' as const, lineHeight: 20 }}>
+                    Most people chase wealth, time freedom, or family. The Fourth Reason is the deeper purpose that makes everything else meaningful.
+                  </Text>
+                </View>
+
+                {/* The Journey */}
+                <View style={{ marginHorizontal: 16, marginTop: 20 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700' as const, color: '#1e1b4b', marginBottom: 12 }}>Your Journey Includes</Text>
+                  {[
+                    { icon: '🧭', title: 'Purpose Discovery', desc: 'Guided exercises to uncover what truly drives you beyond conventional success metrics.' },
+                    { icon: '🗺️', title: 'Curated Coaching Journeys', desc: 'Multi-week structured journeys with lessons, reflections, and milestones.' },
+                    { icon: '🌱', title: 'Life Design Framework', desc: 'Build a holistic plan that integrates your professional goals with personal fulfillment.' },
+                    { icon: '💡', title: 'Insight & Reflection', desc: 'Regular prompts and guided reflections to deepen your self-awareness and clarity.' },
+                  ].map((item) => (
+                    <View key={item.title} style={{ flexDirection: 'row' as const, marginBottom: 14, alignItems: 'flex-start' as const }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#fdf2f8', alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 12 }}>
+                        <Text style={{ fontSize: 16 }}>{item.icon}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#1e1b4b', marginBottom: 2 }}>{item.title}</Text>
+                        <Text style={{ fontSize: 12.5, color: '#64748b', lineHeight: 18 }}>{item.desc}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Get Started CTA */}
+                <View style={{ marginHorizontal: 16, marginTop: 16 }}>
+                  {coachMarketplaceLoading ? (
+                    <View style={{ padding: 20, alignItems: 'center' as const }}>
+                      <ActivityIndicator size="small" color="#be185d" />
+                      <Text style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>Loading available coaches...</Text>
+                    </View>
+                  ) : coachProfiles.length > 0 ? (
+                    <>
+                      <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#1e1b4b', marginBottom: 10 }}>Begin With a Coach</Text>
+                      {coachProfiles.map((coach) => (
+                        <TouchableOpacity
+                          key={coach.id}
+                          style={{ flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: '#ffffff', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#fce7f3' }}
+                          onPress={() => {
+                            if (coachEntitlementState !== 'allowed') { setCoachTabScreen('coach_subscription_shell'); return; }
+                            void createCoachEngagement(coach.id);
+                          }}
+                        >
+                          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#fdf2f8', alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 10 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700' as const, color: '#be185d' }}>
+                              {coach.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#1e1b4b' }}>{coach.name}</Text>
+                            <Text style={{ fontSize: 12, color: '#64748b' }} numberOfLines={1}>{coach.specialties.join(' · ') || 'General Coaching'}</Text>
+                          </View>
+                          <View style={{ backgroundColor: '#be185d', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+                            <Text style={{ fontSize: 12, fontWeight: '600' as const, color: '#ffffff' }}>
+                              {coachEngagementLoading ? '...' : 'Start'}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </>
+                  ) : (
+                    <View style={{ padding: 20, backgroundColor: '#fdf2f8', borderRadius: 12, alignItems: 'center' as const }}>
+                      <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center' as const }}>No coaches available right now. Check back soon!</Text>
+                      <TouchableOpacity onPress={() => void fetchCoachMarketplace()} style={{ marginTop: 10, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#fdf2f8', borderRadius: 8 }}>
+                        <Text style={{ fontSize: 13, color: '#be185d', fontWeight: '600' as const }}>Refresh</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
             ) : coachTabScreen === 'coach_subscription_shell' ? (
               <View style={styles.coachSubscriptionWrap}>
                 <Text style={styles.coachSubscriptionTitle}>Coaching Plans</Text>
@@ -8809,6 +9001,44 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   </View>
                 )}
 
+                {/* ── Coach Invite Link Controls ── */}
+                <View style={{ marginHorizontal: 0, marginTop: 16, padding: 16, backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0' }}>
+                  <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 10 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700' as const, color: '#1e1b4b', flex: 1 }}>Invite Clients</Text>
+                    <View style={{ backgroundColor: '#eef2ff', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600' as const, color: '#4338ca' }}>Coach</Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 13, color: '#64748b', lineHeight: 18, marginBottom: 12 }}>
+                    Share your coaching invite link with potential clients. They can sign up and be matched directly to you.
+                  </Text>
+                  <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: '#ffffff', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', paddingLeft: 12, overflow: 'hidden' as const }}>
+                    <Text style={{ flex: 1, fontSize: 12, color: '#94a3b8' }} numberOfLines={1}>
+                      {`compass.app/coach/${String(session?.user?.id ?? 'you').slice(0, 8)}/invite`}
+                    </Text>
+                    <TouchableOpacity
+                      style={{ backgroundColor: coachInviteLinkCopied ? '#22c55e' : '#4338ca', paddingHorizontal: 16, paddingVertical: 10 }}
+                      onPress={() => {
+                        setCoachInviteLinkCopied(true);
+                        setTimeout(() => setCoachInviteLinkCopied(false), 2000);
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600' as const, color: '#ffffff' }}>
+                        {coachInviteLinkCopied ? 'Copied!' : 'Copy Link'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity
+                    style={{ marginTop: 10, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: '#eef2ff', borderRadius: 10, paddingVertical: 10 }}
+                    onPress={() => {
+                      setCoachInviteLinkCopied(true);
+                      setTimeout(() => setCoachInviteLinkCopied(false), 2000);
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600' as const, color: '#4338ca' }}>↗  Share Invite Link</Text>
+                  </TouchableOpacity>
+                </View>
+
                 <TouchableOpacity
                   style={styles.cwfFooterLink}
                   onPress={() => setActiveTab('challenge')}
@@ -8817,48 +9047,113 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 </TouchableOpacity>
               </View>
               ) : (
-              /* ── Non-operator Coach Hub (original) ── */
-              <View style={styles.coachHubWrap}>
-                <View style={styles.coachHubHeader}>
-                  <Text style={styles.coachHubTitle}>
-                    {coachActiveEngagement?.coach?.name ? `Coach ${coachActiveEngagement.coach.name}` : 'Your Coach'}
-                  </Text>
-                  <Text style={styles.coachHubSub}>
-                    {coachEngagementStatus === 'pending'
-                      ? 'Your coaching request is being reviewed.'
-                      : 'Next session, messages, and your goals in one place.'}
-                  </Text>
-                  {coachEngagementStatus === 'pending' && (
-                    <View style={styles.coachHubPendingBadge}>
-                      <Text style={styles.coachHubPendingText}>Pending Confirmation</Text>
+              /* ── Has-Coach Client Landing (hero card + enrolled journeys) ── */
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+                {/* Coach Hero Card */}
+                <View style={{ backgroundColor: '#1e1b4b', borderRadius: 16, marginHorizontal: 16, marginTop: 16, padding: 20 }}>
+                  <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 14 }}>
+                    <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: '#4338ca', alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 14 }}>
+                      <Text style={{ fontSize: 18, fontWeight: '700' as const, color: '#ffffff' }}>
+                        {coachActiveEngagement?.coach?.name ? coachActiveEngagement.coach.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() : '🎯'}
+                      </Text>
                     </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 18, fontWeight: '700' as const, color: '#ffffff' }}>
+                        {coachActiveEngagement?.coach?.name ?? 'Your Coach'}
+                      </Text>
+                      {coachActiveEngagement?.plan_tier_label ? (
+                        <Text style={{ fontSize: 12, color: '#a5b4fc', marginTop: 2 }}>{coachActiveEngagement.plan_tier_label}</Text>
+                      ) : null}
+                      {coachActiveEngagement?.coach?.specialties && coachActiveEngagement.coach.specialties.length > 0 ? (
+                        <Text style={{ fontSize: 12, color: '#c7d2fe', marginTop: 2 }} numberOfLines={1}>
+                          {coachActiveEngagement.coach.specialties.join(' · ')}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {coachEngagementStatus === 'pending' ? (
+                      <View style={{ backgroundColor: '#fbbf24', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '600' as const, color: '#1e1b4b' }}>Pending</Text>
+                      </View>
+                    ) : (
+                      <View style={{ backgroundColor: '#22c55e', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '600' as const, color: '#ffffff' }}>Active</Text>
+                      </View>
+                    )}
+                  </View>
+                  {coachEngagementStatus === 'pending' ? (
+                    <Text style={{ fontSize: 13, color: '#c7d2fe', lineHeight: 18 }}>
+                      Your coaching request is being reviewed. You'll be notified once your coach confirms.
+                    </Text>
+                  ) : (
+                    <Text style={{ fontSize: 13, color: '#c7d2fe', lineHeight: 18 }}>
+                      {coachActiveEngagement?.next_step_cta ?? 'Your personalized coaching hub — messages, sessions, and goals in one place.'}
+                    </Text>
                   )}
                 </View>
-                <View style={styles.coachHubGrid}>
-                  <TouchableOpacity style={styles.coachHubCard} onPress={() => setCoachTabScreen('coach_video_session')}>
-                    <Text style={styles.coachHubCardIcon}>📹</Text>
-                    <Text style={styles.coachHubCardLabel}>Video Session</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.coachHubCard} onPress={() => setCoachTabScreen('coach_content_library')}>
-                    <Text style={styles.coachHubCardIcon}>📚</Text>
-                    <Text style={styles.coachHubCardLabel}>Content</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.coachHubCard} onPress={() => setCoachTabScreen('coach_direct_comms')}>
-                    <Text style={styles.coachHubCardIcon}>💬</Text>
-                    <Text style={styles.coachHubCardLabel}>Messages</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.coachHubCard} onPress={() => setCoachTabScreen('coach_goals_tasks')}>
-                    <Text style={styles.coachHubCardIcon}>🎯</Text>
-                    <Text style={styles.coachHubCardLabel}>Goals & Tasks</Text>
-                  </TouchableOpacity>
+
+                {/* Quick Actions Grid */}
+                <View style={{ flexDirection: 'row' as const, flexWrap: 'wrap' as const, marginHorizontal: 12, marginTop: 12, gap: 8 }}>
+                  {[
+                    { icon: '💬', label: 'Messages', screen: 'coach_direct_comms' as CoachTabScreen },
+                    { icon: '📹', label: 'Video Session', screen: 'coach_video_session' as CoachTabScreen },
+                    { icon: '🎯', label: 'Goals & Tasks', screen: 'coach_goals_tasks' as CoachTabScreen },
+                    { icon: '📚', label: 'Content', screen: 'coach_content_library' as CoachTabScreen },
+                  ].map((action) => (
+                    <TouchableOpacity
+                      key={action.label}
+                      onPress={() => setCoachTabScreen(action.screen)}
+                      style={{ width: '47%' as any, backgroundColor: '#ffffff', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', flexDirection: 'row' as const, alignItems: 'center' as const }}
+                    >
+                      <Text style={{ fontSize: 18, marginRight: 8 }}>{action.icon}</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '600' as const, color: '#334155' }}>{action.label}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
+
+                {/* Enrolled Journeys */}
+                <View style={{ marginHorizontal: 16, marginTop: 20 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700' as const, color: '#1e1b4b', marginBottom: 10 }}>Your Journeys</Text>
+                  {coachingJourneysLoading ? (
+                    <View style={{ padding: 16, alignItems: 'center' as const }}>
+                      <ActivityIndicator size="small" color="#4338ca" />
+                      <Text style={{ fontSize: 13, color: '#64748b', marginTop: 6 }}>Loading journeys...</Text>
+                    </View>
+                  ) : !coachingJourneys || coachingJourneys.length === 0 ? (
+                    <View style={{ backgroundColor: '#f8fafc', borderRadius: 12, padding: 20, alignItems: 'center' as const }}>
+                      <Text style={{ fontSize: 32, marginBottom: 8 }}>📘</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#334155', marginBottom: 4 }}>No journeys yet</Text>
+                      <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center' as const }}>Your coach will assign journeys to guide your growth.</Text>
+                    </View>
+                  ) : (
+                    coachingJourneys.map((j) => {
+                      const pct = typeof j.completion_percent === 'number' ? j.completion_percent : 0;
+                      return (
+                        <TouchableOpacity
+                          key={j.id}
+                          style={{ backgroundColor: '#ffffff', borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' }}
+                          onPress={() => openCoachingShell('coaching_journey_detail', { selectedJourneyId: String(j.id), selectedJourneyTitle: j.title })}
+                        >
+                          <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, marginBottom: 6 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#1e1b4b', flex: 1 }} numberOfLines={1}>{j.title}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: '600' as const, color: pct >= 100 ? '#16a34a' : '#4338ca' }}>{pct}%</Text>
+                          </View>
+                          <View style={{ height: 4, backgroundColor: '#e2e8f0', borderRadius: 2, overflow: 'hidden' as const }}>
+                            <View style={{ height: 4, backgroundColor: pct >= 100 ? '#22c55e' : '#4338ca', borderRadius: 2, width: `${Math.min(pct, 100)}%` } as any} />
+                          </View>
+                          {j.description ? <Text style={{ fontSize: 12, color: '#64748b', marginTop: 6 }} numberOfLines={1}>{j.description}</Text> : null}
+                        </TouchableOpacity>
+                      );
+                    })
+                  )}
+                </View>
+
                 <TouchableOpacity
-                  style={styles.coachHubChallengeLink}
+                  style={{ marginHorizontal: 16, marginTop: 16, paddingVertical: 10, alignItems: 'center' as const }}
                   onPress={() => setActiveTab('challenge')}
                 >
-                  <Text style={styles.coachHubChallengeLinkText}>View Challenges →</Text>
+                  <Text style={{ fontSize: 13, color: '#4338ca', fontWeight: '600' as const }}>View Challenges →</Text>
                 </TouchableOpacity>
-              </View>
+              </ScrollView>
               )
             ) : coachTabScreen === 'coach_goals_tasks' ? (
               <View style={styles.coachGoalsWrap}>
@@ -10069,7 +10364,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const selectedTeamProfile = teamMembers.find((row) => row.id === teamProfileMemberId) ?? null;
               const openTeamDirectThread = async (member: (typeof teamMembers)[number], source: CoachingShellEntrySource) => {
                 const sessionUserId = String(session?.user?.id ?? '').trim();
-                const resolvedTargetUserId = member.userId ?? (await resolveTeamMemberUserId(member));
+                const resolvedTargetUserIdRaw = member.userId ?? (await resolveTeamMemberUserId(member));
+                const resolvedTargetUserId =
+                  resolvedTargetUserIdRaw && UUID_LIKE_RE.test(String(resolvedTargetUserIdRaw))
+                    ? String(resolvedTargetUserIdRaw)
+                    : null;
                 if (resolvedTargetUserId && sessionUserId && resolvedTargetUserId === sessionUserId) {
                   Alert.alert('This is your profile', 'Open Messages to continue team chat, or select another teammate to start a direct message.');
                   setActiveTab('comms');
@@ -10090,7 +10389,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 if (!resolvedTargetUserId) {
                   const msg = `Member identity unavailable for ${member.name}. Refresh team roster and try again.`;
                   Alert.alert('Messaging unavailable', msg);
-                  setChannelsError(msg);
                   return;
                 }
                 try {
