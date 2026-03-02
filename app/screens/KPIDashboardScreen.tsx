@@ -8967,13 +8967,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
                 setSelectedChannelId(null);
                 setSelectedChannelName(null);
-                setTeamCommsHandoffError('No team channel is available yet. Opened Channels for fallback.');
+                setTeamCommsHandoffError('Team channel unavailable. Contact admin to restore team chat.');
                 openCoachingShell('inbox_channels', {
                   source,
                   preferredChannelScope: 'team',
                   preferredChannelLabel: 'Team',
                   threadTitle: null,
-                  threadSub: 'Team channel unavailable. Select an available channel.',
+                  threadSub: 'Team channel unavailable. Contact admin to restore team chat.',
                   broadcastAudienceLabel,
                   broadcastRoleAllowed: source === 'team_leader_dashboard',
                 });
