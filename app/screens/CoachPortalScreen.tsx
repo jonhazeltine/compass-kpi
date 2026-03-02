@@ -257,6 +257,10 @@ export default function CoachPortalScreen() {
   const [newJourneyName, setNewJourneyName] = useState('');
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [activeTaskMenu, setActiveTaskMenu] = useState<{ lessonId: string; taskId: string } | null>(null);
+  const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
+  const [editingLessonTitle, setEditingLessonTitle] = useState('');
+  const [editingTaskKey, setEditingTaskKey] = useState<string | null>(null);
+  const [editingTaskTitle, setEditingTaskTitle] = useState('');
   const [cohorts, setCohorts] = useState<CohortDraft[]>(EMPTY_COHORTS);
   const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null);
   const [newCohortName, setNewCohortName] = useState('');
@@ -1207,6 +1211,72 @@ export default function CoachPortalScreen() {
     markDraftChanged('Task added to lesson.');
   };
 
+  const renameLesson = async (lessonId: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed || !canComposeDraft || !selectedJourney || !session?.access_token) {
+      setEditingLessonId(null);
+      return;
+    }
+    const existing = selectedJourney.lessons.find((l) => l.id === lessonId);
+    if (existing && existing.title === trimmed) { setEditingLessonId(null); return; }
+    // Optimistic local update
+    setJourneys((prev) =>
+      prev.map((j) =>
+        j.id === selectedJourney.id
+          ? { ...j, lessons: j.lessons.map((l) => (l.id === lessonId ? { ...l, title: trimmed } : l)) }
+          : j
+      )
+    );
+    setEditingLessonId(null);
+    await runMutation('Renaming lesson...', 'Lesson renamed', async () => {
+      await sendCoachJson(
+        `/api/coaching/journeys/${selectedJourney.id}/lessons/${lessonId}`,
+        session.access_token as string,
+        'PATCH',
+        { title: trimmed }
+      );
+      await refreshPortalData();
+    });
+    markDraftChanged('Lesson renamed.');
+  };
+
+  const renameTask = async (lessonId: string, taskId: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed || !canComposeDraft || !selectedJourney || !session?.access_token) {
+      setEditingTaskKey(null);
+      return;
+    }
+    const lesson = selectedJourney.lessons.find((l) => l.id === lessonId);
+    const task = lesson?.tasks.find((t) => t.id === taskId);
+    if (task && task.title === trimmed) { setEditingTaskKey(null); return; }
+    // Optimistic local update
+    setJourneys((prev) =>
+      prev.map((j) =>
+        j.id === selectedJourney.id
+          ? {
+              ...j,
+              lessons: j.lessons.map((l) =>
+                l.id === lessonId
+                  ? { ...l, tasks: l.tasks.map((t) => (t.id === taskId ? { ...t, title: trimmed } : t)) }
+                  : l
+              ),
+            }
+          : j
+      )
+    );
+    setEditingTaskKey(null);
+    await runMutation('Renaming task...', 'Task renamed', async () => {
+      await sendCoachJson(
+        `/api/coaching/journeys/${selectedJourney.id}/lessons/${lessonId}/tasks/${taskId}`,
+        session.access_token as string,
+        'PATCH',
+        { title: trimmed }
+      );
+      await refreshPortalData();
+    });
+    markDraftChanged('Task renamed.');
+  };
+
   const createJourney = async () => {
     if (!canComposeDraft) { setSaveState('error'); setSaveMessage(composeDeniedReason); return; }
     if (!session?.access_token) { setSaveState('error'); setSaveMessage('Missing session token.'); return; }
@@ -1542,7 +1612,27 @@ export default function CoachPortalScreen() {
                         >⠿</Text>
                         <View style={s.stepNumber}><Text style={s.stepNumberText}>{lsIndex + 1}</Text></View>
                         <View style={s.kindBadgeLesson}><Text style={s.kindBadgeLessonText}>📘 Lesson</Text></View>
-                        <Text style={s.milestoneTitle}>{lesson.title}</Text>
+                        {editingLessonId === lesson.id && canComposeDraft ? (
+                          <TextInput
+                            style={[s.milestoneTitle, s.inlineEditInput]}
+                            value={editingLessonTitle}
+                            onChangeText={setEditingLessonTitle}
+                            autoFocus
+                            selectTextOnFocus
+                            onBlur={() => void renameLesson(lesson.id, editingLessonTitle)}
+                            onSubmitEditing={() => void renameLesson(lesson.id, editingLessonTitle)}
+                            placeholder="Lesson title…"
+                            placeholderTextColor="#999"
+                          />
+                        ) : (
+                          <Pressable
+                            style={{ flex: 1 } as any}
+                            onPress={() => { if (!handleClickDropToLesson(lesson.id, lesson.tasks.length)) setSelectedLessonId(lesson.id); }}
+                            {...({ onDoubleClick: canComposeDraft ? () => { setEditingLessonId(lesson.id); setEditingLessonTitle(lesson.title); } : undefined } as any)}
+                          >
+                            <Text style={s.milestoneTitle}>{lesson.title}</Text>
+                          </Pressable>
+                        )}
                         <Text style={{ fontSize: 11, color: '#94A3B8', marginLeft: 'auto' } as any}>{lesson.tasks.length} tasks</Text>
                         {canComposeDraft ? (
                           <Pressable
@@ -1590,7 +1680,25 @@ export default function CoachPortalScreen() {
                                     >⠿</Text>
                                     <View style={s.blockIndex}><Text style={s.blockIndexText}>{idx + 1}</Text></View>
                                     <View style={s.blockInfo}>
-                                      <Text style={s.blockTitle}>{task.title}</Text>
+                                      {editingTaskKey === `${lesson.id}:${task.id}` && canComposeDraft ? (
+                                        <TextInput
+                                          style={[s.blockTitle, s.inlineEditInput]}
+                                          value={editingTaskTitle}
+                                          onChangeText={setEditingTaskTitle}
+                                          autoFocus
+                                          selectTextOnFocus
+                                          onBlur={() => void renameTask(lesson.id, task.id, editingTaskTitle)}
+                                          onSubmitEditing={() => void renameTask(lesson.id, task.id, editingTaskTitle)}
+                                          placeholder="Task title…"
+                                          placeholderTextColor="#999"
+                                        />
+                                      ) : (
+                                        <Pressable
+                                          {...({ onDoubleClick: canComposeDraft ? () => { setEditingTaskKey(`${lesson.id}:${task.id}`); setEditingTaskTitle(task.title); } : undefined } as any)}
+                                        >
+                                          <Text style={s.blockTitle}>{task.title}</Text>
+                                        </Pressable>
+                                      )}
                                       {asset ? (
                                         <View style={[s.blockCatBadge, { backgroundColor: catColor.bg }]}>
                                           <Text style={[s.blockCatText, { color: catColor.text }]}>{asset.category} · {asset.duration}</Text>
@@ -2422,6 +2530,14 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#0F172A',
+  },
+  inlineEditInput: {
+    borderWidth: 1,
+    borderColor: '#2563EB',
+    borderRadius: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    backgroundColor: '#fff',
   },
 
   /* ── Kind badges ── */

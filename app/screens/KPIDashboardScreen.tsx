@@ -2496,6 +2496,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [jbNewLessonTitle, setJbNewLessonTitle] = useState('');
   const [jbNewTaskTitle, setJbNewTaskTitle] = useState('');
   const [jbAddingTaskToLessonId, setJbAddingTaskToLessonId] = useState<string | null>(null);
+  const [jbEditingLessonId, setJbEditingLessonId] = useState<string | null>(null);
+  const [jbEditingLessonTitle, setJbEditingLessonTitle] = useState('');
+  const [jbEditingTaskKey, setJbEditingTaskKey] = useState<string | null>(null);
+  const [jbEditingTaskTitle, setJbEditingTaskTitle] = useState('');
   const [coachingLessonProgressSubmittingId, setCoachingLessonProgressSubmittingId] = useState<string | null>(null);
   const [coachingLessonProgressError, setCoachingLessonProgressError] = useState<string | null>(null);
   const [channelsApiRows, setChannelsApiRows] = useState<ChannelApiRow[] | null>(null);
@@ -7533,6 +7537,47 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     for (const a of jbAssets) map.set(a.id, a);
     return map;
   }, [jbAssets]);
+
+  const jbRenameLesson = useCallback(async (journeyId: string, lessonId: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) { setJbEditingLessonId(null); return; }
+    const existing = jbLessons.find((l) => l.id === lessonId);
+    if (existing && existing.title === trimmed) { setJbEditingLessonId(null); return; }
+    setJbLessons((prev) => prev.map((l) => (l.id === lessonId ? { ...l, title: trimmed } : l)));
+    setJbEditingLessonId(null);
+    await jbRunMutation('Renaming lesson…', 'Lesson renamed', async () => {
+      await jbSendJson(
+        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}`,
+        'PATCH',
+        { title: trimmed }
+      );
+      await jbRefreshJourney(journeyId);
+    });
+  }, [jbLessons, jbRefreshJourney, jbRunMutation, jbSendJson]);
+
+  const jbRenameTask = useCallback(async (journeyId: string, lessonId: string, taskId: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) { setJbEditingTaskKey(null); return; }
+    const lesson = jbLessons.find((l) => l.id === lessonId);
+    const task = lesson?.tasks.find((t) => t.id === taskId);
+    if (task && task.title === trimmed) { setJbEditingTaskKey(null); return; }
+    setJbLessons((prev) =>
+      prev.map((l) =>
+        l.id === lessonId
+          ? { ...l, tasks: l.tasks.map((t) => (t.id === taskId ? { ...t, title: trimmed } : t)) }
+          : l
+      )
+    );
+    setJbEditingTaskKey(null);
+    await jbRunMutation('Renaming task…', 'Task renamed', async () => {
+      await jbSendJson(
+        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}/tasks/${taskId}`,
+        'PATCH',
+        { title: trimmed }
+      );
+      await jbRefreshJourney(journeyId);
+    });
+  }, [jbLessons, jbRefreshJourney, jbRunMutation, jbSendJson]);
 
   const submitCoachingLessonProgress = useCallback(
     async (lessonId: string, status: 'not_started' | 'in_progress' | 'completed') => {
@@ -12652,20 +12697,44 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                             </TouchableOpacity>
                                           </View>
                                         )}
-                                        <TouchableOpacity
-                                          style={[styles.jbLessonTitleBtn, isActiveLesson ? styles.coachingLessonRowSelected : null]}
-                                          onPress={() =>
-                                            openCoachingShell('coaching_lesson_detail', {
-                                              selectedJourneyId: selectedJourneyId ?? null,
-                                              selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
-                                              selectedLessonId: String(lesson.id),
-                                              selectedLessonTitle: lesson.title,
-                                            })
-                                          }
-                                        >
-                                          <Text numberOfLines={1} style={styles.jbLessonTitleText}>{lesson.title}</Text>
-                                          <Text style={styles.jbLessonTaskCount}>{lesson.tasks.length} task{lesson.tasks.length !== 1 ? 's' : ''}</Text>
-                                        </TouchableOpacity>
+                                        {jbEditingLessonId === lesson.id && isCoachRuntimeOperator ? (
+                                          <View style={[styles.jbLessonTitleBtn, styles.jbEditingWrap]}>
+                                            <TextInput
+                                              style={styles.jbEditInput}
+                                              value={jbEditingLessonTitle}
+                                              onChangeText={setJbEditingLessonTitle}
+                                              autoFocus
+                                              selectTextOnFocus
+                                              onBlur={() => { const jid = selectedJourneyId; if (jid) void jbRenameLesson(jid, lesson.id, jbEditingLessonTitle); }}
+                                              onSubmitEditing={() => { const jid = selectedJourneyId; if (jid) void jbRenameLesson(jid, lesson.id, jbEditingLessonTitle); }}
+                                              placeholder="Lesson title…"
+                                              placeholderTextColor="#999"
+                                            />
+                                            <Text style={styles.jbLessonTaskCount}>{lesson.tasks.length} task{lesson.tasks.length !== 1 ? 's' : ''}</Text>
+                                          </View>
+                                        ) : (
+                                          <TouchableOpacity
+                                            style={[styles.jbLessonTitleBtn, isActiveLesson ? styles.coachingLessonRowSelected : null]}
+                                            onPress={() =>
+                                              openCoachingShell('coaching_lesson_detail', {
+                                                selectedJourneyId: selectedJourneyId ?? null,
+                                                selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
+                                                selectedLessonId: String(lesson.id),
+                                                selectedLessonTitle: lesson.title,
+                                              })
+                                            }
+                                            onLongPress={() => {
+                                              if (isCoachRuntimeOperator) {
+                                                setJbEditingLessonId(lesson.id);
+                                                setJbEditingLessonTitle(lesson.title);
+                                              }
+                                            }}
+                                          >
+                                            <Text numberOfLines={1} style={styles.jbLessonTitleText}>{lesson.title}</Text>
+                                            {isCoachRuntimeOperator && <Text style={styles.jbEditHint}>long-press to rename</Text>}
+                                            <Text style={styles.jbLessonTaskCount}>{lesson.tasks.length} task{lesson.tasks.length !== 1 ? 's' : ''}</Text>
+                                          </TouchableOpacity>
+                                        )}
                                         {isCoachRuntimeOperator && (
                                           <TouchableOpacity
                                             style={styles.jbDeleteBtn}
@@ -12700,7 +12769,30 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                               </View>
                                             )}
                                             <View style={styles.jbTaskContent}>
-                                              <Text numberOfLines={1} style={styles.jbTaskTitle}>{task.title}</Text>
+                                              {jbEditingTaskKey === `${lesson.id}:${task.id}` && isCoachRuntimeOperator ? (
+                                                <TextInput
+                                                  style={styles.jbEditInputSm}
+                                                  value={jbEditingTaskTitle}
+                                                  onChangeText={setJbEditingTaskTitle}
+                                                  autoFocus
+                                                  selectTextOnFocus
+                                                  onBlur={() => { const jid = selectedJourneyId; if (jid) void jbRenameTask(jid, lesson.id, task.id, jbEditingTaskTitle); }}
+                                                  onSubmitEditing={() => { const jid = selectedJourneyId; if (jid) void jbRenameTask(jid, lesson.id, task.id, jbEditingTaskTitle); }}
+                                                  placeholder="Task title…"
+                                                  placeholderTextColor="#999"
+                                                />
+                                              ) : (
+                                                <TouchableOpacity
+                                                  onLongPress={() => {
+                                                    if (isCoachRuntimeOperator) {
+                                                      setJbEditingTaskKey(`${lesson.id}:${task.id}`);
+                                                      setJbEditingTaskTitle(task.title);
+                                                    }
+                                                  }}
+                                                >
+                                                  <Text numberOfLines={1} style={styles.jbTaskTitle}>{task.title}</Text>
+                                                </TouchableOpacity>
+                                              )}
                                               {assetInfo && (
                                                 <View style={styles.jbTaskAssetBadge}>
                                                   <Text style={styles.jbTaskAssetBadgeText} numberOfLines={1}>📎 {assetInfo.title}</Text>
@@ -23418,6 +23510,10 @@ const styles = StyleSheet.create({
   },
   jbTaskContent: { flex: 1, marginRight: 6 },
   jbTaskTitle: { fontSize: 13, fontWeight: '500' as const, color: '#334155' },
+  jbEditingWrap: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#2563eb', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 },
+  jbEditInput: { fontSize: 14, fontWeight: '700' as const, color: '#1e293b', paddingVertical: 2, paddingHorizontal: 0, borderWidth: 0 },
+  jbEditInputSm: { fontSize: 13, fontWeight: '500' as const, color: '#334155', paddingVertical: 2, paddingHorizontal: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: '#2563eb' },
+  jbEditHint: { fontSize: 9, color: '#c0c8d4', fontStyle: 'italic' as const, marginTop: 1 },
   jbTaskAssetBadge: { marginTop: 2, backgroundColor: '#eff6ff', paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4, alignSelf: 'flex-start' as const },
   jbTaskAssetBadgeText: { fontSize: 10, color: '#2563eb' },
   jbAddTaskRow: { marginLeft: 16, paddingVertical: 4, paddingHorizontal: 12 },
