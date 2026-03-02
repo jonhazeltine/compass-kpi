@@ -273,6 +273,19 @@ async function main() {
     });
     assert(memberOutOfScopeDm.status === 403, `member->outsider direct create should be 403, got ${memberOutOfScopeDm.status}`);
 
+    const invalidUserIdDm = await request(`${BACKEND_URL}/api/channels`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${leaderToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "direct",
+        member_user_ids: ["not-a-uuid"],
+      }),
+    });
+    assert(invalidUserIdDm.status === 422, `invalid member_user_ids format should be 422, got ${invalidUserIdDm.status}`);
+
     const sponsorDm = await request(`${BACKEND_URL}/api/channels`, {
       method: "POST",
       headers: {

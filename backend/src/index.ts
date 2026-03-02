@@ -2097,17 +2097,9 @@ app.post("/api/channels", async (req, res) => {
         return res.status(403).json({ error: "challenge_sponsor scope is limited to sponsor/challenge channels" });
       }
 
-      const { data: existingUsers, error: usersError } = await dataClient
-        .from("users")
-        .select("id")
-        .in("id", memberUserIds);
-      if (usersError) {
-        return handleSupabaseError(res, "Failed to validate direct channel members", usersError);
-      }
-      const existingUserIdSet = new Set((existingUsers ?? []).map((row) => String((row as { id?: unknown }).id ?? "")));
-      const missingUserId = memberUserIds.find((id) => !existingUserIdSet.has(id));
-      if (missingUserId) {
-        return res.status(422).json({ error: `member_user_ids includes unknown user id: ${missingUserId}` });
+      const malformedUserId = memberUserIds.find((id) => !isUuidLike(id));
+      if (malformedUserId) {
+        return res.status(422).json({ error: `member_user_ids includes invalid user id format: ${malformedUserId}` });
       }
 
       const requiresSharedTeamScope = actorRole === "team_leader" || actorRole === "agent" || actorRole === "member";
@@ -2153,6 +2145,9 @@ app.post("/api/channels", async (req, res) => {
         .from("channel_memberships")
         .upsert(channelMembershipRows, { onConflict: "channel_id,user_id" });
       if (membershipError) {
+        if (String((membershipError as { code?: unknown }).code ?? "") === "23503") {
+          return res.status(422).json({ error: "member_user_ids includes one or more users that cannot be messaged" });
+        }
         return handleSupabaseError(res, "Failed to create direct channel memberships", membershipError);
       }
 
@@ -9746,6 +9741,10 @@ async function ensureUserRow(userId: string): Promise<void> {
   if (error) {
     throw new Error(`Failed to ensure user row: ${error.message ?? "unknown error"}`);
   }
+}
+
+function isUuidLike(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 async function checkTeamMembership(teamId: string, userId: string): Promise<

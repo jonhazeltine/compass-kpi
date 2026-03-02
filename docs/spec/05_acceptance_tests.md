@@ -242,6 +242,9 @@
 - Given caller is `challenge_sponsor`
 - When caller requests direct create
 - Then API returns `403` with sponsor/challenge-scope-denied semantics
+- Given direct create payload includes malformed target user ids
+- When caller posts `POST /api/channels` with `type='direct'`
+- Then API returns deterministic `422` (no generic `500` validation failure)
 
 ### 14) Coaching Journey and Lesson Progress
 - Given an authenticated user and active coaching journey with milestones/lessons
