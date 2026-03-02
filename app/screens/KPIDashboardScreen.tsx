@@ -315,7 +315,7 @@ type CoachEntitlementState = 'allowed' | 'pending' | 'blocked' | 'fallback';
 type CoachEngagementStatus = 'none' | 'pending' | 'active' | 'ended';
 type CoachAssignmentType = 'personal_goal' | 'team_leader_goal' | 'coach_goal' | 'personal_task' | 'coach_task';
 /* ── Coach Workflow types ── */
-type CoachWorkflowSection = 'journeys' | 'clients' | 'cohorts' | 'segments' | 'broadcast';
+type CoachWorkflowSection = 'journeys' | 'clients' | 'cohorts' | 'segments';
 type CoachCohortRow = {
   id: string;
   name: string;
@@ -331,7 +331,7 @@ type CoachSegmentPreset = {
   status: 'live' | 'preview';
   description: string;
 };
-type CoachWorkflowAssignMode = 'none' | 'cohort' | 'individual' | 'task';
+type CoachWorkflowAssignMode = 'none' | 'cohort' | 'individual';
 type CoachAssignmentStatus = 'pending' | 'in_progress' | 'completed';
 type CoachAssignment = {
   id: string;
@@ -2696,7 +2696,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
       const dashPayload = dashBody as DashboardPayload;
       setPayload(dashPayload);
-      setRuntimeMeRole(typeof meBody?.role === 'string' ? meBody.role.toLowerCase() : null);
+      const resolvedMeRole =
+        typeof meBody?.role === 'string' && meBody.role.trim().length > 0
+          ? meBody.role.toLowerCase()
+          : typeof meBody?.user_metadata?.role === 'string' && meBody.user_metadata.role.trim().length > 0
+            ? meBody.user_metadata.role.toLowerCase()
+            : typeof meBody?.user_metadata?.team_role === 'string' && meBody.user_metadata.team_role.trim().length > 0
+              ? meBody.user_metadata.team_role.toLowerCase()
+              : Boolean(meBody?.user_metadata?.is_coach)
+                ? 'coach'
+                : null;
+      setRuntimeMeRole(resolvedMeRole);
       if (challengesRes) {
         try {
           const challengesBody = (await challengesRes.json()) as ChallengeListApiResponse & { error?: string };
@@ -5802,10 +5812,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     sessionUserMeta.team_role,
     runtimeMeRole,
   ]);
-  const isCoachRuntimeOperator = useMemo(
-    () => runtimeRoleSignals.some((signal) => signal.includes('coach')),
-    [runtimeRoleSignals]
-  );
+  const isCoachRuntimeOperator = useMemo(() => {
+    if (runtimeRoleSignals.some((signal) => signal.includes('coach'))) return true;
+    const sessionUserId = String(session?.user?.id ?? '').trim();
+    if (!sessionUserId) return false;
+    const ownsCoachProfile = coachProfiles.some((profile) => String(profile.id ?? '') === sessionUserId);
+    if (ownsCoachProfile) return true;
+    const activeCoachId = String(coachActiveEngagement?.coach_id ?? '').trim();
+    return Boolean(activeCoachId) && activeCoachId === sessionUserId;
+  }, [coachActiveEngagement?.coach_id, coachProfiles, runtimeRoleSignals, session?.user?.id]);
   const isChallengeSponsorRuntime = useMemo(
     () => runtimeRoleSignals.some((signal) => signal.includes('sponsor')),
     [runtimeRoleSignals]
@@ -7078,6 +7093,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
   }, [activeTab, coachTabScreen, fetchCoachMarketplace, fetchCoachEngagement]);
 
+  useEffect(() => {
+    if (activeTab !== 'coach') return;
+    if (!isCoachRuntimeOperator) return;
+    if (coachTabScreen !== 'coach_marketplace') return;
+    setCoachTabScreen('coach_hub_primary');
+  }, [activeTab, coachTabScreen, isCoachRuntimeOperator]);
+
   const fetchCoachAssignments = useCallback(async () => {
     const token = session?.access_token;
     if (!token) { setCoachAssignments([]); return; }
@@ -7773,6 +7795,63 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     ]
   );
 
+  const resolveTeamMemberUserId = useCallback(
+    async (member: Pick<TeamDirectoryMember, 'name' | 'email' | 'userId'>): Promise<string | null> => {
+      const existingId = String(member.userId ?? '').trim();
+      if (existingId) return existingId;
+      const normalizeValue = (value: string | null | undefined) =>
+        String(value ?? '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, ' ')
+          .trim();
+      const memberNameKey = normalizeValue(member.name);
+      const memberEmailKey = String(member.email ?? '').trim().toLowerCase();
+
+      const localMatch = teamRosterMembers.find((row) => {
+        const rowId = String(row.user_id ?? '').trim();
+        if (!rowId) return false;
+        const rowNameKey = normalizeValue(row.full_name);
+        const rowEmailKey = String(row.email ?? '').trim().toLowerCase();
+        if (memberEmailKey && rowEmailKey && memberEmailKey === rowEmailKey) return true;
+        return Boolean(memberNameKey) && rowNameKey === memberNameKey;
+      });
+      if (localMatch?.user_id) return String(localMatch.user_id);
+
+      const token = session?.access_token;
+      if (!token || !teamRuntimeId) return null;
+
+      try {
+        const response = await fetch(`${API_URL}/teams/${encodeURIComponent(teamRuntimeId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = (await response.json().catch(() => ({}))) as TeamDetailResponse;
+        if (!response.ok) return null;
+
+        const fetchedMembers = (Array.isArray(body.members) ? body.members : []).filter(
+          (row): row is TeamApiMemberSummary =>
+            typeof row?.user_id === 'string' && String(row.user_id).trim().length > 0
+        );
+        if (fetchedMembers.length > 0) {
+          setTeamRosterMembers(fetchedMembers);
+          setTeamRosterName(body.team?.name ? String(body.team.name) : null);
+          setTeamRosterTeamId(teamRuntimeId);
+          setTeamRosterError(null);
+        }
+
+        const fetchedMatch = fetchedMembers.find((row) => {
+          const rowNameKey = normalizeValue(row.full_name);
+          const rowEmailKey = String(row.email ?? '').trim().toLowerCase();
+          if (memberEmailKey && rowEmailKey && memberEmailKey === rowEmailKey) return true;
+          return Boolean(memberNameKey) && rowNameKey === memberNameKey;
+        });
+        return fetchedMatch?.user_id ? String(fetchedMatch.user_id) : null;
+      } catch {
+        return null;
+      }
+    },
+    [session?.access_token, teamRosterMembers, teamRuntimeId]
+  );
+
   useEffect(() => {
     if (activeTab !== 'comms') return;
     if (
@@ -8150,7 +8229,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     { key: 'clients' as const, icon: '👥', label: 'People' },
                     { key: 'cohorts' as const, icon: '🏷', label: 'Cohorts' },
                     { key: 'segments' as const, icon: '🎯', label: 'Segments' },
-                    { key: 'broadcast' as const, icon: '📣', label: 'Broadcast' },
                   ]).map((sec) => (
                     <TouchableOpacity
                       key={sec.key}
@@ -8210,13 +8288,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 <Text style={styles.cwfActionChipText}>Assign Person</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
-                                style={styles.cwfActionChip}
+                                style={styles.cwfActionChipBroadcast}
                                 onPress={() => {
-                                  setCoachWorkflowAssignMode('task');
-                                  setCoachWorkflowAssignJourneyId(String(j.id));
+                                  openCoachingShell('coach_broadcast_compose', {
+                                    broadcastAudienceLabel: `${j.title} enrollees`,
+                                    broadcastRoleAllowed: true,
+                                  });
                                 }}
                               >
-                                <Text style={styles.cwfActionChipText}>Assign Task</Text>
+                                <Text style={styles.cwfActionChipBroadcastText}>📣 Broadcast</Text>
                               </TouchableOpacity>
                             </View>
 
@@ -8225,7 +8305,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               <View style={styles.cwfAssignPanel}>
                                 <View style={styles.cwfAssignHeader}>
                                   <Text style={styles.cwfAssignTitle}>
-                                    {coachWorkflowAssignMode === 'cohort' ? 'Assign to Cohort' : coachWorkflowAssignMode === 'individual' ? 'Assign to Individual' : 'Assign Task'}
+                                    {coachWorkflowAssignMode === 'cohort' ? 'Assign to Cohort' : 'Assign to Individual'}
                                   </Text>
                                   <TouchableOpacity onPress={() => { setCoachWorkflowAssignMode('none'); setCoachWorkflowAssignJourneyId(null); setCoachWorkflowAssignTargetCohortId(null); setCoachWorkflowAssignTargetUserId(null); }}>
                                     <Text style={styles.cwfAssignClose}>✕</Text>
@@ -8269,26 +8349,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                     {coachWorkflowAssignTargetUserId && (
                                       <TouchableOpacity style={styles.cwfAssignConfirm} onPress={() => { setCoachWorkflowAssignMode('none'); setCoachWorkflowAssignJourneyId(null); setCoachWorkflowAssignTargetUserId(null); }}>
                                         <Text style={styles.cwfAssignConfirmText}>Confirm Assignment</Text>
-                                      </TouchableOpacity>
-                                    )}
-                                  </View>
-                                )}
-                                {coachWorkflowAssignMode === 'task' && (
-                                  <View>
-                                    <Text style={styles.cwfAssignTaskHint}>Tasks from this journey will be assigned. Select a target.</Text>
-                                    {coachCohorts.map((c) => (
-                                      <TouchableOpacity
-                                        key={c.id}
-                                        style={[styles.cwfAssignRow, coachWorkflowAssignTargetCohortId === c.id && styles.cwfAssignRowSelected]}
-                                        onPress={() => setCoachWorkflowAssignTargetCohortId(c.id)}
-                                      >
-                                        <Text style={styles.cwfAssignRowName}>{c.name}</Text>
-                                        <Text style={styles.cwfAssignRowMeta}>{c.members_count} members</Text>
-                                      </TouchableOpacity>
-                                    ))}
-                                    {coachWorkflowAssignTargetCohortId && (
-                                      <TouchableOpacity style={styles.cwfAssignConfirm} onPress={() => { setCoachWorkflowAssignMode('none'); setCoachWorkflowAssignJourneyId(null); setCoachWorkflowAssignTargetCohortId(null); }}>
-                                        <Text style={styles.cwfAssignConfirmText}>Assign Tasks</Text>
                                       </TouchableOpacity>
                                     )}
                                   </View>
@@ -8371,6 +8431,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             >
                               <Text style={styles.cwfActionChipText}>Assign Journey</Text>
                             </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.cwfActionChipBroadcast}
+                              onPress={() => {
+                                openCoachingShell('coach_broadcast_compose', {
+                                  broadcastAudienceLabel: cohort.name,
+                                  broadcastRoleAllowed: true,
+                                });
+                              }}
+                            >
+                              <Text style={styles.cwfActionChipBroadcastText}>📣 Broadcast</Text>
+                            </TouchableOpacity>
                           </View>
                           {cohort.my_membership_role && (
                             <Text style={styles.cwfCohortRole}>Your role: {cohort.my_membership_role === 'team_leader' ? 'Leader' : 'Member'}</Text>
@@ -8403,59 +8474,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             style={[styles.cwfActionChip, seg.status === 'preview' && styles.cwfActionChipMuted]}
                             onPress={() => {
                               if (seg.status === 'preview') return;
-                              setCoachWorkflowSection('broadcast');
+                              openCoachingShell('coach_broadcast_compose', {
+                                broadcastAudienceLabel: seg.label,
+                                broadcastRoleAllowed: true,
+                              });
                             }}
                           >
-                            <Text style={styles.cwfActionChipText}>{seg.status === 'live' ? 'Target in Broadcast' : 'Not Available Yet'}</Text>
+                            <Text style={styles.cwfActionChipText}>{seg.status === 'live' ? '📣 Broadcast to Segment' : 'Not Available Yet'}</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
                     ))}
-                  </View>
-                )}
-
-                {/* ── Broadcast entry section ── */}
-                {coachWorkflowSection === 'broadcast' && (
-                  <View style={styles.cwfSection}>
-                    <Text style={styles.cwfSectionTitle}>Broadcast</Text>
-                    <Text style={styles.cwfBroadcastSub}>Send targeted messages to your team channel or cohort audiences.</Text>
-                    <TouchableOpacity
-                      style={styles.cwfBroadcastCTA}
-                      onPress={() => {
-                        openCoachingShell('coach_broadcast_compose', {
-                          broadcastAudienceLabel: 'your team channel',
-                          broadcastRoleAllowed: true,
-                        });
-                      }}
-                    >
-                      <Text style={styles.cwfBroadcastCTAIcon}>📣</Text>
-                      <View>
-                        <Text style={styles.cwfBroadcastCTATitle}>Compose Broadcast</Text>
-                        <Text style={styles.cwfBroadcastCTASub}>Opens the broadcast composer in the comms shell.</Text>
-                      </View>
-                    </TouchableOpacity>
-                    <View style={styles.cwfBroadcastAudienceList}>
-                      <Text style={styles.cwfBroadcastAudienceTitle}>Available Audiences</Text>
-                      <View style={styles.cwfBroadcastAudienceRow}>
-                        <Text style={styles.cwfBroadcastAudienceIcon}>🏠</Text>
-                        <Text style={styles.cwfBroadcastAudienceLabel}>Team Channel (all members)</Text>
-                      </View>
-                      {coachCohorts.map((c) => (
-                        <TouchableOpacity
-                          key={c.id}
-                          style={styles.cwfBroadcastAudienceRow}
-                          onPress={() => {
-                            openCoachingShell('coach_broadcast_compose', {
-                              broadcastAudienceLabel: c.name,
-                              broadcastRoleAllowed: true,
-                            });
-                          }}
-                        >
-                          <Text style={styles.cwfBroadcastAudienceIcon}>🏷</Text>
-                          <Text style={styles.cwfBroadcastAudienceLabel}>{c.name} ({c.members_count})</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
                   </View>
                 )}
 
@@ -9719,7 +9748,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const selectedTeamProfile = teamMembers.find((row) => row.id === teamProfileMemberId) ?? null;
               const openTeamDirectThread = async (member: (typeof teamMembers)[number], source: CoachingShellEntrySource) => {
                 const sessionUserId = String(session?.user?.id ?? '').trim();
-                if (member.userId && sessionUserId && member.userId === sessionUserId) {
+                const resolvedTargetUserId = member.userId ?? (await resolveTeamMemberUserId(member));
+                if (resolvedTargetUserId && sessionUserId && resolvedTargetUserId === sessionUserId) {
                   Alert.alert('This is your profile', 'Open Messages to continue team chat, or select another teammate to start a direct message.');
                   setActiveTab('comms');
                   setCommsHubPrimaryTab('dms');
@@ -9736,7 +9766,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   });
                   return;
                 }
-                if (!member.userId) {
+                if (!resolvedTargetUserId) {
                   const msg = `Member identity unavailable for ${member.name}. Refresh team roster and try again.`;
                   Alert.alert('Messaging unavailable', msg);
                   setChannelsError(msg);
@@ -9744,7 +9774,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 }
                 try {
                   await openDirectThreadForMember({
-                    targetUserId: member.userId,
+                    targetUserId: resolvedTargetUserId,
                     memberName: member.name,
                     source,
                     closeTeamProfile: true,
@@ -22468,6 +22498,17 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: '#1a73e8',
   },
+  cwfActionChipBroadcast: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#fef0e1',
+  },
+  cwfActionChipBroadcastText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: '#c46200',
+  },
   cwfSectionCTA: {
     paddingVertical: 10,
     alignItems: 'center' as const,
@@ -22533,11 +22574,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700' as const,
     fontSize: 13,
-  },
-  cwfAssignTaskHint: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 8,
   },
   cwfPersonCard: {
     flexDirection: 'row' as const,
@@ -22695,59 +22731,6 @@ const styles = StyleSheet.create({
   cwfSegmentActions: {
     flexDirection: 'row' as const,
     gap: 6,
-  },
-  cwfBroadcastSub: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 12,
-  },
-  cwfBroadcastCTA: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: '#1a73e8',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    gap: 12,
-  },
-  cwfBroadcastCTAIcon: {
-    fontSize: 24,
-  },
-  cwfBroadcastCTATitle: {
-    fontSize: 15,
-    fontWeight: '700' as const,
-    color: '#fff',
-  },
-  cwfBroadcastCTASub: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 2,
-  },
-  cwfBroadcastAudienceList: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#e6e9ef',
-  },
-  cwfBroadcastAudienceTitle: {
-    fontSize: 13,
-    fontWeight: '700' as const,
-    color: '#1a1a2e',
-    marginBottom: 8,
-  },
-  cwfBroadcastAudienceRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  cwfBroadcastAudienceIcon: {
-    fontSize: 14,
-  },
-  cwfBroadcastAudienceLabel: {
-    fontSize: 13,
-    color: '#333',
   },
   cwfFooterLink: {
     paddingVertical: 10,
