@@ -342,37 +342,28 @@ type JourneyBuilderSaveState = 'idle' | 'pending' | 'saved' | 'error';
 type LibraryAsset = { id: string; title: string; category: string; scope: string; duration: string };
 type LibraryCollection = { id: string; name: string; assetIds: string[] };
 
-/** Drag-handle grip for lesson/task reorder.  Swipe ↑/↓ past threshold to move. */
-const JbDragHandle = React.memo(function JbDragHandle({
-  onMoveUp, onMoveDown, canMoveUp, canMoveDown, small,
+/** Tap-to-pick / tap-to-drop grip handle.
+ *  Tap once → item is "picked up" (blue highlight).  Tap another grip → drops there.  Tap same → cancel. */
+const JbGrip = React.memo(function JbGrip({
+  isPickedUp, isDropTarget, onPress, small,
 }: {
-  onMoveUp: () => void; onMoveDown: () => void;
-  canMoveUp: boolean; canMoveDown: boolean; small?: boolean;
+  isPickedUp: boolean; isDropTarget: boolean; onPress: () => void; small?: boolean;
 }) {
-  const cbRef = React.useRef({ onMoveUp, onMoveDown, canMoveUp, canMoveDown });
-  cbRef.current = { onMoveUp, onMoveDown, canMoveUp, canMoveDown };
-  const pan = React.useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_e, gs) => Math.abs(gs.dy) > 5,
-      onMoveShouldSetPanResponderCapture: (_e, gs) => Math.abs(gs.dy) > 10,
-      onPanResponderRelease: (_e, gs) => {
-        if (gs.dy < -25 && cbRef.current.canMoveUp) cbRef.current.onMoveUp();
-        else if (gs.dy > 25 && cbRef.current.canMoveDown) cbRef.current.onMoveDown();
-      },
-    })
-  ).current;
   return (
-    <View
-      {...pan.panHandlers}
+    <TouchableOpacity
+      activeOpacity={0.6}
+      onPress={onPress}
       style={{
-        width: small ? 22 : 28, height: small ? 28 : 36,
+        width: small ? 18 : 22, height: small ? 22 : 28,
         alignItems: 'center' as const, justifyContent: 'center' as const,
-        marginRight: small ? 4 : 8, borderRadius: 4, backgroundColor: '#e2e8f0',
+        marginRight: small ? 3 : 6, borderRadius: 4,
+        backgroundColor: isPickedUp ? '#bfdbfe' : isDropTarget ? '#dcfce7' : '#e2e8f0',
+        borderWidth: isPickedUp ? 1.5 : isDropTarget ? 1 : 0,
+        borderColor: isPickedUp ? '#3b82f6' : isDropTarget ? '#22c55e' : 'transparent',
       }}
     >
-      <Text style={{ fontSize: small ? 14 : 18, color: '#64748b', letterSpacing: -1 }}>⠿</Text>
-    </View>
+      <Text style={{ fontSize: small ? 11 : 14, color: isPickedUp ? '#2563eb' : isDropTarget ? '#16a34a' : '#64748b' }}>⠿</Text>
+    </TouchableOpacity>
   );
 });
 
@@ -2538,6 +2529,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [jbEditingLessonTitle, setJbEditingLessonTitle] = useState('');
   const [jbEditingTaskKey, setJbEditingTaskKey] = useState<string | null>(null);
   const [jbEditingTaskTitle, setJbEditingTaskTitle] = useState('');
+  const [jbMovingItem, setJbMovingItem] = useState<{
+    type: 'lesson' | 'task'; lessonIdx: number; lessonId: string; taskIdx?: number; taskId?: string;
+  } | null>(null);
   const [coachingLessonProgressSubmittingId, setCoachingLessonProgressSubmittingId] = useState<string | null>(null);
   const [coachingLessonProgressError, setCoachingLessonProgressError] = useState<string | null>(null);
   const [channelsApiRows, setChannelsApiRows] = useState<ChannelApiRow[] | null>(null);
@@ -7442,9 +7436,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     await fetchCoachingJourneyDetail(journeyId);
   }, [fetchCoachingJourneyDetail]);
 
-  // Keep jbLessons synced whenever coachingJourneyDetail changes
+  // Keep jbLessons synced whenever coachingJourneyDetail changes; clear any in-progress move
   useEffect(() => {
     jbSyncLessonsFromDetail(coachingJourneyDetail);
+    setJbMovingItem(null);
   }, [coachingJourneyDetail, jbSyncLessonsFromDetail]);
 
   const jbAddLesson = useCallback(async (journeyId: string) => {
@@ -12646,6 +12641,18 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               </View>
                             )}
 
+                            {/* Moving-item banner */}
+                            {jbMovingItem && (
+                              <View style={{ backgroundColor: '#eff6ff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, marginBottom: 6, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const }}>
+                                <Text style={{ fontSize: 12, color: '#1e40af' }}>
+                                  Moving {jbMovingItem.type === 'lesson' ? 'lesson' : 'task'} — tap another ⠿ to place
+                                </Text>
+                                <TouchableOpacity onPress={() => setJbMovingItem(null)} style={{ paddingHorizontal: 8, paddingVertical: 2 }}>
+                                  <Text style={{ fontSize: 12, fontWeight: '600' as const, color: '#3b82f6' }}>Cancel</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+
                             {/* ── Journey Builder: action bar (coach operators) ── */}
                             {isCoachRuntimeOperator && !shellPackageGateBlocksActions && (
                               <View style={styles.jbActionBar}>
@@ -12733,15 +12740,27 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 {jbLessons.map((lesson, lessonIdx) => {
                                   const isActiveLesson = String(lesson.id) === String(selectedLessonId ?? '');
                                   return (
-                                    <View key={`jb-lesson-${lesson.id}`} style={[styles.jbLessonBlock, lessonIdx > 0 ? styles.coachingJourneyRowDivider : null]}>
+                                    <View key={`jb-lesson-${lesson.id}`} style={[styles.jbLessonBlock, lessonIdx > 0 ? styles.coachingJourneyRowDivider : null, jbMovingItem?.type === 'lesson' && jbMovingItem.lessonIdx === lessonIdx ? { borderWidth: 1.5, borderColor: '#3b82f6', borderRadius: 8, backgroundColor: '#eff6ff' } : null]}>
                                       {/* Lesson header with reorder + delete */}
                                       <View style={styles.jbLessonHeader}>
                                         {isCoachRuntimeOperator && (
-                                          <JbDragHandle
-                                            canMoveUp={lessonIdx > 0}
-                                            canMoveDown={lessonIdx < jbLessons.length - 1}
-                                            onMoveUp={() => { const jid = selectedJourneyId; if (jid) void jbReorderLessons(jid, lessonIdx, lessonIdx - 1); }}
-                                            onMoveDown={() => { const jid = selectedJourneyId; if (jid) void jbReorderLessons(jid, lessonIdx, lessonIdx + 1); }}
+                                          <JbGrip
+                                            isPickedUp={jbMovingItem?.type === 'lesson' && jbMovingItem.lessonIdx === lessonIdx}
+                                            isDropTarget={!!jbMovingItem && jbMovingItem.type === 'lesson' && jbMovingItem.lessonIdx !== lessonIdx}
+                                            onPress={() => {
+                                              const jid = selectedJourneyId;
+                                              if (!jid) return;
+                                              if (!jbMovingItem) {
+                                                setJbMovingItem({ type: 'lesson', lessonIdx, lessonId: lesson.id });
+                                              } else if (jbMovingItem.type === 'lesson' && jbMovingItem.lessonIdx === lessonIdx) {
+                                                setJbMovingItem(null);
+                                              } else if (jbMovingItem.type === 'lesson') {
+                                                void jbReorderLessons(jid, jbMovingItem.lessonIdx, lessonIdx);
+                                                setJbMovingItem(null);
+                                              } else {
+                                                setJbMovingItem(null);
+                                              }
+                                            }}
                                           />
                                         )}
                                         {jbEditingLessonId === lesson.id && isCoachRuntimeOperator ? (
@@ -12796,14 +12815,26 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                       {lesson.tasks.map((task, taskIdx) => {
                                         const assetInfo = task.assetId ? jbAssetsById.get(task.assetId) : null;
                                         return (
-                                          <View key={`jb-task-${task.id}`} style={styles.jbTaskRow}>
+                                          <View key={`jb-task-${task.id}`} style={[styles.jbTaskRow, jbMovingItem?.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx === taskIdx ? { borderWidth: 1, borderColor: '#3b82f6', borderRadius: 6, backgroundColor: '#eff6ff' } : null]}>
                                             {isCoachRuntimeOperator && (
-                                              <JbDragHandle
+                                              <JbGrip
                                                 small
-                                                canMoveUp={taskIdx > 0}
-                                                canMoveDown={taskIdx < lesson.tasks.length - 1}
-                                                onMoveUp={() => { const jid = selectedJourneyId; if (jid) void jbReorderTasks(jid, lesson.id, taskIdx, taskIdx - 1); }}
-                                                onMoveDown={() => { const jid = selectedJourneyId; if (jid) void jbReorderTasks(jid, lesson.id, taskIdx, taskIdx + 1); }}
+                                                isPickedUp={jbMovingItem?.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx === taskIdx}
+                                                isDropTarget={!!jbMovingItem && jbMovingItem.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx !== taskIdx}
+                                                onPress={() => {
+                                                  const jid = selectedJourneyId;
+                                                  if (!jid) return;
+                                                  if (!jbMovingItem) {
+                                                    setJbMovingItem({ type: 'task', lessonIdx, lessonId: lesson.id, taskIdx, taskId: task.id });
+                                                  } else if (jbMovingItem.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx === taskIdx) {
+                                                    setJbMovingItem(null);
+                                                  } else if (jbMovingItem.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx !== undefined) {
+                                                    void jbReorderTasks(jid, lesson.id, jbMovingItem.taskIdx, taskIdx);
+                                                    setJbMovingItem(null);
+                                                  } else {
+                                                    setJbMovingItem(null);
+                                                  }
+                                                }}
                                               />
                                             )}
                                             <View style={styles.jbTaskContent}>
@@ -23527,7 +23558,7 @@ const styles = StyleSheet.create({
   jbLessonTitleBtn: { flex: 1, marginRight: 8 },
   jbLessonTitleText: { fontSize: 14, fontWeight: '700' as const, color: '#1e293b' },
   jbLessonTaskCount: { fontSize: 11, color: '#94a3b8', marginTop: 1 },
-  /* jbReorder ▲/▼ styles removed – replaced by JbDragHandle grip component */
+  /* jbReorder ▲/▼ styles removed – replaced by JbGrip tap-to-pick/drop component */
   jbDeleteBtn: { width: 28, height: 28, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 14, backgroundColor: '#fef2f2' },
   jbDeleteBtnText: { fontSize: 14, color: '#dc2626' },
   jbDeleteBtnSm: { width: 24, height: 24, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 12, backgroundColor: '#fef2f2' },
