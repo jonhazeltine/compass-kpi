@@ -145,6 +145,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-CHAT-COMPOSER-ATTACH-TASK-SLASH-B` | `review` | `M6 comms runtime capability expansion` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `comms composer + thread cards` (`attachment picker/send`, `task card compose/render/update`, `slash parser/menu`) | `KPIDashboardScreen`, `app/components/comms/*` (`channel_thread`, comms composer/thread surfaces) | `Mobile-1` | `codex/a2-admin-list-usability-pass` | assignment-directed (no backend/schema changes) | Completed: added attachment picker/send flow in thread composer (file/image/link), slash-menu parser with role-gated commands (`/task`, `/task-update`, `/broadcast`, `/help` visibility by persona), structured task-card compose + task-update messages, and thread renderers for task cards, task updates, and attachments. Message sends now support encoded composer payload overrides while preserving existing channel message endpoint family and role/policy/token-sync behavior. Validation: `cd app && npx tsc --noEmit --pretty false` pass. |
 | `M6-THREAD-HEADER-AVATAR-PROFILE-A` | `review` | `M6 comms thread header parity` | `Team Leader`, `Team Member`, `Coach`, `Solo User`, `Challenge Sponsor` | `channel_thread header avatar` (`dm profile handoff`, `team avatar render`) | `KPIDashboardScreen`, `app/components/comms/CommsHub.tsx` | `Mobile-1` | `codex/a2-admin-list-usability-pass` | assignment-directed (routing/state only; no backend/schema changes) | Completed: `channel_thread` header now renders conversation avatar via new CommsHub props (`headerAvatarLabel`, `headerAvatarTone`, `headerAvatarKind`, `onPressHeaderAvatar`). DM threads resolve directory member from selected channel context/name and provide press callback that opens existing team profile drawer state; team threads render team identity avatar with no-op tap (no team profile card route). Existing routing/token bootstrap/role-gates unchanged. Validation: `cd app && npx tsc --noEmit --pretty false` pass. Evidence folder: `app/test-results/m6-thread-header-avatar-profile-a/` (`dm-thread-header-avatar.png`, `dm-avatar-opens-profile-card.png`, `team-thread-header-avatar.png`). |
 | `M6-PROFILE-MESSAGE-OPEN-DM-THREAD-APP-B` | `review` | `M6 comms runtime DM handoff hardening` | `Team Leader`, `Team Member` | `team profile -> DM thread` (`message CTA resolves direct channel`, `create-if-missing`, `thread-first handoff`) | `KPIDashboardScreen` Team profile drawer + comms handoff path | `Mobile-1` | `codex/a2-admin-list-usability-pass` | assignment-directed (routing/state only; no backend/schema changes) | Completed: Team profile `Message` CTA now always attempts direct-thread open by (1) reusing existing direct channel match, else (2) creating a direct channel via `POST /api/channels` (`type:'direct'`, `name:'<A> / <B>'`, `context_id`, `member_user_ids:[targetUserId]`), then routing to `channel_thread` with selected channel id/name. Removed DM-search-prefill fallback for this action (`setCommsHubSearchQuery('')`), and profile drawer closes on handoff. Team Chat team-channel hardbind flow unchanged. Validation: `cd app && npx tsc --noEmit --pretty false` pass. |
+| `M6-TEAM-THREAD-HEADER-NAME-CANONICAL-A` | `review` | `M6 comms runtime team-thread header canonicalization` | `Team Leader`, `Team Member` | `team chat handoff` (`team-name header override on team threads`) | `KPIDashboardScreen` team handoff + comms header state (`CommsHub` prop path only if required) | `Mobile-1` | `codex/a2-admin-list-usability-pass` | assignment-directed (routing/state only; no backend/schema changes) | Completed: added dedicated comms context override `threadHeaderDisplayName`; Team Chat handoff now sets override to team identity name while preserving selected channel id binding to resolved real team channel id. Thread header resolution now uses override only when selected scope is `team`; non-team channels retain existing resolved channel-name behavior. Avatar behavior for team/dm threads unchanged; routing/send/token-sync untouched. Validation: `cd app && npx tsc --noEmit --pretty false` pass. |
 | `M6-COMMS-FR-PATTERN-MATRIX-B` | `review` | `M6 comms integration planning (docs-only)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `comms architecture mapping` (`Fourth Reason behavior -> Compass adaptation matrix`) | docs-only: `FOURTH_REASON_INTEGRATION_MATRIX`, additive mapping notes in `04_api_contracts`, assignment note in board | `Mobile-2` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Completed docs pass: landed pattern-by-pattern Fourth Reason messaging matrix with `build now / defer / blocked by DEP` statuses and explicit no-new-table adaptation notes, plus additive API mapping guidance. |
 | `COMMS-RECIPIENT-SCOPE-UX-SPEC-D` | `committed` | `M6 comms scope UX prep (docs-only)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `comms recipient scope UX` (`recipient picker rules`, `challenge thread scope`, `blocked-state copy`) | docs-only: `COACHING_WIRING_ADDENDUM`, `05_acceptance_tests`, board notes | `Mobile-2` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed: recipient/target scope matrix, challenge participant chat policy, canonical blocked-copy strings, and acceptance coverage for allowed/blocked Comms paths are synchronized and accepted. |
 | `W13-DEP-TRACKER-EVIDENCE-SYNC-B` | `committed` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency governance` (`closeout evidence linking + status normalization`) | docs-only: `PROJECT_CONTROL_PLANE`, `W13_DEP_SIGNOFF_BRIEF` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed docs pass: placeholder evidence link removed, DEP-002/004/005 evidence references normalized across control-plane + signoff brief, and Wave A GO/NO-GO language preserved. |
@@ -5906,3 +5907,30 @@ Make profile->Message open a real DM thread by guaranteeing a direct channel exi
 - creation/idempotency matrix
 - validation output
 - commit hash
+
+### `M6-DM-CREATE-VALIDATION-HOTFIX-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 comms runtime hotfix`
+- `Persona:` `Team Leader`, `Team Member`, `Coach`, `Challenge Sponsor`
+- `Flow:` `direct channel create validation`
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass`
+- `Execution note (2026-03-02, Mobile-2 start):` Applying direct-channel create validation hotfix to remove `public.users` dependency and eliminate generic 500 validation failures in DM creation path.
+- `Current blocker status (2026-03-02, start):` `none`
+- `Completion note (2026-03-02, Mobile-2):` Removed `public.users` hard dependency from direct-channel target validation; retained scope-authoritative membership checks; added deterministic invalid-target handling (`422`/`403`) so direct create no longer fails as generic validation-layer `500`.
+
+#### Goal
+Unblock individual messaging by fixing direct-channel member validation in `POST /api/channels`.
+
+#### Scope In
+- `/Users/jon/compass-kpi/backend/src/index.ts`
+- `/Users/jon/compass-kpi/backend/scripts/m6_dm_direct_channel_create_acceptance.js`
+- `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md`
+
+#### Validation
+- `cd /Users/jon/compass-kpi/backend && npm run -s build`
+- `cd /Users/jon/compass-kpi/backend && npm run -s test:w13-stream-comms-role-policy`
+- `cd /Users/jon/compass-kpi/backend && npm run -s test:m6-comms-recipient-scope-hardening`
+- `cd /Users/jon/compass-kpi/backend && npm run -s test:m6-dm-direct-channel-create-backend`

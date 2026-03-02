@@ -348,6 +348,7 @@ type CoachingShellContext = {
   preferredChannelScope: CoachingChannelScope | null;
   preferredChannelLabel: string | null;
   threadTitle: string | null;
+  threadHeaderDisplayName: string | null;
   threadSub: string | null;
   broadcastAudienceLabel: string | null;
   broadcastRoleAllowed: boolean;
@@ -2395,6 +2396,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     preferredChannelScope: null,
     preferredChannelLabel: null,
     threadTitle: null,
+    threadHeaderDisplayName: null,
     threadSub: null,
     broadcastAudienceLabel: null,
     broadcastRoleAllowed: false,
@@ -5081,6 +5083,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         preferredChannelScope: null,
         preferredChannelLabel: null,
         threadTitle: null,
+        threadHeaderDisplayName: null,
         threadSub: null,
         broadcastAudienceLabel: null,
         broadcastRoleAllowed: false,
@@ -8946,6 +8949,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               };
               const teamPrimaryChallenge =
                 challengeListItems.find((item) => item.challengeModeLabel === 'Team') ?? challengeListItems[0] ?? null;
+              const teamIdentityName = 'The Elite Group';
               const openTeamCommsHandoff = (source: CoachingShellEntrySource) => {
                 setTeamCommsHandoffError(null);
                 const allChannelRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
@@ -8964,7 +8968,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 const resolvedTeamChannel = scopedTeamChannel ?? teamChannels[0] ?? null;
                 const broadcastAudienceLabel =
                   source === 'team_leader_dashboard'
-                    ? String(resolvedTeamChannel?.name ?? coachingShellContext.broadcastAudienceLabel ?? 'The Elite Group')
+                    ? String(resolvedTeamChannel?.name ?? coachingShellContext.broadcastAudienceLabel ?? teamIdentityName)
                     : null;
 
                 setActiveTab('comms');
@@ -8984,6 +8988,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     preferredChannelScope: 'team',
                     preferredChannelLabel: resolvedTeamChannelName,
                     threadTitle: resolvedTeamChannelName,
+                    threadHeaderDisplayName: teamIdentityName,
                     threadSub: 'Live team conversation.',
                     broadcastAudienceLabel,
                     broadcastRoleAllowed: source === 'team_leader_dashboard',
@@ -9000,6 +9005,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   preferredChannelScope: 'team',
                   preferredChannelLabel: 'Team',
                   threadTitle: null,
+                  threadHeaderDisplayName: null,
                   threadSub: 'Team channel unavailable. Contact admin to restore team chat.',
                   broadcastAudienceLabel,
                   broadcastRoleAllowed: source === 'team_leader_dashboard',
@@ -9244,7 +9250,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       <Text style={styles.teamIdentityIconText}>{teamIdentityAvatar}</Text>
                     </View>
                     <View style={styles.teamIdentityCopy}>
-                      <Text style={styles.teamIdentityName}>The Elite Group</Text>
+                      <Text style={styles.teamIdentityName}>{teamIdentityName}</Text>
                       <Text style={styles.teamIdentitySub}>3 Members | 2 Ongoing challenges</Text>
                     </View>
                   </View>
@@ -9279,7 +9285,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           <View style={styles.teamIdentityEditPreviewCircle}>
                             <Text style={styles.teamIdentityEditPreviewGlyph}>{teamIdentityDraftAvatar}</Text>
                           </View>
-                          <Text style={styles.teamIdentityEditPreviewName}>The Elite Group</Text>
+                          <Text style={styles.teamIdentityEditPreviewName}>{teamIdentityName}</Text>
                         </View>
 
                         <ScrollView style={styles.teamIdentityEditScrollArea} showsVerticalScrollIndicator={false}>
@@ -10379,6 +10385,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const selectedChannelResolvedName = selectedChannelRow?.name ?? selectedChannelName ?? null;
               const selectedChannelType = String(selectedChannelRow?.type ?? '').toLowerCase();
               const selectedChannelScope = normalizeChannelTypeToScope(selectedChannelRow?.type) ?? 'community';
+              const selectedChannelDisplayName =
+                selectedChannelScope === 'team' && coachingShellContext.threadHeaderDisplayName
+                  ? coachingShellContext.threadHeaderDisplayName
+                  : selectedChannelResolvedName;
               const normalizeName = (value: string | null | undefined) =>
                 String(value ?? '')
                   .toLowerCase()
@@ -10686,7 +10696,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       ]}
                       useFallback={fallbackChannelRowsVisible}
                       selectedChannelId={selectedChannelResolvedId}
-                      selectedChannelName={selectedChannelResolvedName}
+                      selectedChannelName={selectedChannelDisplayName}
                       messages={Array.isArray(channelMessages) ? channelMessages : []}
                       messagesLoading={channelMessagesLoading}
                       messagesError={channelMessagesError}
