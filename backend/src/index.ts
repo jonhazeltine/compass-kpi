@@ -2009,14 +2009,104 @@ app.get("/api/channels", async (req, res) => {
       ])
     );
 
+    // ── DM display name resolution ──
+    // For direct channels, look up the counterpart user's name
+    const safeChannels = channels ?? [];
+    const directChannelIds = safeChannels
+      .filter((c) => String((c as { type?: unknown }).type ?? "") === "direct")
+      .map((c) => String(c.id));
+
+    const dmDisplayNameByChannel = new Map<string, string>();
+    if (directChannelIds.length > 0) {
+      const { data: dmMemberships } = await dataClient
+        .from("channel_memberships")
+        .select("channel_id,user_id")
+        .in("channel_id", directChannelIds);
+      if (dmMemberships && dmMemberships.length > 0) {
+        // Collect all counterpart user IDs (not the current user)
+        const counterpartUserIds = new Set<string>();
+        const channelToCounterpart = new Map<string, string>();
+        for (const m of dmMemberships) {
+          const chId = String(m.channel_id);
+          const uid = String(m.user_id);
+          if (uid !== auth.user.id) {
+            counterpartUserIds.add(uid);
+            channelToCounterpart.set(chId, uid);
+          }
+        }
+        if (counterpartUserIds.size > 0) {
+          const { data: userRows } = await dataClient
+            .from("users")
+            .select("id,full_name")
+            .in("id", Array.from(counterpartUserIds));
+          const nameById = new Map<string, string>(
+            (userRows ?? []).map((u) => [String(u.id), String((u as { full_name?: unknown }).full_name ?? "")])
+          );
+          for (const [chId, uid] of channelToCounterpart) {
+            const name = nameById.get(uid);
+            if (name) {
+              dmDisplayNameByChannel.set(chId, name);
+            }
+          }
+        }
+      }
+    }
+
+    // ── Last message preview per channel ──
+    // Fetch the most recent message for each channel the user belongs to.
+    // Supabase JS doesn't support DISTINCT ON, so we fetch recent messages
+    // ordered by created_at desc, then pick the first per channel.
+    const lastMessageByChannel = new Map<string, { body: string; created_at: string; sender_user_id: string }>();
+    if (channelIds.length > 0) {
+      const { data: recentMessages } = await dataClient
+        .from("channel_messages")
+        .select("channel_id,body,created_at,sender_user_id")
+        .in("channel_id", channelIds)
+        .order("created_at", { ascending: false })
+        .limit(channelIds.length * 3);
+      for (const msg of recentMessages ?? []) {
+        const chId = String(msg.channel_id);
+        if (!lastMessageByChannel.has(chId)) {
+          lastMessageByChannel.set(chId, {
+            body: String((msg as { body?: unknown }).body ?? ""),
+            created_at: String(msg.created_at ?? ""),
+            sender_user_id: String(msg.sender_user_id ?? ""),
+          });
+        }
+      }
+    }
+
     const channelRows = (channels ?? []).map((channel) => {
       const channelId = String(channel.id);
       const syncState = streamChannelSyncStates.get(channelId);
+      const isDirect = String((channel as { type?: unknown }).type ?? "") === "direct";
+      const lastMsg = lastMessageByChannel.get(channelId);
+
+      // Build last-message preview (safe-truncated to 120 chars)
+      let lastMessagePreview: string | null = null;
+      let lastMessageAt: string | null = null;
+      if (lastMsg && lastMsg.body) {
+        const rawBody = lastMsg.body;
+        const previewText = rawBody.length > 120 ? rawBody.slice(0, 117) + "..." : rawBody;
+        lastMessagePreview = previewText;
+        lastMessageAt = lastMsg.created_at || null;
+      }
+
+      // Deterministic fallback for empty channels
+      if (!lastMessagePreview) {
+        lastMessagePreview = isDirect ? "No messages yet — say hello!" : "No messages yet";
+        lastMessageAt = null;
+      }
+
       return {
         ...channel,
         my_role: membershipByChannel.get(channelId) ?? "member",
         unread_count: unreadByChannel.get(channelId)?.unread_count ?? 0,
         last_seen_at: unreadByChannel.get(channelId)?.last_seen_at ?? null,
+        // DM read model fields
+        dm_display_name: isDirect ? (dmDisplayNameByChannel.get(channelId) ?? null) : null,
+        last_message_preview: lastMessagePreview,
+        last_message_at: lastMessageAt,
         packaging_read_model: packagingReadModelForChannel(channel),
         provider: "stream",
         provider_channel_id: streamProviderChannelId(channelId),
