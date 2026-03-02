@@ -4551,6 +4551,9 @@ app.post("/api/webhooks/mux", async (req, res) => {
       updated_at: nowIso,
     };
     await upsertMuxMediaRecord(updated);
+    if (applied.applied && updated.channel_id) {
+      await emitMuxLifecycleChannelMessage(updated, event.eventType);
+    }
     muxProcessedWebhookEventIds.add(event.eventId);
 
     return res.status(200).json({
@@ -4896,6 +4899,7 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
       }
     }
 
+    const seenMessageLinkedTaskIds = new Set<string>();
     for (const m of taskMsgRows ?? []) {
       const ref = (m.assignment_ref as Record<string, unknown>) ?? {};
       const assigneeId = (ref.assignee_id as string) ?? null;
@@ -4904,6 +4908,10 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
 
       const taskType = (m.message_kind as string) === "coach_task" ? "coach_task" : "personal_task";
       const isAssignee = assigneeId === userId;
+      const taskId = (ref.id as string) ?? (m.id as string);
+      // Keep latest state only (rows are sorted newest->oldest).
+      if (seenMessageLinkedTaskIds.has(taskId)) continue;
+      seenMessageLinkedTaskIds.add(taskId);
 
       const roleScopeCheck = await evaluateRoleScopeForChannel(userId, String((m.channel_id as string) ?? ""));
       if (!roleScopeCheck.ok) return res.status(roleScopeCheck.status).json({ error: roleScopeCheck.error });
@@ -4911,9 +4919,14 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
 
       const role = roleScopeCheck.result.role;
       const canManageCoachTask = taskType === "coach_task" && (role === "coach" || role === "team_leader" || role === "admin" || role === "super_admin");
+      const canEditFields = !isAssignee && canManageCoachTask;
+      const canUpdateStatus = taskType === "personal_task" ? isAssignee : (isAssignee || canManageCoachTask);
+      const canMarkComplete = canUpdateStatus;
+      const sourceMessageId = (ref.source_message_id as string) ?? (m.id as string);
+      const lastThreadEventAt = (ref.last_thread_event_at as string) ?? (m.created_at as string) ?? null;
 
       assignments.push({
-        id: (ref.id as string) ?? (m.id as string),
+        id: taskId,
         type: taskType as AssignmentItem["type"],
         title: (ref.title as string) ?? "Task",
         status: normalizeGoalStatus((ref.status as string) ?? "pending"),
@@ -4922,14 +4935,14 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
         source: "message_linked",
         created_at: (m.created_at as string) ?? new Date().toISOString(),
         channel_id: (m.channel_id as string) ?? null,
-        source_message_id: (m.id as string) ?? null,
-        last_thread_event_at: null,
+        source_message_id: sourceMessageId,
+        last_thread_event_at: lastThreadEventAt,
         thread_read_state: "unknown",
         rights: {
-          can_edit_fields: !isAssignee && canManageCoachTask,
-          can_update_status: true,
-          can_mark_complete: true,
-          can_reassign: !isAssignee && canManageCoachTask,
+          can_edit_fields: canEditFields,
+          can_update_status: canUpdateStatus,
+          can_mark_complete: canMarkComplete,
+          can_reassign: canEditFields,
         },
       });
     }
@@ -5704,7 +5717,48 @@ app.get("/teams/:id", async (req, res) => {
       return handleSupabaseError(res, "Failed to fetch team members", membersError);
     }
 
-    return res.json({ team, members: members ?? [] });
+    const memberUserIds = (members ?? [])
+      .map((row) => String((row as { user_id?: unknown }).user_id ?? ""))
+      .filter(Boolean);
+    const memberProfileById = new Map<string, { full_name: string | null; avatar_url: string | null; email: string | null }>();
+    if (memberUserIds.length > 0) {
+      const { data: memberProfiles, error: memberProfilesError } = await dataClient
+        .from("users")
+        .select("id,full_name,avatar_url")
+        .in("id", memberUserIds);
+      if (memberProfilesError) {
+        return handleSupabaseError(res, "Failed to fetch team member profiles", memberProfilesError);
+      }
+      for (const row of memberProfiles ?? []) {
+        const id = String((row as { id?: unknown }).id ?? "");
+        if (!id) continue;
+        memberProfileById.set(id, {
+          full_name: typeof (row as { full_name?: unknown }).full_name === "string"
+            ? String((row as { full_name?: unknown }).full_name)
+            : null,
+          avatar_url: typeof (row as { avatar_url?: unknown }).avatar_url === "string"
+            ? String((row as { avatar_url?: unknown }).avatar_url)
+            : null,
+          email: null,
+        });
+      }
+    }
+
+    return res.json({
+      team,
+      members: (members ?? []).map((row) => {
+        const userId = String((row as { user_id?: unknown }).user_id ?? "");
+        const profile = memberProfileById.get(userId);
+        return {
+          user_id: userId,
+          role: String((row as { role?: unknown }).role ?? "member"),
+          full_name: profile?.full_name ?? null,
+          email: profile?.email ?? null,
+          avatar_url: profile?.avatar_url ?? null,
+          created_at: (row as { created_at?: unknown }).created_at ?? null,
+        };
+      }),
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in GET /teams/:id", err);
@@ -7558,11 +7612,12 @@ function validateChannelCreatePayload(body: unknown):
   if (!allowedTypes.includes(candidate.type as ChannelType)) {
     return { ok: false, status: 422, error: "type must be one of: team, challenge, sponsor, cohort, direct" };
   }
-  if (!candidate.name || typeof candidate.name !== "string") {
+  const isDirect = candidate.type === "direct";
+  if (!isDirect && (!candidate.name || typeof candidate.name !== "string")) {
     return { ok: false, status: 422, error: "name is required" };
   }
-  const name = candidate.name.trim();
-  if (!name) {
+  const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
+  if (!isDirect && !name) {
     return { ok: false, status: 422, error: "name must not be empty" };
   }
   if (candidate.team_id !== undefined && typeof candidate.team_id !== "string") {
@@ -7571,13 +7626,29 @@ function validateChannelCreatePayload(body: unknown):
   if (candidate.context_id !== undefined && typeof candidate.context_id !== "string") {
     return { ok: false, status: 422, error: "context_id must be a string when provided" };
   }
+  if (candidate.member_user_ids !== undefined && !Array.isArray(candidate.member_user_ids)) {
+    return { ok: false, status: 422, error: "member_user_ids must be an array when provided" };
+  }
+  const memberUserIds = Array.isArray(candidate.member_user_ids)
+    ? Array.from(
+        new Set(
+          candidate.member_user_ids
+            .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+            .filter(Boolean)
+        )
+      )
+    : undefined;
+  if (isDirect && (!memberUserIds || memberUserIds.length === 0)) {
+    return { ok: false, status: 422, error: "member_user_ids is required for direct channel create" };
+  }
   return {
     ok: true,
     payload: {
       type: candidate.type as ChannelType,
-      name,
+      ...(name ? { name } : {}),
       team_id: candidate.team_id,
       context_id: candidate.context_id,
+      member_user_ids: memberUserIds,
     },
   };
 }
@@ -7655,17 +7726,49 @@ function validateChannelMessagePayload(body: unknown):
     return { ok: false, status: 400, error: "Body must be a JSON object" };
   }
   const candidate = body as Partial<ChannelMessagePayload>;
-  if (!candidate.body || typeof candidate.body !== "string") {
-    return { ok: false, status: 422, error: "body is required" };
+  const messageType = candidate.message_type ?? "message";
+  if (messageType !== "message" && messageType !== "media_attachment") {
+    return { ok: false, status: 422, error: "message_type must be one of: message, media_attachment" };
   }
-  const bodyText = candidate.body.trim();
-  if (!bodyText) {
-    return { ok: false, status: 422, error: "body must not be empty" };
+
+  const bodyTextRaw = typeof candidate.body === "string" ? candidate.body.trim() : "";
+  if (messageType === "message") {
+    if (!bodyTextRaw) {
+      return { ok: false, status: 422, error: "body is required" };
+    }
+    if (bodyTextRaw.length > 4000) {
+      return { ok: false, status: 422, error: "body is too long (max 4000 chars)" };
+    }
+    return { ok: true, payload: { body: bodyTextRaw, message_type: "message" } };
   }
-  if (bodyText.length > 4000) {
+
+  if (!isRecord(candidate.media_attachment)) {
+    return { ok: false, status: 422, error: "media_attachment is required when message_type=media_attachment" };
+  }
+  if (typeof candidate.media_attachment.media_id !== "string" || !candidate.media_attachment.media_id.trim()) {
+    return { ok: false, status: 422, error: "media_attachment.media_id is required" };
+  }
+  const captionRaw =
+    typeof candidate.media_attachment.caption === "string" ? candidate.media_attachment.caption.trim() : undefined;
+  if (captionRaw && captionRaw.length > 4000) {
+    return { ok: false, status: 422, error: "media_attachment.caption is too long (max 4000 chars)" };
+  }
+  if (bodyTextRaw && bodyTextRaw.length > 4000) {
     return { ok: false, status: 422, error: "body is too long (max 4000 chars)" };
   }
-  return { ok: true, payload: { body: bodyText } };
+
+  const normalizedText = bodyTextRaw || captionRaw || "Shared media attachment";
+  return {
+    ok: true,
+    payload: {
+      body: normalizedText,
+      message_type: "media_attachment",
+      media_attachment: {
+        media_id: candidate.media_attachment.media_id.trim(),
+        ...(captionRaw ? { caption: captionRaw } : {}),
+      },
+    },
+  };
 }
 
 function validateMarkSeenPayload(body: unknown):

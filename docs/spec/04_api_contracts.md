@@ -84,13 +84,13 @@
   - Purpose: return caller coaching progress aggregates.
 - `POST /api/coaching/broadcast` (implemented baseline)
   - Purpose: role-gated coaching broadcast write with scope audit trail.
-- `GET /api/coaching/coaches` (planned — C2)
+- `GET /api/coaching/coaches` (implemented — C2)
   - Purpose: list available coaches with specialties, engagement availability, and profile metadata for marketplace discovery.
-- `POST /api/coaching/engagements` (planned — C2)
+- `POST /api/coaching/engagements` (implemented — C2)
   - Purpose: create engagement request between client and coach. Returns engagement state and entitlement context.
-- `GET /api/coaching/engagements/me` (planned — C2)
+- `GET /api/coaching/engagements/me` (implemented — C2)
   - Purpose: return caller's active engagement(s), state, and entitlement fields (`entitlement_state`, `plan_tier_label`, `status_reason`, `next_step_cta`).
-- `GET /api/coaching/assignments/me` (planned — C3)
+- `GET /api/coaching/assignments/me` (implemented — C3)
   - Purpose: return merged goals/tasks feed for caller, categorized by unified taxonomy (`personal_goal`, `team_leader_goal`, `coach_goal`, `personal_task`, `coach_task`). Sources from existing goals system + message-linked assignments. No new tables.
 - `POST /api/ai/suggestions` (implemented baseline)
   - Purpose: create approval-gated AI suggestion (advisory only).
@@ -426,6 +426,14 @@ These notes are additive contract guidance only. They do not introduce a new end
   - Returns chart-ready backend projection/actual series; frontend should render these directly without client-side projection math.
 - `POST /teams`
   - Creates a team and auto-creates creator membership with `team_leader` role.
+- `GET /teams/{id}`
+  - Returns team detail for authorized team members only.
+  - `members[]` response rows include roster-safe profile summary fields for DM handoff wiring:
+    - `user_id` (UUID, canonical member id for direct-channel targeting)
+    - `role`
+    - `full_name`
+    - `email` (nullable; present only when available in `public.users`)
+    - `avatar_url` (nullable)
 - `POST /teams/{id}/members`
   - Enforces leader-only member management.
 - `POST /challenge-participants`
@@ -541,19 +549,19 @@ These notes are additive contract guidance only. They do not introduce a new end
     - `team`: team leader or platform admin
     - `journey`: requires `scope_id`
     - `global`: platform admin only
-- `GET /api/coaching/coaches` (planned — C2)
+- `GET /api/coaching/coaches` (implemented — C2)
   - Returns array of coach profiles with: `id`, `name`, `avatar_url`, `specialties[]`, `bio`, `engagement_availability` (`available | waitlist | unavailable`).
   - Filters: `specialty`, `availability`.
   - No role restriction (any authenticated user can browse marketplace).
-- `POST /api/coaching/engagements` (planned — C2)
+- `POST /api/coaching/engagements` (implemented — C2)
   - Request: `{ coach_id }`.
   - Creates engagement record; returns engagement object with `id`, `coach_id`, `client_id`, `status` (`pending | active | ended`), entitlement fields.
   - Entitlement fields: `entitlement_state` (`allowed | pending | blocked | fallback`), `plan_tier_label`, `status_reason`, `next_step_cta`.
   - Restricted to authenticated users with valid subscription entitlement (phase 1: shell check only).
-- `GET /api/coaching/engagements/me` (planned — C2)
+- `GET /api/coaching/engagements/me` (implemented — C2)
   - Returns caller's engagement(s) with full state and entitlement context.
   - Used by Coach tab to determine pre-engagement vs post-engagement routing.
-- `GET /api/coaching/assignments/me` (planned — C3)
+- `GET /api/coaching/assignments/me` (implemented — C3)
   - Returns unified feed of goals + message-linked tasks for caller.
   - Each item includes: `id`, `type` (`personal_goal | team_leader_goal | coach_goal | personal_task | coach_task`), `title`, `status` (`pending | in_progress | completed`), `due_at`, `assignee_id`, `source` (`goals | message_linked`), `created_at`.
   - Additive sync fields for message-linked task parity:
@@ -563,6 +571,10 @@ These notes are additive contract guidance only. They do not introduce a new end
     - `thread_read_state` (`unread | read | unknown`) for message-linked records
     - `rights` (`can_edit_fields`, `can_update_status`, `can_mark_complete`, `can_reassign`)
   - Merges from existing goals table + messages with `message_kind` metadata. No new tables.
+  - Message-linked tasks use latest-event-wins merge semantics keyed by task id (newest thread event per task is surfaced; stale prior task events are collapsed).
+  - Rights normalization:
+    - `personal_task`: assignee can update status/complete; non-assignee cannot mutate task fields/status.
+    - `coach_task`: assigned coach-scope actor can edit/reassign, assignee can update status/complete.
   - Sorted by `due_at` ascending (nulls last), then `created_at` descending.
 - `POST /api/ai/suggestions`
   - Always creates records in `pending` status; no outbound send side effects.

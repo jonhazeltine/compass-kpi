@@ -9,6 +9,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+}
+
 async function request(url, options = {}) {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -117,6 +121,7 @@ async function main() {
     sponsorChannelId: null,
     challengeChannelId: null,
     directChannelId: null,
+    directApiChannelId: null,
   };
   const checks = [];
   let serverHandle;
@@ -177,6 +182,48 @@ async function main() {
        on conflict (team_id, user_id) do update set role = excluded.role`,
       [created.teamId, leaderUserId, memberUserId]
     );
+
+    const teamDetail = await request(`${serverHandle.baseUrl}/teams/${created.teamId}`, {
+      method: "GET",
+      headers: { authorization: `Bearer ${leaderToken}` },
+    });
+    record("team_leader", "GET /teams/:id returns roster summaries", teamDetail.status === 200, `status=${teamDetail.status}`);
+    assert(teamDetail.status === 200, `team detail expected 200, got ${teamDetail.status}`);
+    const teamMembers = Array.isArray(teamDetail.data?.members) ? teamDetail.data.members : [];
+    assert(teamMembers.length >= 2, "team detail should include at least leader + member rows");
+    const teamMemberIds = teamMembers.map((row) => row.user_id);
+    assert(teamMemberIds.every((id) => isUuid(id)), "team detail members.user_id should be UUID values");
+    const leaderSummary = teamMembers.find((row) => String(row.user_id) === String(leaderUserId));
+    assert(leaderSummary, "team detail should include leader summary row");
+    assert(
+      typeof leaderSummary.full_name === "string" && leaderSummary.full_name.length > 0,
+      "team detail leader summary should include full_name"
+    );
+
+    const directCreatePayload = {
+      type: "direct",
+      name: `M6 Direct API ${runId}`,
+      context_id: memberUserId,
+      member_user_ids: [memberUserId],
+    };
+    console.log("Direct create payload snippet:", JSON.stringify(directCreatePayload));
+    const directCreate = await request(`${serverHandle.baseUrl}/api/channels`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${leaderToken}`, "content-type": "application/json" },
+      body: JSON.stringify(directCreatePayload),
+    });
+    record(
+      "team_leader",
+      "direct create with real roster UUID target",
+      directCreate.status === 200 || directCreate.status === 201,
+      `status=${directCreate.status}`
+    );
+    assert(
+      directCreate.status === 200 || directCreate.status === 201,
+      `direct create expected 200/201, got ${directCreate.status}`
+    );
+    assert(directCreate.data?.channel?.id, "direct create response should include channel id");
+    created.directApiChannelId = directCreate.data.channel.id;
 
     const sponsorOut = await db.query(
       `insert into public.sponsors (name) values ($1) returning id`,
@@ -376,19 +423,23 @@ async function main() {
     if (dbConnected) {
       try {
         if (created.directChannelId) await db.query(`delete from public.broadcast_log where channel_id = $1`, [created.directChannelId]);
+        if (created.directApiChannelId) await db.query(`delete from public.broadcast_log where channel_id = $1`, [created.directApiChannelId]);
         if (created.challengeChannelId) await db.query(`delete from public.broadcast_log where channel_id = $1`, [created.challengeChannelId]);
         if (created.sponsorChannelId) await db.query(`delete from public.broadcast_log where channel_id = $1`, [created.sponsorChannelId]);
         if (created.teamChannelId) await db.query(`delete from public.broadcast_log where channel_id = $1`, [created.teamChannelId]);
         if (created.directChannelId) await db.query(`delete from public.channel_messages where channel_id = $1`, [created.directChannelId]);
+        if (created.directApiChannelId) await db.query(`delete from public.channel_messages where channel_id = $1`, [created.directApiChannelId]);
         if (created.challengeChannelId) await db.query(`delete from public.channel_messages where channel_id = $1`, [created.challengeChannelId]);
         if (created.sponsorChannelId) await db.query(`delete from public.channel_messages where channel_id = $1`, [created.sponsorChannelId]);
         if (created.teamChannelId) await db.query(`delete from public.channel_messages where channel_id = $1`, [created.teamChannelId]);
         await db.query(`delete from public.message_unreads where user_id = any($1::uuid[])`, [createdAuthUserIds]);
         if (created.directChannelId) await db.query(`delete from public.channel_memberships where channel_id = $1`, [created.directChannelId]);
+        if (created.directApiChannelId) await db.query(`delete from public.channel_memberships where channel_id = $1`, [created.directApiChannelId]);
         if (created.challengeChannelId) await db.query(`delete from public.channel_memberships where channel_id = $1`, [created.challengeChannelId]);
         if (created.sponsorChannelId) await db.query(`delete from public.channel_memberships where channel_id = $1`, [created.sponsorChannelId]);
         if (created.teamChannelId) await db.query(`delete from public.channel_memberships where channel_id = $1`, [created.teamChannelId]);
         if (created.directChannelId) await db.query(`delete from public.channels where id = $1`, [created.directChannelId]);
+        if (created.directApiChannelId) await db.query(`delete from public.channels where id = $1`, [created.directApiChannelId]);
         if (created.challengeChannelId) await db.query(`delete from public.channels where id = $1`, [created.challengeChannelId]);
         if (created.sponsorChannelId) await db.query(`delete from public.channels where id = $1`, [created.sponsorChannelId]);
         if (created.teamChannelId) await db.query(`delete from public.channels where id = $1`, [created.teamChannelId]);
@@ -414,4 +465,3 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
-

@@ -261,6 +261,7 @@ type TeamLogContext = {
 };
 type TeamDirectoryMember = {
   id: string;
+  userId: string | null;
   name: string;
   metric: string;
   sub: string;
@@ -274,6 +275,24 @@ type TeamDirectoryMember = {
   journeys: string[];
   onboardingKpiGoals?: Partial<Record<'PC' | 'GP' | 'VP', number>>;
   profileKpiGoals?: Partial<Record<'PC' | 'GP' | 'VP', number>>;
+};
+type TeamApiMemberSummary = {
+  user_id: string;
+  role?: string | null;
+  full_name?: string | null;
+  email?: string | null;
+  avatar_url?: string | null;
+};
+type TeamDetailResponse = {
+  team?: {
+    id?: string;
+    name?: string | null;
+    created_by?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+  } | null;
+  members?: TeamApiMemberSummary[] | null;
+  error?: string;
 };
 type CoachingShellScreen =
   | 'inbox'
@@ -2369,6 +2388,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [teamFocusEditorFilter, setTeamFocusEditorFilter] = useState<TeamFocusEditorFilter>('PC');
   const [teamProfileMemberId, setTeamProfileMemberId] = useState<string | null>(null);
   const [teamCommsHandoffError, setTeamCommsHandoffError] = useState<string | null>(null);
+  const [teamRosterMembers, setTeamRosterMembers] = useState<TeamApiMemberSummary[]>([]);
+  const [teamRosterName, setTeamRosterName] = useState<string | null>(null);
+  const [teamRosterError, setTeamRosterError] = useState<string | null>(null);
+  const [teamRosterTeamId, setTeamRosterTeamId] = useState<string | null>(null);
   const [teamIdentityAvatar, setTeamIdentityAvatar] = useState('🛡️');
   const [teamIdentityBackground, setTeamIdentityBackground] = useState('#dff0da');
   const [teamIdentityEditOpen, setTeamIdentityEditOpen] = useState(false);
@@ -5784,10 +5807,22 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     ],
     [challengeKpiGroups.GP.length, challengeKpiGroups.PC.length, challengeKpiGroups.VP.length]
   );
-  const teamMemberDirectory = useMemo<TeamDirectoryMember[]>(
+  const teamRuntimeId = useMemo(() => {
+    const fromChallenges =
+      challengeListItems.find((item) => Boolean(item.raw?.team_id))?.raw?.team_id ??
+      challengeListItems.find((item) => item.challengeModeLabel === 'Team' && Boolean(item.raw?.team_id))?.raw?.team_id ??
+      null;
+    if (fromChallenges) return String(fromChallenges);
+    const fromChannels = (Array.isArray(channelsApiRows) ? channelsApiRows : []).find(
+      (row) => String(row.type ?? '').toLowerCase() === 'team' && row.team_id
+    )?.team_id;
+    return fromChannels ? String(fromChannels) : null;
+  }, [challengeListItems, channelsApiRows]);
+  const fallbackTeamMemberDirectory = useMemo<TeamDirectoryMember[]>(
     () => [
       {
         id: 'member-sarah-johnson',
+        userId: null,
         name: 'Sarah Johnson',
         metric: '98%',
         sub: '8 KPIs logged',
@@ -5804,6 +5839,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       },
       {
         id: 'member-alex-rodriguez',
+        userId: null,
         name: 'Alex Rodriguez',
         metric: '92%',
         sub: '8 KPIs logged',
@@ -5820,6 +5856,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       },
       {
         id: 'member-james-mateo',
+        userId: null,
         name: 'James Mateo',
         metric: '90%',
         sub: 'sarah@company.com',
@@ -5837,6 +5874,40 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     ],
     []
   );
+  const teamMemberDirectory = useMemo<TeamDirectoryMember[]>(() => {
+    if (!Array.isArray(teamRosterMembers) || teamRosterMembers.length === 0) {
+      return fallbackTeamMemberDirectory;
+    }
+    const seedByName = new Map(
+      fallbackTeamMemberDirectory.map((row) => [
+        String(row.name).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(),
+        row,
+      ] as const)
+    );
+    const sortedRosterRows = [...teamRosterMembers].sort((a, b) => {
+      const aIsLeader = String(a.role ?? '').toLowerCase().includes('lead');
+      const bIsLeader = String(b.role ?? '').toLowerCase().includes('lead');
+      if (aIsLeader !== bIsLeader) return aIsLeader ? -1 : 1;
+      return String(a.full_name ?? '').localeCompare(String(b.full_name ?? ''));
+    });
+    return sortedRosterRows.map((member, idx) => {
+      const userId = String(member.user_id ?? '').trim();
+      const name = String(member.full_name ?? '').trim() || `Team Member ${idx + 1}`;
+      const roleRaw = String(member.role ?? '').toLowerCase();
+      const roleLabel = roleRaw.includes('lead') ? 'Team Lead' : 'Member';
+      const seed = seedByName.get(name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()) ?? fallbackTeamMemberDirectory[idx % fallbackTeamMemberDirectory.length];
+      return {
+        ...seed,
+        id: userId || seed.id,
+        userId: userId || null,
+        name,
+        roleLabel,
+        avatarTone: seed.avatarTone,
+        email: member.email ? String(member.email) : seed.email,
+        sub: seed.sub,
+      };
+    });
+  }, [fallbackTeamMemberDirectory, teamRosterMembers]);
   const challengeSelected =
     challengeListItems.find((item) => item.id === challengeSelectedId) ?? challengeListItems[0];
   const challengeScopedKpis = useMemo(
@@ -6775,6 +6846,44 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
   }, [session?.access_token]);
 
+  const fetchTeamRoster = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token || !teamRuntimeId) {
+      setTeamRosterMembers([]);
+      setTeamRosterName(null);
+      setTeamRosterError(null);
+      setTeamRosterTeamId(null);
+      return;
+    }
+    try {
+      setTeamRosterError(null);
+      const response = await fetch(`${API_URL}/teams/${encodeURIComponent(teamRuntimeId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as TeamDetailResponse;
+      if (!response.ok) {
+        const fallback = `Team roster request failed (${response.status})`;
+        setTeamRosterError(mapCommsHttpError(response.status, getApiErrorMessage(body, fallback)));
+        setTeamRosterMembers([]);
+        setTeamRosterName(null);
+        setTeamRosterTeamId(teamRuntimeId);
+        return;
+      }
+      const members = (Array.isArray(body.members) ? body.members : []).filter(
+        (member): member is TeamApiMemberSummary =>
+          typeof member?.user_id === 'string' && String(member.user_id).trim().length > 0
+      );
+      setTeamRosterMembers(members);
+      setTeamRosterName(body.team?.name ? String(body.team.name) : null);
+      setTeamRosterTeamId(teamRuntimeId);
+    } catch (err) {
+      setTeamRosterError(err instanceof Error ? err.message : 'Failed to load team roster');
+      setTeamRosterMembers([]);
+      setTeamRosterName(null);
+      setTeamRosterTeamId(teamRuntimeId);
+    }
+  }, [session?.access_token, teamRuntimeId]);
+
   const queueAiSuggestionForApproval = useCallback(async () => {
     const token = session?.access_token;
     const ctx = aiAssistContext;
@@ -7490,6 +7599,106 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     [bootstrapCommsStreamForSurface, broadcastDraft, fetchChannelMessages, fetchChannels, session?.access_token]
   );
 
+  const openDirectThreadForMember = useCallback(
+    async ({
+      targetUserId,
+      memberName,
+      source,
+      closeTeamProfile,
+    }: {
+      targetUserId: string;
+      memberName: string;
+      source: CoachingShellEntrySource;
+      closeTeamProfile?: boolean;
+    }) => {
+      const normalizeName = (value: string | null | undefined) =>
+        String(value ?? '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, ' ')
+          .trim();
+      const memberNameKey = normalizeName(memberName);
+      const directChannelMatch = (channelsApiRows ?? []).find((row) => {
+        const type = String(row.type ?? '').toLowerCase();
+        if (type !== 'direct' && type !== 'dm') return false;
+        if (String(row.context_id ?? '') === String(targetUserId)) return true;
+        const channelNameKey = normalizeName(row.name);
+        return Boolean(channelNameKey) && (channelNameKey.includes(memberNameKey) || memberNameKey.includes(channelNameKey));
+      });
+
+      let targetChannelId = directChannelMatch ? String(directChannelMatch.id ?? '') : '';
+      let targetChannelName = directChannelMatch ? String(directChannelMatch.name ?? `${memberName} DM`) : '';
+      if (!targetChannelId) {
+        const token = session?.access_token;
+        if (!token) throw new Error('Sign in is required to start a direct message (401).');
+        const myDisplayName =
+          String(
+            session?.user?.user_metadata?.full_name ??
+            session?.user?.user_metadata?.name ??
+            session?.user?.user_metadata?.first_name ??
+            session?.user?.email?.split('@')[0] ??
+            'You'
+          ).trim() || 'You';
+        const directChannelName = `${myDisplayName} / ${memberName}`;
+        const createResponse = await fetch(`${API_URL}/api/channels`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'direct',
+            name: directChannelName,
+            context_id: targetUserId,
+            member_user_ids: [targetUserId],
+          }),
+        });
+        const createPayload = (await createResponse.json().catch(() => ({}))) as ChannelCreateResponse;
+        if (!createResponse.ok) {
+          const fallback = `Direct message channel create failed (${createResponse.status})`;
+          throw new Error(mapCommsHttpError(createResponse.status, getApiErrorMessage(createPayload, fallback)));
+        }
+        targetChannelId = String(createPayload.channel?.id ?? '');
+        targetChannelName = String(createPayload.channel?.name ?? directChannelName);
+        if (!targetChannelId) throw new Error('Direct message channel create response missing id');
+        await fetchChannels();
+      }
+
+      if (closeTeamProfile) setTeamProfileMemberId(null);
+      setActiveTab('comms');
+      setCommsHubPrimaryTab('dms');
+      setCommsHubSearchQuery('');
+      setCommsHubScopeFilter('all');
+      setBroadcastError(null);
+      setBroadcastSuccessNote(null);
+      setChannelMessageSubmitError(null);
+      setChannelsError(null);
+      setSelectedChannelId(targetChannelId);
+      setSelectedChannelName(targetChannelName);
+      openCoachingShell('channel_thread', {
+        source,
+        preferredChannelScope: 'community',
+        preferredChannelLabel: targetChannelName,
+        threadTitle: targetChannelName,
+        threadHeaderDisplayName: null,
+        threadSub: `Direct message with ${memberName}.`,
+        broadcastAudienceLabel: null,
+        broadcastRoleAllowed: false,
+      });
+      void fetchChannelMessages(targetChannelId);
+    },
+    [
+      channelsApiRows,
+      fetchChannelMessages,
+      fetchChannels,
+      openCoachingShell,
+      session?.access_token,
+      session?.user?.email,
+      session?.user?.user_metadata?.first_name,
+      session?.user?.user_metadata?.full_name,
+      session?.user?.user_metadata?.name,
+    ]
+  );
+
   useEffect(() => {
     if (activeTab !== 'comms') return;
     if (
@@ -7545,6 +7754,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       }
     }
   }, [activeTab, channelsApiRows, channelsLoading, coachingShellScreen, fetchChannels]);
+
+  useEffect(() => {
+    if (activeTab !== 'team' && activeTab !== 'comms') return;
+    if (!teamRuntimeId) return;
+    if (teamRosterTeamId === teamRuntimeId && (teamRosterMembers.length > 0 || teamRosterError)) return;
+    void fetchTeamRoster();
+  }, [activeTab, fetchTeamRoster, teamRosterError, teamRosterMembers.length, teamRosterTeamId, teamRuntimeId]);
 
   useEffect(() => {
     if (activeTab !== 'comms') return;
@@ -8949,7 +9165,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               };
               const teamPrimaryChallenge =
                 challengeListItems.find((item) => item.challengeModeLabel === 'Team') ?? challengeListItems[0] ?? null;
-              const teamIdentityName = 'The Elite Group';
+              const teamIdentityName = teamRosterName ?? 'The Elite Group';
               const openTeamCommsHandoff = (source: CoachingShellEntrySource) => {
                 setTeamCommsHandoffError(null);
                 const allChannelRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
@@ -9078,86 +9294,20 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   : 0;
               const selectedTeamProfile = teamMembers.find((row) => row.id === teamProfileMemberId) ?? null;
               const openTeamDirectThread = async (member: (typeof teamMembers)[number], source: CoachingShellEntrySource) => {
-                const normalizeName = (value: string | null | undefined) =>
-                  String(value ?? '')
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]+/g, ' ')
-                    .trim();
-                const memberNameKey = normalizeName(member.name);
-                const directChannelMatch = (channelsApiRows ?? []).find((row) => {
-                  const type = String(row.type ?? '').toLowerCase();
-                  if (type !== 'direct' && type !== 'dm') return false;
-                  if (String(row.context_id ?? '') === String(member.id)) return true;
-                  const channelNameKey = normalizeName(row.name);
-                  return Boolean(channelNameKey) && (channelNameKey.includes(memberNameKey) || memberNameKey.includes(channelNameKey));
-                });
-                let targetChannelId = directChannelMatch ? String(directChannelMatch.id ?? '') : '';
-                let targetChannelName = directChannelMatch ? String(directChannelMatch.name ?? `${member.name} DM`) : '';
-
+                if (!member.userId) {
+                  const msg = `Member identity unavailable for ${member.name}. Refresh team roster and try again.`;
+                  setChannelsError(msg);
+                  return;
+                }
                 try {
-                  if (!targetChannelId) {
-                    const token = session?.access_token;
-                    if (!token) {
-                      throw new Error('Sign in is required to start a direct message (401).');
-                    }
-                    const myDisplayName = String(resolvedDisplayName ?? '').trim() || 'You';
-                    const directChannelName = `${myDisplayName} / ${member.name}`;
-                    const createResponse = await fetch(`${API_URL}/api/channels`, {
-                      method: 'POST',
-                      headers: {
-                        Authorization: `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                      },
-                      body: JSON.stringify({
-                        type: 'direct',
-                        name: directChannelName,
-                        context_id: member.id,
-                        member_user_ids: [member.id],
-                      }),
-                    });
-                    const createPayload = (await createResponse.json().catch(() => ({}))) as ChannelCreateResponse;
-                    if (!createResponse.ok) {
-                      const fallback = `Direct message channel create failed (${createResponse.status})`;
-                      throw new Error(mapCommsHttpError(createResponse.status, getApiErrorMessage(createPayload, fallback)));
-                    }
-                    targetChannelId = String(createPayload.channel?.id ?? '');
-                    targetChannelName = String(createPayload.channel?.name ?? directChannelName);
-                    if (!targetChannelId) {
-                      throw new Error('Direct message channel create response missing id');
-                    }
-                    await fetchChannels();
-                  }
-
-                  setTeamProfileMemberId(null);
-                  setActiveTab('comms');
-                  setCommsHubPrimaryTab('dms');
-                  setCommsHubSearchQuery('');
-                  setCommsHubScopeFilter('all');
-                  setBroadcastError(null);
-                  setBroadcastSuccessNote(null);
-                  setChannelMessageSubmitError(null);
-                  setSelectedChannelId(targetChannelId);
-                  setSelectedChannelName(targetChannelName);
-                  openCoachingShell('channel_thread', {
+                  await openDirectThreadForMember({
+                    targetUserId: member.userId,
+                    memberName: member.name,
                     source,
-                    preferredChannelScope: 'community',
-                    preferredChannelLabel: targetChannelName,
-                    threadTitle: targetChannelName,
-                    threadSub: `Direct message with ${member.name}.`,
-                    broadcastAudienceLabel: null,
-                    broadcastRoleAllowed: false,
+                    closeTeamProfile: true,
                   });
-                  void fetchChannelMessages(targetChannelId);
                 } catch (err) {
                   const failureMessage = err instanceof Error ? err.message : `Unable to open direct thread with ${member.name}.`;
-                  setTeamProfileMemberId(null);
-                  setActiveTab('comms');
-                  setCommsHubPrimaryTab('dms');
-                  setCommsHubSearchQuery('');
-                  setCommsHubScopeFilter('all');
-                  setBroadcastError(null);
-                  setBroadcastSuccessNote(null);
-                  setChannelMessageSubmitError(null);
                   setSelectedChannelId(null);
                   setSelectedChannelName(null);
                   setChannelsError(failureMessage);
@@ -9166,6 +9316,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     preferredChannelScope: 'community',
                     preferredChannelLabel: member.name,
                     threadTitle: null,
+                    threadHeaderDisplayName: null,
                     threadSub: `Unable to open direct thread with ${member.name}.`,
                     broadcastAudienceLabel: null,
                     broadcastRoleAllowed: false,
@@ -10397,7 +10548,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const selectedChannelNameKey = normalizeName(selectedChannelResolvedName);
               const selectedDmDirectoryMember =
                 selectedChannelType === 'direct' || selectedChannelType === 'dm'
-                  ? teamMemberDirectory.find((member) => String(selectedChannelRow?.context_id ?? '') === String(member.id)) ??
+                  ? teamMemberDirectory.find((member) => {
+                      const memberUserId = member.userId ? String(member.userId) : '';
+                      return memberUserId.length > 0 && String(selectedChannelRow?.context_id ?? '') === memberUserId;
+                    }) ??
                     teamMemberDirectory.find((member) => {
                       const memberNameKey = normalizeName(member.name);
                       return Boolean(memberNameKey) && (
@@ -10581,6 +10735,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 created_at: row.created_at ?? null,
                 snippet: null,
               }));
+              const commsRosterDmRows = teamMemberDirectory
+                .filter((member) => Boolean(member.userId))
+                .map((member) => ({
+                  id: String(member.userId),
+                  name: member.name,
+                  role: member.roleLabel,
+                }));
 
               return (
                 <>
@@ -10638,13 +10799,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         });
                       }}
                       onOpenDm={(dmId, dmName) => {
-                        openCoachingShell('channel_thread', {
-                          preferredChannelScope: 'community',
-                          preferredChannelLabel: dmName,
-                          threadTitle: dmName,
-                          threadSub: `Direct message with ${dmName}.`,
-                          broadcastAudienceLabel: null,
-                          broadcastRoleAllowed: false,
+                        void openDirectThreadForMember({
+                          targetUserId: dmId,
+                          memberName: dmName,
+                          source: 'user_tab',
+                        }).catch((err) => {
+                          setSelectedChannelId(null);
+                          setSelectedChannelName(null);
+                          setChannelsError(err instanceof Error ? err.message : `Unable to open direct thread with ${dmName}.`);
                         });
                       }}
                       onOpenBroadcast={() => {
@@ -10689,11 +10851,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       channelsError={channelsError}
                       onRetryChannels={() => void fetchChannels()}
                       fallbackChannels={channelRows.map((r) => ({ scope: r.scope, label: r.label, context: r.context }))}
-                      fallbackDms={[
-                        { id: 'dm-sarah', name: 'Sarah Johnson', role: 'Team Lead' },
-                        { id: 'dm-alex', name: 'Alex Rodriguez', role: 'Member' },
-                        { id: 'dm-james', name: 'James Matew', role: 'Team Lead' },
-                      ]}
+                      fallbackDms={commsRosterDmRows}
                       useFallback={fallbackChannelRowsVisible}
                       selectedChannelId={selectedChannelResolvedId}
                       selectedChannelName={selectedChannelDisplayName}
@@ -10992,11 +11150,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           })
                         ) : fallbackChannelRowsVisible ? (
                           commsHubPrimaryTab === 'dms'
-                            ? ([
-                                { id: 'dm-sarah', name: 'Sarah Johnson', role: 'Team Lead' },
-                                { id: 'dm-alex', name: 'Alex Rodriguez', role: 'Member' },
-                                { id: 'dm-james', name: 'James Matew', role: 'Team Lead' },
-                              ] as const).map((member) => (
+                            ? commsRosterDmRows.map((member) => (
                                 <TouchableOpacity
                                   key={member.id}
                                   style={[styles.coachingShellListRow, shellPackageGateBlocksActions ? styles.disabled : null]}
@@ -11004,13 +11158,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                   onPress={() =>
                                     shellPackageGateBlocksActions
                                       ? undefined
-                                      : openCoachingShell('channel_thread', {
-                                          preferredChannelScope: 'community',
-                                          preferredChannelLabel: member.name,
-                                          threadTitle: member.name,
-                                          threadSub: `Direct message with ${member.name}.`,
-                                          broadcastAudienceLabel: null,
-                                          broadcastRoleAllowed: false,
+                                      : void openDirectThreadForMember({
+                                          targetUserId: member.id,
+                                          memberName: member.name,
+                                          source: 'user_tab',
+                                        }).catch((err) => {
+                                          setSelectedChannelId(null);
+                                          setSelectedChannelName(null);
+                                          setChannelsError(err instanceof Error ? err.message : `Unable to open direct thread with ${member.name}.`);
                                         })
                                   }
                                 >

@@ -246,6 +246,13 @@
 - When caller posts `POST /api/channels` with `type='direct'`
 - Then API returns deterministic `422` (no generic `500` validation failure)
 
+### 13J) Team Roster Backed DM Target Identity
+- Given caller requests `GET /teams/{id}` for a team they belong to
+- When response returns `members[]`
+- Then each member row includes canonical `user_id` (UUID) and role/name summary fields for DM targeting
+- And Team profile + DMs recipient actions use `members[].user_id` (not static/mock ids) when posting `POST /api/channels` direct create payloads
+- And direct-thread handoff opens `channel_thread` immediately after resolve/create path completes
+
 ### 14) Coaching Journey and Lesson Progress
 - Given an authenticated user and active coaching journey with milestones/lessons
 - When user requests `GET /api/coaching/journeys` and `GET /api/coaching/journeys/{id}`
@@ -474,6 +481,7 @@
 - When authorized actor posts `POST /api/channels/{id}/messages` with `task_action=update` or `task_action=complete` and matching `task_id`
 - Then thread response reflects updated `linked_task_card.status` and task metadata
 - And `GET /api/coaching/assignments/me` reflects the same status in the corresponding `message_linked` item
+- And assignments feed returns one current row per task id (latest thread task event only; prior task-event rows are not duplicated)
 - And sync metadata (`last_thread_event_at`, `source_message_id`) stays consistent across both responses
 
 ### 39) Thread Read-State Sync for Message-Linked Tasks (M6)
