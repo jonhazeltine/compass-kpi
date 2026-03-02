@@ -2346,6 +2346,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [teamFocusEditorOpen, setTeamFocusEditorOpen] = useState(false);
   const [teamFocusEditorFilter, setTeamFocusEditorFilter] = useState<TeamFocusEditorFilter>('PC');
   const [teamProfileMemberId, setTeamProfileMemberId] = useState<string | null>(null);
+  const [teamCommsHandoffError, setTeamCommsHandoffError] = useState<string | null>(null);
   const [teamIdentityAvatar, setTeamIdentityAvatar] = useState('🛡️');
   const [teamIdentityBackground, setTeamIdentityBackground] = useState('#dff0da');
   const [teamIdentityEditOpen, setTeamIdentityEditOpen] = useState(false);
@@ -8916,19 +8917,70 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 setChallengeFlowScreen(mode);
                 setActiveTab('challenge');
               };
+              const teamPrimaryChallenge =
+                challengeListItems.find((item) => item.challengeModeLabel === 'Team') ?? challengeListItems[0] ?? null;
               const openTeamCommsHandoff = (source: CoachingShellEntrySource) => {
+                setTeamCommsHandoffError(null);
+                const allChannelRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
+                const currentTeamContextIdRaw =
+                  teamPrimaryChallenge?.raw?.team_id ??
+                  teamChallengeRowsForSurface.find((item) => item.raw?.team_id)?.raw?.team_id ??
+                  null;
+                const currentTeamContextId = currentTeamContextIdRaw ? String(currentTeamContextIdRaw) : null;
+                const teamChannelsBase = allChannelRows.filter((row) => String(row.type ?? '').toLowerCase() === 'team');
+                const teamChannelsAccessible = teamChannelsBase.filter((row) => row.is_active !== false);
+                const teamChannels = teamChannelsAccessible.length > 0 ? teamChannelsAccessible : teamChannelsBase;
+                const scopedTeamChannel =
+                  currentTeamContextId != null
+                    ? teamChannels.find((row) => String(row.team_id ?? '') === currentTeamContextId) ?? null
+                    : null;
+                const resolvedTeamChannel = scopedTeamChannel ?? teamChannels[0] ?? null;
+                const broadcastAudienceLabel =
+                  source === 'team_leader_dashboard'
+                    ? String(resolvedTeamChannel?.name ?? coachingShellContext.broadcastAudienceLabel ?? 'The Elite Group')
+                    : null;
+
+                setActiveTab('comms');
+                setCommsHubPrimaryTab('channels');
+                setCommsHubScopeFilter('team');
+                setCommsHubSearchQuery('');
+                setChannelMessageSubmitError(null);
+                setBroadcastError(null);
+
+                if (resolvedTeamChannel) {
+                  const resolvedTeamChannelId = String(resolvedTeamChannel.id);
+                  const resolvedTeamChannelName = String(resolvedTeamChannel.name ?? 'Team Channel');
+                  setSelectedChannelId(resolvedTeamChannelId);
+                  setSelectedChannelName(resolvedTeamChannelName);
+                  openCoachingShell('channel_thread', {
+                    source,
+                    preferredChannelScope: 'team',
+                    preferredChannelLabel: resolvedTeamChannelName,
+                    threadTitle: resolvedTeamChannelName,
+                    threadSub: 'Live team conversation.',
+                    broadcastAudienceLabel,
+                    broadcastRoleAllowed: source === 'team_leader_dashboard',
+                  });
+                  void fetchChannelMessages(resolvedTeamChannelId);
+                  return;
+                }
+
+                setSelectedChannelId(null);
+                setSelectedChannelName(null);
+                setTeamCommsHandoffError('No team channel is available yet. Opened Channels for fallback.');
                 openCoachingShell('inbox_channels', {
                   source,
                   preferredChannelScope: 'team',
-                  preferredChannelLabel: 'Team Updates',
-                  threadTitle: 'Team Updates',
-                  threadSub: 'Team updates thread.',
-                  broadcastAudienceLabel: source === 'team_leader_dashboard' ? 'The Elite Group' : null,
+                  preferredChannelLabel: 'Team',
+                  threadTitle: null,
+                  threadSub: 'Team channel unavailable. Select an available channel.',
+                  broadcastAudienceLabel,
                   broadcastRoleAllowed: source === 'team_leader_dashboard',
                 });
+                if (!channelsLoading && !Array.isArray(channelsApiRows)) {
+                  void fetchChannels();
+                }
               };
-              const teamPrimaryChallenge =
-                challengeListItems.find((item) => item.challengeModeLabel === 'Team') ?? challengeListItems[0] ?? null;
               const teamFocusSelectedRows = teamSurfaceKpis.filter((kpi) => teamFocusSelectedKpiIds.includes(String(kpi.id)));
               const teamFocusKpisForDisplay = teamFocusSelectedRows.length > 0 ? teamFocusSelectedRows : teamSurfaceKpis.slice(0, 4);
               const teamMandatedKpiIdsOrdered = teamFocusKpisForDisplay.map((kpi) => String(kpi.id));
@@ -9138,6 +9190,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </TouchableOpacity>
                     ) : null}
                   </View>
+                  {teamCommsHandoffError ? (
+                    <Text style={styles.teamIdentityCardInlineError}>{teamCommsHandoffError}</Text>
+                  ) : null}
                   <Modal
                     visible={teamIdentityEditOpen}
                     transparent
@@ -15104,6 +15159,12 @@ const styles = StyleSheet.create({
     color: '#2a3140',
     fontSize: 16,
     fontWeight: '700',
+  },
+  teamIdentityCardInlineError: {
+    marginTop: 6,
+    fontSize: 11,
+    color: '#b3261e',
+    fontWeight: '600',
   },
   teamIdentityEditOverlay: {
     flex: 1,
