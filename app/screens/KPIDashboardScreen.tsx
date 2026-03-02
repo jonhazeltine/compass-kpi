@@ -5041,7 +5041,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
     if (tab === 'logs') {
       setViewMode('log');
-      setLogsReportsSubview('logs');
+      setLogsReportsSubview('reports');
       return;
     }
     if (tab === 'team') {
@@ -11780,25 +11780,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               <TouchableOpacity
                 style={[
                   styles.logsReportsSwitchBtn,
-                  logsReportsSubview === 'logs' ? styles.logsReportsSwitchBtnActive : null,
-                ]}
-                onPress={() => setLogsReportsSubview('logs')}
-                accessibilityRole="button"
-                accessibilityState={{ selected: logsReportsSubview === 'logs' }}
-                accessibilityLabel="Open logs history"
-              >
-                <Text
-                  style={[
-                    styles.logsReportsSwitchText,
-                    logsReportsSubview === 'logs' ? styles.logsReportsSwitchTextActive : null,
-                  ]}
-                >
-                  Logs
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.logsReportsSwitchBtn,
                   logsReportsSubview === 'reports' ? styles.logsReportsSwitchBtnActive : null,
                 ]}
                 onPress={() => setLogsReportsSubview('reports')}
@@ -11813,6 +11794,25 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   ]}
                 >
                   Reports
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.logsReportsSwitchBtn,
+                  logsReportsSubview === 'logs' ? styles.logsReportsSwitchBtnActive : null,
+                ]}
+                onPress={() => setLogsReportsSubview('logs')}
+                accessibilityRole="button"
+                accessibilityState={{ selected: logsReportsSubview === 'logs' }}
+                accessibilityLabel="Open logs history"
+              >
+                <Text
+                  style={[
+                    styles.logsReportsSwitchText,
+                    logsReportsSubview === 'logs' ? styles.logsReportsSwitchTextActive : null,
+                  ]}
+                >
+                  Logs
                 </Text>
               </TouchableOpacity>
             </View>
