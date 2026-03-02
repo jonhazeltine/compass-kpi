@@ -11195,6 +11195,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 coachingShellScreen === 'inbox_channels' ||
                 coachingShellScreen === 'channel_thread' ||
                 coachingShellScreen === 'coach_broadcast_compose';
+              const isCoachingContentScreen =
+                coachingShellScreen === 'coaching_journeys' ||
+                coachingShellScreen === 'coaching_journey_detail' ||
+                coachingShellScreen === 'coaching_lesson_detail';
 
               const commsChannelRows: CommsChannelRow[] = sortedPrimaryTabRows.map((row) => ({
                 id: String(row.id),
@@ -11383,7 +11387,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     />
                   ) : null}
                   <View style={[styles.coachingShellCard, isCommsScreen && { display: 'none' } as any]}>
-                    {/* Legacy comms header — kept for non-comms coaching shell screens */}
+                    {/* Comms chrome — hidden for coaching content screens (journey/lesson) */}
+                    {!isCoachingContentScreen && (
+                    <View>
                     <View style={styles.coachingShellTopRow}>
                       <Text style={styles.coachingShellTitle}>Comms Hub</Text>
                       <View style={styles.coachingShellBadge}>
@@ -11482,6 +11488,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         style={styles.coachingShellSearchInput}
                       />
                     </View>
+                    </View>
+                    )}
+                    {!isCoachingContentScreen && (
+                    <>
                     <Text style={styles.coachingShellSub}>Current: {meta.title} · {meta.sub}</Text>
                     {renderCoachingPackageGateBanner(meta.title, shellPackageOutcome, { compact: true })}
                     {shellPackageGateBlocksActions ? (
@@ -12021,6 +12031,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         </View>
                       </View>
                     ) : null}
+                    </>
+                    )}
                     {coachingShellScreen === 'coaching_journeys' ? (
                       <View style={styles.coachingJourneyModule}>
                         {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
@@ -12244,6 +12256,60 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 <Text style={styles.coachingAiAssistBtnText}>AI Journey Draft</Text>
                               </TouchableOpacity>
                             )}
+
+                            {/* ── Enrolled members list ── */}
+                            {(() => {
+                              const journeyTitle = coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? '';
+                              const journeyId = selectedJourneyId ?? '';
+                              const enrolledMembers = teamMemberDirectory.filter(
+                                (m) => m.journeys.some((j) => j === journeyTitle || j === journeyId)
+                              );
+                              return (
+                                <View style={styles.cwfJourneyMembersWrap}>
+                                  <View style={styles.cwfJourneyMembersHeader}>
+                                    <Text style={styles.cwfJourneyMembersTitle}>
+                                      Members {enrolledMembers.length > 0 ? `(${enrolledMembers.length})` : ''}
+                                    </Text>
+                                    {enrolledMembers.length > 0 && isCoachRuntimeOperator && (
+                                      <TouchableOpacity
+                                        style={styles.cwfJourneyMembersBroadcastBtn}
+                                        onPress={() => {
+                                          openCoachingShell('coach_broadcast_compose', {
+                                            broadcastAudienceLabel: `${journeyTitle} enrollees`,
+                                            broadcastRoleAllowed: true,
+                                          });
+                                        }}
+                                      >
+                                        <Text style={styles.cwfJourneyMembersBroadcastText}>📣 Broadcast</Text>
+                                      </TouchableOpacity>
+                                    )}
+                                  </View>
+                                  {enrolledMembers.length === 0 ? (
+                                    <Text style={styles.cwfEmpty}>No enrolled members found for this journey.</Text>
+                                  ) : (
+                                    enrolledMembers.slice(0, 20).map((member) => (
+                                      <TouchableOpacity
+                                        key={member.id}
+                                        style={styles.cwfJourneyMemberRow}
+                                        onPress={() => setTeamProfileMemberId(member.id)}
+                                      >
+                                        <View style={[styles.cwfJourneyMemberAvatar, { backgroundColor: member.avatarTone || '#e8f0fe' }]}>
+                                          <Text style={styles.cwfJourneyMemberAvatarText}>
+                                            {member.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                          </Text>
+                                        </View>
+                                        <View style={styles.cwfJourneyMemberInfo}>
+                                          <Text style={styles.cwfJourneyMemberName} numberOfLines={1}>{member.name}</Text>
+                                          <Text style={styles.cwfJourneyMemberRole} numberOfLines={1}>{member.roleLabel || 'Member'}</Text>
+                                        </View>
+                                        <Text style={styles.cwfJourneyMemberChevron}>›</Text>
+                                      </TouchableOpacity>
+                                    ))
+                                  )}
+                                </View>
+                              );
+                            })()}
+
                             {milestoneRows.length === 0 ? (
                               <View style={styles.coachingJourneyEmptyCard}>
                                 <Text style={styles.coachingJourneyEmptyTitle}>No milestones found</Text>
@@ -22741,6 +22807,71 @@ const styles = StyleSheet.create({
     color: '#3366cc',
     fontWeight: '600' as const,
     fontSize: 13,
+  },
+  /* ── Journey detail members list ── */
+  cwfJourneyMembersWrap: {
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  cwfJourneyMembersHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: 8,
+  },
+  cwfJourneyMembersTitle: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: '#1a1a2e',
+  },
+  cwfJourneyMembersBroadcastBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#fef0e1',
+  },
+  cwfJourneyMembersBroadcastText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: '#c46200',
+  },
+  cwfJourneyMemberRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f2f5',
+  },
+  cwfJourneyMemberAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: 10,
+  },
+  cwfJourneyMemberAvatarText: {
+    fontSize: 12,
+    fontWeight: '700' as const,
+    color: '#fff',
+  },
+  cwfJourneyMemberInfo: {
+    flex: 1,
+  },
+  cwfJourneyMemberName: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: '#1a1a2e',
+  },
+  cwfJourneyMemberRole: {
+    fontSize: 12,
+    color: '#888',
+  },
+  cwfJourneyMemberChevron: {
+    fontSize: 18,
+    color: '#ccc',
+    marginLeft: 4,
   },
   coachGoalsWrap: {
     flex: 1,
