@@ -124,6 +124,9 @@ type MePayload = {
   user_metadata?: {
     selected_kpis?: string[];
     favorite_kpis?: string[];
+    role?: string | null;
+    team_role?: string | null;
+    is_coach?: boolean | null;
   };
 };
 
@@ -338,6 +341,41 @@ type JourneyBuilderLesson = { id: string; title: string; tasks: JourneyBuilderTa
 type JourneyBuilderSaveState = 'idle' | 'pending' | 'saved' | 'error';
 type LibraryAsset = { id: string; title: string; category: string; scope: string; duration: string };
 type LibraryCollection = { id: string; name: string; assetIds: string[] };
+
+/** Drag-handle grip for lesson/task reorder.  Swipe ↑/↓ past threshold to move. */
+const JbDragHandle = React.memo(function JbDragHandle({
+  onMoveUp, onMoveDown, canMoveUp, canMoveDown, small,
+}: {
+  onMoveUp: () => void; onMoveDown: () => void;
+  canMoveUp: boolean; canMoveDown: boolean; small?: boolean;
+}) {
+  const cbRef = React.useRef({ onMoveUp, onMoveDown, canMoveUp, canMoveDown });
+  cbRef.current = { onMoveUp, onMoveDown, canMoveUp, canMoveDown };
+  const pan = React.useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_e, gs) => Math.abs(gs.dy) > 5,
+      onMoveShouldSetPanResponderCapture: (_e, gs) => Math.abs(gs.dy) > 10,
+      onPanResponderRelease: (_e, gs) => {
+        if (gs.dy < -25 && cbRef.current.canMoveUp) cbRef.current.onMoveUp();
+        else if (gs.dy > 25 && cbRef.current.canMoveDown) cbRef.current.onMoveDown();
+      },
+    })
+  ).current;
+  return (
+    <View
+      {...pan.panHandlers}
+      style={{
+        width: small ? 22 : 28, height: small ? 28 : 36,
+        alignItems: 'center' as const, justifyContent: 'center' as const,
+        marginRight: small ? 4 : 8, borderRadius: 4, backgroundColor: '#e2e8f0',
+      }}
+    >
+      <Text style={{ fontSize: small ? 14 : 18, color: '#64748b', letterSpacing: -1 }}>⠿</Text>
+    </View>
+  );
+});
+
 type CoachAssignmentStatus = 'pending' | 'in_progress' | 'completed';
 type CoachAssignment = {
   id: string;
@@ -7372,28 +7410,30 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     });
     if (!response.ok) {
       let message = `Request failed (${response.status})`;
-      try { const payload = (await response.json()) as { error?: unknown }; if (typeof payload.error === 'string' && payload.error) message = payload.error; } catch { /* ignore */ }
+      try {
+        const payload = (await response.json()) as { error?: unknown };
+        if (payload.error && typeof payload.error === 'object' && typeof (payload.error as any).message === 'string') message = (payload.error as any).message;
+        else if (typeof payload.error === 'string' && payload.error) message = payload.error;
+      } catch { /* ignore */ }
       throw new Error(message);
     }
     return (await response.json()) as T;
   }, [session?.access_token]);
 
-  /** Sync local jbLessons from the latest journey detail response */
+  /** Sync local jbLessons from the latest journey detail response.
+   *  API shape: milestones[] (= "lessons" in the UI) → milestone.lessons[] (= "tasks" in the UI).
+   *  milestones table ↔ API :lessonId   |   lessons table ↔ API :taskId */
   const jbSyncLessonsFromDetail = useCallback((detail: CoachingJourneyDetailResponse | null) => {
     if (!detail?.milestones) { setJbLessons([]); return; }
-    const lessons: JourneyBuilderLesson[] = detail.milestones.flatMap((m) =>
-      (m.lessons ?? []).map((l) => ({
+    const lessons: JourneyBuilderLesson[] = (detail.milestones ?? []).map((m) => ({
+      id: String(m.id),
+      title: m.title ?? `Lesson ${(m as any).sort_order ?? 0}`,
+      tasks: (m.lessons ?? []).map((l) => ({
         id: String(l.id),
-        title: l.title ?? `Lesson ${l.sort_order ?? 0}`,
-        tasks: Array.isArray((l as any).tasks)
-          ? (l as any).tasks.map((t: any) => ({
-              id: String(t.id),
-              title: t.title ?? 'Untitled Task',
-              assetId: typeof t.body === 'string' && t.body.startsWith('asset:') ? t.body.slice(6) : null,
-            }))
-          : [],
-      }))
-    );
+        title: l.title ?? 'Untitled Task',
+        assetId: typeof (l as any).body === 'string' && (l as any).body.startsWith('asset:') ? (l as any).body.slice(6) : null,
+      })),
+    }));
     setJbLessons(lessons);
   }, []);
 
@@ -7700,13 +7740,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const bootstrapCommsStreamForSurface = useCallback(
     async (channelId: string, surface: 'thread' | 'broadcast') => {
       if (!channelId) return;
+      if (Array.isArray(channelsApiRows)) {
+        const accessible = channelsApiRows.some((row) => String(row.id) === String(channelId));
+        if (!accessible) {
+          throw new Error('Select an available channel in your current scope before messaging.');
+        }
+      }
       const tokenPurpose: ChannelTokenPurpose = surface === 'broadcast' ? 'channel_admin' : 'chat_write';
       const tokenResult = await ensureStreamChannelToken(channelId, tokenPurpose);
       const shouldSync = surface === 'broadcast' || tokenResult.channelAdmin;
       if (!shouldSync) return;
       await ensureStreamChannelSync(channelId);
     },
-    [ensureStreamChannelSync, ensureStreamChannelToken]
+    [channelsApiRows, ensureStreamChannelSync, ensureStreamChannelToken]
   );
 
   const fetchChannels = useCallback(async () => {
@@ -8223,6 +8269,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setSelectedChannelName(defaultRow.name);
     }
   }, [activeTab, channelsApiRows, coachingShellContext.preferredChannelScope, selectedChannelId]);
+
+  useEffect(() => {
+    if (activeTab !== 'comms') return;
+    if (!selectedChannelId) return;
+    if (!Array.isArray(channelsApiRows)) return;
+    const stillAccessible = channelsApiRows.some((row) => String(row.id) === String(selectedChannelId));
+    if (stillAccessible) return;
+    setSelectedChannelId(null);
+    setSelectedChannelName(null);
+    setBroadcastError('Select an available channel before sending a broadcast.');
+  }, [activeTab, channelsApiRows, selectedChannelId]);
 
   useEffect(() => {
     if (activeTab !== 'comms') return;
@@ -12680,22 +12737,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                       {/* Lesson header with reorder + delete */}
                                       <View style={styles.jbLessonHeader}>
                                         {isCoachRuntimeOperator && (
-                                          <View style={styles.jbReorderBtns}>
-                                            <TouchableOpacity
-                                              style={[styles.jbReorderBtn, lessonIdx === 0 ? styles.jbReorderBtnDisabled : null]}
-                                              disabled={lessonIdx === 0}
-                                              onPress={() => { const jid = selectedJourneyId; if (jid) void jbReorderLessons(jid, lessonIdx, lessonIdx - 1); }}
-                                            >
-                                              <Text style={styles.jbReorderBtnText}>▲</Text>
-                                            </TouchableOpacity>
-                                            <TouchableOpacity
-                                              style={[styles.jbReorderBtn, lessonIdx === jbLessons.length - 1 ? styles.jbReorderBtnDisabled : null]}
-                                              disabled={lessonIdx === jbLessons.length - 1}
-                                              onPress={() => { const jid = selectedJourneyId; if (jid) void jbReorderLessons(jid, lessonIdx, lessonIdx + 1); }}
-                                            >
-                                              <Text style={styles.jbReorderBtnText}>▼</Text>
-                                            </TouchableOpacity>
-                                          </View>
+                                          <JbDragHandle
+                                            canMoveUp={lessonIdx > 0}
+                                            canMoveDown={lessonIdx < jbLessons.length - 1}
+                                            onMoveUp={() => { const jid = selectedJourneyId; if (jid) void jbReorderLessons(jid, lessonIdx, lessonIdx - 1); }}
+                                            onMoveDown={() => { const jid = selectedJourneyId; if (jid) void jbReorderLessons(jid, lessonIdx, lessonIdx + 1); }}
+                                          />
                                         )}
                                         {jbEditingLessonId === lesson.id && isCoachRuntimeOperator ? (
                                           <View style={[styles.jbLessonTitleBtn, styles.jbEditingWrap]}>
@@ -12751,22 +12798,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                         return (
                                           <View key={`jb-task-${task.id}`} style={styles.jbTaskRow}>
                                             {isCoachRuntimeOperator && (
-                                              <View style={styles.jbReorderBtns}>
-                                                <TouchableOpacity
-                                                  style={[styles.jbReorderBtnSm, taskIdx === 0 ? styles.jbReorderBtnDisabled : null]}
-                                                  disabled={taskIdx === 0}
-                                                  onPress={() => { const jid = selectedJourneyId; if (jid) void jbReorderTasks(jid, lesson.id, taskIdx, taskIdx - 1); }}
-                                                >
-                                                  <Text style={styles.jbReorderBtnSmText}>▲</Text>
-                                                </TouchableOpacity>
-                                                <TouchableOpacity
-                                                  style={[styles.jbReorderBtnSm, taskIdx === lesson.tasks.length - 1 ? styles.jbReorderBtnDisabled : null]}
-                                                  disabled={taskIdx === lesson.tasks.length - 1}
-                                                  onPress={() => { const jid = selectedJourneyId; if (jid) void jbReorderTasks(jid, lesson.id, taskIdx, taskIdx + 1); }}
-                                                >
-                                                  <Text style={styles.jbReorderBtnSmText}>▼</Text>
-                                                </TouchableOpacity>
-                                              </View>
+                                              <JbDragHandle
+                                                small
+                                                canMoveUp={taskIdx > 0}
+                                                canMoveDown={taskIdx < lesson.tasks.length - 1}
+                                                onMoveUp={() => { const jid = selectedJourneyId; if (jid) void jbReorderTasks(jid, lesson.id, taskIdx, taskIdx - 1); }}
+                                                onMoveDown={() => { const jid = selectedJourneyId; if (jid) void jbReorderTasks(jid, lesson.id, taskIdx, taskIdx + 1); }}
+                                              />
                                             )}
                                             <View style={styles.jbTaskContent}>
                                               {jbEditingTaskKey === `${lesson.id}:${task.id}` && isCoachRuntimeOperator ? (
@@ -23489,12 +23527,7 @@ const styles = StyleSheet.create({
   jbLessonTitleBtn: { flex: 1, marginRight: 8 },
   jbLessonTitleText: { fontSize: 14, fontWeight: '700' as const, color: '#1e293b' },
   jbLessonTaskCount: { fontSize: 11, color: '#94a3b8', marginTop: 1 },
-  jbReorderBtns: { flexDirection: 'column' as const, marginRight: 8, gap: 2 },
-  jbReorderBtn: { width: 24, height: 20, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: '#e2e8f0', borderRadius: 4 },
-  jbReorderBtnText: { fontSize: 10, color: '#475569' },
-  jbReorderBtnSm: { width: 20, height: 16, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: '#e2e8f0', borderRadius: 3 },
-  jbReorderBtnSmText: { fontSize: 8, color: '#475569' },
-  jbReorderBtnDisabled: { opacity: 0.3 },
+  /* jbReorder ▲/▼ styles removed – replaced by JbDragHandle grip component */
   jbDeleteBtn: { width: 28, height: 28, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 14, backgroundColor: '#fef2f2' },
   jbDeleteBtnText: { fontSize: 14, color: '#dc2626' },
   jbDeleteBtnSm: { width: 24, height: 24, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 12, backgroundColor: '#fef2f2' },
