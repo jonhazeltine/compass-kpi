@@ -48,6 +48,14 @@
   - Purpose: list channels for current user with unread summary.
 - `POST /api/channels` (implemented baseline)
   - Purpose: create channel and seed creator membership.
+  - Additive direct-create note (`M6-DM-DIRECT-CHANNEL-CREATE-BACKEND-A`):
+    - For `type='direct'`, request accepts `member_user_ids: string[]` and creates/reuses a direct thread for the normalized member set.
+    - Response semantics:
+      - `201` + `idempotent_replay=false` when new direct channel is created.
+      - `200` + `idempotent_replay=true` when an existing direct channel for the same member set is reused.
+    - Scope enforcement:
+      - `team_leader`/`team_member` (`agent`) direct-create is limited to shared-team scope.
+      - `challenge_sponsor` direct-create is denied (scope remains sponsor/challenge channels only).
 - `GET /api/channels/{id}/messages` (implemented baseline)
   - Purpose: list messages for a channel (membership required).
 - `POST /api/channels/{id}/messages` (implemented baseline)

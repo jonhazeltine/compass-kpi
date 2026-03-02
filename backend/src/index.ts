@@ -121,9 +121,10 @@ type ChannelType = "team" | "challenge" | "sponsor" | "cohort" | "direct";
 
 type ChannelCreatePayload = {
   type: ChannelType;
-  name: string;
+  name?: string;
   team_id?: string;
   context_id?: string;
+  member_user_ids?: string[];
 };
 
 type ChannelMessagePayload = {
@@ -2082,6 +2083,97 @@ app.post("/api/channels", async (req, res) => {
 
     await ensureUserRow(auth.user.id);
 
+    if (payload.type === "direct") {
+      const requested = payload.member_user_ids ?? [];
+      const memberUserIds = Array.from(new Set([auth.user.id, ...requested]));
+      if (memberUserIds.length < 2) {
+        return res.status(422).json({ error: "direct channels require at least one target member" });
+      }
+
+      const roleResult = await getUserRoleForScope(auth.user.id);
+      if (!roleResult.ok) return res.status(roleResult.status).json({ error: roleResult.error });
+      const actorRole = roleResult.role;
+      if (actorRole === "challenge_sponsor") {
+        return res.status(403).json({ error: "challenge_sponsor scope is limited to sponsor/challenge channels" });
+      }
+
+      const { data: existingUsers, error: usersError } = await dataClient
+        .from("users")
+        .select("id")
+        .in("id", memberUserIds);
+      if (usersError) {
+        return handleSupabaseError(res, "Failed to validate direct channel members", usersError);
+      }
+      const existingUserIdSet = new Set((existingUsers ?? []).map((row) => String((row as { id?: unknown }).id ?? "")));
+      const missingUserId = memberUserIds.find((id) => !existingUserIdSet.has(id));
+      if (missingUserId) {
+        return res.status(422).json({ error: `member_user_ids includes unknown user id: ${missingUserId}` });
+      }
+
+      const requiresSharedTeamScope = actorRole === "team_leader" || actorRole === "agent" || actorRole === "member";
+      if (requiresSharedTeamScope) {
+        for (const targetUserId of memberUserIds) {
+          if (targetUserId === auth.user.id) continue;
+          const sharedScope = await hasSharedTeamMembership(auth.user.id, targetUserId);
+          if (!sharedScope.ok) return res.status(sharedScope.status).json({ error: sharedScope.error });
+          if (!sharedScope.shared) {
+            return res.status(403).json({ error: "Direct channels are limited to members in your shared team scope" });
+          }
+        }
+      }
+
+      const existingChannel = await findExistingDirectChannelForMemberSet(auth.user.id, memberUserIds);
+      if (!existingChannel.ok) return res.status(existingChannel.status).json({ error: existingChannel.error });
+      if (existingChannel.channel) {
+        return res.status(200).json({ channel: existingChannel.channel, idempotent_replay: true });
+      }
+
+      const directName = payload.name && payload.name.trim() ? payload.name.trim() : "Direct Message";
+      const { data: channel, error: channelError } = await dataClient
+        .from("channels")
+        .insert({
+          type: "direct",
+          name: directName,
+          team_id: null,
+          context_id: payload.context_id ?? null,
+          created_by: auth.user.id,
+        })
+        .select("id,type,name,team_id,context_id,created_by,created_at")
+        .single();
+      if (channelError) {
+        return handleSupabaseError(res, "Failed to create direct channel", channelError);
+      }
+
+      const channelMembershipRows = memberUserIds.map((memberUserId) => ({
+        channel_id: channel.id,
+        user_id: memberUserId,
+        role: memberUserId === auth.user.id ? "admin" : "member",
+      }));
+      const { error: membershipError } = await dataClient
+        .from("channel_memberships")
+        .upsert(channelMembershipRows, { onConflict: "channel_id,user_id" });
+      if (membershipError) {
+        return handleSupabaseError(res, "Failed to create direct channel memberships", membershipError);
+      }
+
+      const nowIso = new Date().toISOString();
+      const unreadRows = memberUserIds.map((memberUserId) => ({
+        channel_id: channel.id,
+        user_id: memberUserId,
+        unread_count: 0,
+        last_seen_at: nowIso,
+        updated_at: nowIso,
+      }));
+      const { error: unreadError } = await dataClient
+        .from("message_unreads")
+        .upsert(unreadRows, { onConflict: "channel_id,user_id" });
+      if (unreadError) {
+        return handleSupabaseError(res, "Failed to initialize direct channel unread state", unreadError);
+      }
+
+      return res.status(201).json({ channel, idempotent_replay: false });
+    }
+
     if (payload.team_id) {
       const teamLeaderCheck = await checkTeamLeader(payload.team_id, auth.user.id);
       if (!teamLeaderCheck.ok) {
@@ -2097,7 +2189,7 @@ app.post("/api/channels", async (req, res) => {
       .from("channels")
       .insert({
         type: payload.type,
-        name: payload.name,
+        name: payload.name ?? "Channel",
         team_id: payload.team_id ?? null,
         context_id: payload.context_id ?? null,
         created_by: auth.user.id,
@@ -9687,6 +9779,129 @@ async function checkTeamLeader(teamId: string, userId: string): Promise<
     return membership;
   }
   return { ok: true, isLeader: membership.member && membership.role === "team_leader" };
+}
+
+async function hasSharedTeamMembership(
+  actorUserId: string,
+  targetUserId: string
+): Promise<
+  | { ok: true; shared: boolean }
+  | { ok: false; status: number; error: string }
+> {
+  if (!dataClient) {
+    return { ok: false, status: 500, error: "Supabase data client not configured" };
+  }
+  const { data: actorTeams, error: actorError } = await dataClient
+    .from("team_memberships")
+    .select("team_id")
+    .eq("user_id", actorUserId);
+  if (actorError) return { ok: false, status: 500, error: "Failed to load actor team scope" };
+  const actorTeamIds = (actorTeams ?? []).map((row) => String((row as { team_id?: unknown }).team_id ?? "")).filter(Boolean);
+  if (actorTeamIds.length === 0) return { ok: true, shared: false };
+
+  const { data: targetTeam, error: targetError } = await dataClient
+    .from("team_memberships")
+    .select("team_id")
+    .eq("user_id", targetUserId)
+    .in("team_id", actorTeamIds)
+    .limit(1)
+    .maybeSingle();
+  if (targetError) return { ok: false, status: 500, error: "Failed to evaluate target team scope" };
+  return { ok: true, shared: Boolean(targetTeam) };
+}
+
+async function findExistingDirectChannelForMemberSet(
+  actorUserId: string,
+  memberUserIds: string[]
+): Promise<
+  | {
+      ok: true;
+      channel:
+        | {
+            id: string;
+            type: string;
+            name: string;
+            team_id: string | null;
+            context_id: string | null;
+            created_by: string | null;
+            created_at: string;
+          }
+        | null;
+    }
+  | { ok: false; status: number; error: string }
+> {
+  if (!dataClient) {
+    return { ok: false, status: 500, error: "Supabase data client not configured" };
+  }
+  const normalized = Array.from(new Set(memberUserIds)).sort();
+
+  const { data: actorMemberships, error: membershipError } = await dataClient
+    .from("channel_memberships")
+    .select("channel_id")
+    .eq("user_id", actorUserId);
+  if (membershipError) {
+    return { ok: false, status: 500, error: "Failed to load actor direct channel memberships" };
+  }
+  const actorChannelIds = (actorMemberships ?? [])
+    .map((row) => String((row as { channel_id?: unknown }).channel_id ?? ""))
+    .filter(Boolean);
+  if (actorChannelIds.length === 0) {
+    return { ok: true, channel: null };
+  }
+
+  const { data: directChannels, error: channelsError } = await dataClient
+    .from("channels")
+    .select("id,type,name,team_id,context_id,created_by,created_at")
+    .in("id", actorChannelIds)
+    .eq("type", "direct")
+    .eq("is_active", true);
+  if (channelsError) {
+    return { ok: false, status: 500, error: "Failed to lookup existing direct channels" };
+  }
+  const directChannelIds = (directChannels ?? [])
+    .map((row) => String((row as { id?: unknown }).id ?? ""))
+    .filter(Boolean);
+  if (directChannelIds.length === 0) {
+    return { ok: true, channel: null };
+  }
+
+  const { data: memberships, error: directMembershipError } = await dataClient
+    .from("channel_memberships")
+    .select("channel_id,user_id")
+    .in("channel_id", directChannelIds);
+  if (directMembershipError) {
+    return { ok: false, status: 500, error: "Failed to inspect existing direct channel membership sets" };
+  }
+  const directMembershipMap = new Map<string, Set<string>>();
+  for (const row of memberships ?? []) {
+    const channelId = String((row as { channel_id?: unknown }).channel_id ?? "");
+    const userId = String((row as { user_id?: unknown }).user_id ?? "");
+    if (!channelId || !userId) continue;
+    const current = directMembershipMap.get(channelId) ?? new Set<string>();
+    current.add(userId);
+    directMembershipMap.set(channelId, current);
+  }
+
+  const normalizedKey = normalized.join("|");
+  const match = (directChannels ?? []).find((row) => {
+    const channelId = String((row as { id?: unknown }).id ?? "");
+    const members = Array.from(directMembershipMap.get(channelId) ?? new Set<string>()).sort();
+    return members.join("|") === normalizedKey;
+  });
+
+  if (!match) return { ok: true, channel: null };
+  return {
+    ok: true,
+    channel: {
+      id: String((match as { id?: unknown }).id ?? ""),
+      type: String((match as { type?: unknown }).type ?? ""),
+      name: String((match as { name?: unknown }).name ?? ""),
+      team_id: typeof (match as { team_id?: unknown }).team_id === "string" ? String((match as { team_id?: unknown }).team_id) : null,
+      context_id: typeof (match as { context_id?: unknown }).context_id === "string" ? String((match as { context_id?: unknown }).context_id) : null,
+      created_by: typeof (match as { created_by?: unknown }).created_by === "string" ? String((match as { created_by?: unknown }).created_by) : null,
+      created_at: String((match as { created_at?: unknown }).created_at ?? new Date().toISOString()),
+    },
+  };
 }
 
 async function checkChannelMembership(channelId: string, userId: string): Promise<

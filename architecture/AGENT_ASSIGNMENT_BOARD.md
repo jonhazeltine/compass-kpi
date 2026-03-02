@@ -160,6 +160,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-STREAM-COMMS-ROLE-POLICY-HARDENING-B` | `committed` | `M6 stream/comms runtime policy hardening` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `stream-era comms role/scope policy` | backend channel/token/sync/messages scope enforcement + acceptance coverage | `Mobile-2` | `codex/a2-admin-list-usability-pass` | runtime hardening + acceptance | Completed and accepted: role/scope hardening landed with targeted acceptance coverage for allowed/blocked outcomes across personas (`5fd3072`). |
 | `M6-STREAM-COMMS-RUNTIME-QA-MATRIX-C` | `review` | `M6 stream/comms runtime QA matrix` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `comms runtime QA` (`inbox`, `thread load/send`, `broadcast`, `denied copy`, `token/sync failure UX`) | comms surfaces + stream bootstrap failure-path handling | `Coach-1` | `codex/a2-admin-list-usability-pass` | QA-only (no product code edits unless deterministic harness fix needed) | QA pass complete: evidence bundle captured under `app/test-results/m6-stream-comms-runtime-qa-matrix-c/` with logs (`01-03`) + screenshots (`01-03`) + pass/fail matrix (`pass-fail-matrix.md`); no defects and no product code edits. |
 | `M6-ASSIGNMENTS-PROFILE-CHAT-PARITY-C` | `review` | `M6 profile/goals + chat task parity` | `Coach`, `Team Leader`, `Team Member`, `Solo User` | `profile/goals feed sync` (`thread task-card state parity`, `assignments feed consistency`) | `/coach` goals/tasks consumer in `KPIDashboardScreen` + backend `GET /api/coaching/assignments/me` merge path | `Coach-1` | `codex/a2-admin-list-usability-pass` | assignment-directed (no schema or endpoint-family changes) | Completed: assignments merge now enforces latest-task-event-wins for message-linked items, rights/state normalization aligned to task type and assignee/coach scope, and coach goals/tasks consumer normalizes status tokens before render to prevent thread/feed drift. |
+| `M6-DM-DIRECT-CHANNEL-CREATE-BACKEND-A` | `review` | `M6 comms runtime hardening` | `Team Leader`, `Team Member`, `Coach`, `Admin operator`, `Challenge Sponsor` | `profile->message DM handoff` (`direct channel create`, `idempotent reuse`, `membership+unread bootstrap`) | backend `/api/channels` create path + DM acceptance harness/docs updates | `Mobile-2` | `codex/a2-admin-list-usability-pass` | N/A (backend/runtime policy) | Completed: `/api/channels` direct-create now accepts `member_user_ids`, enforces role/scope on target set, reuses existing direct channels idempotently for same member sets, and initializes memberships + unread rows for all direct participants. |
 | `MESSAGING-AUTHZ-MATRIX-LOCK-D` | `committed` | `M6 messaging authority lock (docs/control-plane)` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`, `Admin operator` (oversight) | `messaging authority policy lock` (`coach/team-leader scope`, `challenge/sponsor/DM boundaries`, `segment/cohort authoring`) | docs-only (`04_api_contracts`, `05_acceptance_tests`, `COACHING_CAPABILITY_AND_PERSONA_MATRIX`, `COACHING_WIRING_ADDENDUM`) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (policy/control-plane lock) | Committed: canonical policy lock applied across contracts/tests/wiring/persona docs with explicit coach/team-leader/challenge-sponsor/team-member scope boundaries and no KPI authority expansion through messaging. |
 
 ## Blocked Assignments
@@ -5854,3 +5855,54 @@ Produce implementation-ready UX spec for recipient/target scope behavior in Comm
 - Live-session endpoints in existing coaching/media endpoint family.
 - Mux webhook lifecycle mapping to chat message lifecycle events.
 - Acceptance script(s) covering new behavior.
+
+### `M6-DM-DIRECT-CHANNEL-CREATE-BACKEND-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 comms runtime hardening`
+- `Persona:` `Team Leader`, `Team Member`, `Coach`, `Admin operator`, `Challenge Sponsor`
+- `Flow:` `profile->message DM handoff` (`direct channel create`, `idempotent reuse`, `membership+unread bootstrap`)
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass`
+- `Execution note (2026-03-02, Mobile-2 start):` Board activated first. Implementing backend direct-channel creation extension so profile->Message always opens a real direct thread via idempotent create/find within existing `/api/channels` family.
+- `Completion note (2026-03-02, Mobile-2):` `POST /api/channels` now accepts direct-create payloads with `member_user_ids`, enforces persona/scope constraints (`team_leader`/`agent` shared-team only, `challenge_sponsor` denied for direct channels), reuses existing direct channels for identical member sets, and initializes `channel_memberships` + `message_unreads` for all members on create.
+- `Validation note (2026-03-02, Mobile-2):` `cd /Users/jon/compass-kpi/backend && npm run -s build` passed.
+- `Validation note (2026-03-02, Mobile-2):` `cd /Users/jon/compass-kpi/backend && npm run -s test:m6-dm-direct-channel-create-backend` passed.
+- `Validation note (2026-03-02, Mobile-2):` Existing policy suites passed: `npm run -s test:w13-stream-comms-role-policy`, `npm run -s test:m6-comms-recipient-scope-hardening`.
+- `Current blocker status (2026-03-02, review):` `none`
+
+#### Goal
+Make profile->Message open a real DM thread by guaranteeing a direct channel exists.
+
+#### Scope In
+- `/Users/jon/compass-kpi/backend/src/index.ts`
+- `/Users/jon/compass-kpi/backend/scripts/*dm*`
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md` (additive field note only)
+- `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md` (new acceptance rows)
+
+#### Scope Out
+- Net-new endpoint family creation
+- Schema migrations
+- UI/mobile screen changes
+
+#### Required Implementation
+1. Extend `POST /api/channels` payload for `type='direct'` to accept `member_user_ids: string[]`.
+2. For direct channels:
+   - validate caller + target membership scope (same team/shared authorized scope)
+   - create channel if needed
+   - insert `channel_memberships` for caller + target(s)
+   - initialize `message_unreads` rows for each member
+3. Add idempotent find-existing-direct behavior for same member set.
+4. Preserve role-policy constraints and deterministic error outcomes.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/backend && npm run -s build`
+- New DM acceptance script run.
+- Existing stream/comms policy tests run.
+
+#### Report-Back Requirements
+- changed files
+- creation/idempotency matrix
+- validation output
+- commit hash

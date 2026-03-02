@@ -227,6 +227,22 @@
 - Then visible recipients/targets, disabled states, and blocked-copy outcomes match the documented policy mapping 1:1
 - And no screen introduces a policy exception outside server-authorized scope outcomes
 
+### 13I) Direct Channel Create Idempotency + Scope Enforcement
+- Given `POST /api/channels` with `type='direct'` and `member_user_ids`
+- When caller requests direct create for a member set with no existing direct thread
+- Then API returns `201` with `idempotent_replay=false`
+- And channel memberships are created for caller + target member set
+- And unread rows are initialized for each member in the direct thread
+- When caller repeats direct create for the same normalized member set
+- Then API returns `200` with `idempotent_replay=true`
+- And response channel id matches the existing direct channel (no duplicate created)
+- Given caller is `team_member`/`team_leader` and target is outside shared team scope
+- When caller requests direct create
+- Then API returns `403`
+- Given caller is `challenge_sponsor`
+- When caller requests direct create
+- Then API returns `403` with sponsor/challenge-scope-denied semantics
+
 ### 14) Coaching Journey and Lesson Progress
 - Given an authenticated user and active coaching journey with milestones/lessons
 - When user requests `GET /api/coaching/journeys` and `GET /api/coaching/journeys/{id}`
