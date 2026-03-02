@@ -142,6 +142,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-BOTTOM-BAR-REPORTS-DEFAULT-AND-TAB-SWAP-A` | `review` | `M6 logs/reports navigation polish` | `Team Leader`, `Team Member`, `Coach`, `Solo User`, `Challenge Sponsor` | `bottom nav + logs/reports segmented control` (`reports-first default`, `tab order swap`) | `KPIDashboardScreen` logs/reports surface only | `Mobile-1` | `codex/a2-admin-list-usability-pass` | assignment-directed (behavior-only; no visual redesign) | Completed: bottom Reports icon now defaults to Reports subview and Logs/Reports segmented control order is Reports (left) then Logs (right), preserving both content panes and interactions. Validation: `cd app && npx tsc --noEmit --pretty false` pass. Evidence folder: `app/test-results/m6-bottom-bar-reports-default-and-tab-swap-a/` (`reports-default-after-bottom-tab.png`, `reports-default-after-bottom-tab-2.png`). |
 | `M6-TEAM-CHAT-DIRECT-THREAD-HANDOFF-A` | `review` | `M6 team->comms routing hardening` | `Team Leader`, `Team Member` | `team chat handoff` (`direct team-thread open`, `team-channel fallback`) | `KPIDashboardScreen` Team surface CTA + comms handoff path | `Mobile-1` | `codex/a2-admin-list-usability-pass` | assignment-directed (routing/state only; no backend/schema changes) | Completed: Team `Team Chat` CTA now resolves real team channel rows (`type==='team'`, prioritize `team_id` context match, fallback first accessible team channel), opens `channel_thread` directly with team scope metadata, and triggers immediate thread bootstrap/fetch (`fetchChannelMessages`) for live history/composer. If no team channel exists, flow sets deterministic inline error and routes to Channels list fallback (`inbox_channels`) with team scope (never DMs). Validation: `cd app && npx tsc --noEmit --pretty false` pass. Evidence folder: `app/test-results/m6-team-chat-direct-thread-handoff-a/`. |
 | `M6-TEAM-CHAT-HARDBIND-TO-TEAM-THREAD-A` | `review` | `M6 team->comms hardbind` | `Team Leader`, `Team Member` | `team chat handoff` (`hardbind to team thread`, `no-DM fallback`) | `KPIDashboardScreen` Team surface CTA + comms handoff path | `Mobile-1` | `codex/a2-admin-list-usability-pass` | assignment-directed (routing/state only; no backend/schema changes) | Completed: Team Chat hardbind now resolves `type==='team'` channel rows with team-context-first matching (`team_id`) and fallback to first accessible team channel, then opens `channel_thread` directly with selected channel id/name and immediate thread bootstrap/fetch. Team Chat never routes to DMs. If no team channel resolves, flow stays in Channels list and renders deterministic inline error copy: `Team channel unavailable. Contact admin to restore team chat.` Validation: `cd app && npx tsc --noEmit --pretty false` pass. Evidence folder: `app/test-results/m6-team-chat-direct-thread-handoff-a/` (`team-chat-direct-thread-with-composer.png`, `team-chat-fallback-channels-list.png`). |
+| `M6-CHAT-COMPOSER-ATTACH-TASK-SLASH-B` | `review` | `M6 comms runtime capability expansion` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `comms composer + thread cards` (`attachment picker/send`, `task card compose/render/update`, `slash parser/menu`) | `KPIDashboardScreen`, `app/components/comms/*` (`channel_thread`, comms composer/thread surfaces) | `Mobile-1` | `codex/a2-admin-list-usability-pass` | assignment-directed (no backend/schema changes) | Completed: added attachment picker/send flow in thread composer (file/image/link), slash-menu parser with role-gated commands (`/task`, `/task-update`, `/broadcast`, `/help` visibility by persona), structured task-card compose + task-update messages, and thread renderers for task cards, task updates, and attachments. Message sends now support encoded composer payload overrides while preserving existing channel message endpoint family and role/policy/token-sync behavior. Validation: `cd app && npx tsc --noEmit --pretty false` pass. |
 | `M6-COMMS-FR-PATTERN-MATRIX-B` | `review` | `M6 comms integration planning (docs-only)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `comms architecture mapping` (`Fourth Reason behavior -> Compass adaptation matrix`) | docs-only: `FOURTH_REASON_INTEGRATION_MATRIX`, additive mapping notes in `04_api_contracts`, assignment note in board | `Mobile-2` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Completed docs pass: landed pattern-by-pattern Fourth Reason messaging matrix with `build now / defer / blocked by DEP` statuses and explicit no-new-table adaptation notes, plus additive API mapping guidance. |
 | `COMMS-RECIPIENT-SCOPE-UX-SPEC-D` | `committed` | `M6 comms scope UX prep (docs-only)` | `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Challenge Sponsor` | `comms recipient scope UX` (`recipient picker rules`, `challenge thread scope`, `blocked-state copy`) | docs-only: `COACHING_WIRING_ADDENDUM`, `05_acceptance_tests`, board notes | `Mobile-2` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed: recipient/target scope matrix, challenge participant chat policy, canonical blocked-copy strings, and acceptance coverage for allowed/blocked Comms paths are synchronized and accepted. |
 | `W13-DEP-TRACKER-EVIDENCE-SYNC-B` | `committed` | `W13 docs/control-plane exception` | `Product`, `Legal`, `Architecture`, `Security/Legal`, `backend/platform` | `dependency governance` (`closeout evidence linking + status normalization`) | docs-only: `PROJECT_CONTROL_PLANE`, `W13_DEP_SIGNOFF_BRIEF` | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only) | N/A (docs governance) | Committed docs pass: placeholder evidence link removed, DEP-002/004/005 evidence references normalized across control-plane + signoff brief, and Wave A GO/NO-GO language preserved. |
@@ -156,6 +157,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-STREAM-COMMS-CLIENT-WIRING-A` | `committed` | `M6 comms runtime wiring (Stream-backed Compass flow bootstrap)` | `Team Leader`, `Coach`, `Team Member` | `comms runtime integration` (`token/sync bootstrap`, `thread+broadcast stability`, `deterministic 4xx/5xx mapping`) | `KPIDashboardScreen` comms surfaces only (`inbox_channels`, `channel_thread`, `coach_broadcast_compose`) | `Mobile-1` | `codex/a2-admin-list-usability-pass` | manual-spec-driven (no UI redesign drift) | Completed and accepted: added Stream bootstrap preflight to thread/broadcast flows using `/api/channels/token` + `/api/channels/sync`, preserved existing role gates/route behavior, mapped 401/403/409/422/503 responses to deterministic UX-safe messages, and validated TypeScript clean (`c06a5b7`). |
 | `M6-STREAM-COMMS-ROLE-POLICY-HARDENING-B` | `committed` | `M6 stream/comms runtime policy hardening` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `stream-era comms role/scope policy` | backend channel/token/sync/messages scope enforcement + acceptance coverage | `Mobile-2` | `codex/a2-admin-list-usability-pass` | runtime hardening + acceptance | Completed and accepted: role/scope hardening landed with targeted acceptance coverage for allowed/blocked outcomes across personas (`5fd3072`). |
 | `M6-STREAM-COMMS-RUNTIME-QA-MATRIX-C` | `review` | `M6 stream/comms runtime QA matrix` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `comms runtime QA` (`inbox`, `thread load/send`, `broadcast`, `denied copy`, `token/sync failure UX`) | comms surfaces + stream bootstrap failure-path handling | `Coach-1` | `codex/a2-admin-list-usability-pass` | QA-only (no product code edits unless deterministic harness fix needed) | QA pass complete: evidence bundle captured under `app/test-results/m6-stream-comms-runtime-qa-matrix-c/` with logs (`01-03`) + screenshots (`01-03`) + pass/fail matrix (`pass-fail-matrix.md`); no defects and no product code edits. |
+| `M6-ASSIGNMENTS-PROFILE-CHAT-PARITY-C` | `review` | `M6 profile/goals + chat task parity` | `Coach`, `Team Leader`, `Team Member`, `Solo User` | `profile/goals feed sync` (`thread task-card state parity`, `assignments feed consistency`) | `/coach` goals/tasks consumer in `KPIDashboardScreen` + backend `GET /api/coaching/assignments/me` merge path | `Coach-1` | `codex/a2-admin-list-usability-pass` | assignment-directed (no schema or endpoint-family changes) | Completed: assignments merge now enforces latest-task-event-wins for message-linked items, rights/state normalization aligned to task type and assignee/coach scope, and coach goals/tasks consumer normalizes status tokens before render to prevent thread/feed drift. |
 | `MESSAGING-AUTHZ-MATRIX-LOCK-D` | `committed` | `M6 messaging authority lock (docs/control-plane)` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`, `Admin operator` (oversight) | `messaging authority policy lock` (`coach/team-leader scope`, `challenge/sponsor/DM boundaries`, `segment/cohort authoring`) | docs-only (`04_api_contracts`, `05_acceptance_tests`, `COACHING_CAPABILITY_AND_PERSONA_MATRIX`, `COACHING_WIRING_ADDENDUM`) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (policy/control-plane lock) | Committed: canonical policy lock applied across contracts/tests/wiring/persona docs with explicit coach/team-leader/challenge-sponsor/team-member scope boundaries and no KPI authority expansion through messaging. |
 
 ## Blocked Assignments
@@ -196,6 +198,53 @@ Every worker report should include:
 - `Commit hash(es)` (if committed)
 
 ## Assignment Specs (Execute from here)
+
+### `M6-ASSIGNMENTS-PROFILE-CHAT-PARITY-C`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 profile/goals + chat task parity`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`
+- `Flow:` `profile/goals feed sync` (`thread task-card state parity`, `assignments feed consistency`)
+- `Owner:` `Coach-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass`
+- `Worker note (2026-03-01, Coach-1, start):` Board updated first. Executing parity lock so message-linked task state in goals/tasks feed stays consistent with thread card state transitions.
+- `Current blocker status (2026-03-01, Coach-1, start):` `none`
+- `Completion note (2026-03-01, Coach-1):` `GET /api/coaching/assignments/me` now collapses stale message-linked task events by task id (latest event wins), aligns message-linked rights with task-type policy (`personal_task` assignee-only status mutation, `coach_task` coach-scope edit/reassign + assignee status/complete), and returns `source_message_id`/`last_thread_event_at` from assignment metadata when present.
+- `Completion note (2026-03-01, Coach-1):` Coach goals/tasks consumer now normalizes assignment status tokens (`done/active` aliases) before rendering to keep feed card state parity with thread task-card semantics.
+- `Validation note (2026-03-01, Coach-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` passed.
+- `Validation note (2026-03-01, Coach-1):` `cd /Users/jon/compass-kpi/backend && npm run -s build` failed on pre-existing `MuxMediaSessionRecord.channel_id` typing errors at `backend/src/index.ts:4012` and `backend/src/index.ts:8654` (outside this assignment scope).
+- `Current blocker status (2026-03-01, Coach-1, completion):` `none` (assignment scope complete; backend build failure is pre-existing and unrelated to parity changes)
+
+#### Objective
+Deliver task-state parity between thread-linked task cards and profile/goals assignments feed consumers.
+
+#### Scope In
+- `/Users/jon/compass-kpi/backend/src/index.ts` (`GET /api/coaching/assignments/me` message-linked merge/state normalization path)
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (`coach_goals_tasks` assignments consumer)
+- `/Users/jon/compass-kpi/docs/spec/04_api_contracts.md` (alignment notes only if behavior semantics are tightened)
+
+#### Scope Out
+- New endpoint families
+- Schema/table changes
+- Unrelated comms UI redesign
+
+#### Hard Constraints
+- Keep existing endpoint families and authz gates.
+- No schema migrations.
+- Preserve sponsor no-KPI-logging boundary.
+
+#### Required Validation
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- `cd /Users/jon/compass-kpi/backend && npm run -s build`
+- Contract/docs alignment check only if behavior wording changed.
+
+#### Report-Back
+- Program status
+- Files changed
+- Parity delta summary (before/after behavior)
+- Validation summary
+- Commit hash
 
 ### `MESSAGING-AUTHZ-MATRIX-LOCK-D`
 
@@ -5780,3 +5829,26 @@ Produce implementation-ready UX spec for recipient/target scope behavior in Comm
 - UX rule matrix
 - Acceptance scenario mapping
 - Commit hash
+
+### `M6-CHAT-MEDIA-LIVE-BACKEND-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 backend contracts hardening`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`
+- `Flow:` `chat media + live contract` (`media_attachment`, `live sessions`, `mux webhook lifecycle -> message mapping`)
+- `Owner:` `Mobile-2`
+- `Execution note (2026-03-02, Mobile-2 start):` Assignment activated from controller directive. Implementing media-attachment message contract, live-session endpoints under existing coaching/media family, webhook lifecycle-to-message mapping, and acceptance script coverage in backend scope.
+- `Completion note (2026-03-02, Mobile-2):` Added media-attachment API contract handling on channel messages (write/read hydration), implemented live-session runtime endpoints under `/api/coaching/media/live-sessions*` with idempotent create + join/end flows, and wired Mux webhook lifecycle transitions to channel lifecycle message emission when media is channel-scoped.
+- `Validation note (2026-03-02, Mobile-2):` `cd /Users/jon/compass-kpi/backend && npm run -s build` passed. `cd /Users/jon/compass-kpi/backend && npm run -s test:m6-chat-media-live-backend` passed with deterministic checks for attachment write/read, live session create/join/end, outsider denial, and webhook lifecycle message mapping.
+- `Current blocker status (2026-03-02, review):` `none`.
+
+#### Scope In
+- `/Users/jon/compass-kpi/backend/src/index.ts`
+- `/Users/jon/compass-kpi/backend/scripts/*`
+
+#### Deliverables
+- `media_attachment` message contract for channel message payload/read responses.
+- Live-session endpoints in existing coaching/media endpoint family.
+- Mux webhook lifecycle mapping to chat message lifecycle events.
+- Acceptance script(s) covering new behavior.

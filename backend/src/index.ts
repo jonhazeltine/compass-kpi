@@ -54,8 +54,11 @@ const muxMediaStore = new Map<string, MuxMediaSessionRecord>();
 const muxMediaByUploadId = new Map<string, string>();
 const muxMediaByProviderUploadId = new Map<string, string>();
 const muxMediaByProviderAssetId = new Map<string, string>();
+const muxMediaChannelByMediaId = new Map<string, string>();
 const muxProcessedWebhookEventIds = new Set<string>();
 const streamChannelSyncStates = new Map<string, StreamChannelSyncState>();
+const liveSessionStore = new Map<string, LiveSessionRecord>();
+const liveSessionByIdempotencyKey = new Map<string, string>();
 
 type KPIType = "PC" | "GP" | "VP" | "Actual" | "Pipeline_Anchor" | "Custom";
 
@@ -124,7 +127,12 @@ type ChannelCreatePayload = {
 };
 
 type ChannelMessagePayload = {
-  body: string;
+  body?: string;
+  message_type?: "message" | "media_attachment";
+  media_attachment?: {
+    media_id: string;
+    caption?: string;
+  };
 };
 
 type MarkSeenPayload = {
@@ -266,6 +274,7 @@ type NotificationEnqueuePayload = {
 type CoachingMediaUploadUrlPayload = {
   journey_id?: string;
   lesson_id?: string;
+  channel_id?: string;
   filename: string;
   content_type: string;
   content_length_bytes: number;
@@ -292,6 +301,7 @@ type MuxMediaSessionRecord = {
   owner_user_id: string;
   journey_id: string | null;
   lesson_id: string | null;
+  channel_id: string | null;
   filename: string;
   content_type: string;
   content_length_bytes: number;
@@ -306,6 +316,32 @@ type MuxMediaSessionRecord = {
   last_provider_event_id: string | null;
   provider_error_code: string | null;
   verification_status: "verified" | "rejected_signature" | "rejected_replay_window" | "duplicate_ignored" | "pending";
+  created_at: string;
+  updated_at: string;
+};
+
+type LiveSessionStatus = "scheduled" | "live" | "ended" | "cancelled";
+
+type LiveSessionCreatePayload = {
+  channel_id: string;
+  title: string;
+  starts_at?: string;
+  ends_at?: string;
+  idempotency_key: string;
+};
+
+type LiveSessionJoinTokenPayload = {
+  role?: "host" | "participant" | "viewer";
+};
+
+type LiveSessionRecord = {
+  session_id: string;
+  channel_id: string;
+  title: string;
+  status: LiveSessionStatus;
+  host_user_id: string;
+  started_at: string;
+  ends_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -2437,6 +2473,9 @@ app.get("/api/channels/:id/messages", async (req, res) => {
       channel,
       messages: (messages ?? []) as Array<{ id?: unknown; channel_id?: unknown; body?: unknown; message_type?: unknown; created_at?: unknown }>,
     });
+    const messageReadModels = (messages ?? []).map((row) =>
+      buildChannelMessageReadModel(row as { id?: unknown; channel_id?: unknown; sender_user_id?: unknown; body?: unknown; message_type?: unknown; created_at?: unknown })
+    );
     const syncState = streamChannelSyncStates.get(channelId);
     const channelWithProviderState = {
       ...channel,
@@ -2451,7 +2490,7 @@ app.get("/api/channels/:id/messages", async (req, res) => {
     return res.json({
       channel: channelWithProviderState,
       packaging_read_model: packagingReadModelForChannel(channel),
-      messages: messages ?? [],
+      messages: messageReadModels,
       notification_items: threadNotificationItems,
       notification_summary_read_model: buildNotificationSummaryReadModel({
         items: threadNotificationItems,
@@ -2489,13 +2528,59 @@ app.post("/api/channels/:id/messages", async (req, res) => {
       return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
     }
 
+    let serializedBody = payloadCheck.payload.body ?? "";
+    let messageType: "message" | "media_attachment" = payloadCheck.payload.message_type ?? "message";
+    if (messageType === "media_attachment") {
+      const mediaId = payloadCheck.payload.media_attachment?.media_id ?? "";
+      const media = await getMuxMediaRecord(mediaId);
+      if (!media) {
+        return res.status(404).json({ error: "media_attachment.media_id was not found" });
+      }
+
+      const mediaScope = await canAccessMuxMediaForRole(auth.user.id, "playback", {
+        journeyId: media.journey_id,
+        lessonId: media.lesson_id,
+        ownerUserId: media.owner_user_id,
+      });
+      if (!mediaScope.ok) return res.status(mediaScope.status).json({ error: mediaScope.error });
+      if (!mediaScope.allowed) return res.status(403).json({ error: "Caller role does not have media scope for attachment" });
+
+      if (media.channel_id && media.channel_id !== channelId) {
+        return res.status(409).json({ error: "media_attachment is already linked to another channel" });
+      }
+
+      if (!media.channel_id) {
+        const reboundMedia: MuxMediaSessionRecord = {
+          ...media,
+          channel_id: channelId,
+          updated_at: new Date().toISOString(),
+        };
+        await upsertMuxMediaRecord(reboundMedia);
+      }
+
+      serializedBody = serializeChannelMessageBody({
+        ...payloadCheck.payload,
+        message_type: "media_attachment",
+        lifecycle: {
+          processing_status: media.processing_status,
+          playback_ready: media.playback_ready,
+        },
+      });
+    } else {
+      messageType = "message";
+      serializedBody = serializeChannelMessageBody({
+        body: payloadCheck.payload.body,
+        message_type: "message",
+      });
+    }
+
     const { data: message, error: messageError } = await dataClient
       .from("channel_messages")
       .insert({
         channel_id: channelId,
         sender_user_id: auth.user.id,
-        body: payloadCheck.payload.body,
-        message_type: "message",
+        body: serializedBody,
+        message_type: messageType === "media_attachment" ? "message" : messageType,
       })
       .select("id,channel_id,sender_user_id,body,message_type,created_at")
       .single();
@@ -2504,7 +2589,10 @@ app.post("/api/channels/:id/messages", async (req, res) => {
     }
 
     await fanOutUnreadCounters(channelId, auth.user.id);
-    return res.status(201).json({ message });
+    const messageReadModel = buildChannelMessageReadModel(
+      message as { id?: unknown; channel_id?: unknown; sender_user_id?: unknown; body?: unknown; message_type?: unknown; created_at?: unknown }
+    );
+    return res.status(201).json({ message: messageReadModel });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/channels/:id/messages", err);
@@ -2609,6 +2697,9 @@ app.post("/api/channels/:id/broadcast", async (req, res) => {
     if (!channelId) return res.status(422).json({ error: "channel id is required" });
     const payloadCheck = validateChannelMessagePayload(req.body);
     if (!payloadCheck.ok) return res.status(payloadCheck.status).json({ error: payloadCheck.error });
+    if ((payloadCheck.payload.message_type ?? "message") !== "message") {
+      return res.status(422).json({ error: "broadcast endpoint supports text message payloads only" });
+    }
 
     const permission = await canBroadcastToChannel(channelId, auth.user.id);
     if (!permission.ok) return res.status(permission.status).json({ error: permission.error });
@@ -3958,6 +4049,17 @@ app.post("/api/coaching/media/upload-url", async (req, res) => {
       );
     }
 
+    if (payload.channel_id) {
+      const membership = await checkChannelMembership(payload.channel_id, auth.user.id);
+      if (!membership.ok) return res.status(membership.status).json({ error: membership.error });
+      if (!membership.member) return res.status(403).json({ error: "Not a channel member for media upload context" });
+      const channelRoleScope = await evaluateRoleScopeForChannel(auth.user.id, payload.channel_id);
+      if (!channelRoleScope.ok) return res.status(channelRoleScope.status).json({ error: channelRoleScope.error });
+      if (!channelRoleScope.result.allowed) {
+        return res.status(403).json({ error: channelRoleScope.result.reason ?? "Channel scope denied for media upload context" });
+      }
+    }
+
     const now = new Date();
     const uploadId = `upl_${crypto.randomUUID()}`;
     const mediaId = uploadId;
@@ -3981,6 +4083,7 @@ app.post("/api/coaching/media/upload-url", async (req, res) => {
       owner_user_id: auth.user.id,
       journey_id: payload.journey_id ?? null,
       lesson_id: payload.lesson_id ?? null,
+      channel_id: payload.channel_id ?? null,
       filename: payload.filename,
       content_type: payload.content_type,
       content_length_bytes: payload.content_length_bytes,
@@ -4086,6 +4189,209 @@ app.post("/api/coaching/media/playback-token", async (req, res) => {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/coaching/media/playback-token", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.post("/api/coaching/media/live-sessions", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return errorEnvelopeResponse(res, auth.status, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    }
+
+    const payloadCheck = validateLiveSessionCreatePayload(req.body);
+    if (!payloadCheck.ok) {
+      return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+    }
+    const payload = payloadCheck.payload;
+
+    const membership = await checkChannelMembership(payload.channel_id, auth.user.id);
+    if (!membership.ok) return res.status(membership.status).json({ error: membership.error });
+    if (!membership.member) return res.status(403).json({ error: "Not a channel member for live session context" });
+    const roleScopeCheck = await evaluateRoleScopeForChannel(auth.user.id, payload.channel_id);
+    if (!roleScopeCheck.ok) return res.status(roleScopeCheck.status).json({ error: roleScopeCheck.error });
+    if (!roleScopeCheck.result.allowed) {
+      return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
+    }
+
+    const roleResult = await getUserRoleForScope(auth.user.id);
+    if (!roleResult.ok) return res.status(roleResult.status).json({ error: roleResult.error });
+    if (!canHostLiveSession(roleResult.role)) {
+      return errorEnvelopeResponse(
+        res,
+        403,
+        "unauthorized_scope",
+        "Caller role does not have live session host scope for this channel",
+        req.headers["x-request-id"]
+      );
+    }
+
+    const idempotencyLookup = `${auth.user.id}::${payload.idempotency_key}`;
+    const existingSessionId = liveSessionByIdempotencyKey.get(idempotencyLookup);
+    if (existingSessionId) {
+      const existing = liveSessionStore.get(existingSessionId);
+      if (existing) return res.status(200).json({ session: existing, idempotent_replay: true });
+    }
+
+    const nowIso = new Date().toISOString();
+    const startsAt = payload.starts_at ?? nowIso;
+    const status: LiveSessionStatus = new Date(startsAt).getTime() > Date.now() ? "scheduled" : "live";
+    const record: LiveSessionRecord = {
+      session_id: `live_${crypto.randomUUID()}`,
+      channel_id: payload.channel_id,
+      title: payload.title,
+      status,
+      host_user_id: auth.user.id,
+      started_at: startsAt,
+      ends_at: payload.ends_at ?? null,
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+
+    liveSessionStore.set(record.session_id, record);
+    liveSessionByIdempotencyKey.set(idempotencyLookup, record.session_id);
+    return res.status(201).json({ session: record, idempotent_replay: false });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/coaching/media/live-sessions", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.get("/api/coaching/media/live-sessions/:id", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return errorEnvelopeResponse(res, auth.status, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    }
+
+    const sessionId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+    if (!sessionId) {
+      return errorEnvelopeResponse(res, 422, "invalid_request", "session id is required", req.headers["x-request-id"]);
+    }
+    const session = liveSessionStore.get(sessionId);
+    if (!session) {
+      return errorEnvelopeResponse(res, 404, "not_found", "Live session not found", req.headers["x-request-id"]);
+    }
+
+    const membership = await checkChannelMembership(session.channel_id, auth.user.id);
+    if (!membership.ok) return res.status(membership.status).json({ error: membership.error });
+    if (!membership.member) return res.status(403).json({ error: "Not a channel member for live session context" });
+    const roleScopeCheck = await evaluateRoleScopeForChannel(auth.user.id, session.channel_id);
+    if (!roleScopeCheck.ok) return res.status(roleScopeCheck.status).json({ error: roleScopeCheck.error });
+    if (!roleScopeCheck.result.allowed) {
+      return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
+    }
+
+    return res.json({ session });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/coaching/media/live-sessions/:id", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.post("/api/coaching/media/live-sessions/:id/join-token", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return errorEnvelopeResponse(res, auth.status, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    }
+
+    const sessionId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+    if (!sessionId) {
+      return errorEnvelopeResponse(res, 422, "invalid_request", "session id is required", req.headers["x-request-id"]);
+    }
+    const session = liveSessionStore.get(sessionId);
+    if (!session) {
+      return errorEnvelopeResponse(res, 404, "not_found", "Live session not found", req.headers["x-request-id"]);
+    }
+    if (session.status === "ended" || session.status === "cancelled") {
+      return errorEnvelopeResponse(res, 409, "session_closed", "Live session is closed", req.headers["x-request-id"]);
+    }
+
+    const membership = await checkChannelMembership(session.channel_id, auth.user.id);
+    if (!membership.ok) return res.status(membership.status).json({ error: membership.error });
+    if (!membership.member) return res.status(403).json({ error: "Not a channel member for live session context" });
+    const roleScopeCheck = await evaluateRoleScopeForChannel(auth.user.id, session.channel_id);
+    if (!roleScopeCheck.ok) return res.status(roleScopeCheck.status).json({ error: roleScopeCheck.error });
+    if (!roleScopeCheck.result.allowed) {
+      return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
+    }
+
+    const payloadCheck = validateLiveSessionJoinTokenPayload(req.body);
+    if (!payloadCheck.ok) {
+      return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
+    }
+    const requestedRole = payloadCheck.payload.role ?? "participant";
+    const role: "host" | "participant" | "viewer" = session.host_user_id === auth.user.id ? "host" : requestedRole;
+    const issuedAtMs = Date.now();
+    const ttlSeconds = Math.max(60, Math.min(3600, toNumberOrZero(process.env.LIVE_SESSION_JOIN_TOKEN_TTL_SECONDS ?? 900) || 900));
+    const token = issueLiveSessionJoinToken({
+      sessionId,
+      channelId: session.channel_id,
+      userId: auth.user.id,
+      role,
+      issuedAtMs,
+      ttlSeconds,
+    });
+
+    const sessionUpdate: LiveSessionRecord = {
+      ...session,
+      status: session.status === "scheduled" ? "live" : session.status,
+      updated_at: new Date().toISOString(),
+    };
+    liveSessionStore.set(sessionId, sessionUpdate);
+
+    return res.json({
+      session: sessionUpdate,
+      role,
+      token,
+      token_expires_at: new Date(issuedAtMs + ttlSeconds * 1000).toISOString(),
+      provider: "compass_live",
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/coaching/media/live-sessions/:id/join-token", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.post("/api/coaching/media/live-sessions/:id/end", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return errorEnvelopeResponse(res, auth.status, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    }
+
+    const sessionId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+    if (!sessionId) {
+      return errorEnvelopeResponse(res, 422, "invalid_request", "session id is required", req.headers["x-request-id"]);
+    }
+    const session = liveSessionStore.get(sessionId);
+    if (!session) {
+      return errorEnvelopeResponse(res, 404, "not_found", "Live session not found", req.headers["x-request-id"]);
+    }
+
+    const roleResult = await getUserRoleForScope(auth.user.id);
+    if (!roleResult.ok) return res.status(roleResult.status).json({ error: roleResult.error });
+    const adminLike = roleResult.role === "admin" || roleResult.role === "super_admin";
+    if (!adminLike && session.host_user_id !== auth.user.id) {
+      return errorEnvelopeResponse(res, 403, "unauthorized_scope", "Only the host or admin can end this live session", req.headers["x-request-id"]);
+    }
+
+    const ended: LiveSessionRecord = {
+      ...session,
+      status: "ended",
+      ends_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    liveSessionStore.set(sessionId, ended);
+    return res.json({ session: ended });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/coaching/media/live-sessions/:id/end", err);
     return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
   }
 });
@@ -7288,6 +7594,105 @@ function validateMarkSeenPayload(body: unknown):
   return { ok: true, payload: { channel_id: candidate.channel_id } };
 }
 
+function serializeChannelMessageBody(payload: ChannelMessagePayload & {
+  lifecycle?: {
+    processing_status: MuxLifecycleStatus;
+    playback_ready: boolean;
+  };
+}): string {
+  const text = payload.body?.trim() || "";
+  if (payload.message_type !== "media_attachment" || !payload.media_attachment) {
+    return text;
+  }
+  return JSON.stringify({
+    text,
+    media_attachment: payload.media_attachment,
+    lifecycle: payload.lifecycle ?? null,
+  });
+}
+
+function buildChannelMessageReadModel(row: {
+  id?: unknown;
+  channel_id?: unknown;
+  sender_user_id?: unknown;
+  body?: unknown;
+  message_type?: unknown;
+  created_at?: unknown;
+}): {
+  id: string;
+  channel_id: string;
+  sender_user_id: string;
+  body: string;
+  message_type: string;
+  created_at: string | null;
+  media_attachment?: {
+    media_id: string;
+    caption?: string;
+    lifecycle?: {
+      processing_status: MuxLifecycleStatus;
+      playback_ready: boolean;
+    } | null;
+  };
+} {
+  const base = {
+    id: String(row.id ?? ""),
+    channel_id: String(row.channel_id ?? ""),
+    sender_user_id: String(row.sender_user_id ?? ""),
+    body: typeof row.body === "string" ? row.body : "",
+    message_type: String(row.message_type ?? "message"),
+    created_at: typeof row.created_at === "string" ? row.created_at : null,
+  };
+
+  let parsed: Record<string, unknown> | null = null;
+  if (typeof row.body === "string" && row.body.trim().startsWith("{")) {
+    try {
+      const json = JSON.parse(row.body) as unknown;
+      if (isRecord(json)) parsed = json;
+    } catch {
+      parsed = null;
+    }
+  }
+  const isAttachmentByType = base.message_type === "media_attachment";
+  const attachmentPayload = parsed && isRecord(parsed.media_attachment) ? parsed.media_attachment : null;
+  const isAttachmentByPayload = Boolean(attachmentPayload?.media_id);
+  if (!isAttachmentByType && !isAttachmentByPayload) {
+    return base;
+  }
+
+  if (!parsed || !attachmentPayload) {
+    return {
+      ...base,
+      message_type: "media_attachment",
+      media_attachment: {
+        media_id: "",
+      },
+    };
+  }
+
+  const lifecycleRaw = isRecord(parsed.lifecycle) ? parsed.lifecycle : null;
+  const lifecycle =
+    lifecycleRaw &&
+    typeof lifecycleRaw.processing_status === "string" &&
+    typeof lifecycleRaw.playback_ready === "boolean"
+      ? {
+          processing_status: normalizeMuxLifecycleStatus(lifecycleRaw.processing_status),
+          playback_ready: lifecycleRaw.playback_ready,
+        }
+      : null;
+
+  const text = typeof parsed.text === "string" ? parsed.text : base.body;
+  return {
+    ...base,
+    message_type: "media_attachment",
+    body: text,
+    media_attachment: {
+      media_id: typeof attachmentPayload.media_id === "string" ? attachmentPayload.media_id : "",
+      ...(typeof attachmentPayload.caption === "string" ? { caption: attachmentPayload.caption } : {}),
+      ...(lifecycle ? { lifecycle } : {}),
+    },
+  };
+}
+
 function validatePushTokenPayload(body: unknown):
   | { ok: true; payload: PushTokenPayload }
   | { ok: false; status: number; error: string } {
@@ -7968,6 +8373,9 @@ function validateCoachingMediaUploadUrlPayload(body: unknown):
   const lessonId = typeof candidate.lesson_id === "string" && candidate.lesson_id.trim()
     ? candidate.lesson_id.trim()
     : undefined;
+  const channelId = typeof candidate.channel_id === "string" && candidate.channel_id.trim()
+    ? candidate.channel_id.trim()
+    : undefined;
   if ((journeyId && lessonId) || (!journeyId && !lessonId)) {
     return { ok: false, status: 422, error: "Exactly one of journey_id or lesson_id is required" };
   }
@@ -7997,6 +8405,7 @@ function validateCoachingMediaUploadUrlPayload(body: unknown):
     payload: {
       journey_id: journeyId,
       lesson_id: lessonId,
+      channel_id: channelId,
       filename: candidate.filename.trim(),
       content_type: contentType,
       content_length_bytes: Math.round(candidate.content_length_bytes),
@@ -8031,6 +8440,65 @@ function validateCoachingMediaPlaybackTokenPayload(body: unknown):
       viewer_context: candidate.viewer_context as CoachingMediaPlaybackTokenPayload["viewer_context"],
     },
   };
+}
+
+function validateLiveSessionCreatePayload(body: unknown):
+  | { ok: true; payload: LiveSessionCreatePayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body)) return { ok: false, status: 400, error: "Body must be a JSON object" };
+  const channelId = typeof body.channel_id === "string" ? body.channel_id.trim() : "";
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  const idempotencyKey = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
+  if (!channelId) return { ok: false, status: 422, error: "channel_id is required" };
+  if (!title) return { ok: false, status: 422, error: "title is required" };
+  if (!idempotencyKey) return { ok: false, status: 422, error: "idempotency_key is required" };
+  if (title.length > 120) return { ok: false, status: 422, error: "title is too long (max 120 chars)" };
+
+  const startsAtRaw = typeof body.starts_at === "string" && body.starts_at.trim() ? body.starts_at.trim() : undefined;
+  let startsAt: string | undefined;
+  if (startsAtRaw) {
+    const parsed = new Date(startsAtRaw);
+    if (Number.isNaN(parsed.getTime())) {
+      return { ok: false, status: 422, error: "starts_at must be a valid ISO timestamp when provided" };
+    }
+    startsAt = parsed.toISOString();
+  }
+  const endsAtRaw = typeof body.ends_at === "string" && body.ends_at.trim() ? body.ends_at.trim() : undefined;
+  let endsAt: string | undefined;
+  if (endsAtRaw) {
+    const parsed = new Date(endsAtRaw);
+    if (Number.isNaN(parsed.getTime())) {
+      return { ok: false, status: 422, error: "ends_at must be a valid ISO timestamp when provided" };
+    }
+    endsAt = parsed.toISOString();
+  }
+  if (startsAt && endsAt && new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
+    return { ok: false, status: 422, error: "ends_at must be later than starts_at" };
+  }
+  return {
+    ok: true,
+    payload: {
+      channel_id: channelId,
+      title,
+      starts_at: startsAt,
+      ends_at: endsAt,
+      idempotency_key: idempotencyKey,
+    },
+  };
+}
+
+function validateLiveSessionJoinTokenPayload(body: unknown):
+  | { ok: true; payload: LiveSessionJoinTokenPayload }
+  | { ok: false; status: number; error: string } {
+  if (body === undefined || body === null) {
+    return { ok: true, payload: {} };
+  }
+  if (!isRecord(body)) return { ok: false, status: 400, error: "Body must be a JSON object" };
+  const role = body.role;
+  if (role !== undefined && role !== "host" && role !== "participant" && role !== "viewer") {
+    return { ok: false, status: 422, error: "role must be one of: host, participant, viewer" };
+  }
+  return { ok: true, payload: { role: role as LiveSessionJoinTokenPayload["role"] } };
 }
 
 async function canAccessMuxMediaForRole(
@@ -8085,6 +8553,83 @@ function inferViewerContextFromRole(role: string): "coach" | "team_leader" | "me
   if (role === "team_leader") return "team_leader";
   if (role === "challenge_sponsor") return "sponsor";
   return "member";
+}
+
+function muxLifecycleMessageCopy(status: MuxLifecycleStatus): string {
+  if (status === "ready") return "Media attachment is ready for playback.";
+  if (status === "processing") return "Media attachment is processing.";
+  if (status === "uploaded" || status === "queued_for_upload") return "Media attachment upload received.";
+  if (status === "failed") return "Media attachment processing failed.";
+  if (status === "deleted") return "Media attachment was deleted.";
+  return "Media attachment lifecycle updated.";
+}
+
+async function emitMuxLifecycleChannelMessage(media: MuxMediaSessionRecord, providerEventType: string): Promise<void> {
+  if (!dataClient || !media.channel_id) return;
+  const payload: ChannelMessagePayload & {
+    lifecycle?: {
+      processing_status: MuxLifecycleStatus;
+      playback_ready: boolean;
+      provider_event_type: string;
+    };
+  } = {
+    body: muxLifecycleMessageCopy(media.processing_status),
+    message_type: "media_attachment",
+    media_attachment: {
+      media_id: media.media_id,
+      caption: media.filename,
+    },
+    lifecycle: {
+      processing_status: media.processing_status,
+      playback_ready: media.playback_ready,
+      provider_event_type: providerEventType,
+    },
+  };
+
+  const messageBody = JSON.stringify({
+    text: payload.body,
+    media_attachment: payload.media_attachment,
+    lifecycle: payload.lifecycle,
+  });
+
+  const { error } = await dataClient.from("channel_messages").insert({
+    channel_id: media.channel_id,
+    sender_user_id: media.owner_user_id,
+    body: messageBody,
+    message_type: "message",
+  });
+  if (error) {
+    if (!isRecoverableAssignmentSourceGap(error)) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to create mux lifecycle channel message", error);
+    }
+    return;
+  }
+  await fanOutUnreadCounters(media.channel_id, media.owner_user_id);
+}
+
+function canHostLiveSession(role: string): boolean {
+  return role === "admin" || role === "super_admin" || role === "coach" || role === "team_leader" || role === "challenge_sponsor";
+}
+
+function issueLiveSessionJoinToken(input: {
+  sessionId: string;
+  channelId: string;
+  userId: string;
+  role: "host" | "participant" | "viewer";
+  issuedAtMs: number;
+  ttlSeconds: number;
+}): string {
+  const payload = {
+    provider: "compass_live",
+    session_id: input.sessionId,
+    channel_id: input.channelId,
+    user_id: input.userId,
+    role: input.role,
+    issued_at: new Date(input.issuedAtMs).toISOString(),
+    expires_at: new Date(input.issuedAtMs + input.ttlSeconds * 1000).toISOString(),
+  };
+  return Buffer.from(JSON.stringify(payload)).toString("base64url");
 }
 
 function resolveRequestId(requestIdHeader?: string | string[]): string {
@@ -8521,6 +9066,11 @@ async function upsertMuxMediaRecord(record: MuxMediaSessionRecord): Promise<void
   if (record.provider_asset_id) {
     muxMediaByProviderAssetId.set(record.provider_asset_id, record.media_id);
   }
+  if (record.channel_id) {
+    muxMediaChannelByMediaId.set(record.media_id, record.channel_id);
+  } else {
+    muxMediaChannelByMediaId.delete(record.media_id);
+  }
   if (!dataClient) return;
   const { error } = await dataClient
     .from("coaching_media_assets")
@@ -8532,6 +9082,7 @@ async function upsertMuxMediaRecord(record: MuxMediaSessionRecord): Promise<void
         owner_user_id: record.owner_user_id,
         journey_id: record.journey_id,
         lesson_id: record.lesson_id,
+        channel_id: record.channel_id,
         filename: record.filename,
         content_type: record.content_type,
         content_length_bytes: record.content_length_bytes,
@@ -8564,7 +9115,7 @@ async function getMuxMediaRecord(mediaId: string): Promise<MuxMediaSessionRecord
   const { data, error } = await dataClient
     .from("coaching_media_assets")
     .select(
-      "media_id,upload_id,provider,owner_user_id,journey_id,lesson_id,filename,content_type,content_length_bytes,provider_upload_id,provider_asset_id,playback_id,upload_url,upload_url_expires_at,processing_status,playback_ready,last_provider_event_at,last_provider_event_id,provider_error_code,verification_status,created_at,updated_at"
+      "media_id,upload_id,provider,owner_user_id,journey_id,lesson_id,channel_id,filename,content_type,content_length_bytes,provider_upload_id,provider_asset_id,playback_id,upload_url,upload_url_expires_at,processing_status,playback_ready,last_provider_event_at,last_provider_event_id,provider_error_code,verification_status,created_at,updated_at"
     )
     .eq("media_id", mediaId)
     .maybeSingle();
@@ -8588,7 +9139,7 @@ async function getMuxMediaRecordByUploadId(uploadId: string): Promise<MuxMediaSe
   const { data, error } = await dataClient
     .from("coaching_media_assets")
     .select(
-      "media_id,upload_id,provider,owner_user_id,journey_id,lesson_id,filename,content_type,content_length_bytes,provider_upload_id,provider_asset_id,playback_id,upload_url,upload_url_expires_at,processing_status,playback_ready,last_provider_event_at,last_provider_event_id,provider_error_code,verification_status,created_at,updated_at"
+      "media_id,upload_id,provider,owner_user_id,journey_id,lesson_id,channel_id,filename,content_type,content_length_bytes,provider_upload_id,provider_asset_id,playback_id,upload_url,upload_url_expires_at,processing_status,playback_ready,last_provider_event_at,last_provider_event_id,provider_error_code,verification_status,created_at,updated_at"
     )
     .eq("upload_id", uploadId)
     .maybeSingle();
@@ -8613,6 +9164,7 @@ function mapMuxMediaRow(row: Record<string, unknown>): MuxMediaSessionRecord {
     owner_user_id: String(row.owner_user_id ?? ""),
     journey_id: typeof row.journey_id === "string" ? row.journey_id : null,
     lesson_id: typeof row.lesson_id === "string" ? row.lesson_id : null,
+    channel_id: typeof row.channel_id === "string" ? row.channel_id : null,
     filename: String(row.filename ?? ""),
     content_type: String(row.content_type ?? ""),
     content_length_bytes: Math.max(0, toNumberOrZero(row.content_length_bytes)),
