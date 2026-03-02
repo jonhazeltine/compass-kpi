@@ -89,6 +89,10 @@ export interface CommsHubProps {
   onOpenBroadcast: () => void;
   onOpenChannelsCta: () => void;
   onBack: () => void;
+  headerAvatarLabel?: string | null;
+  headerAvatarTone?: string | null;
+  headerAvatarKind?: 'dm' | 'team' | 'channel';
+  onPressHeaderAvatar?: (() => void) | null;
 
   /* ── persona / role ─── */
   personaVariant: 'coach' | 'team_leader' | 'sponsor' | 'member' | 'solo';
@@ -247,9 +251,27 @@ export default function CommsHub(props: CommsHubProps) {
    ================================================================ */
 
 function CommsTopBar(props: CommsHubProps) {
-  const { personaVariant, screen, onBack, selectedChannelName } = props;
+  const {
+    personaVariant,
+    screen,
+    onBack,
+    selectedChannelName,
+    headerAvatarLabel,
+    headerAvatarTone,
+    headerAvatarKind,
+    onPressHeaderAvatar,
+  } = props;
   const showBack = screen === 'channel_thread' || screen === 'coach_broadcast_compose';
   const personaLabel = personaVariant.replace('_', ' ');
+  const showHeaderAvatar = screen === 'channel_thread';
+  const resolvedAvatarLabel = String(headerAvatarLabel ?? '?').slice(0, 2);
+  const resolvedAvatarTone =
+    headerAvatarTone ?? (headerAvatarKind === 'team' ? '#dff0da' : headerAvatarKind === 'dm' ? '#e7eaf1' : '#eef2f8');
+  const avatar = (
+    <View style={[st.headerAvatar, { backgroundColor: resolvedAvatarTone }]}>
+      <Text style={st.headerAvatarText}>{resolvedAvatarLabel}</Text>
+    </View>
+  );
 
   return (
     <View style={st.topBar}>
@@ -262,7 +284,23 @@ function CommsTopBar(props: CommsHubProps) {
         <Text style={st.topBarTitle}>Messages</Text>
       )}
       {showBack && selectedChannelName ? (
-        <Text style={st.topBarChannelName} numberOfLines={1}>{selectedChannelName}</Text>
+        <View style={st.topBarTitleWrap}>
+          {showHeaderAvatar ? (
+            onPressHeaderAvatar ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open conversation profile"
+                onPress={onPressHeaderAvatar}
+                style={st.headerAvatarPressable}
+              >
+                {avatar}
+              </Pressable>
+            ) : (
+              avatar
+            )
+          ) : null}
+          <Text style={st.topBarChannelName} numberOfLines={1}>{selectedChannelName}</Text>
+        </View>
       ) : null}
       <View style={{ flex: 1 }} />
       <View style={st.personaBadge}>
@@ -1172,8 +1210,31 @@ const st = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: C.textPrimary,
+    minWidth: 0,
+  },
+  topBarTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     flex: 1,
     minWidth: 0,
+  },
+  headerAvatarPressable: {
+    borderRadius: 16,
+  },
+  headerAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+  },
+  headerAvatarText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.textPrimary,
   },
   backBtn: {
     flexDirection: 'row',

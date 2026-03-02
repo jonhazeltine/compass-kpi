@@ -305,6 +305,16 @@ type CoachAssignment = {
   assignee_id: string | null;
   source: 'goals' | 'message_linked';
   created_at: string;
+  channel_id?: string | null;
+  source_message_id?: string | null;
+  last_thread_event_at?: string | null;
+  thread_read_state?: 'unread' | 'read' | 'unknown' | string;
+  rights?: {
+    can_edit_fields?: boolean;
+    can_update_status?: boolean;
+    can_mark_complete?: boolean;
+    can_reassign?: boolean;
+  } | null;
 };
 type CoachProfile = {
   id: string;
@@ -759,6 +769,13 @@ function fmtUsd(v: number) {
 function fmtNum(v: number) {
   const safe = Number.isFinite(v) ? v : 0;
   return safe.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+function normalizeCoachAssignmentStatus(raw: unknown): CoachAssignmentStatus {
+  const value = typeof raw === 'string' ? raw : '';
+  if (value === 'completed' || value === 'done') return 'completed';
+  if (value === 'in_progress' || value === 'active') return 'in_progress';
+  return 'pending';
 }
 
 function fmtShortMonthDayYear(iso?: string | null) {
@@ -6903,7 +6920,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       });
       if (response.ok) {
         const body = await response.json() as { assignments: CoachAssignment[] };
-        setCoachAssignments(body.assignments ?? []);
+        const normalized = Array.isArray(body.assignments)
+          ? body.assignments.map((assignment) => ({
+              ...assignment,
+              status: normalizeCoachAssignmentStatus(assignment.status),
+            }))
+          : [];
+        setCoachAssignments(normalized);
       } else {
         setCoachAssignments([]);
       }
@@ -10306,6 +10329,47 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 null;
               const selectedChannelResolvedId = selectedChannelRow ? String(selectedChannelRow.id) : null;
               const selectedChannelResolvedName = selectedChannelRow?.name ?? selectedChannelName ?? null;
+              const selectedChannelType = String(selectedChannelRow?.type ?? '').toLowerCase();
+              const selectedChannelScope = normalizeChannelTypeToScope(selectedChannelRow?.type) ?? 'community';
+              const normalizeName = (value: string | null | undefined) =>
+                String(value ?? '')
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]+/g, ' ')
+                  .trim();
+              const selectedChannelNameKey = normalizeName(selectedChannelResolvedName);
+              const selectedDmDirectoryMember =
+                selectedChannelType === 'direct' || selectedChannelType === 'dm'
+                  ? teamMemberDirectory.find((member) => String(selectedChannelRow?.context_id ?? '') === String(member.id)) ??
+                    teamMemberDirectory.find((member) => {
+                      const memberNameKey = normalizeName(member.name);
+                      return Boolean(memberNameKey) && (
+                        selectedChannelNameKey.includes(memberNameKey) ||
+                        memberNameKey.includes(selectedChannelNameKey)
+                      );
+                    }) ??
+                    null
+                  : null;
+              const headerAvatarKind: 'dm' | 'team' | 'channel' =
+                selectedDmDirectoryMember != null ? 'dm' : selectedChannelScope === 'team' ? 'team' : 'channel';
+              const headerAvatarLabel =
+                selectedDmDirectoryMember != null
+                  ? selectedDmDirectoryMember.name
+                      .split(' ')
+                      .map((part) => part[0])
+                      .join('')
+                      .toUpperCase()
+                      .slice(0, 2)
+                  : headerAvatarKind === 'team'
+                    ? teamIdentityAvatar
+                    : String(selectedChannelResolvedName ?? 'CH')
+                        .split(' ')
+                        .map((part) => part[0])
+                        .join('')
+                        .toUpperCase()
+                        .slice(0, 2) || 'CH';
+              const headerAvatarTone =
+                selectedDmDirectoryMember?.avatarTone ??
+                (headerAvatarKind === 'team' ? teamIdentityBackground : '#e9edf5');
               const journeyListRows = Array.isArray(coachingJourneys) ? coachingJourneys : [];
               const selectedJourneyId =
                 coachingShellContext.selectedJourneyId ?? (journeyListRows[0]?.id ? String(journeyListRows[0].id) : null);
@@ -10547,6 +10611,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         broadcastAudienceLabel: null,
                         broadcastRoleAllowed: false,
                       })}
+                      headerAvatarLabel={headerAvatarLabel}
+                      headerAvatarTone={headerAvatarTone}
+                      headerAvatarKind={headerAvatarKind}
+                      onPressHeaderAvatar={
+                        selectedDmDirectoryMember
+                          ? () => {
+                              setTeamFlowScreen('dashboard');
+                              setTeamProfileMemberId(selectedDmDirectoryMember.id);
+                              setActiveTab('team');
+                              setViewMode('log');
+                            }
+                          : null
+                      }
                       personaVariant={commsPersonaVariant}
                       roleCanBroadcast={roleCanOpenBroadcast}
                       channels={commsChannelRows}
