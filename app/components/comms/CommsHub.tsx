@@ -34,7 +34,7 @@ import {
 
 export type CommsScreen = 'inbox' | 'inbox_channels' | 'channel_thread' | 'coach_broadcast_compose';
 export type CommsPrimaryTab = 'all' | 'channels' | 'dms' | 'broadcast';
-export type CommsScopeFilter = 'all' | 'team' | 'cohort' | 'segment' | 'global';
+export type CommsScopeFilter = 'all' | 'team' | 'cohort' | 'global';
 
 export interface ChannelRow {
   id: string;
@@ -83,10 +83,12 @@ export interface CommsHubProps {
   onOpenChannel: (channelId: string, channelName: string, scope: string) => void;
   onOpenDm: (memberId: string, memberName: string) => void;
   onOpenBroadcast: () => void;
+  onOpenChannelsCta: () => void;
   onBack: () => void;
 
   /* ── persona / role ─── */
   personaVariant: 'coach' | 'team_leader' | 'sponsor' | 'member' | 'solo';
+  /** Broadcast tab + compose: visible for coach & team_leader, hidden for member/sponsor/solo */
   roleCanBroadcast: boolean;
 
   /* ── channel list data ─── */
@@ -120,9 +122,9 @@ export interface CommsHubProps {
   /* ── broadcast composer ─── */
   broadcastDraft: string;
   onChangeBroadcastDraft: (text: string) => void;
-  broadcastTargetScope: 'team' | 'cohort' | 'channel';
+  broadcastTargetScope: 'team' | 'cohort' | 'channel' | 'segment';
   broadcastTargetOptions: string[];
-  onChangeBroadcastTarget: (scope: 'team' | 'cohort' | 'channel') => void;
+  onChangeBroadcastTarget: (scope: 'team' | 'cohort' | 'channel' | 'segment') => void;
   broadcastSubmitting: boolean;
   broadcastError: string | null;
   broadcastSuccessNote: string | null;
@@ -141,22 +143,27 @@ export interface CommsHubProps {
    ================================================================ */
 
 export default function CommsHub(props: CommsHubProps) {
-  const { screen } = props;
+  const { screen, roleCanBroadcast } = props;
 
   return (
     <View style={st.root}>
       {/* ─── Top bar: persona badge + back nav ─── */}
       <CommsTopBar {...props} />
 
-      {/* ─── Tab strip ─── */}
+      {/* ─── Tab strip (hidden during thread & broadcast compose) ─── */}
       <CommsTabs {...props} />
 
       {/* ─── View router ─── */}
-      {screen === 'channel_thread' ? (
+      {screen === 'inbox' ? (
+        /* Inbox landing — shows CTA to navigate into channel list */
+        <InboxLanding {...props} />
+      ) : screen === 'channel_thread' ? (
         <ThreadView {...props} />
       ) : screen === 'coach_broadcast_compose' ? (
+        /* BroadcastCompose self-guards when !roleCanBroadcast (shows locked state) */
         <BroadcastCompose {...props} />
       ) : (
+        /* inbox_channels and any other screen → full channel list */
         <ChannelList {...props} />
       )}
     </View>
@@ -202,10 +209,11 @@ function CommsTabs(props: CommsHubProps) {
     primaryTab, onChangePrimaryTab,
     scopeFilter, onChangeScopeFilter,
     searchQuery, onChangeSearchQuery,
-    roleCanBroadcast, screen,
+    roleCanBroadcast, screen, personaVariant,
   } = props;
 
-  if (screen === 'channel_thread' || screen === 'coach_broadcast_compose') return null;
+  // Hide tab strip on screens that have their own navigation
+  if (screen === 'inbox' || screen === 'channel_thread' || screen === 'coach_broadcast_compose') return null;
 
   const tabs: { key: CommsPrimaryTab; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -218,8 +226,7 @@ function CommsTabs(props: CommsHubProps) {
     { key: 'all', label: 'All' },
     { key: 'team', label: 'Team' },
     { key: 'cohort', label: 'Cohort' },
-    { key: 'segment', label: 'Segment' },
-    { key: 'global', label: 'Global' },
+    ...(personaVariant === 'coach' ? [{ key: 'global' as const, label: 'Global' }] : []),
   ];
 
   const placeholder =
@@ -283,6 +290,74 @@ function CommsTabs(props: CommsHubProps) {
 }
 
 /* ================================================================
+   INBOX LANDING — CTA gateway into channels
+   ================================================================ */
+
+function InboxLanding(props: CommsHubProps) {
+  const {
+    personaVariant, roleCanBroadcast, gateBlocksActions,
+    onOpenChannelsCta, onOpenBroadcast,
+    channels, channelsLoading,
+  } = props;
+
+  const unreadTotal = channels.reduce((sum, ch) => sum + (ch.unread_count ?? 0), 0);
+  const channelCount = channels.length;
+
+  const personaLabel = personaVariant === 'team_leader'
+    ? 'Team Leader'
+    : personaVariant.charAt(0).toUpperCase() + personaVariant.slice(1);
+
+  return (
+    <ScrollView style={st.inboxLandingScroll} contentContainerStyle={st.inboxLandingContent}>
+      {/* Welcome card */}
+      <View style={st.inboxCard}>
+        <Text style={st.inboxCardIcon}>💬</Text>
+        <Text style={st.inboxCardTitle}>Comms Inbox</Text>
+        <Text style={st.inboxCardSub}>
+          {channelsLoading
+            ? 'Loading your channels…'
+            : unreadTotal > 0
+              ? `${unreadTotal} unread message${unreadTotal !== 1 ? 's' : ''} across ${channelCount} channel${channelCount !== 1 ? 's' : ''}.`
+              : channelCount > 0
+                ? `${channelCount} channel${channelCount !== 1 ? 's' : ''} available. You're all caught up.`
+                : 'No channels yet. Check back soon.'}
+        </Text>
+      </View>
+
+      {/* Primary CTA: Open Channels */}
+      <Pressable
+        style={[st.inboxCtaBtn, gateBlocksActions && st.inboxCtaBtnDisabled]}
+        onPress={onOpenChannelsCta}
+        disabled={gateBlocksActions}
+        accessibilityRole="button"
+        accessibilityLabel="Open Channels"
+      >
+        <Text style={st.inboxCtaBtnText}>Open Channels</Text>
+        <Text style={st.inboxCtaBtnArrow}>→</Text>
+      </Pressable>
+
+      {/* Secondary CTA: Broadcast (visible for coach / team_leader only) */}
+      {roleCanBroadcast ? (
+        <Pressable
+          style={[st.inboxSecondaryBtn, gateBlocksActions && st.inboxCtaBtnDisabled]}
+          onPress={onOpenBroadcast}
+          disabled={gateBlocksActions}
+          accessibilityRole="button"
+          accessibilityLabel="Open Broadcast Composer"
+        >
+          <Text style={st.inboxSecondaryBtnText}>📢  Compose Broadcast</Text>
+        </Pressable>
+      ) : null}
+
+      {/* Role badge */}
+      <View style={st.inboxRolePill}>
+        <Text style={st.inboxRolePillText}>{personaLabel} view</Text>
+      </View>
+    </ScrollView>
+  );
+}
+
+/* ================================================================
    CHANNEL LIST — messaging-app inbox rows
    ================================================================ */
 
@@ -309,7 +384,6 @@ function ChannelList(props: CommsHubProps) {
       rows = rows.filter((r) => {
         if (scopeFilter === 'team') return r.scope === 'team';
         if (scopeFilter === 'cohort') return r.scope === 'cohort';
-        if (scopeFilter === 'segment') return r.scope === 'challenge' || r.scope === 'sponsor';
         if (scopeFilter === 'global') return r.scope === 'community';
         return true;
       });
@@ -726,7 +800,12 @@ function BroadcastCompose(props: CommsHubProps) {
     );
   }
 
-  const targetLabels: Record<string, string> = { team: 'Team', cohort: 'Cohort', channel: 'Channel' };
+  const targetLabels: Record<string, string> = {
+    team: 'Team',
+    cohort: 'Cohort',
+    channel: 'Channel',
+    segment: 'Segment',
+  };
 
   return (
     <ScrollView style={st.broadcastScroll} contentContainerStyle={st.broadcastScrollInner} keyboardShouldPersistTaps="handled">
@@ -748,7 +827,7 @@ function BroadcastCompose(props: CommsHubProps) {
               <Pressable
                 key={target}
                 style={[st.broadcastTargetBtn, active && st.broadcastTargetBtnActive]}
-                onPress={() => onChangeBroadcastTarget(target as 'team' | 'cohort' | 'channel')}
+                onPress={() => onChangeBroadcastTarget(target as 'team' | 'cohort' | 'channel' | 'segment')}
               >
                 <Text style={[st.broadcastTargetBtnText, active && st.broadcastTargetBtnTextActive]}>
                   {targetLabels[target] ?? target}
@@ -1077,6 +1156,98 @@ const st = StyleSheet.create({
     color: C.textOnBrand,
     fontSize: 13,
     fontWeight: '700',
+  },
+
+  /* ─── inbox landing ─── */
+  inboxLandingScroll: {
+    flex: 1,
+  },
+  inboxLandingContent: {
+    padding: 20,
+    paddingTop: 28,
+    gap: 16,
+    alignItems: 'center',
+  },
+  inboxCard: {
+    backgroundColor: C.cardBg,
+    borderRadius: 16,
+    padding: 28,
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: C.divider,
+  },
+  inboxCardIcon: {
+    fontSize: 36,
+    marginBottom: 4,
+  },
+  inboxCardTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: C.textPrimary,
+    letterSpacing: -0.3,
+  },
+  inboxCardSub: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: C.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  inboxCtaBtn: {
+    backgroundColor: C.brand,
+    borderRadius: 14,
+    paddingVertical: 15,
+    paddingHorizontal: 28,
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  inboxCtaBtnDisabled: {
+    opacity: 0.4,
+  },
+  inboxCtaBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.textOnBrand,
+    letterSpacing: 0.2,
+  },
+  inboxCtaBtnArrow: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: C.textOnBrand,
+  },
+  inboxSecondaryBtn: {
+    backgroundColor: C.cardBg,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: C.brand,
+    paddingVertical: 13,
+    paddingHorizontal: 28,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inboxSecondaryBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: C.brand,
+  },
+  inboxRolePill: {
+    backgroundColor: C.brandLight,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    marginTop: 4,
+  },
+  inboxRolePillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.brand,
+    textTransform: 'capitalize',
   },
 
   /* ─── thread view ─── */

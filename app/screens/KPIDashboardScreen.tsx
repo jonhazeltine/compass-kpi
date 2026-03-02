@@ -133,7 +133,7 @@ type ViewMode = 'home' | 'log';
 type BottomTab = 'home' | 'challenge' | 'logs' | 'team' | 'comms';
 type LogsReportsSubview = 'logs' | 'reports';
 type CommsHubPrimaryTab = 'all' | 'channels' | 'dms' | 'broadcast';
-type CommsHubScopeFilter = 'all' | 'team' | 'cohort' | 'segment' | 'global';
+type CommsHubScopeFilter = 'all' | 'team' | 'cohort' | 'global';
 type DrawerFilter = 'Quick' | 'PC' | 'GP' | 'VP';
 type LogOtherFilter = 'All' | 'PC' | 'GP' | 'VP';
 type HomePanel = 'Quick' | 'PC' | 'GP' | 'VP';
@@ -2416,7 +2416,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [channelMessageSubmitting, setChannelMessageSubmitting] = useState(false);
   const [channelMessageSubmitError, setChannelMessageSubmitError] = useState<string | null>(null);
   const [broadcastDraft, setBroadcastDraft] = useState('');
-  const [broadcastTargetScope, setBroadcastTargetScope] = useState<'team' | 'cohort' | 'channel'>('team');
+  const [broadcastTargetScope, setBroadcastTargetScope] = useState<'team' | 'cohort' | 'channel' | 'segment'>('team');
   const [broadcastSubmitting, setBroadcastSubmitting] = useState(false);
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
   const [broadcastSuccessNote, setBroadcastSuccessNote] = useState<string | null>(null);
@@ -10119,13 +10119,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                         ? 'Solo layout: focus on your journey milestones and direct channel updates.'
                         : 'Member layout: keep up with team/challenge updates and journey lesson progress.';
               const allChannelApiRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
+              const effectiveCommsScopeFilter: CommsHubScopeFilter =
+                commsHubScopeFilter === 'global' && !isCoachRuntimeOperator ? 'all' : commsHubScopeFilter;
               const scopeFilterMatch = (row: ChannelApiRow) => {
                 const scope = normalizeChannelTypeToScope(row.type);
-                if (commsHubScopeFilter === 'all') return true;
-                if (commsHubScopeFilter === 'team') return scope === 'team';
-                if (commsHubScopeFilter === 'cohort') return scope === 'cohort';
-                if (commsHubScopeFilter === 'segment') return scope === 'challenge' || scope === 'sponsor';
-                if (commsHubScopeFilter === 'global') return scope === 'community';
+                if (effectiveCommsScopeFilter === 'all') return true;
+                if (effectiveCommsScopeFilter === 'team') return scope === 'team';
+                if (effectiveCommsScopeFilter === 'cohort') return scope === 'cohort';
+                if (effectiveCommsScopeFilter === 'global') return scope === 'community';
                 return true;
               };
               const searchNeedle = commsHubSearchQuery.trim().toLowerCase();
@@ -10147,10 +10148,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 .filter(scopeFilterMatch)
                 .filter(searchMatch);
               const scopeFilteredDmRows = dmApiRows.filter(searchMatch);
-              const broadcastTargetOptions: Array<'team' | 'cohort' | 'channel'> = isCoachRuntimeOperator
-                ? ['team', 'cohort', 'channel']
+              const broadcastTargetOptions: Array<'team' | 'cohort' | 'channel' | 'segment'> = isCoachRuntimeOperator
+                ? ['team', 'cohort', 'channel', 'segment']
                 : teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime
-                  ? ['team', 'cohort']
+                  ? ['team', 'cohort', 'channel']
                   : [];
               const effectiveBroadcastTargetScope = broadcastTargetOptions.includes(broadcastTargetScope)
                 ? broadcastTargetScope
@@ -10161,6 +10162,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   const scope = normalizeChannelTypeToScope(row.type);
                   if (effectiveBroadcastTargetScope === 'team') return scope === 'team';
                   if (effectiveBroadcastTargetScope === 'cohort') return scope === 'cohort';
+                  if (effectiveBroadcastTargetScope === 'segment') return false;
                   return true;
                 })
                 .filter(searchMatch);
@@ -10181,9 +10183,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               const sortedBroadcastCandidateRows = [...broadcastCandidateRows].sort(sortByReadAndActivity);
               const searchPlaceholder =
                 commsHubPrimaryTab === 'channels'
-                  ? commsHubScopeFilter === 'all'
+                  ? effectiveCommsScopeFilter === 'all'
                     ? 'Search channels...'
-                    : `Search ${commsHubScopeFilter} channels...`
+                    : `Search ${effectiveCommsScopeFilter} channels...`
                   : commsHubPrimaryTab === 'dms'
                     ? 'Search direct messages...'
                     : commsHubPrimaryTab === 'broadcast'
@@ -10355,7 +10357,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                     <CommsHub
                       screen={coachingShellScreen as 'inbox' | 'inbox_channels' | 'channel_thread' | 'coach_broadcast_compose'}
                       primaryTab={commsHubPrimaryTab}
-                      scopeFilter={commsHubScopeFilter}
+                      scopeFilter={effectiveCommsScopeFilter}
                       searchQuery={commsHubSearchQuery}
                       onChangePrimaryTab={(tab) => {
                         setCommsHubPrimaryTab(tab);
@@ -10379,7 +10381,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             broadcastAudienceLabel: null,
                             broadcastRoleAllowed: false,
                           });
-                        } else {
+                        } else if (tab === 'broadcast' && roleCanOpenBroadcast) {
+                          // Broadcast tab: only navigate if role gate allows
                           openCoachingShell('coach_broadcast_compose');
                         }
                       }}
@@ -10413,7 +10416,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           broadcastRoleAllowed: false,
                         });
                       }}
-                      onOpenBroadcast={() => openCoachingShell('coach_broadcast_compose')}
+                      onOpenBroadcast={() => {
+                        if (!roleCanOpenBroadcast) return; // safety: member/sponsor/solo cannot reach broadcast
+                        openCoachingShell('coach_broadcast_compose');
+                      }}
+                      onOpenChannelsCta={() => openCoachingShell('inbox_channels', {
+                        source: 'user_tab',
+                        preferredChannelScope: null,
+                        preferredChannelLabel: null,
+                        threadTitle: null,
+                        threadSub: null,
+                        broadcastAudienceLabel: null,
+                        broadcastRoleAllowed: false,
+                      })}
                       onBack={() => openCoachingShell('inbox_channels', {
                         source: 'user_tab',
                         preferredChannelScope: null,
@@ -10558,21 +10573,20 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           { key: 'all' as const, label: 'All Types' },
                           { key: 'team' as const, label: 'Team' },
                           { key: 'cohort' as const, label: 'Cohort' },
-                          { key: 'segment' as const, label: 'Segment' },
-                          { key: 'global' as const, label: 'Global' },
+                          ...(isCoachRuntimeOperator ? [{ key: 'global' as const, label: 'Global' }] : []),
                         ] as const).map((filter) => (
                           <TouchableOpacity
                             key={`comms-scope-${filter.key}`}
                             style={[
                               styles.commsHubFilterBtn,
-                              commsHubScopeFilter === filter.key ? styles.commsHubFilterBtnActive : null,
+                              effectiveCommsScopeFilter === filter.key ? styles.commsHubFilterBtnActive : null,
                             ]}
                             onPress={() => setCommsHubScopeFilter(filter.key)}
                           >
                             <Text
                               style={[
                                 styles.commsHubFilterBtnText,
-                                commsHubScopeFilter === filter.key ? styles.commsHubFilterBtnTextActive : null,
+                                effectiveCommsScopeFilter === filter.key ? styles.commsHubFilterBtnTextActive : null,
                               ]}
                             >
                               {filter.label}
@@ -10661,9 +10675,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                             const typeLabel = String(row.type ?? 'channel');
                             const scopeLabel =
                               rowScope === 'community'
-                                ? 'Global'
+                                ? 'Community'
                                 : rowScope === 'challenge'
-                                  ? 'Segment'
+                                  ? 'Challenge'
                                   : rowScope.charAt(0).toUpperCase() + rowScope.slice(1);
                             const lastActivityPreview = row.last_seen_at
                               ? `Last activity ${fmtMonthDayTime(row.last_seen_at)}`
@@ -11009,13 +11023,27 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                       effectiveBroadcastTargetScope === target ? styles.commsHubFilterBtnTextActive : null,
                                     ]}
                                   >
-                                    {target === 'team' ? 'Team' : target === 'cohort' ? 'Cohort' : 'Channel'}
+                                    {target === 'team'
+                                      ? 'Team'
+                                      : target === 'cohort'
+                                        ? 'Cohort'
+                                        : target === 'segment'
+                                          ? 'Segment'
+                                          : 'Channel'}
                                   </Text>
                                 </TouchableOpacity>
                               ))}
                             </View>
+                            {effectiveBroadcastTargetScope === 'segment' ? (
+                              <View style={styles.coachingJourneyEmptyCard}>
+                                <Text style={styles.coachingJourneyEmptyTitle}>Segment broadcasts are coach-only</Text>
+                                <Text style={styles.coachingJourneyEmptySub}>
+                                  Segments are broadcast targets and do not appear in channel lists.
+                                </Text>
+                              </View>
+                            ) : null}
                             <View style={styles.coachingShellList}>
-                              {sortedBroadcastCandidateRows.length > 0 ? (
+                              {effectiveBroadcastTargetScope !== 'segment' && sortedBroadcastCandidateRows.length > 0 ? (
                                 sortedBroadcastCandidateRows.slice(0, 8).map((row) => {
                                   const isActive = String(row.id) === String(selectedChannelResolvedId ?? '');
                                   const scope = normalizeChannelTypeToScope(row.type) ?? 'community';
@@ -11050,9 +11078,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                 })
                               ) : (
                                 <View style={styles.coachingJourneyEmptyCard}>
-                                  <Text style={styles.coachingJourneyEmptyTitle}>No destination channels found</Text>
+                                  <Text style={styles.coachingJourneyEmptyTitle}>
+                                    {effectiveBroadcastTargetScope === 'segment'
+                                      ? 'Select a non-segment target to route by channel'
+                                      : 'No destination channels found'}
+                                  </Text>
                                   <Text style={styles.coachingJourneyEmptySub}>
-                                    No channels match this target scope for your current role.
+                                    {effectiveBroadcastTargetScope === 'segment'
+                                      ? 'Team, cohort, and channel targets use channel destinations.'
+                                      : 'No channels match this target scope for your current role.'}
                                   </Text>
                                 </View>
                               )}
