@@ -130,7 +130,7 @@ type MePayload = {
 type LoadState = 'loading' | 'empty' | 'error' | 'ready';
 type Segment = 'PC' | 'GP' | 'VP';
 type ViewMode = 'home' | 'log';
-type BottomTab = 'home' | 'challenge' | 'logs' | 'team' | 'comms';
+type BottomTab = 'home' | 'challenge' | 'coach' | 'logs' | 'team' | 'comms';
 type LogsReportsSubview = 'logs' | 'reports';
 type CommsHubPrimaryTab = 'all' | 'channels' | 'dms' | 'broadcast';
 type CommsHubScopeFilter = 'all' | 'team' | 'cohort' | 'global';
@@ -2255,6 +2255,7 @@ const feedbackAudioAssets = {
 const bottomTabIconSvgByKey = {
   home: TabDashboardIcon,
   challenge: TabCoachIcon,
+  coach: TabCoachIcon,
   logs: TabReportsIcon,
   team: TabTeamIcon,
   comms: TabMessagesIcon,
@@ -2270,14 +2271,16 @@ const homePanelPillSvgBg = {
 const bottomTabIconStyleByKey: Record<BottomTab, any> = {
   home: null,
   challenge: null,
+  coach: null,
   logs: null,
   team: null,
   comms: { transform: [{ translateY: 3.5 }] },
 };
 
-const bottomTabOrder: BottomTab[] = ['comms', 'team', 'home', 'logs', 'challenge'];
+const bottomTabOrder: BottomTab[] = ['comms', 'team', 'home', 'logs', 'coach'];
 const bottomTabAccessibilityLabel: Record<BottomTab, string> = {
-  challenge: 'Coach',
+  challenge: 'Challenges',
+  coach: 'Coach',
   logs: 'Reports',
   home: 'LOG',
   team: 'Team',
@@ -2288,7 +2291,8 @@ const bottomTabDisplayLabel: Record<BottomTab, string> = {
   team: 'Team',
   home: 'LOG',
   logs: 'Reports',
-  challenge: 'Coach',
+  challenge: 'Challenges',
+  coach: 'Coach',
 };
 
 type Props = {
@@ -5026,9 +5030,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setViewMode('home');
       return;
     }
-    if (tab === 'challenge') {
+    if (tab === 'coach') {
       setViewMode('log');
       setCoachTabScreen(coachTabDefault);
+      return;
+    }
+    if (tab === 'challenge') {
+      setViewMode('log');
       return;
     }
     if (tab === 'logs') {
@@ -6877,7 +6885,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
   // Load marketplace + engagement state when coach tab becomes active
   useEffect(() => {
-    if (activeTab === 'challenge') {
+    if (activeTab === 'coach') {
       void fetchCoachEngagement();
       if (coachTabScreen === 'coach_marketplace') {
         void fetchCoachMarketplace();
@@ -6905,7 +6913,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
   // Load assignments when goals/tasks screen becomes active
   useEffect(() => {
-    if (activeTab === 'challenge' && coachTabScreen === 'coach_goals_tasks') {
+    if (activeTab === 'coach' && coachTabScreen === 'coach_goals_tasks') {
       void fetchCoachAssignments();
     }
   }, [activeTab, coachTabScreen, fetchCoachAssignments]);
@@ -7661,10 +7669,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             </TouchableOpacity>
           </View>
         ) : null}
-        {activeTab === 'challenge' ? (
+        {activeTab === 'coach' || activeTab === 'challenge' ? (
           <View style={styles.challengeSurfaceWrap}>
             {/* ── Coach Tab IA Routing ── */}
-            {coachTabScreen === 'coach_marketplace' ? (
+            {activeTab === 'coach' ? (
+            coachTabScreen === 'coach_marketplace' ? (
               <View style={styles.coachMarketplaceWrap}>
                 <View style={styles.coachMarketplaceHeader}>
                   <Text style={styles.coachMarketplaceTitle}>Find Your Coach</Text>
@@ -7762,7 +7771,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 )}
                 <TouchableOpacity
                   style={styles.coachMarketplaceChallengeLink}
-                  onPress={() => setCoachTabScreen('coach_challenges')}
+                  onPress={() => setActiveTab('challenge')}
                 >
                   <Text style={styles.coachMarketplaceChallengeLinkText}>View Challenges →</Text>
                 </TouchableOpacity>
@@ -7825,7 +7834,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 </View>
                 <TouchableOpacity
                   style={styles.coachHubChallengeLink}
-                  onPress={() => setCoachTabScreen('coach_challenges')}
+                  onPress={() => setActiveTab('challenge')}
                 >
                   <Text style={styles.coachHubChallengeLinkText}>View Challenges →</Text>
                 </TouchableOpacity>
@@ -7905,13 +7914,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 <Text style={styles.coachPlaceholderTitle}>Direct Messages</Text>
                 <Text style={styles.coachPlaceholderSub}>Direct messaging with your coach will be available after provider activation.</Text>
               </View>
+            ) : null
             ) : null}
             {/* ── Challenges sub-screen (original challenge surface) ── */}
-            {coachTabScreen === 'coach_challenges' ? (
+            {activeTab === 'challenge' ? (
               <>
                 <TouchableOpacity
                   style={styles.coachChallengesBackBtn}
-                  onPress={() => setCoachTabScreen(coachTabDefault)}
+                  onPress={() => {
+                    setCoachTabScreen(coachTabDefault);
+                    setActiveTab('coach');
+                  }}
                 >
                   <Text style={styles.coachChallengesBackText}>← Back to Coach</Text>
                 </TouchableOpacity>
