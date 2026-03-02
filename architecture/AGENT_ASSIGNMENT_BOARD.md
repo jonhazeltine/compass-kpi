@@ -5254,7 +5254,7 @@ Redesign Team tab `Challenges` list so it is less dense and more actionable:
 ### `M6-COMMS-STREAM-UX-RUNTIME-QA-C`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `M6 stream/comms runtime QA + regression guard`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`
 - `Flow:` `comms stream UX/runtime QA matrix`
@@ -5264,6 +5264,8 @@ Redesign Team tab `Challenges` list so it is less dense and more actionable:
 - `Completion note (2026-03-01, Mobile-2):` QA matrix executed with evidence bundle at `/Users/jon/compass-kpi/app/test-results/m6-comms-stream-ux-runtime-qa-c/`; backend runtime/policy scripts passed and UI smoke captured comms surfaces with two runtime UX defects recorded (missing `Open Channels` CTA in current state, broadcast tab hidden for current persona).
 - `Validation note (2026-03-01, Mobile-2):` `npm run -s build`, `npm run -s test:checkpoint-h-coaching-authoring`, `npm run -s test:w13-stream-wave-a`, and `npm run -s test:w13-stream-comms-role-policy` passed; denied-copy matrix (`401/403/409/422/503`) captured in `05-denied-copy-matrix.json`.
 - `Execution note (2026-03-02, Mobile-2 rerun start):` Controller requested full rerun against latest branch state (`includes 2ee3fc1`) with explicit persona broadcast visibility checks (member hidden, team_leader visible, coach visible) and refreshed evidence artifacts (`00-pass-fail-matrix.md`, `ui-smoke-summary.json`, `05-denied-copy-matrix.json`).
+- `Completion note (2026-03-02, Mobile-2 rerun):` Full QA matrix rerun completed with deterministic persona role override harness in runtime smoke script. Broadcast visibility policy now validated as expected (`member hidden`, `team_leader visible`, `coach visible`) and denied-copy matrix remains PASS (`401/403/409/422/503`). `Open Channels` CTA path remains failing in current runtime for all three personas.
+- `Validation note (2026-03-02, Mobile-2 rerun):` Re-ran `test:checkpoint-h-coaching-authoring`, `test:w13-stream-wave-a`, and `test:w13-stream-comms-role-policy` (all pass, fresh logs captured) and refreshed evidence files under `/Users/jon/compass-kpi/app/test-results/m6-comms-stream-ux-runtime-qa-c/`.
 
 #### Scope In
 - QA/evidence only unless deterministic harness fix required.
