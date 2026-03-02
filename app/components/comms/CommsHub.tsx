@@ -280,6 +280,7 @@ function CommsTabs(props: CommsHubProps) {
           placeholder={placeholder}
           placeholderTextColor={C.textTertiary}
           style={st.searchInput}
+          autoFocus={primaryTab === 'dms' && searchQuery.trim().length > 0}
         />
       </View>
     </View>

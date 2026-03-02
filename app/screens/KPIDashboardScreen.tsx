@@ -8993,12 +8993,52 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   : 0;
               const selectedTeamProfile = teamMembers.find((row) => row.id === teamProfileMemberId) ?? null;
               const openTeamDirectThread = (member: (typeof teamMembers)[number], source: CoachingShellEntrySource) => {
-                openCoachingShell('channel_thread', {
+                const normalizeName = (value: string | null | undefined) =>
+                  String(value ?? '')
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, ' ')
+                    .trim();
+                const memberNameKey = normalizeName(member.name);
+                const directChannelMatch = (channelsApiRows ?? []).find((row) => {
+                  const type = String(row.type ?? '').toLowerCase();
+                  if (type !== 'direct' && type !== 'dm') return false;
+                  if (String(row.context_id ?? '') === String(member.id)) return true;
+                  const channelNameKey = normalizeName(row.name);
+                  return Boolean(channelNameKey) && (channelNameKey.includes(memberNameKey) || memberNameKey.includes(channelNameKey));
+                });
+
+                setTeamProfileMemberId(null);
+                setCommsHubPrimaryTab('dms');
+                setCommsHubSearchQuery(member.name);
+                setCommsHubScopeFilter('all');
+                setBroadcastError(null);
+                setBroadcastSuccessNote(null);
+                setChannelMessageSubmitError(null);
+
+                if (directChannelMatch) {
+                  const directChannelName = String(directChannelMatch.name ?? `${member.name} DM`);
+                  setSelectedChannelId(String(directChannelMatch.id));
+                  setSelectedChannelName(directChannelName);
+                  openCoachingShell('channel_thread', {
+                    source,
+                    preferredChannelScope: 'community',
+                    preferredChannelLabel: directChannelName,
+                    threadTitle: directChannelName,
+                    threadSub: `Direct message with ${member.name}.`,
+                    broadcastAudienceLabel: null,
+                    broadcastRoleAllowed: false,
+                  });
+                  return;
+                }
+
+                setSelectedChannelId(null);
+                setSelectedChannelName(null);
+                openCoachingShell('inbox_channels', {
                   source,
-                  preferredChannelScope: 'team',
-                  preferredChannelLabel: 'Team Updates',
-                  threadTitle: `${member.name} DM`,
-                  threadSub: `Direct team coaching thread with ${member.name}.`,
+                  preferredChannelScope: 'community',
+                  preferredChannelLabel: member.name,
+                  threadTitle: null,
+                  threadSub: `Start a direct message with ${member.name}.`,
                   broadcastAudienceLabel: null,
                   broadcastRoleAllowed: false,
                 });
