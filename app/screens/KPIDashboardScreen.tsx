@@ -314,6 +314,24 @@ type CoachTabScreen =
 type CoachEntitlementState = 'allowed' | 'pending' | 'blocked' | 'fallback';
 type CoachEngagementStatus = 'none' | 'pending' | 'active' | 'ended';
 type CoachAssignmentType = 'personal_goal' | 'team_leader_goal' | 'coach_goal' | 'personal_task' | 'coach_task';
+/* ── Coach Workflow types ── */
+type CoachWorkflowSection = 'journeys' | 'clients' | 'cohorts' | 'segments' | 'broadcast';
+type CoachCohortRow = {
+  id: string;
+  name: string;
+  members_count: number;
+  leaders_count: number;
+  member_user_ids: string[];
+  my_membership_role: 'team_leader' | 'member' | null;
+};
+type CoachSegmentPreset = {
+  id: string;
+  label: string;
+  rule: 'kpi_completion' | 'gci_direction' | 'journey_progress' | 'manual';
+  status: 'live' | 'preview';
+  description: string;
+};
+type CoachWorkflowAssignMode = 'none' | 'cohort' | 'individual' | 'task';
 type CoachAssignmentStatus = 'pending' | 'in_progress' | 'completed';
 type CoachAssignment = {
   id: string;
@@ -2411,6 +2429,21 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [coachEngagementLoading, setCoachEngagementLoading] = useState(false);
   const [coachSelectedProfile, setCoachSelectedProfile] = useState<CoachProfile | null>(null);
   const coachTabDefault: CoachTabScreen = coachEngagementStatus === 'active' ? 'coach_hub_primary' : 'coach_marketplace';
+  /* ── Coach Workflow state ── */
+  const [coachWorkflowSection, setCoachWorkflowSection] = useState<CoachWorkflowSection>('journeys');
+  const [coachCohorts, setCoachCohorts] = useState<CoachCohortRow[]>([]);
+  const [coachCohortsLoading, setCoachCohortsLoading] = useState(false);
+  const [coachCohortsError, setCoachCohortsError] = useState<string | null>(null);
+  const [coachWorkflowAssignMode, setCoachWorkflowAssignMode] = useState<CoachWorkflowAssignMode>('none');
+  const [coachWorkflowAssignJourneyId, setCoachWorkflowAssignJourneyId] = useState<string | null>(null);
+  const [coachWorkflowAssignTargetCohortId, setCoachWorkflowAssignTargetCohortId] = useState<string | null>(null);
+  const [coachWorkflowAssignTargetUserId, setCoachWorkflowAssignTargetUserId] = useState<string | null>(null);
+  const coachSegmentPresets: CoachSegmentPreset[] = useMemo(() => [
+    { id: 'seg-kpi', label: 'KPI Completion', rule: 'kpi_completion', status: 'preview', description: 'Members meeting KPI completion thresholds' },
+    { id: 'seg-gci', label: 'GCI Direction', rule: 'gci_direction', status: 'preview', description: 'Members trending up/down in GCI performance' },
+    { id: 'seg-journey', label: 'Journey Progress', rule: 'journey_progress', status: 'preview', description: 'Members actively progressing through journeys' },
+    { id: 'seg-manual', label: 'Manual Segment', rule: 'manual', status: 'preview', description: 'Manually curated audience segment' },
+  ], []);
   const [commsHubPrimaryTab, setCommsHubPrimaryTab] = useState<CommsHubPrimaryTab>('all');
   const [commsHubScopeFilter, setCommsHubScopeFilter] = useState<CommsHubScopeFilter>('all');
   const [commsHubSearchQuery, setCommsHubSearchQuery] = useState('');
@@ -2500,6 +2533,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [refreshingConfidence, setRefreshingConfidence] = useState(false);
   const [showConfidenceTooltip, setShowConfidenceTooltip] = useState(false);
   const confidenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const confidenceAuthAlertShownRef = useRef(false);
   const chartScrollRef = useRef<ScrollView | null>(null);
   const screenRootRef = useRef<View | null>(null);
   const [chartViewportWidth, setChartViewportWidth] = useState(0);
@@ -4728,7 +4762,23 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         headers: { Authorization: `Bearer ${token}` },
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? 'Failed to refresh confidence');
+      const errorMessage = String(body?.error ?? body?.message ?? '').trim();
+      if (!response.ok) {
+        const authExpired = response.status === 401 || /invalid|expired.*token/i.test(errorMessage);
+        if (authExpired) {
+          if (confidenceIntervalRef.current) {
+            clearInterval(confidenceIntervalRef.current);
+            confidenceIntervalRef.current = null;
+          }
+          if (!confidenceAuthAlertShownRef.current) {
+            confidenceAuthAlertShownRef.current = true;
+            Alert.alert('Session expired', 'Please sign in again.');
+          }
+          return;
+        }
+        throw new Error(errorMessage || 'Failed to refresh confidence');
+      }
+      confidenceAuthAlertShownRef.current = false;
       const nextScore = Number(body?.confidence?.score ?? 0);
       const nextBand = body?.confidence?.band as 'green' | 'yellow' | 'red' | undefined;
       setPayload((prev) => {
@@ -5079,7 +5129,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
     if (tab === 'coach') {
       setViewMode('log');
-      setCoachTabScreen(coachTabDefault);
+      // Coach-operators always land on primary workflow hub, not marketplace
+      setCoachTabScreen(isCoachRuntimeOperator ? 'coach_hub_primary' : coachTabDefault);
       return;
     }
     if (tab === 'challenge') {
@@ -7123,6 +7174,29 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
   }, [session?.access_token]);
 
+  /* ── Fetch coach cohorts for workflow surface ── */
+  const fetchCoachCohorts = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) { setCoachCohorts([]); return; }
+    setCoachCohortsLoading(true);
+    setCoachCohortsError(null);
+    try {
+      const response = await fetch(`${API_URL}/api/coaching/cohorts`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const body = await response.json() as { cohorts: CoachCohortRow[] };
+        setCoachCohorts(body.cohorts ?? []);
+      } else {
+        setCoachCohortsError('Could not load cohorts.');
+      }
+    } catch {
+      setCoachCohortsError('Network error loading cohorts.');
+    } finally {
+      setCoachCohortsLoading(false);
+    }
+  }, [session?.access_token]);
+
   const fetchCoachingProgressSummary = useCallback(async () => {
     const token = session?.access_token;
     if (!token) {
@@ -7724,6 +7798,20 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     fetchCoachingProgressSummary,
   ]);
 
+  /* ── Coach Workflow data bootstrap ── */
+  useEffect(() => {
+    if (activeTab !== 'coach' || coachTabScreen !== 'coach_hub_primary') return;
+    if (!isCoachRuntimeOperator) return;
+    if (!coachingJourneys && !coachingJourneysLoading) void fetchCoachingJourneys();
+    if (coachCohorts.length === 0 && !coachCohortsLoading) void fetchCoachCohorts();
+    if (coachProfiles.length === 0 && !coachMarketplaceLoading) void fetchCoachMarketplace();
+  }, [
+    activeTab, coachTabScreen, isCoachRuntimeOperator,
+    coachingJourneys, coachingJourneysLoading, fetchCoachingJourneys,
+    coachCohorts.length, coachCohortsLoading, fetchCoachCohorts,
+    coachProfiles.length, coachMarketplaceLoading, fetchCoachMarketplace,
+  ]);
+
   useEffect(() => {
     if (activeTab !== 'comms') return;
     if (coachingShellScreen !== 'coaching_journey_detail' && coachingShellScreen !== 'coaching_lesson_detail') return;
@@ -7754,6 +7842,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       }
     }
   }, [activeTab, channelsApiRows, channelsLoading, coachingShellScreen, fetchChannels]);
+
+  useEffect(() => {
+    if (activeTab !== 'team') return;
+    if (Array.isArray(channelsApiRows)) return;
+    if (channelsLoading) return;
+    void fetchChannels();
+  }, [activeTab, channelsApiRows, channelsLoading, fetchChannels]);
 
   useEffect(() => {
     if (activeTab !== 'team' && activeTab !== 'comms') return;
@@ -8045,6 +8140,334 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 </TouchableOpacity>
               </View>
             ) : coachTabScreen === 'coach_hub_primary' ? (
+              isCoachRuntimeOperator ? (
+              /* ── Coach-Operator Workflow Surface ── */
+              <View style={styles.cwfWrap}>
+                {/* Section nav */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cwfNavScroll} contentContainerStyle={styles.cwfNavRow}>
+                  {([
+                    { key: 'journeys' as const, icon: '📘', label: 'Journeys' },
+                    { key: 'clients' as const, icon: '👥', label: 'People' },
+                    { key: 'cohorts' as const, icon: '🏷', label: 'Cohorts' },
+                    { key: 'segments' as const, icon: '🎯', label: 'Segments' },
+                    { key: 'broadcast' as const, icon: '📣', label: 'Broadcast' },
+                  ]).map((sec) => (
+                    <TouchableOpacity
+                      key={sec.key}
+                      style={[styles.cwfNavBtn, coachWorkflowSection === sec.key && styles.cwfNavBtnActive]}
+                      onPress={() => setCoachWorkflowSection(sec.key)}
+                    >
+                      <Text style={styles.cwfNavIcon}>{sec.icon}</Text>
+                      <Text style={[styles.cwfNavLabel, coachWorkflowSection === sec.key && styles.cwfNavLabelActive]}>{sec.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                {/* ── Journeys section ── */}
+                {coachWorkflowSection === 'journeys' && (
+                  <View style={styles.cwfSection}>
+                    <Text style={styles.cwfSectionTitle}>Coaching Journeys</Text>
+                    {coachingJourneysLoading ? (
+                      <Text style={styles.cwfEmpty}>Loading journeys...</Text>
+                    ) : !coachingJourneys || coachingJourneys.length === 0 ? (
+                      <Text style={styles.cwfEmpty}>No journeys yet. Create a journey from the Coach Portal.</Text>
+                    ) : (
+                      coachingJourneys.map((j) => {
+                        const pct = typeof j.completion_percent === 'number' ? j.completion_percent : 0;
+                        return (
+                          <View key={j.id} style={styles.cwfJourneyCard}>
+                            <View style={styles.cwfJourneyHeader}>
+                              <Text style={styles.cwfJourneyTitle} numberOfLines={1}>{j.title}</Text>
+                              <View style={styles.cwfJourneyPctWrap}>
+                                <View style={[styles.cwfJourneyPctBar, { width: `${Math.min(pct, 100)}%` } as any]} />
+                              </View>
+                              <Text style={styles.cwfJourneyPctLabel}>{pct}%</Text>
+                            </View>
+                            {j.description ? <Text style={styles.cwfJourneyDesc} numberOfLines={2}>{j.description}</Text> : null}
+                            <View style={styles.cwfJourneyActions}>
+                              <TouchableOpacity
+                                style={styles.cwfActionChip}
+                                onPress={() => openCoachingShell('coaching_journey_detail', { selectedJourneyId: String(j.id), selectedJourneyTitle: j.title })}
+                              >
+                                <Text style={styles.cwfActionChipText}>View</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.cwfActionChip}
+                                onPress={() => {
+                                  setCoachWorkflowAssignMode('cohort');
+                                  setCoachWorkflowAssignJourneyId(String(j.id));
+                                }}
+                              >
+                                <Text style={styles.cwfActionChipText}>Assign Cohort</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.cwfActionChip}
+                                onPress={() => {
+                                  setCoachWorkflowAssignMode('individual');
+                                  setCoachWorkflowAssignJourneyId(String(j.id));
+                                }}
+                              >
+                                <Text style={styles.cwfActionChipText}>Assign Person</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.cwfActionChip}
+                                onPress={() => {
+                                  setCoachWorkflowAssignMode('task');
+                                  setCoachWorkflowAssignJourneyId(String(j.id));
+                                }}
+                              >
+                                <Text style={styles.cwfActionChipText}>Assign Task</Text>
+                              </TouchableOpacity>
+                            </View>
+
+                            {/* ── Inline assignment panel ── */}
+                            {coachWorkflowAssignJourneyId === String(j.id) && coachWorkflowAssignMode !== 'none' && (
+                              <View style={styles.cwfAssignPanel}>
+                                <View style={styles.cwfAssignHeader}>
+                                  <Text style={styles.cwfAssignTitle}>
+                                    {coachWorkflowAssignMode === 'cohort' ? 'Assign to Cohort' : coachWorkflowAssignMode === 'individual' ? 'Assign to Individual' : 'Assign Task'}
+                                  </Text>
+                                  <TouchableOpacity onPress={() => { setCoachWorkflowAssignMode('none'); setCoachWorkflowAssignJourneyId(null); setCoachWorkflowAssignTargetCohortId(null); setCoachWorkflowAssignTargetUserId(null); }}>
+                                    <Text style={styles.cwfAssignClose}>✕</Text>
+                                  </TouchableOpacity>
+                                </View>
+                                {coachWorkflowAssignMode === 'cohort' && (
+                                  <View>
+                                    {coachCohortsLoading ? <Text style={styles.cwfEmpty}>Loading cohorts...</Text>
+                                      : coachCohorts.length === 0 ? <Text style={styles.cwfEmpty}>No cohorts available.</Text>
+                                        : coachCohorts.map((c) => (
+                                          <TouchableOpacity
+                                            key={c.id}
+                                            style={[styles.cwfAssignRow, coachWorkflowAssignTargetCohortId === c.id && styles.cwfAssignRowSelected]}
+                                            onPress={() => setCoachWorkflowAssignTargetCohortId(c.id)}
+                                          >
+                                            <Text style={styles.cwfAssignRowName}>{c.name}</Text>
+                                            <Text style={styles.cwfAssignRowMeta}>{c.members_count} members</Text>
+                                          </TouchableOpacity>
+                                        ))}
+                                    {coachWorkflowAssignTargetCohortId && (
+                                      <TouchableOpacity style={styles.cwfAssignConfirm} onPress={() => { setCoachWorkflowAssignMode('none'); setCoachWorkflowAssignJourneyId(null); setCoachWorkflowAssignTargetCohortId(null); }}>
+                                        <Text style={styles.cwfAssignConfirmText}>Confirm Assignment</Text>
+                                      </TouchableOpacity>
+                                    )}
+                                  </View>
+                                )}
+                                {coachWorkflowAssignMode === 'individual' && (
+                                  <View>
+                                    {coachMarketplaceLoading ? <Text style={styles.cwfEmpty}>Loading people...</Text>
+                                      : coachProfiles.length === 0 ? <Text style={styles.cwfEmpty}>No people found.</Text>
+                                        : coachProfiles.map((p) => (
+                                          <TouchableOpacity
+                                            key={p.id}
+                                            style={[styles.cwfAssignRow, coachWorkflowAssignTargetUserId === p.id && styles.cwfAssignRowSelected]}
+                                            onPress={() => setCoachWorkflowAssignTargetUserId(p.id)}
+                                          >
+                                            <Text style={styles.cwfAssignRowName}>{p.name}</Text>
+                                            <Text style={styles.cwfAssignRowMeta}>{p.specialties.join(', ') || 'Member'}</Text>
+                                          </TouchableOpacity>
+                                        ))}
+                                    {coachWorkflowAssignTargetUserId && (
+                                      <TouchableOpacity style={styles.cwfAssignConfirm} onPress={() => { setCoachWorkflowAssignMode('none'); setCoachWorkflowAssignJourneyId(null); setCoachWorkflowAssignTargetUserId(null); }}>
+                                        <Text style={styles.cwfAssignConfirmText}>Confirm Assignment</Text>
+                                      </TouchableOpacity>
+                                    )}
+                                  </View>
+                                )}
+                                {coachWorkflowAssignMode === 'task' && (
+                                  <View>
+                                    <Text style={styles.cwfAssignTaskHint}>Tasks from this journey will be assigned. Select a target.</Text>
+                                    {coachCohorts.map((c) => (
+                                      <TouchableOpacity
+                                        key={c.id}
+                                        style={[styles.cwfAssignRow, coachWorkflowAssignTargetCohortId === c.id && styles.cwfAssignRowSelected]}
+                                        onPress={() => setCoachWorkflowAssignTargetCohortId(c.id)}
+                                      >
+                                        <Text style={styles.cwfAssignRowName}>{c.name}</Text>
+                                        <Text style={styles.cwfAssignRowMeta}>{c.members_count} members</Text>
+                                      </TouchableOpacity>
+                                    ))}
+                                    {coachWorkflowAssignTargetCohortId && (
+                                      <TouchableOpacity style={styles.cwfAssignConfirm} onPress={() => { setCoachWorkflowAssignMode('none'); setCoachWorkflowAssignJourneyId(null); setCoachWorkflowAssignTargetCohortId(null); }}>
+                                        <Text style={styles.cwfAssignConfirmText}>Assign Tasks</Text>
+                                      </TouchableOpacity>
+                                    )}
+                                  </View>
+                                )}
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })
+                    )}
+                    <TouchableOpacity style={styles.cwfSectionCTA} onPress={() => openCoachingShell('coaching_journeys')}>
+                      <Text style={styles.cwfSectionCTAText}>Open Journey Library →</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* ── Clients / People section ── */}
+                {coachWorkflowSection === 'clients' && (
+                  <View style={styles.cwfSection}>
+                    <Text style={styles.cwfSectionTitle}>People</Text>
+                    {coachMarketplaceLoading ? (
+                      <Text style={styles.cwfEmpty}>Loading people...</Text>
+                    ) : coachProfiles.length === 0 ? (
+                      <Text style={styles.cwfEmpty}>No people found. Client profiles will appear once team members are onboarded.</Text>
+                    ) : (
+                      coachProfiles.map((person) => (
+                        <View key={person.id} style={styles.cwfPersonCard}>
+                          <View style={styles.cwfPersonAvatar}>
+                            <Text style={styles.cwfPersonAvatarText}>
+                              {person.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={styles.cwfPersonInfo}>
+                            <Text style={styles.cwfPersonName}>{person.name}</Text>
+                            <Text style={styles.cwfPersonRole} numberOfLines={1}>{person.specialties.join(' · ') || 'Member'}</Text>
+                          </View>
+                          <View style={styles.cwfPersonActions}>
+                            <TouchableOpacity style={styles.cwfSmallChip} onPress={() => openCoachingShell('inbox_channels', { preferredChannelScope: 'team' })}>
+                              <Text style={styles.cwfSmallChipText}>Message</Text>
+                            </TouchableOpacity>
+                            <View style={[styles.cwfAvailDot, person.engagement_availability === 'available' ? styles.cwfAvailGreen : person.engagement_availability === 'waitlist' ? styles.cwfAvailYellow : styles.cwfAvailRed]} />
+                          </View>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                )}
+
+                {/* ── Cohorts section ── */}
+                {coachWorkflowSection === 'cohorts' && (
+                  <View style={styles.cwfSection}>
+                    <Text style={styles.cwfSectionTitle}>Cohort Management</Text>
+                    {coachCohortsLoading ? (
+                      <Text style={styles.cwfEmpty}>Loading cohorts...</Text>
+                    ) : coachCohortsError ? (
+                      <Text style={styles.cwfEmpty}>{coachCohortsError}</Text>
+                    ) : coachCohorts.length === 0 ? (
+                      <Text style={styles.cwfEmpty}>No cohorts found. Create cohorts from the Coach Portal.</Text>
+                    ) : (
+                      coachCohorts.map((cohort) => (
+                        <View key={cohort.id} style={styles.cwfCohortCard}>
+                          <View style={styles.cwfCohortHeader}>
+                            <Text style={styles.cwfCohortName}>{cohort.name}</Text>
+                            <Text style={styles.cwfCohortCount}>{cohort.members_count} members · {cohort.leaders_count} leaders</Text>
+                          </View>
+                          <View style={styles.cwfCohortActions}>
+                            <TouchableOpacity
+                              style={styles.cwfActionChip}
+                              onPress={() => openCoachingShell('inbox_channels', { preferredChannelScope: 'cohort', preferredChannelLabel: cohort.name })}
+                            >
+                              <Text style={styles.cwfActionChipText}>Channel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.cwfActionChip}
+                              onPress={() => {
+                                setCoachWorkflowSection('journeys');
+                                setCoachWorkflowAssignMode('cohort');
+                                setCoachWorkflowAssignTargetCohortId(cohort.id);
+                              }}
+                            >
+                              <Text style={styles.cwfActionChipText}>Assign Journey</Text>
+                            </TouchableOpacity>
+                          </View>
+                          {cohort.my_membership_role && (
+                            <Text style={styles.cwfCohortRole}>Your role: {cohort.my_membership_role === 'team_leader' ? 'Leader' : 'Member'}</Text>
+                          )}
+                        </View>
+                      ))
+                    )}
+                  </View>
+                )}
+
+                {/* ── Segments section ── */}
+                {coachWorkflowSection === 'segments' && (
+                  <View style={styles.cwfSection}>
+                    <Text style={styles.cwfSectionTitle}>Smart Segments</Text>
+                    <View style={styles.cwfSegmentBanner}>
+                      <Text style={styles.cwfSegmentBannerText}>Segments are in preview mode. Targeting rules are not yet server-backed.</Text>
+                    </View>
+                    {coachSegmentPresets.map((seg) => (
+                      <View key={seg.id} style={styles.cwfSegmentCard}>
+                        <View style={styles.cwfSegmentHeader}>
+                          <Text style={styles.cwfSegmentLabel}>{seg.label}</Text>
+                          <View style={[styles.cwfSegmentStatusBadge, seg.status === 'live' ? styles.cwfSegmentLive : styles.cwfSegmentPreview]}>
+                            <Text style={styles.cwfSegmentStatusText}>{seg.status === 'live' ? 'Live' : 'Preview'}</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.cwfSegmentDesc}>{seg.description}</Text>
+                        <Text style={styles.cwfSegmentRule}>Rule: {seg.rule.replace(/_/g, ' ')}</Text>
+                        <View style={styles.cwfSegmentActions}>
+                          <TouchableOpacity
+                            style={[styles.cwfActionChip, seg.status === 'preview' && styles.cwfActionChipMuted]}
+                            onPress={() => {
+                              if (seg.status === 'preview') return;
+                              setCoachWorkflowSection('broadcast');
+                            }}
+                          >
+                            <Text style={styles.cwfActionChipText}>{seg.status === 'live' ? 'Target in Broadcast' : 'Not Available Yet'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* ── Broadcast entry section ── */}
+                {coachWorkflowSection === 'broadcast' && (
+                  <View style={styles.cwfSection}>
+                    <Text style={styles.cwfSectionTitle}>Broadcast</Text>
+                    <Text style={styles.cwfBroadcastSub}>Send targeted messages to your team channel or cohort audiences.</Text>
+                    <TouchableOpacity
+                      style={styles.cwfBroadcastCTA}
+                      onPress={() => {
+                        openCoachingShell('coach_broadcast_compose', {
+                          broadcastAudienceLabel: 'your team channel',
+                          broadcastRoleAllowed: true,
+                        });
+                      }}
+                    >
+                      <Text style={styles.cwfBroadcastCTAIcon}>📣</Text>
+                      <View>
+                        <Text style={styles.cwfBroadcastCTATitle}>Compose Broadcast</Text>
+                        <Text style={styles.cwfBroadcastCTASub}>Opens the broadcast composer in the comms shell.</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <View style={styles.cwfBroadcastAudienceList}>
+                      <Text style={styles.cwfBroadcastAudienceTitle}>Available Audiences</Text>
+                      <View style={styles.cwfBroadcastAudienceRow}>
+                        <Text style={styles.cwfBroadcastAudienceIcon}>🏠</Text>
+                        <Text style={styles.cwfBroadcastAudienceLabel}>Team Channel (all members)</Text>
+                      </View>
+                      {coachCohorts.map((c) => (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={styles.cwfBroadcastAudienceRow}
+                          onPress={() => {
+                            openCoachingShell('coach_broadcast_compose', {
+                              broadcastAudienceLabel: c.name,
+                              broadcastRoleAllowed: true,
+                            });
+                          }}
+                        >
+                          <Text style={styles.cwfBroadcastAudienceIcon}>🏷</Text>
+                          <Text style={styles.cwfBroadcastAudienceLabel}>{c.name} ({c.members_count})</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={styles.cwfFooterLink}
+                  onPress={() => setActiveTab('challenge')}
+                >
+                  <Text style={styles.cwfFooterLinkText}>View Challenges →</Text>
+                </TouchableOpacity>
+              </View>
+              ) : (
+              /* ── Non-operator Coach Hub (original) ── */
               <View style={styles.coachHubWrap}>
                 <View style={styles.coachHubHeader}>
                   <Text style={styles.coachHubTitle}>
@@ -8086,6 +8509,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   <Text style={styles.coachHubChallengeLinkText}>View Challenges →</Text>
                 </TouchableOpacity>
               </View>
+              )
             ) : coachTabScreen === 'coach_goals_tasks' ? (
               <View style={styles.coachGoalsWrap}>
                 <View style={styles.coachGoalsHeader}>
@@ -9294,8 +9718,27 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   : 0;
               const selectedTeamProfile = teamMembers.find((row) => row.id === teamProfileMemberId) ?? null;
               const openTeamDirectThread = async (member: (typeof teamMembers)[number], source: CoachingShellEntrySource) => {
+                const sessionUserId = String(session?.user?.id ?? '').trim();
+                if (member.userId && sessionUserId && member.userId === sessionUserId) {
+                  Alert.alert('This is your profile', 'Open Messages to continue team chat, or select another teammate to start a direct message.');
+                  setActiveTab('comms');
+                  setCommsHubPrimaryTab('dms');
+                  setCommsHubSearchQuery('');
+                  openCoachingShell('inbox_channels', {
+                    source,
+                    preferredChannelScope: 'community',
+                    preferredChannelLabel: 'Direct Messages',
+                    threadTitle: null,
+                    threadHeaderDisplayName: null,
+                    threadSub: 'Select a teammate to start a direct message.',
+                    broadcastAudienceLabel: null,
+                    broadcastRoleAllowed: false,
+                  });
+                  return;
+                }
                 if (!member.userId) {
                   const msg = `Member identity unavailable for ${member.name}. Refresh team roster and try again.`;
+                  Alert.alert('Messaging unavailable', msg);
                   setChannelsError(msg);
                   return;
                 }
@@ -21905,6 +22348,416 @@ const styles = StyleSheet.create({
     color: '#3366cc',
     fontWeight: '600',
     fontSize: 14,
+  },
+  /* ── Coach Workflow (cwf) styles ── */
+  cwfWrap: {
+    flex: 1,
+    paddingTop: 4,
+  },
+  cwfNavScroll: {
+    maxHeight: 56,
+    flexGrow: 0,
+  },
+  cwfNavRow: {
+    flexDirection: 'row' as const,
+    gap: 4,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  cwfNavBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f0f2f5',
+  },
+  cwfNavBtnActive: {
+    backgroundColor: '#1a73e8',
+  },
+  cwfNavIcon: {
+    fontSize: 14,
+    marginRight: 4,
+  },
+  cwfNavLabel: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: '#555',
+  },
+  cwfNavLabelActive: {
+    color: '#fff',
+  },
+  cwfSection: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  cwfSectionTitle: {
+    fontSize: 17,
+    fontWeight: '700' as const,
+    color: '#1a1a2e',
+    marginBottom: 10,
+  },
+  cwfEmpty: {
+    fontSize: 13,
+    color: '#888',
+    paddingVertical: 16,
+    textAlign: 'center' as const,
+  },
+  cwfJourneyCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e6e9ef',
+  },
+  cwfJourneyHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginBottom: 4,
+  },
+  cwfJourneyTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: '#1a1a2e',
+  },
+  cwfJourneyPctWrap: {
+    width: 48,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#e6e9ef',
+    marginHorizontal: 8,
+    overflow: 'hidden' as const,
+  },
+  cwfJourneyPctBar: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#34a853',
+  },
+  cwfJourneyPctLabel: {
+    fontSize: 11,
+    color: '#888',
+    width: 32,
+    textAlign: 'right' as const,
+  },
+  cwfJourneyDesc: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 8,
+  },
+  cwfJourneyActions: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: 6,
+    marginTop: 6,
+  },
+  cwfActionChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#e8f0fe',
+  },
+  cwfActionChipMuted: {
+    backgroundColor: '#f0f2f5',
+    opacity: 0.6,
+  },
+  cwfActionChipText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: '#1a73e8',
+  },
+  cwfSectionCTA: {
+    paddingVertical: 10,
+    alignItems: 'center' as const,
+  },
+  cwfSectionCTAText: {
+    color: '#3366cc',
+    fontWeight: '600' as const,
+    fontSize: 13,
+  },
+  cwfAssignPanel: {
+    marginTop: 10,
+    padding: 12,
+    backgroundColor: '#fafbfd',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dde2eb',
+  },
+  cwfAssignHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: 8,
+  },
+  cwfAssignTitle: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+    color: '#1a1a2e',
+  },
+  cwfAssignClose: {
+    fontSize: 16,
+    color: '#888',
+    paddingHorizontal: 4,
+  },
+  cwfAssignRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  cwfAssignRowSelected: {
+    backgroundColor: '#e8f0fe',
+  },
+  cwfAssignRowName: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: '#1a1a2e',
+  },
+  cwfAssignRowMeta: {
+    fontSize: 12,
+    color: '#888',
+  },
+  cwfAssignConfirm: {
+    marginTop: 8,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#1a73e8',
+    alignItems: 'center' as const,
+  },
+  cwfAssignConfirmText: {
+    color: '#fff',
+    fontWeight: '700' as const,
+    fontSize: 13,
+  },
+  cwfAssignTaskHint: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 8,
+  },
+  cwfPersonCard: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e6e9ef',
+  },
+  cwfPersonAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#e8f0fe',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: 10,
+  },
+  cwfPersonAvatarText: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: '#1a73e8',
+  },
+  cwfPersonInfo: {
+    flex: 1,
+  },
+  cwfPersonName: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: '#1a1a2e',
+  },
+  cwfPersonRole: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 1,
+  },
+  cwfPersonActions: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+  },
+  cwfSmallChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: '#e8f0fe',
+  },
+  cwfSmallChipText: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    color: '#1a73e8',
+  },
+  cwfAvailDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  cwfAvailGreen: {
+    backgroundColor: '#34a853',
+  },
+  cwfAvailYellow: {
+    backgroundColor: '#fbbc04',
+  },
+  cwfAvailRed: {
+    backgroundColor: '#ea4335',
+  },
+  cwfCohortCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e6e9ef',
+  },
+  cwfCohortHeader: {
+    marginBottom: 8,
+  },
+  cwfCohortName: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: '#1a1a2e',
+  },
+  cwfCohortCount: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
+  },
+  cwfCohortActions: {
+    flexDirection: 'row' as const,
+    gap: 6,
+  },
+  cwfCohortRole: {
+    fontSize: 11,
+    color: '#1a73e8',
+    marginTop: 6,
+    fontWeight: '600' as const,
+  },
+  cwfSegmentBanner: {
+    backgroundColor: '#fef7e0',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  cwfSegmentBannerText: {
+    fontSize: 12,
+    color: '#7a6415',
+  },
+  cwfSegmentCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e6e9ef',
+  },
+  cwfSegmentHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: 4,
+  },
+  cwfSegmentLabel: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: '#1a1a2e',
+  },
+  cwfSegmentStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  cwfSegmentLive: {
+    backgroundColor: '#e6f4ea',
+  },
+  cwfSegmentPreview: {
+    backgroundColor: '#fef7e0',
+  },
+  cwfSegmentStatusText: {
+    fontSize: 10,
+    fontWeight: '700' as const,
+    color: '#333',
+  },
+  cwfSegmentDesc: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  cwfSegmentRule: {
+    fontSize: 11,
+    color: '#999',
+    marginBottom: 6,
+  },
+  cwfSegmentActions: {
+    flexDirection: 'row' as const,
+    gap: 6,
+  },
+  cwfBroadcastSub: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 12,
+  },
+  cwfBroadcastCTA: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: '#1a73e8',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+  },
+  cwfBroadcastCTAIcon: {
+    fontSize: 24,
+  },
+  cwfBroadcastCTATitle: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: '#fff',
+  },
+  cwfBroadcastCTASub: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+  cwfBroadcastAudienceList: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e6e9ef',
+  },
+  cwfBroadcastAudienceTitle: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: '#1a1a2e',
+    marginBottom: 8,
+  },
+  cwfBroadcastAudienceRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  cwfBroadcastAudienceIcon: {
+    fontSize: 14,
+  },
+  cwfBroadcastAudienceLabel: {
+    fontSize: 13,
+    color: '#333',
+  },
+  cwfFooterLink: {
+    paddingVertical: 10,
+    alignItems: 'center' as const,
+    marginTop: 4,
+  },
+  cwfFooterLinkText: {
+    color: '#3366cc',
+    fontWeight: '600' as const,
+    fontSize: 13,
   },
   coachGoalsWrap: {
     flex: 1,
