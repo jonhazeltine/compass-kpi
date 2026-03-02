@@ -748,6 +748,43 @@ type ChannelSyncResponse = {
   authority_version?: number;
   error?: string | { code?: string; message?: string; request_id?: string };
 };
+type CoachingMediaUploadUrlResponse = {
+  upload_id?: string;
+  media_id?: string;
+  upload_url?: string;
+  upload_url_expires_at?: string;
+  lifecycle?: {
+    processing_status?: string;
+    playback_ready?: boolean;
+  };
+  error?: string | { code?: string; message?: string; request_id?: string };
+};
+type CoachingMediaPlaybackTokenResponse = {
+  token?: string;
+  token_expires_at?: string;
+  playback_id?: string;
+  error?: string | { code?: string; message?: string; request_id?: string };
+};
+type LiveSessionRecord = {
+  session_id: string;
+  channel_id: string;
+  title: string;
+  status: 'scheduled' | 'live' | 'ended' | 'cancelled';
+  host_user_id: string;
+  started_at: string;
+  ends_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+type LiveSessionResponse = {
+  session?: LiveSessionRecord;
+  idempotent_replay?: boolean;
+  role?: 'host' | 'participant' | 'viewer';
+  token?: string;
+  token_expires_at?: string;
+  provider?: string;
+  error?: string | { code?: string; message?: string; request_id?: string };
+};
 
 type PendingDirectLog = {
   kpiId: string;
@@ -2546,6 +2583,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [channelsError, setChannelsError] = useState<string | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [selectedChannelName, setSelectedChannelName] = useState<string | null>(null);
+  const [channelPreviewById, setChannelPreviewById] = useState<Record<string, string>>({});
   const [channelMessages, setChannelMessages] = useState<ChannelMessageRow[] | null>(null);
   const [channelThreadPackageVisibility, setChannelThreadPackageVisibility] =
     useState<RuntimePackageVisibilityOutcome | null>(null);
@@ -2562,6 +2600,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [broadcastSubmitting, setBroadcastSubmitting] = useState(false);
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
   const [broadcastSuccessNote, setBroadcastSuccessNote] = useState<string | null>(null);
+  const [mediaUploadBusy, setMediaUploadBusy] = useState(false);
+  const [mediaUploadStatus, setMediaUploadStatus] = useState<string | null>(null);
+  const [latestMediaId, setLatestMediaId] = useState<string | null>(null);
+  const [latestMediaFileName, setLatestMediaFileName] = useState<string | null>(null);
+  const [liveSessionBusy, setLiveSessionBusy] = useState(false);
+  const [liveSessionStatus, setLiveSessionStatus] = useState<string | null>(null);
+  const [activeLiveSession, setActiveLiveSession] = useState<LiveSessionRecord | null>(null);
   const commsClientSessionIdRef = useRef(
     `mobile_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
   );
@@ -7881,7 +7926,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           return;
         }
         const normalizedThreadNotifications = normalizeRuntimeNotificationItems(body.notification_items, 'channel_thread');
-        setChannelMessages(Array.isArray(body.messages) ? body.messages : []);
+        const messageRows = Array.isArray(body.messages) ? body.messages : [];
+        setChannelMessages(messageRows);
+        if (messageRows.length > 0) {
+          const last = messageRows[messageRows.length - 1];
+          const preview = String(last.body ?? '')
+            .split('\n')
+            .map((line) => line.trim())
+            .find((line) => line.length > 0) ?? 'New message';
+          setChannelPreviewById((prev) => ({
+            ...prev,
+            [String(channelId)]: preview.slice(0, 120),
+          }));
+        }
         setChannelThreadPackageVisibility(
           pickRuntimePackageVisibility(
             normalizePackagingReadModelToVisibilityOutcome(body.packaging_read_model ?? null),
@@ -7925,9 +7982,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   );
 
   const sendChannelMessage = useCallback(
-    async (channelId: string, options?: { bodyOverride?: string }) => {
+    async (
+      channelId: string,
+      options?: {
+        bodyOverride?: string;
+        messageType?: 'message' | 'media_attachment';
+        mediaAttachment?: { media_id: string; caption?: string };
+      }
+    ) => {
       const token = session?.access_token;
       const bodyText = String(options?.bodyOverride ?? channelMessageDraft).trim();
+      const messageType = options?.messageType ?? 'message';
       if (!token) {
         setChannelMessageSubmitError('Sign in is required to send messages.');
         return;
@@ -7936,21 +8001,36 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         setChannelMessageSubmitError('Select a channel before sending.');
         return;
       }
-      if (!bodyText) {
+      if (messageType === 'message' && !bodyText) {
         setChannelMessageSubmitError('Message body is required.');
+        return;
+      }
+      if (messageType === 'media_attachment' && !options?.mediaAttachment?.media_id) {
+        setChannelMessageSubmitError('Select media before sending attachment.');
         return;
       }
       setChannelMessageSubmitting(true);
       setChannelMessageSubmitError(null);
       try {
         await bootstrapCommsStreamForSurface(channelId, 'thread');
+        const requestBody =
+          messageType === 'media_attachment'
+            ? {
+                message_type: 'media_attachment' as const,
+                body: bodyText || 'Media attachment',
+                media_attachment: {
+                  media_id: options?.mediaAttachment?.media_id,
+                  caption: options?.mediaAttachment?.caption ?? undefined,
+                },
+              }
+            : { body: bodyText };
         const response = await fetch(`${API_URL}/api/channels/${encodeURIComponent(channelId)}/messages`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ body: bodyText }),
+          body: JSON.stringify(requestBody),
         });
         const payload = (await response.json().catch(() => ({}))) as ChannelMessageWriteResponse;
         if (!response.ok) {
@@ -8018,6 +8098,249 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       }
     },
     [bootstrapCommsStreamForSurface, broadcastDraft, fetchChannelMessages, fetchChannels, session?.access_token]
+  );
+
+  const requestMediaUploadUrl = useCallback(
+    async (channelId: string | null) => {
+      const token = session?.access_token;
+      if (!token) {
+        setMediaUploadStatus('Sign in is required for media upload (401).');
+        return;
+      }
+      if (!channelId) {
+        setMediaUploadStatus('Open a channel thread before requesting media upload.');
+        return;
+      }
+      const contextLessonId = coachingShellContext.selectedLessonId;
+      const contextJourneyId = coachingShellContext.selectedJourneyId;
+      if (!contextLessonId && !contextJourneyId) {
+        setMediaUploadStatus('Media upload needs a coaching lesson/journey context. Open from a coaching-linked thread.');
+        return;
+      }
+      setMediaUploadBusy(true);
+      setMediaUploadStatus('Requesting Mux upload URL…');
+      try {
+        const idempotencyKey = `media_upl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+        const filename = `channel-upload-${Date.now()}.mp4`;
+        const response = await fetch(`${API_URL}/api/coaching/media/upload-url`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            lesson_id: contextLessonId ?? undefined,
+            journey_id: contextLessonId ? undefined : contextJourneyId ?? undefined,
+            channel_id: channelId,
+            filename,
+            content_type: 'video/mp4',
+            content_length_bytes: 2_500_000,
+            idempotency_key: idempotencyKey,
+          }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as CoachingMediaUploadUrlResponse;
+        if (!response.ok) {
+          const fallback = `Media upload-url request failed (${response.status})`;
+          setMediaUploadStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback)));
+          return;
+        }
+        const mediaId = String(payload.media_id ?? '').trim();
+        if (!mediaId) {
+          setMediaUploadStatus('Upload URL response missing media id.');
+          return;
+        }
+        setLatestMediaId(mediaId);
+        setLatestMediaFileName(filename);
+        setMediaUploadStatus(`Upload URL ready for ${filename}. Media id: ${mediaId}`);
+      } catch (err) {
+        setMediaUploadStatus(err instanceof Error ? err.message : 'Media upload URL request failed.');
+      } finally {
+        setMediaUploadBusy(false);
+      }
+    },
+    [coachingShellContext.selectedJourneyId, coachingShellContext.selectedLessonId, session?.access_token]
+  );
+
+  const sendLatestMediaAttachment = useCallback(
+    async (channelId: string | null) => {
+      if (!channelId) {
+        setMediaUploadStatus('Select a channel before sending media attachment.');
+        return;
+      }
+      if (!latestMediaId) {
+        setMediaUploadStatus('Request upload URL first to create a media attachment id.');
+        return;
+      }
+      await sendChannelMessage(channelId, {
+        messageType: 'media_attachment',
+        bodyOverride: latestMediaFileName ? `Media: ${latestMediaFileName}` : 'Media attachment',
+        mediaAttachment: {
+          media_id: latestMediaId,
+          caption: latestMediaFileName ?? undefined,
+        },
+      });
+      setMediaUploadStatus(`Attachment sent to thread with media id ${latestMediaId}.`);
+    },
+    [latestMediaFileName, latestMediaId, sendChannelMessage]
+  );
+
+  const startLiveSession = useCallback(
+    async (channelId: string | null) => {
+      const token = session?.access_token;
+      if (!token) {
+        setLiveSessionStatus('Sign in is required for live sessions (401).');
+        return;
+      }
+      if (!channelId) {
+        setLiveSessionStatus('Select a channel before starting a live session.');
+        return;
+      }
+      setLiveSessionBusy(true);
+      setLiveSessionStatus('Starting live session…');
+      try {
+        const response = await fetch(`${API_URL}/api/coaching/media/live-sessions`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            channel_id: channelId,
+            title: `Live Session ${new Date().toLocaleTimeString()}`,
+            idempotency_key: `live_start_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+          }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as LiveSessionResponse;
+        if (!response.ok) {
+          const fallback = `Live session start failed (${response.status})`;
+          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback)));
+          return;
+        }
+        if (payload.session) {
+          setActiveLiveSession(payload.session);
+          setLiveSessionStatus(`Live session active: ${payload.session.session_id} (${payload.session.status}).`);
+        }
+      } catch (err) {
+        setLiveSessionStatus(err instanceof Error ? err.message : 'Live session start failed.');
+      } finally {
+        setLiveSessionBusy(false);
+      }
+    },
+    [session?.access_token]
+  );
+
+  const refreshLiveSession = useCallback(
+    async () => {
+      const token = session?.access_token;
+      const sessionId = activeLiveSession?.session_id ?? null;
+      if (!token) {
+        setLiveSessionStatus('Sign in is required to refresh live session state (401).');
+        return;
+      }
+      if (!sessionId) {
+        setLiveSessionStatus('No live session id available to refresh.');
+        return;
+      }
+      setLiveSessionBusy(true);
+      try {
+        const response = await fetch(`${API_URL}/api/coaching/media/live-sessions/${encodeURIComponent(sessionId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = (await response.json().catch(() => ({}))) as LiveSessionResponse;
+        if (!response.ok) {
+          const fallback = `Live session refresh failed (${response.status})`;
+          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback)));
+          return;
+        }
+        if (payload.session) {
+          setActiveLiveSession(payload.session);
+          setLiveSessionStatus(`Live session refreshed: ${payload.session.session_id} (${payload.session.status}).`);
+        }
+      } catch (err) {
+        setLiveSessionStatus(err instanceof Error ? err.message : 'Live session refresh failed.');
+      } finally {
+        setLiveSessionBusy(false);
+      }
+    },
+    [activeLiveSession?.session_id, session?.access_token]
+  );
+
+  const joinLiveSession = useCallback(
+    async () => {
+      const token = session?.access_token;
+      const sessionId = activeLiveSession?.session_id ?? null;
+      if (!token) {
+        setLiveSessionStatus('Sign in is required to join live sessions (401).');
+        return;
+      }
+      if (!sessionId) {
+        setLiveSessionStatus('No active live session available to join.');
+        return;
+      }
+      setLiveSessionBusy(true);
+      try {
+        const response = await fetch(`${API_URL}/api/coaching/media/live-sessions/${encodeURIComponent(sessionId)}/join-token`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ role: 'participant' }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as LiveSessionResponse;
+        if (!response.ok) {
+          const fallback = `Live session join failed (${response.status})`;
+          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback)));
+          return;
+        }
+        if (payload.session) setActiveLiveSession(payload.session);
+        setLiveSessionStatus(
+          payload.token
+            ? `Join token issued (expires ${payload.token_expires_at ?? 'soon'}).`
+            : 'Joined live session.'
+        );
+      } catch (err) {
+        setLiveSessionStatus(err instanceof Error ? err.message : 'Live session join failed.');
+      } finally {
+        setLiveSessionBusy(false);
+      }
+    },
+    [activeLiveSession?.session_id, session?.access_token]
+  );
+
+  const endLiveSession = useCallback(
+    async () => {
+      const token = session?.access_token;
+      const sessionId = activeLiveSession?.session_id ?? null;
+      if (!token) {
+        setLiveSessionStatus('Sign in is required to end live sessions (401).');
+        return;
+      }
+      if (!sessionId) {
+        setLiveSessionStatus('No active live session available to end.');
+        return;
+      }
+      setLiveSessionBusy(true);
+      try {
+        const response = await fetch(`${API_URL}/api/coaching/media/live-sessions/${encodeURIComponent(sessionId)}/end`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = (await response.json().catch(() => ({}))) as LiveSessionResponse;
+        if (!response.ok) {
+          const fallback = `Live session end failed (${response.status})`;
+          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback)));
+          return;
+        }
+        if (payload.session) setActiveLiveSession(payload.session);
+        setLiveSessionStatus('Live session ended.');
+      } catch (err) {
+        setLiveSessionStatus(err instanceof Error ? err.message : 'Live session end failed.');
+      } finally {
+        setLiveSessionBusy(false);
+      }
+    },
+    [activeLiveSession?.session_id, session?.access_token]
   );
 
   const openDirectThreadForMember = useCallback(
@@ -11559,6 +11882,53 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 return true;
               };
               const searchNeedle = commsHubSearchQuery.trim().toLowerCase();
+              const normalizedSelfName = String(resolvedDisplayName ?? '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, ' ')
+                .trim();
+              const normalizeName = (value: string | null | undefined) =>
+                String(value ?? '')
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]+/g, ' ')
+                  .trim();
+              const deriveDmNameFromChannel = (rawName: string) => {
+                const segments = String(rawName ?? '')
+                  .split(/[/|,&]/)
+                  .map((segment) => segment.trim())
+                  .filter(Boolean);
+                if (segments.length === 0) return 'Direct message';
+                const nonSelf = segments.find((segment) => {
+                  const key = normalizeName(segment);
+                  if (!key) return false;
+                  if (!normalizedSelfName) return true;
+                  return key !== normalizedSelfName && !normalizedSelfName.includes(key);
+                });
+                return nonSelf ?? segments[0] ?? 'Direct message';
+              };
+              const resolveDmDirectoryMemberFromRow = (row: ChannelApiRow | null | undefined) => {
+                if (!row) return null;
+                const type = String(row.type ?? '').toLowerCase();
+                if (type !== 'direct' && type !== 'dm') return null;
+                const contextId = String(row.context_id ?? '').trim();
+                if (contextId) {
+                  const contextMatch = teamMemberDirectory.find((member) => {
+                    const memberUserId = String(member.userId ?? '').trim();
+                    return memberUserId.length > 0 && memberUserId === contextId;
+                  });
+                  if (contextMatch) return contextMatch;
+                }
+                const channelNameKey = normalizeName(row.name);
+                if (!channelNameKey) return null;
+                return (
+                  teamMemberDirectory.find((member) => {
+                    const memberNameKey = normalizeName(member.name);
+                    return Boolean(memberNameKey) && (
+                      channelNameKey.includes(memberNameKey) ||
+                      memberNameKey.includes(channelNameKey)
+                    );
+                  }) ?? null
+                );
+              };
               const searchMatch = (row: ChannelApiRow) => {
                 if (!searchNeedle) return true;
                 const scope = normalizeChannelTypeToScope(row.type) ?? 'community';
@@ -11632,27 +12002,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 selectedChannelScope === 'team' && coachingShellContext.threadHeaderDisplayName
                   ? coachingShellContext.threadHeaderDisplayName
                   : selectedChannelResolvedName;
-              const normalizeName = (value: string | null | undefined) =>
-                String(value ?? '')
-                  .toLowerCase()
-                  .replace(/[^a-z0-9]+/g, ' ')
-                  .trim();
-              const selectedChannelNameKey = normalizeName(selectedChannelResolvedName);
-              const selectedDmDirectoryMember =
-                selectedChannelType === 'direct' || selectedChannelType === 'dm'
-                  ? teamMemberDirectory.find((member) => {
-                      const memberUserId = member.userId ? String(member.userId) : '';
-                      return memberUserId.length > 0 && String(selectedChannelRow?.context_id ?? '') === memberUserId;
-                    }) ??
-                    teamMemberDirectory.find((member) => {
-                      const memberNameKey = normalizeName(member.name);
-                      return Boolean(memberNameKey) && (
-                        selectedChannelNameKey.includes(memberNameKey) ||
-                        memberNameKey.includes(selectedChannelNameKey)
-                      );
-                    }) ??
-                    null
-                  : null;
+              const selectedDmDirectoryMember = resolveDmDirectoryMemberFromRow(selectedChannelRow);
               const headerAvatarKind: 'dm' | 'team' | 'channel' =
                 selectedDmDirectoryMember != null ? 'dm' : selectedChannelScope === 'team' ? 'team' : 'channel';
               const headerAvatarLabel =
@@ -11819,18 +12169,26 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 coachingShellScreen === 'coaching_journey_detail' ||
                 coachingShellScreen === 'coaching_lesson_detail';
 
-              const commsChannelRows: CommsChannelRow[] = sortedPrimaryTabRows.map((row) => ({
-                id: String(row.id),
-                name: row.name,
-                type: row.type ?? null,
-                scope: normalizeChannelTypeToScope(row.type) ?? 'community',
-                unread_count: row.unread_count ?? null,
-                member_count: null,
-                my_role: row.my_role ?? null,
-                last_seen_at: row.last_seen_at ?? null,
-                created_at: row.created_at ?? null,
-                snippet: null,
-              }));
+              const commsChannelRows: CommsChannelRow[] = sortedPrimaryTabRows.map((row) => {
+                const channelType = String(row.type ?? '').toLowerCase();
+                const isDirect = channelType === 'direct' || channelType === 'dm';
+                const dmMember = isDirect ? resolveDmDirectoryMemberFromRow(row) : null;
+                const resolvedName = isDirect ? dmMember?.name ?? deriveDmNameFromChannel(row.name) : row.name;
+                const preview = channelPreviewById[String(row.id)] ?? null;
+                const snippet = preview ?? (isDirect ? `${dmMember?.roleLabel ?? 'Member'} · Direct message` : null);
+                return {
+                  id: String(row.id),
+                  name: resolvedName,
+                  type: row.type ?? null,
+                  scope: isDirect ? 'dm' : normalizeChannelTypeToScope(row.type) ?? 'community',
+                  unread_count: row.unread_count ?? null,
+                  member_count: null,
+                  my_role: row.my_role ?? null,
+                  last_seen_at: row.last_seen_at ?? null,
+                  created_at: row.created_at ?? null,
+                  snippet,
+                };
+              });
               const commsRosterDmRows = teamMemberDirectory
                 .filter((member) => Boolean(member.userId))
                 .map((member) => ({
@@ -11987,6 +12345,17 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                           }
                         )
                       }
+                      onRequestMediaUpload={() => void requestMediaUploadUrl(selectedChannelResolvedId)}
+                      onSendLatestMediaAttachment={() => void sendLatestMediaAttachment(selectedChannelResolvedId)}
+                      mediaUploadBusy={mediaUploadBusy}
+                      mediaUploadStatus={mediaUploadStatus}
+                      liveSessionBusy={liveSessionBusy}
+                      liveSessionStatus={liveSessionStatus}
+                      canHostLiveSession={isCoachRuntimeOperator || (teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime)}
+                      onStartLiveSession={() => void startLiveSession(selectedChannelResolvedId)}
+                      onRefreshLiveSession={() => void refreshLiveSession()}
+                      onJoinLiveSession={() => void joinLiveSession()}
+                      onEndLiveSession={() => void endLiveSession()}
                       broadcastDraft={broadcastDraft}
                       onChangeBroadcastDraft={setBroadcastDraft}
                       broadcastTargetScope={effectiveBroadcastTargetScope}

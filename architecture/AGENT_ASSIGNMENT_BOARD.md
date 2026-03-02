@@ -164,6 +164,11 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-ASSIGNMENTS-PROFILE-CHAT-PARITY-C` | `review` | `M6 profile/goals + chat task parity` | `Coach`, `Team Leader`, `Team Member`, `Solo User` | `profile/goals feed sync` (`thread task-card state parity`, `assignments feed consistency`) | `/coach` goals/tasks consumer in `KPIDashboardScreen` + backend `GET /api/coaching/assignments/me` merge path | `Coach-1` | `codex/a2-admin-list-usability-pass` | assignment-directed (no schema or endpoint-family changes) | Completed: assignments merge now enforces latest-task-event-wins for message-linked items, rights/state normalization aligned to task type and assignee/coach scope, and coach goals/tasks consumer normalizes status tokens before render to prevent thread/feed drift. |
 | `M6-DM-DIRECT-CHANNEL-CREATE-BACKEND-A` | `review` | `M6 comms runtime hardening` | `Team Leader`, `Team Member`, `Coach`, `Admin operator`, `Challenge Sponsor` | `profile->message DM handoff` (`direct channel create`, `idempotent reuse`, `membership+unread bootstrap`) | backend `/api/channels` create path + DM acceptance harness/docs updates | `Mobile-2` | `codex/a2-admin-list-usability-pass` | N/A (backend/runtime policy) | Completed: `/api/channels` direct-create now accepts `member_user_ids`, enforces role/scope on target set, reuses existing direct channels idempotently for same member sets, and initializes memberships + unread rows for all direct participants. |
 | `MESSAGING-AUTHZ-MATRIX-LOCK-D` | `committed` | `M6 messaging authority lock (docs/control-plane)` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`, `Admin operator` (oversight) | `messaging authority policy lock` (`coach/team-leader scope`, `challenge/sponsor/DM boundaries`, `segment/cohort authoring`) | docs-only (`04_api_contracts`, `05_acceptance_tests`, `COACHING_CAPABILITY_AND_PERSONA_MATRIX`, `COACHING_WIRING_ADDENDUM`) | `Coach-1` | `codex/a2-admin-list-usability-pass` (docs-only; separate worktree preferred) | N/A (policy/control-plane lock) | Committed: canonical policy lock applied across contracts/tests/wiring/persona docs with explicit coach/team-leader/challenge-sponsor/team-member scope boundaries and no KPI authority expansion through messaging. |
+| `M6-COACH-PRIMARY-WORKFLOW-TAB-A` | `review` | `M6 coach runtime/operator flow buildout` | `Coach` | `coach primary workflow` (`journeys`, `clients`, `cohorts`, `segments`, `broadcast`) | `KPIDashboardScreen` Coach tab flow + `/coach/*` parity touchpoints (`CoachPortalScreen`) | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated coach/mobile worktree required) | manual-spec-driven + existing `/coach/*` IA | Claude flow implementation present in app. Runtime blocker identified/resolved at data-gating layer: seed coach account role flags were misconfigured (`role=admin`, `is_coach=false`). Controller corrected seed role mappings; assignment now in runtime review for coach-login verification. |
+| `M6-SEED-PERSONA-ROLE-GUARD-A` | `queued` | `M6 runtime hardening` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `seed identity determinism` (`role/is_coach metadata parity`) | backend seed/admin scripts + docs runbook (`seed realism personas`) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend/data worktree preferred) | N/A (data/runtime hardening) | Add deterministic role guard/fix script + verification output so realism seed personas always map to expected runtime gates and cannot silently drift (coach/sponsor misclassification prevention). |
+| `M6-COACH-LANDING-ROLE-SPLIT-HERO-A` | `active` | `M6 coach onboarding + operator landing` | `Team Member`, `Solo User`, `Coach` | `coach tab role split` (`no-coach marketing hero`, `has-coach profile landing`, `coach invite link parity`) | `KPIDashboardScreen` coach tab (`coach_marketplace`, `coach_hub_primary`), coach profile hero + enrolled journeys block, coach invite-link controls | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + Fourth Reason style references + Compass visual system | Build role-aware coach landing: no-coach users see two premium offer heroes + CTA routes to full details; users with coach land directly on coach profile hero + enrolled journeys; coaches get invite-link controls parallel to team-leader invite behavior. |
+| `M6-CHANNELS-DM-PREVIEW-READMODEL-A` | `active` | `M6 messaging runtime reliability` | `Team Leader`, `Team Member`, `Coach`, `Solo User` | `channels list payload parity` (`dm display name`, `last message preview`, `last message timestamp`) | backend `GET /api/channels` payload only | `Claude-1` | `codex/a2-admin-list-usability-pass` (backend worktree required) | N/A (runtime payload hardening) | Add deterministic DM-friendly preview fields to channel list payload so mobile inbox/DM rows can display human names + first message line + real activity time. No endpoint-family expansion. |
+| `M6-COMMS-DM-PRESENTATION-MUX-LIVE-VISIBILITY-A` | `review` | `M6 messaging + media runtime UX hardening` | `Team Leader`, `Team Member`, `Coach` | `dm list polish + media/live visibility` (`dm icon/name/preview parity`, `mux upload/live session entry evidence`) | `KPIDashboardScreen` comms mapping + `CommsHub` thread composer/surface | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + existing Stream/Mux contract paths | Completed: DM rows now map direct channels to DM scope with person-first naming + preview snippet, and channel-thread composer now exposes explicit Mux upload/live-session controls with deterministic status messaging. Validation `cd app && npx tsc --noEmit --pretty false` passed. Runtime screenshot capture produced baseline evidence; multi-state navigation remains limited by local simulator automation constraints. |
 
 ## Blocked Assignments
 
@@ -171,6 +176,8 @@ Only use long custom prompts when the board is missing required details or a one
 |---|---|---|---|---|---|---|---|
 | `COACHING-INTEGRATION-A` | `unblocked via explicit owner approval` | `M3/M3b baseline + approved M6 planning overlap` | `Team Leader`, `Team Member`, `Solo User` | `coaching / communication` | host surfaces across `Home`, `Challenge`, `Team`, `Profile` + future `Inbox/Journeys` | Former blocker resolved: owner approved pull-forward planning work; assignment spec now defined; docs-only to avoid code/sprint collision while `TEAM-MEMBER-PARITY-A` runs | Execute via `Coach-1`; update board first, then brief report back |
 | `W13-RUNTIME-PARITY-AND-HARDENING-A` | `committed` | `W13 runtime parity/hardening` | `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor` | `stream+mux runtime parity and hardening` | runtime parity/hardening surfaces accepted with checkpoint evidence | Runtime checkpoints accepted with evidence (`c8d85ea`, `dd89e15`, `103d725`, `8cdfa78`, `app/test-results/w13-runtime-parity-and-hardening-a/checkpoint-f-runtime-matrix-summary.json`). | Closed for this wave; open only targeted follow-up bugfix assignments if regressions are found. |
+| `M6-CHAT-MEDIA-UI-WIRING-A` | `blocked` | `M6 video messaging UX wiring` | `Coach`, `Team Leader`, `Team Member` | `channel thread media` (`upload`, `attach`, `processing state`, `playback token handoff`) | `CommsHub` + `KPIDashboardScreen` channel thread | No accepted landed output from current worker pass; runtime still uses placeholder attachment chips/markers and does not execute real Mux upload/attach flow from composer. | Relaunch with explicit scope and evidence requirements: real file pick -> upload-url -> message_type=media_attachment -> playback-token consumption path. |
+| `M6-LIVE-SESSION-CHAT-ENTRY-A` | `blocked` | `M6 livestream UX wiring` | `Coach`, `Team Leader`, `Team Member` | `live session control path` (`start`, `join`, `end`, `thread CTA`) | Coach tab video surface + channel thread live entry controls | No accepted landed output from current worker pass; coach video session remains placeholder shell and no live-session CTA path is wired in thread/hub UI. | Relaunch with explicit scope and evidence requirements: live-session create/get/join-token/end wired to UI with role-gated controls and screenshots. |
 
 ## Recently Completed (Awaiting Review / Landed on Branch)
 
@@ -203,6 +210,82 @@ Every worker report should include:
 - `Commit hash(es)` (if committed)
 
 ## Assignment Specs (Execute from here)
+
+### `M6-COACH-PRIMARY-WORKFLOW-TAB-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 coach runtime/operator flow buildout`
+- `Persona:` `Coach` (primary)
+- `Flow:` `coach primary workflow` (`journeys`, `clients`, `cohorts`, `segments`, `broadcast`)
+- `Owner:` `Claude-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated coach/mobile worktree required)
+- `Current blocker status:` `resolved (seed persona role-gating corrected for coach/sponsor realism accounts)`
+
+#### Objective
+Replace the current coach-tab marketplace-first experience with a coach-operator-first workflow aligned to the existing `/coach/*` portal IA and backed by existing coaching endpoint families.
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (coach-tab IA + routing + entry behavior for coach persona)
+- `/Users/jon/compass-kpi/app/screens/CoachPortalScreen.tsx` (journeys/people workspace parity upgrades tied to existing backend)
+- Shared coach/comms components only if required for this flow (no broad redesign outside scope)
+
+#### Required UX Outcomes
+1. Coach login opens Coach tab into primary workflow (not coach marketplace shell).
+2. Coach primary surface shows:
+   - journey list with quick actions,
+   - clients/people list,
+   - cohort assignment controls,
+   - segment targeting controls,
+   - one-tap broadcast entry for selected audience context.
+3. Journey assignment UX supports:
+   - assign to cohort,
+   - assign to individual client,
+   - assign task from selected journey context.
+4. Smart segments are coach-operable from this surface:
+   - MVP rule presets (`KPI completion`, `GCI direction`, `journey progress`, `manual`),
+   - clearly marked as `live` only when backed by server data,
+   - fallback-safe local preview state when backend does not yet persist segment rules.
+5. `/coach/*` and Coach tab remain IA-consistent:
+   - same journey/people mental model,
+   - no contradictory labels/navigation,
+   - direct tie-in to backend powering current coach panel (`/api/coaching/journeys`, `/api/coaching/cohorts`, `/api/coaching/channels`, `/api/coaching/assignments/me`, `/api/coaching/broadcast`).
+
+#### Hard Constraints
+- No new endpoint family.
+- No new database tables in this assignment.
+- Preserve existing role-gates and messaging authority policy.
+- Preserve non-negotiables (no KPI engine/source-of-truth mutation through coaching flows).
+- If a required capability is not server-backed, ship explicit UX fallback (`planned/preview`) instead of inventing hidden persistence.
+
+#### Deliverable Requirements
+- Large-swatch, production-quality UI/IA pass (not placeholder cosmetics).
+- Coach workflow is immediately usable for day-to-day operations:
+  - open coach tab,
+  - inspect journeys/people,
+  - target cohort or individual,
+  - launch broadcast with preserved scope context.
+- Include clear empty/loading/error states and deterministic blocked copy.
+
+#### Validation
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime proof screenshots:
+  - coach tab default landing
+  - journey->cohort assignment interaction
+  - journey->individual assignment interaction
+  - segment targeting panel (live vs preview state)
+  - broadcast handoff from selected audience context
+
+#### Report-Back
+- Program status
+- Persona affected
+- Screens changed
+- Files changed (absolute paths)
+- What is now live vs preview/fallback
+- Validation summary
+- Screenshot evidence paths
+- Commit hash
+
 
 ### `M6-ASSIGNMENTS-PROFILE-CHAT-PARITY-C`
 
@@ -378,7 +461,7 @@ Provide realistic, repeatable seeded data so mobile + `/coach/*` evaluate as pro
 - `Program status:` `M6 / W12 mobile IA polish`
 - `Persona:` `Coach`, `Team Leader`, `Team Member`, `Solo User`, `Sponsor`
 - `Flow:` `mobile IA` (`bottom tab LOG center CTA emphasis`)
-- `Owner:` `Mobile-2`
+- `Owner:` `Claude-1`
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (mobile app worktree preferred)
 - `Figma refs:` `N/A` (assignment-driven IA polish; no locked frame/node in launch)
 - `Execution note (2026-02-27):` Assignment added and activated before coding per controller instruction.
@@ -5935,3 +6018,289 @@ Unblock individual messaging by fixing direct-channel member validation in `POST
 - `cd /Users/jon/compass-kpi/backend && npm run -s test:w13-stream-comms-role-policy`
 - `cd /Users/jon/compass-kpi/backend && npm run -s test:m6-comms-recipient-scope-hardening`
 - `cd /Users/jon/compass-kpi/backend && npm run -s test:m6-dm-direct-channel-create-backend`
+
+### `M6-SEED-PERSONA-ROLE-GUARD-A`
+
+#### Snapshot
+- `Status:` `queued`
+- `Program status:` `M6 runtime hardening`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`, `Challenge Sponsor`
+- `Flow:` `seed identity determinism` (`role/is_coach metadata parity`)
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (backend/data worktree preferred)
+- `Current blocker status:` `none`
+
+#### Objective
+Add a deterministic guard so realism seed personas always have expected `public.users.role`, `public.users.is_coach`, and auth `user_metadata` role flags required by runtime routing.
+
+#### Scope In
+- backend seed/admin script area (new or existing seed utility)
+- docs runbook location for seed/reset verification
+- no mobile UI redesign in this assignment
+
+#### Required Outcomes
+1. Single command/script ensures these mappings are true after seed/reset:
+   - `seed-m6-realism-ui-eval.coach@example.com` -> `role=coach`, `is_coach=true`, metadata coach flags
+   - `seed-m6-realism-ui-eval.coachleader@example.com` -> `role=team_leader`
+   - `seed-m6-realism-ui-eval.coachmember@example.com` -> `role=agent`, member metadata
+   - `seed-m6-realism-ui-eval.coachsolo@example.com` -> `role=agent`, member metadata
+   - `seed-m6-realism-ui-eval.challengesponsor@example.com` -> `role=challenge_sponsor`
+2. Verification output prints pass/fail per account.
+3. Runbook updated with exact verification command and expected output.
+
+#### Hard Constraints
+- No new tables.
+- No new endpoint family.
+- Keep changes deterministic and idempotent.
+
+#### Validation
+- Script run output attached in `app/test-results/m6-seed-persona-role-guard-a/`
+- Backend type/build check for touched scripts.
+
+### `M6-CHAT-MEDIA-UI-WIRING-A`
+
+#### Snapshot
+- `Status:` `blocked`
+- `Program status:` `M6 video messaging UX wiring`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`
+- `Flow:` `channel thread media` (`upload`, `attach`, `processing state`, `playback token handoff`)
+- `Owner:` `Mobile-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required)
+- `Current blocker status:` `No accepted worker output; current composer path remains marker-based placeholder attachments`
+
+#### Objective
+Wire real Mux video attachment flow into comms thread UX using existing backend families.
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/components/comms/CommsHub.tsx`
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (thread action plumbing only)
+- Existing APIs only:
+  - `POST /api/coaching/media/upload-url`
+  - `POST /api/channels/:id/messages` (`message_type=media_attachment`)
+  - `POST /api/coaching/media/playback-token`
+
+#### Scope Out
+- New endpoint family
+- New tables/schema
+- Broad comms redesign outside upload/attach/playback UX
+
+#### Required Outcomes
+1. Attachment action supports real video file selection (not fake attachment name generation).
+2. Selected video uploads via upload-url flow and returns `media_id`.
+3. Message send emits `message_type=media_attachment` with `media_attachment.media_id` (+ optional caption).
+4. Thread renders media lifecycle state (`uploaded|processing|ready|failed`) deterministically.
+5. Playback request path is wired through playback-token endpoint for ready media.
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime evidence screenshots/video in:
+  - `/Users/jon/compass-kpi/app/test-results/m6-chat-media-ui-wiring-a/`
+- Include one positive and one failure-path proof (e.g., upload rejected/processing failed copy).
+
+#### Report-Back
+- Program status
+- Persona affected
+- Screens changed
+- Files touched
+- Validation performed
+- Commit hash
+
+### `M6-LIVE-SESSION-CHAT-ENTRY-A`
+
+#### Snapshot
+- `Status:` `blocked`
+- `Program status:` `M6 livestream UX wiring`
+- `Persona:` `Coach`, `Team Leader`, `Team Member`
+- `Flow:` `live session control path` (`start`, `join`, `end`, `thread CTA`)
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required)
+- `Current blocker status:` `No accepted worker output; coach video surface is still placeholder`
+
+#### Objective
+Wire live-session UI controls to existing coaching media live-session APIs and expose entry points from coach workflow + comms thread.
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
+- `/Users/jon/compass-kpi/app/components/comms/CommsHub.tsx` (thread CTA row only if required)
+- Existing APIs only:
+  - `POST /api/coaching/media/live-sessions`
+  - `GET /api/coaching/media/live-sessions/:id`
+  - `POST /api/coaching/media/live-sessions/:id/join-token`
+  - `POST /api/coaching/media/live-sessions/:id/end`
+
+#### Scope Out
+- New endpoint family
+- New database tables
+- Rebuild of whole coach flow unrelated to live controls
+
+#### Required Outcomes
+1. Coach can start live session from coach video surface.
+2. Eligible participants can join from thread/surface CTA.
+3. Host can end session; participants see ended state.
+4. Role-gated UX copy for denied/expired/not-found states.
+5. Remove placeholder-only copy on coach video session screen.
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime evidence in:
+  - `/Users/jon/compass-kpi/app/test-results/m6-live-session-chat-entry-a/`
+- Capture start/join/end sequence + one denied state.
+
+#### Report-Back
+- Program status
+- Persona affected
+- Screens changed
+- Files touched
+- Validation performed
+- Commit hash
+
+### `M6-COACH-LANDING-ROLE-SPLIT-HERO-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 coach onboarding + operator landing`
+- `Persona:` `Team Member`, `Solo User`, `Coach`
+- `Flow:` `coach tab role split` (`no-coach hero marketing`, `has-coach direct profile landing`, `coach invite link parity`)
+- `Owner:` `Claude-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required)
+- `Current blocker status:` `none`
+
+#### Objective
+Implement role-conditional coach-tab landing so the surface is conversion-first for users without a coach and workflow-first for users already assigned to a coach.
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
+- Any local coach-tab helper components/styles directly required by this flow
+- Existing coach CTA routes only (no new endpoint family)
+
+#### Required UX Outcomes
+1. Users without a coach land on a large hero marketing section with exactly two offerings:
+   - `Real Human DM Coaching` (tailored KPI acceleration positioning)
+   - `Fourth Reason Coaching` (Beyond wealth/time/family; discover your fourth reason positioning)
+2. Each offering has one clear primary `Sign Up` CTA that routes to a full-page details view for that offering.
+3. Users with an active coach skip marketing and land directly on their assigned coach profile surface:
+   - coach hero card at top
+   - enrolled journeys list directly below hero
+4. Coach persona gets invite-link controls equivalent to team-leader invite affordance parity (coach-scoped, no team-leader gate break).
+5. Keep Compass visual style and spacing; incorporate Fourth Reason layout language without cloning unrelated admin chrome.
+
+#### Hard Constraints
+- No new tables.
+- No new endpoint families.
+- Preserve role and entitlement gates.
+- Do not regress existing coach primary workflow behaviors already accepted in `M6-COACH-PRIMARY-WORKFLOW-TAB-A`.
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime screenshots in:
+  - `/Users/jon/compass-kpi/app/test-results/m6-coach-landing-role-split-hero-a/`
+- Required screenshot set:
+  - no-coach hero with two offer cards + CTAs
+  - offer detail page for each CTA path
+  - has-coach landing with coach hero + enrolled journeys
+  - coach persona invite-link control visible
+
+#### Report-Back
+- Program status
+- Persona affected
+- Screens changed
+- Files touched
+- Validation performed
+- Screenshot evidence paths
+- Commit hash
+
+### `M6-CHANNELS-DM-PREVIEW-READMODEL-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 messaging runtime reliability`
+- `Persona:` `Team Leader`, `Team Member`, `Coach`, `Solo User`
+- `Flow:` `channels list payload parity` (`dm display name`, `last message preview`, `last message timestamp`)
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (backend worktree required)
+- `Current blocker status:` `none`
+
+#### Objective
+Upgrade `GET /api/channels` response so DM rows can render people-first names and real first-line previews, not empty/channel-generic placeholders.
+
+#### Scope In
+- `/Users/jon/compass-kpi/backend/src/index.ts` in `GET /api/channels` family only
+- Existing table reads only (`channels`, `channel_memberships`, `channel_messages`, `users`, `message_unreads`)
+
+#### Required Outcomes
+1. For direct channels, payload includes deterministic display name for counterpart user (non-self participant).
+2. Payload includes last-message preview text (safe-truncated) and last-message timestamp where available.
+3. Empty channels still return deterministic fallback preview.
+4. No new endpoint family, no schema/table changes, no permission boundary regressions.
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/backend && npm run -s build`
+- `cd /Users/jon/compass-kpi/backend && npm run -s test:backend-mvp`
+- Evidence notes with sample payload diffs in:
+  - `/Users/jon/compass-kpi/app/test-results/m6-channels-dm-preview-readmodel-a/`
+
+#### Report-Back
+- Program status
+- Persona affected
+- Files touched
+- Payload before/after summary
+- Validation performed
+- Evidence paths
+- Commit hash
+
+### `M6-COMMS-DM-PRESENTATION-MUX-LIVE-VISIBILITY-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 messaging + media runtime UX hardening`
+- `Persona:` `Team Leader`, `Team Member`, `Coach`
+- `Flow:` `dm list polish + media/live visibility` (`dm icon/name/preview parity`, `mux upload/live session entry evidence`)
+- `Owner:` `Mobile-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required)
+- `Current blocker status:` `none`
+
+#### Objective
+Make DM list rows messaging-native and expose concrete Mux/live controls so media and streaming are visibly testable from chat-related surfaces.
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (comms row mapping only)
+- `/Users/jon/compass-kpi/app/components/comms/CommsHub.tsx` (DM row treatment + media/live control visibility)
+- Existing API families only:
+  - `POST /api/coaching/media/upload-url`
+  - `POST /api/channels/:id/messages` (`message_type=media_attachment`)
+  - `POST /api/coaching/media/playback-token`
+  - `POST /api/coaching/media/live-sessions`
+  - `GET /api/coaching/media/live-sessions/:id`
+  - `POST /api/coaching/media/live-sessions/:id/join-token`
+  - `POST /api/coaching/media/live-sessions/:id/end`
+
+#### Required Outcomes
+1. DM rows show person-first naming and first-line preview when message data exists.
+2. DM rows do not render channel-style `#` visual markers.
+3. Direct-channel scope is rendered as DM (not community/channel fallback semantics).
+4. Thread/composer surfaces show explicit, testable Mux upload and live-session actions with deterministic status copy.
+5. Keep role gates intact and no endpoint/schema expansion.
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime evidence in:
+  - `/Users/jon/compass-kpi/app/test-results/m6-comms-dm-presentation-mux-live-visibility-a/`
+- Required screenshots:
+  - DM row with person name + first-line preview + no `#`
+  - Thread with visible media upload control path
+  - Live session start/join/end control visibility with one success and one denied/failure state
+
+#### Report-Back
+- Program status
+- Persona affected
+- Screens changed
+- Files touched
+- Validation performed
+- Evidence paths
+- Commit hash
+
+#### Execution Notes
+- `Execution note (2026-03-02, Mobile-1):` Completed DM presentation + media/live visibility pass in-scope only (`KPIDashboardScreen` comms mapping + `CommsHub` thread composer controls) with no endpoint-family expansion.
+- `Completion note (2026-03-02, Mobile-1):` Direct channels now render as DM scope rows with person-first naming fallback, first-line message preview when available, and no channel-style `#` marker treatment; thread composer now includes explicit Mux upload and live-session action controls with deterministic success/error status copy.
+- `Validation note (2026-03-02, Mobile-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` ✅.
+- `Evidence note (2026-03-02, Mobile-1):` screenshot baseline captured at `/Users/jon/compass-kpi/app/test-results/m6-comms-dm-presentation-mux-live-visibility-a/runtime-current-1.png`; multi-state capture across DM/thread/live denied states remains constrained by local simulator interaction automation permissions in this session.

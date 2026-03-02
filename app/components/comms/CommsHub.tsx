@@ -126,6 +126,17 @@ export interface CommsHubProps {
   onSendMessage: (payload: ThreadSendPayload) => void;
   onRefreshMessages: () => void;
   onOpenAiAssist: (host: string) => void;
+  onRequestMediaUpload: () => void;
+  onSendLatestMediaAttachment: () => void;
+  mediaUploadBusy: boolean;
+  mediaUploadStatus: string | null;
+  liveSessionBusy: boolean;
+  liveSessionStatus: string | null;
+  canHostLiveSession: boolean;
+  onStartLiveSession: () => void;
+  onRefreshLiveSession: () => void;
+  onJoinLiveSession: () => void;
+  onEndLiveSession: () => void;
 
   /* ── broadcast composer ─── */
   broadcastDraft: string;
@@ -655,6 +666,8 @@ function ThreadView(props: CommsHubProps) {
     messageDraft, onChangeMessageDraft,
     messageSubmitting, messageSubmitError,
     onSendMessage, onRefreshMessages, onOpenAiAssist, onOpenBroadcast,
+    onRequestMediaUpload, onSendLatestMediaAttachment, mediaUploadBusy, mediaUploadStatus,
+    liveSessionBusy, liveSessionStatus, canHostLiveSession, onStartLiveSession, onRefreshLiveSession, onJoinLiveSession, onEndLiveSession,
     gateBlocksActions, fmtTime, personaVariant, roleCanBroadcast,
   } = props;
 
@@ -963,6 +976,63 @@ function ThreadView(props: CommsHubProps) {
             <Text style={st.composerErrorText}>{messageSubmitError ?? slashHintError}</Text>
           </View>
         ) : null}
+
+        <View style={st.mediaLivePanel}>
+          <View style={st.mediaLiveRow}>
+            <Text style={st.mediaLiveTitle}>Mux Media</Text>
+            <View style={st.mediaLiveBtnRow}>
+              <Pressable
+                style={[st.mediaLiveBtn, (gateBlocksActions || mediaUploadBusy || !selectedChannelId) && st.mediaLiveBtnDisabled]}
+                disabled={gateBlocksActions || mediaUploadBusy || !selectedChannelId}
+                onPress={onRequestMediaUpload}
+              >
+                <Text style={st.mediaLiveBtnText}>{mediaUploadBusy ? 'Working…' : 'Get Upload URL'}</Text>
+              </Pressable>
+              <Pressable
+                style={[st.mediaLiveBtn, (gateBlocksActions || mediaUploadBusy || !selectedChannelId) && st.mediaLiveBtnDisabled]}
+                disabled={gateBlocksActions || mediaUploadBusy || !selectedChannelId}
+                onPress={onSendLatestMediaAttachment}
+              >
+                <Text style={st.mediaLiveBtnText}>Send Attachment</Text>
+              </Pressable>
+            </View>
+          </View>
+          <Text style={st.mediaLiveStatus}>{mediaUploadStatus ?? 'No media action yet.'}</Text>
+          <View style={[st.mediaLiveRow, { marginTop: 8 }]}>
+            <Text style={st.mediaLiveTitle}>Live Session</Text>
+            <View style={st.mediaLiveBtnRow}>
+              <Pressable
+                style={[st.mediaLiveBtn, (!canHostLiveSession || gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.mediaLiveBtnDisabled]}
+                disabled={!canHostLiveSession || gateBlocksActions || liveSessionBusy || !selectedChannelId}
+                onPress={onStartLiveSession}
+              >
+                <Text style={st.mediaLiveBtnText}>Start</Text>
+              </Pressable>
+              <Pressable
+                style={[st.mediaLiveBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.mediaLiveBtnDisabled]}
+                disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
+                onPress={onRefreshLiveSession}
+              >
+                <Text style={st.mediaLiveBtnText}>Refresh</Text>
+              </Pressable>
+              <Pressable
+                style={[st.mediaLiveBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.mediaLiveBtnDisabled]}
+                disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
+                onPress={onJoinLiveSession}
+              >
+                <Text style={st.mediaLiveBtnText}>Join</Text>
+              </Pressable>
+              <Pressable
+                style={[st.mediaLiveBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.mediaLiveBtnDisabled]}
+                disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
+                onPress={onEndLiveSession}
+              >
+                <Text style={st.mediaLiveBtnText}>End</Text>
+              </Pressable>
+            </View>
+          </View>
+          <Text style={st.mediaLiveStatus}>{liveSessionStatus ?? 'No live session action yet.'}</Text>
+        </View>
 
         {pendingAttachments.length > 0 ? (
           <View style={st.pendingAttachmentRow}>
@@ -1675,6 +1745,50 @@ const st = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: C.error,
+  },
+  mediaLivePanel: {
+    borderWidth: 1,
+    borderColor: '#d9e0ec',
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    padding: 10,
+    gap: 4,
+  },
+  mediaLiveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  mediaLiveTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  mediaLiveBtnRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 6,
+    flex: 1,
+  },
+  mediaLiveBtn: {
+    backgroundColor: '#dbeafe',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  mediaLiveBtnDisabled: {
+    opacity: 0.45,
+  },
+  mediaLiveBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  mediaLiveStatus: {
+    fontSize: 11,
+    color: '#334155',
   },
   pendingAttachmentRow: {
     flexDirection: 'row',
