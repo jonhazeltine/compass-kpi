@@ -2349,7 +2349,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [teamIdentityDraftBackground, setTeamIdentityDraftBackground] = useState('#dff0da');
   const [teamIdentityAvatarCategory, setTeamIdentityAvatarCategory] = useState<'power' | 'animals' | 'nature' | 'sports' | 'symbols'>('power');
   const [teamLogContext, setTeamLogContext] = useState<TeamLogContext | null>(null);
-  const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox');
+  const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox_channels');
   const [coachTabScreen, setCoachTabScreen] = useState<CoachTabScreen>('coach_marketplace');
   const [coachEngagementStatus, setCoachEngagementStatus] = useState<CoachEngagementStatus>('none');
   const [coachEntitlementState, setCoachEntitlementState] = useState<CoachEntitlementState>('allowed');
@@ -5045,7 +5045,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setCommsHubPrimaryTab('all');
       setCommsHubScopeFilter('all');
       setCommsHubSearchQuery('');
-      setCoachingShellScreen('inbox');
+      setCoachingShellScreen('inbox_channels');
       setCoachingShellContext({
         source: 'user_tab',
         preferredChannelScope: null,
@@ -6364,7 +6364,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const challengeMemberResultsRequiresUpgrade =
     teamPersonaVariant === 'member' && challengeIsCompleted && !challengeSelected?.joined;
   const openCoachingShell = useCallback((screen: CoachingShellScreen, contextPatch?: Partial<CoachingShellContext>) => {
-    setCoachingShellScreen(screen);
+    const resolvedScreen: CoachingShellScreen = screen === 'inbox' ? 'inbox_channels' : screen;
+    setCoachingShellScreen(resolvedScreen);
     if (contextPatch) {
       setCoachingShellContext((prev) => ({
         ...prev,

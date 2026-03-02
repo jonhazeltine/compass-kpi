@@ -1,8 +1,8 @@
 /**
  * CommsHub — Messaging-first communications interface for Compass.
  *
- * Renders three views based on `screen` prop:
- *   1. ChannelList  — inbox with modern channel rows
+ * Renders comms views based on `screen` prop:
+ *   1. ChannelList  — direct default list (inbox + inbox_channels alias)
  *   2. ThreadView   — chat-style message bubbles + sticky composer
  *   3. BroadcastCompose — first-class broadcast authoring tool
  *
@@ -154,16 +154,13 @@ export default function CommsHub(props: CommsHubProps) {
       <CommsTabs {...props} />
 
       {/* ─── View router ─── */}
-      {screen === 'inbox' ? (
-        /* Inbox landing — shows CTA to navigate into channel list */
-        <InboxLanding {...props} />
-      ) : screen === 'channel_thread' ? (
+      {screen === 'channel_thread' ? (
         <ThreadView {...props} />
       ) : screen === 'coach_broadcast_compose' ? (
         /* BroadcastCompose self-guards when !roleCanBroadcast (shows locked state) */
         <BroadcastCompose {...props} />
       ) : (
-        /* inbox_channels and any other screen → full channel list */
+        /* inbox/inbox_channels and any other screen → full channel list */
         <ChannelList {...props} />
       )}
     </View>
@@ -213,7 +210,7 @@ function CommsTabs(props: CommsHubProps) {
   } = props;
 
   // Hide tab strip on screens that have their own navigation
-  if (screen === 'inbox' || screen === 'channel_thread' || screen === 'coach_broadcast_compose') return null;
+  if (screen === 'channel_thread' || screen === 'coach_broadcast_compose') return null;
 
   const tabs: { key: CommsPrimaryTab; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -286,74 +283,6 @@ function CommsTabs(props: CommsHubProps) {
         />
       </View>
     </View>
-  );
-}
-
-/* ================================================================
-   INBOX LANDING — CTA gateway into channels
-   ================================================================ */
-
-function InboxLanding(props: CommsHubProps) {
-  const {
-    personaVariant, roleCanBroadcast, gateBlocksActions,
-    onOpenChannelsCta, onOpenBroadcast,
-    channels, channelsLoading,
-  } = props;
-
-  const unreadTotal = channels.reduce((sum, ch) => sum + (ch.unread_count ?? 0), 0);
-  const channelCount = channels.length;
-
-  const personaLabel = personaVariant === 'team_leader'
-    ? 'Team Leader'
-    : personaVariant.charAt(0).toUpperCase() + personaVariant.slice(1);
-
-  return (
-    <ScrollView style={st.inboxLandingScroll} contentContainerStyle={st.inboxLandingContent}>
-      {/* Welcome card */}
-      <View style={st.inboxCard}>
-        <Text style={st.inboxCardIcon}>💬</Text>
-        <Text style={st.inboxCardTitle}>Comms Inbox</Text>
-        <Text style={st.inboxCardSub}>
-          {channelsLoading
-            ? 'Loading your channels…'
-            : unreadTotal > 0
-              ? `${unreadTotal} unread message${unreadTotal !== 1 ? 's' : ''} across ${channelCount} channel${channelCount !== 1 ? 's' : ''}.`
-              : channelCount > 0
-                ? `${channelCount} channel${channelCount !== 1 ? 's' : ''} available. You're all caught up.`
-                : 'No channels yet. Check back soon.'}
-        </Text>
-      </View>
-
-      {/* Primary CTA: Open Channels */}
-      <Pressable
-        style={[st.inboxCtaBtn, gateBlocksActions && st.inboxCtaBtnDisabled]}
-        onPress={onOpenChannelsCta}
-        disabled={gateBlocksActions}
-        accessibilityRole="button"
-        accessibilityLabel="Open Channels"
-      >
-        <Text style={st.inboxCtaBtnText}>Open Channels</Text>
-        <Text style={st.inboxCtaBtnArrow}>→</Text>
-      </Pressable>
-
-      {/* Secondary CTA: Broadcast (visible for coach / team_leader only) */}
-      {roleCanBroadcast ? (
-        <Pressable
-          style={[st.inboxSecondaryBtn, gateBlocksActions && st.inboxCtaBtnDisabled]}
-          onPress={onOpenBroadcast}
-          disabled={gateBlocksActions}
-          accessibilityRole="button"
-          accessibilityLabel="Open Broadcast Composer"
-        >
-          <Text style={st.inboxSecondaryBtnText}>📢  Compose Broadcast</Text>
-        </Pressable>
-      ) : null}
-
-      {/* Role badge */}
-      <View style={st.inboxRolePill}>
-        <Text style={st.inboxRolePillText}>{personaLabel} view</Text>
-      </View>
-    </ScrollView>
   );
 }
 
@@ -1156,98 +1085,6 @@ const st = StyleSheet.create({
     color: C.textOnBrand,
     fontSize: 13,
     fontWeight: '700',
-  },
-
-  /* ─── inbox landing ─── */
-  inboxLandingScroll: {
-    flex: 1,
-  },
-  inboxLandingContent: {
-    padding: 20,
-    paddingTop: 28,
-    gap: 16,
-    alignItems: 'center',
-  },
-  inboxCard: {
-    backgroundColor: C.cardBg,
-    borderRadius: 16,
-    padding: 28,
-    alignItems: 'center',
-    gap: 8,
-    width: '100%',
-    borderWidth: 1,
-    borderColor: C.divider,
-  },
-  inboxCardIcon: {
-    fontSize: 36,
-    marginBottom: 4,
-  },
-  inboxCardTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: C.textPrimary,
-    letterSpacing: -0.3,
-  },
-  inboxCardSub: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: C.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  inboxCtaBtn: {
-    backgroundColor: C.brand,
-    borderRadius: 14,
-    paddingVertical: 15,
-    paddingHorizontal: 28,
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  inboxCtaBtnDisabled: {
-    opacity: 0.4,
-  },
-  inboxCtaBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: C.textOnBrand,
-    letterSpacing: 0.2,
-  },
-  inboxCtaBtnArrow: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: C.textOnBrand,
-  },
-  inboxSecondaryBtn: {
-    backgroundColor: C.cardBg,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: C.brand,
-    paddingVertical: 13,
-    paddingHorizontal: 28,
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inboxSecondaryBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: C.brand,
-  },
-  inboxRolePill: {
-    backgroundColor: C.brandLight,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    marginTop: 4,
-  },
-  inboxRolePillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: C.brand,
-    textTransform: 'capitalize',
   },
 
   /* ─── thread view ─── */
