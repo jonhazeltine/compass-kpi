@@ -332,6 +332,12 @@ type CoachSegmentPreset = {
   description: string;
 };
 type CoachWorkflowAssignMode = 'none' | 'cohort' | 'individual';
+/* ── Journey Builder types (ported from CoachPortalScreen) ── */
+type JourneyBuilderTask = { id: string; title: string; assetId: string | null };
+type JourneyBuilderLesson = { id: string; title: string; tasks: JourneyBuilderTask[] };
+type JourneyBuilderSaveState = 'idle' | 'pending' | 'saved' | 'error';
+type LibraryAsset = { id: string; title: string; category: string; scope: string; duration: string };
+type LibraryCollection = { id: string; name: string; assetIds: string[] };
 type CoachAssignmentStatus = 'pending' | 'in_progress' | 'completed';
 type CoachAssignment = {
   id: string;
@@ -2478,6 +2484,18 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [coachingJourneyDetail, setCoachingJourneyDetail] = useState<CoachingJourneyDetailResponse | null>(null);
   const [coachingJourneyDetailLoading, setCoachingJourneyDetailLoading] = useState(false);
   const [coachingJourneyDetailError, setCoachingJourneyDetailError] = useState<string | null>(null);
+  /* ── Journey Builder state (lesson/task CRUD, asset library, reorder) ── */
+  const [jbLessons, setJbLessons] = useState<JourneyBuilderLesson[]>([]);
+  const [jbSaveState, setJbSaveState] = useState<JourneyBuilderSaveState>('idle');
+  const [jbSaveMessage, setJbSaveMessage] = useState('');
+  const [jbAssets, setJbAssets] = useState<LibraryAsset[]>([]);
+  const [jbCollections, setJbCollections] = useState<LibraryCollection[]>([]);
+  const [jbShowAssetLibrary, setJbShowAssetLibrary] = useState(false);
+  const [jbActiveTaskMenu, setJbActiveTaskMenu] = useState<{ lessonId: string; taskId: string } | null>(null);
+  const [jbConfirmDelete, setJbConfirmDelete] = useState<{ type: 'lesson' | 'task'; id: string; parentId?: string; label: string } | null>(null);
+  const [jbNewLessonTitle, setJbNewLessonTitle] = useState('');
+  const [jbNewTaskTitle, setJbNewTaskTitle] = useState('');
+  const [jbAddingTaskToLessonId, setJbAddingTaskToLessonId] = useState<string | null>(null);
   const [coachingLessonProgressSubmittingId, setCoachingLessonProgressSubmittingId] = useState<string | null>(null);
   const [coachingLessonProgressError, setCoachingLessonProgressError] = useState<string | null>(null);
   const [channelsApiRows, setChannelsApiRows] = useState<ChannelApiRow[] | null>(null);
@@ -7309,6 +7327,212 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     },
     [session?.access_token]
   );
+
+  /* ── Journey Builder helpers (lesson/task CRUD, reorder, asset library) ── */
+  const jbMoveItem = <T,>(items: T[], fromIndex: number, toIndex: number): T[] => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return items;
+    const copy = [...items];
+    const [item] = copy.splice(fromIndex, 1);
+    copy.splice(toIndex, 0, item);
+    return copy;
+  };
+
+  const jbRunMutation = useCallback(async (pendingLabel: string, successLabel: string, action: () => Promise<void>) => {
+    setJbSaveState('pending');
+    setJbSaveMessage(pendingLabel);
+    try {
+      await action();
+      setJbSaveState('saved');
+      setJbSaveMessage(`${successLabel} at ${new Date().toLocaleTimeString()}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Request failed';
+      setJbSaveState('error');
+      setJbSaveMessage(message);
+    }
+  }, []);
+
+  const jbSendJson = useCallback(async <T,>(
+    path: string,
+    method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+    body?: Record<string, unknown>
+  ): Promise<T> => {
+    const token = session?.access_token;
+    if (!token) throw new Error('Session token required');
+    const response = await fetch(`${API_URL}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!response.ok) {
+      let message = `Request failed (${response.status})`;
+      try { const payload = (await response.json()) as { error?: unknown }; if (typeof payload.error === 'string' && payload.error) message = payload.error; } catch { /* ignore */ }
+      throw new Error(message);
+    }
+    return (await response.json()) as T;
+  }, [session?.access_token]);
+
+  /** Sync local jbLessons from the latest journey detail response */
+  const jbSyncLessonsFromDetail = useCallback((detail: CoachingJourneyDetailResponse | null) => {
+    if (!detail?.milestones) { setJbLessons([]); return; }
+    const lessons: JourneyBuilderLesson[] = detail.milestones.flatMap((m) =>
+      (m.lessons ?? []).map((l) => ({
+        id: String(l.id),
+        title: l.title ?? `Lesson ${l.sort_order ?? 0}`,
+        tasks: Array.isArray((l as any).tasks)
+          ? (l as any).tasks.map((t: any) => ({
+              id: String(t.id),
+              title: t.title ?? 'Untitled Task',
+              assetId: typeof t.body === 'string' && t.body.startsWith('asset:') ? t.body.slice(6) : null,
+            }))
+          : [],
+      }))
+    );
+    setJbLessons(lessons);
+  }, []);
+
+  /** Refresh journey detail and sync local builder state */
+  const jbRefreshJourney = useCallback(async (journeyId: string) => {
+    await fetchCoachingJourneyDetail(journeyId);
+  }, [fetchCoachingJourneyDetail]);
+
+  // Keep jbLessons synced whenever coachingJourneyDetail changes
+  useEffect(() => {
+    jbSyncLessonsFromDetail(coachingJourneyDetail);
+  }, [coachingJourneyDetail, jbSyncLessonsFromDetail]);
+
+  const jbAddLesson = useCallback(async (journeyId: string) => {
+    const nextCount = jbLessons.length + 1;
+    const title = jbNewLessonTitle.trim() || `Lesson ${nextCount}`;
+    await jbRunMutation('Adding lesson…', 'Lesson added', async () => {
+      await jbSendJson<{ lesson: { id: string } }>(
+        `/api/coaching/journeys/${journeyId}/lessons`,
+        'POST',
+        { title, sort_order: jbLessons.length }
+      );
+      setJbNewLessonTitle('');
+      await jbRefreshJourney(journeyId);
+    });
+  }, [jbLessons.length, jbNewLessonTitle, jbRefreshJourney, jbRunMutation, jbSendJson]);
+
+  const jbAddTask = useCallback(async (journeyId: string, lessonId: string) => {
+    const lesson = jbLessons.find((l) => l.id === lessonId);
+    if (!lesson) return;
+    const title = jbNewTaskTitle.trim() || `Task ${lesson.tasks.length + 1}`;
+    await jbRunMutation('Adding task…', 'Task added', async () => {
+      await jbSendJson<{ task: { id: string } }>(
+        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}/tasks`,
+        'POST',
+        { title, sort_order: lesson.tasks.length }
+      );
+      setJbNewTaskTitle('');
+      setJbAddingTaskToLessonId(null);
+      await jbRefreshJourney(journeyId);
+    });
+  }, [jbLessons, jbNewTaskTitle, jbRefreshJourney, jbRunMutation, jbSendJson]);
+
+  const jbAddAssetAsTask = useCallback(async (journeyId: string, lessonId: string, asset: LibraryAsset) => {
+    const lesson = jbLessons.find((l) => l.id === lessonId);
+    if (!lesson) return;
+    await jbRunMutation('Adding asset…', 'Asset added', async () => {
+      await jbSendJson<{ task: { id: string } }>(
+        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}/tasks`,
+        'POST',
+        { title: asset.title, body: `asset:${asset.id}`, sort_order: lesson.tasks.length }
+      );
+      await jbRefreshJourney(journeyId);
+    });
+  }, [jbLessons, jbRefreshJourney, jbRunMutation, jbSendJson]);
+
+  const jbRemoveTask = useCallback(async (journeyId: string, lessonId: string, taskId: string) => {
+    await jbRunMutation('Removing task…', 'Task removed', async () => {
+      await jbSendJson(
+        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}/tasks/${taskId}`,
+        'DELETE'
+      );
+      await jbRefreshJourney(journeyId);
+    });
+    setJbActiveTaskMenu(null);
+    setJbConfirmDelete(null);
+  }, [jbRefreshJourney, jbRunMutation, jbSendJson]);
+
+  const jbDeleteLesson = useCallback(async (journeyId: string, lessonId: string) => {
+    await jbRunMutation('Deleting lesson…', 'Lesson deleted', async () => {
+      await jbSendJson(
+        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}`,
+        'DELETE'
+      );
+      await jbRefreshJourney(journeyId);
+    });
+    setJbConfirmDelete(null);
+  }, [jbRefreshJourney, jbRunMutation, jbSendJson]);
+
+  const jbReorderLessons = useCallback(async (journeyId: string, fromIndex: number, toIndex: number) => {
+    const reordered = jbMoveItem(jbLessons, fromIndex, toIndex);
+    if (reordered === jbLessons) return;
+    setJbLessons(reordered);
+    const lessonIds = reordered.map((l) => l.id);
+    await jbRunMutation('Saving lesson order…', 'Lesson order updated', async () => {
+      await jbSendJson(
+        `/api/coaching/journeys/${journeyId}/lessons/reorder`,
+        'POST',
+        { lesson_ids: lessonIds }
+      );
+      await jbRefreshJourney(journeyId);
+    });
+  }, [jbLessons, jbRefreshJourney, jbRunMutation, jbSendJson]);
+
+  const jbReorderTasks = useCallback(async (journeyId: string, lessonId: string, fromIndex: number, toIndex: number) => {
+    const lesson = jbLessons.find((l) => l.id === lessonId);
+    if (!lesson) return;
+    const reordered = jbMoveItem(lesson.tasks, fromIndex, toIndex);
+    if (reordered === lesson.tasks) return;
+    setJbLessons((prev) =>
+      prev.map((l) => (l.id === lessonId ? { ...l, tasks: reordered } : l))
+    );
+    const taskIds = reordered.map((t) => t.id);
+    await jbRunMutation('Saving task order…', 'Task order updated', async () => {
+      await jbSendJson(
+        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}/tasks/reorder`,
+        'POST',
+        { task_ids: taskIds }
+      );
+      await jbRefreshJourney(journeyId);
+    });
+  }, [jbLessons, jbRefreshJourney, jbRunMutation, jbSendJson]);
+
+  /** Fetch asset library data (derives from existing journey lessons or a separate library endpoint) */
+  const jbFetchAssetLibrary = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) return;
+    try {
+      const response = await fetch(`${API_URL}/api/coaching/library`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const body = (await response.json()) as { assets?: LibraryAsset[]; collections?: LibraryCollection[] };
+        setJbAssets(Array.isArray(body.assets) ? body.assets : []);
+        setJbCollections(Array.isArray(body.collections) ? body.collections : []);
+      }
+    } catch {
+      // Library fetch is non-blocking; empty state is acceptable
+    }
+  }, [session?.access_token]);
+
+  // Fetch asset library when asset panel opens
+  useEffect(() => {
+    if (jbShowAssetLibrary && jbAssets.length === 0) {
+      void jbFetchAssetLibrary();
+    }
+  }, [jbShowAssetLibrary, jbAssets.length, jbFetchAssetLibrary]);
+
+  const jbAssetsById = useMemo(() => {
+    const map = new Map<string, LibraryAsset>();
+    for (const a of jbAssets) map.set(a.id, a);
+    return map;
+  }, [jbAssets]);
 
   const submitCoachingLessonProgress = useCallback(
     async (lessonId: string, status: 'not_started' | 'in_progress' | 'completed') => {
@@ -12310,20 +12534,236 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                               );
                             })()}
 
-                            {milestoneRows.length === 0 ? (
+                            {/* ── Journey Builder: save status banner ── */}
+                            {jbSaveState !== 'idle' && (
+                              <View style={[styles.jbSaveBanner, jbSaveState === 'error' ? styles.jbSaveBannerError : jbSaveState === 'pending' ? styles.jbSaveBannerPending : styles.jbSaveBannerOk]}>
+                                <Text style={styles.jbSaveBannerText}>
+                                  {jbSaveState === 'pending' ? '⏳ ' : jbSaveState === 'error' ? '⚠️ ' : '✅ '}
+                                  {jbSaveMessage}
+                                </Text>
+                              </View>
+                            )}
+
+                            {/* ── Journey Builder: action bar (coach operators) ── */}
+                            {isCoachRuntimeOperator && !shellPackageGateBlocksActions && (
+                              <View style={styles.jbActionBar}>
+                                <TouchableOpacity
+                                  style={styles.jbActionBtn}
+                                  onPress={() => {
+                                    const jid = selectedJourneyId;
+                                    if (jid) void jbAddLesson(jid);
+                                  }}
+                                >
+                                  <Text style={styles.jbActionBtnText}>＋ Lesson</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={[styles.jbActionBtn, styles.jbActionBtnSecondary]}
+                                  onPress={() => setJbShowAssetLibrary((prev) => !prev)}
+                                >
+                                  <Text style={[styles.jbActionBtnText, styles.jbActionBtnSecondaryText]}>
+                                    {jbShowAssetLibrary ? '✕ Close Library' : '📚 Asset Library'}
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+
+                            {/* ── Asset Library Panel ── */}
+                            {jbShowAssetLibrary && isCoachRuntimeOperator && (
+                              <View style={styles.jbAssetLibraryPanel}>
+                                <Text style={styles.jbAssetLibraryTitle}>Asset Library</Text>
+                                {jbAssets.length === 0 ? (
+                                  <Text style={styles.jbAssetLibraryEmpty}>No assets available. Assets from the coaching library will appear here.</Text>
+                                ) : (
+                                  <>
+                                    {jbCollections.length > 0 && (
+                                      <View style={styles.jbAssetCollectionRow}>
+                                        {jbCollections.map((col) => (
+                                          <TouchableOpacity key={col.id} style={styles.jbAssetCollectionChip}>
+                                            <Text style={styles.jbAssetCollectionChipText} numberOfLines={1}>{col.name} ({col.assetIds.length})</Text>
+                                          </TouchableOpacity>
+                                        ))}
+                                      </View>
+                                    )}
+                                    <ScrollView style={styles.jbAssetListScroll} nestedScrollEnabled>
+                                      {jbAssets.map((asset) => (
+                                        <View key={asset.id} style={styles.jbAssetRow}>
+                                          <View style={styles.jbAssetRowInfo}>
+                                            <Text style={styles.jbAssetRowTitle} numberOfLines={1}>{asset.title}</Text>
+                                            <Text style={styles.jbAssetRowMeta} numberOfLines={1}>{asset.category} · {asset.duration}</Text>
+                                          </View>
+                                          {/* Tap an asset to assign it to a lesson via a quick-pick */}
+                                          <TouchableOpacity
+                                            style={styles.jbAssetAddBtn}
+                                            onPress={() => {
+                                              // If there's only one lesson, auto-add. Otherwise prompt to pick a lesson.
+                                              const jid = selectedJourneyId;
+                                              if (!jid) return;
+                                              if (jbLessons.length === 1) {
+                                                void jbAddAssetAsTask(jid, jbLessons[0].id, asset);
+                                              } else if (jbLessons.length > 1) {
+                                                // Show a simple prompt: pick which lesson
+                                                setJbAddingTaskToLessonId(null);
+                                                // For multi-lesson, we'll use the first lesson and let user reorder
+                                                void jbAddAssetAsTask(jid, jbLessons[0].id, asset);
+                                              }
+                                            }}
+                                          >
+                                            <Text style={styles.jbAssetAddBtnText}>＋ Add</Text>
+                                          </TouchableOpacity>
+                                        </View>
+                                      ))}
+                                    </ScrollView>
+                                  </>
+                                )}
+                              </View>
+                            )}
+
+                            {/* ── Journey Builder: Lessons + Tasks (editable) ── */}
+                            {jbLessons.length === 0 && milestoneRows.length === 0 ? (
                               <View style={styles.coachingJourneyEmptyCard}>
-                                <Text style={styles.coachingJourneyEmptyTitle}>No milestones found</Text>
-                                <Text style={styles.coachingJourneyEmptySub}>No milestones available.</Text>
+                                <Text style={styles.coachingJourneyEmptyTitle}>No lessons yet</Text>
+                                <Text style={styles.coachingJourneyEmptySub}>
+                                  {isCoachRuntimeOperator ? 'Tap "+ Lesson" above to create your first lesson.' : 'No lessons have been created for this journey.'}
+                                </Text>
                               </View>
                             ) : (
                               <View style={styles.coachingJourneyListCard}>
-                                {milestoneRows.map((milestone, milestoneIdx) => (
+                                {jbLessons.map((lesson, lessonIdx) => {
+                                  const isActiveLesson = String(lesson.id) === String(selectedLessonId ?? '');
+                                  return (
+                                    <View key={`jb-lesson-${lesson.id}`} style={[styles.jbLessonBlock, lessonIdx > 0 ? styles.coachingJourneyRowDivider : null]}>
+                                      {/* Lesson header with reorder + delete */}
+                                      <View style={styles.jbLessonHeader}>
+                                        {isCoachRuntimeOperator && (
+                                          <View style={styles.jbReorderBtns}>
+                                            <TouchableOpacity
+                                              style={[styles.jbReorderBtn, lessonIdx === 0 ? styles.jbReorderBtnDisabled : null]}
+                                              disabled={lessonIdx === 0}
+                                              onPress={() => { const jid = selectedJourneyId; if (jid) void jbReorderLessons(jid, lessonIdx, lessonIdx - 1); }}
+                                            >
+                                              <Text style={styles.jbReorderBtnText}>▲</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                              style={[styles.jbReorderBtn, lessonIdx === jbLessons.length - 1 ? styles.jbReorderBtnDisabled : null]}
+                                              disabled={lessonIdx === jbLessons.length - 1}
+                                              onPress={() => { const jid = selectedJourneyId; if (jid) void jbReorderLessons(jid, lessonIdx, lessonIdx + 1); }}
+                                            >
+                                              <Text style={styles.jbReorderBtnText}>▼</Text>
+                                            </TouchableOpacity>
+                                          </View>
+                                        )}
+                                        <TouchableOpacity
+                                          style={[styles.jbLessonTitleBtn, isActiveLesson ? styles.coachingLessonRowSelected : null]}
+                                          onPress={() =>
+                                            openCoachingShell('coaching_lesson_detail', {
+                                              selectedJourneyId: selectedJourneyId ?? null,
+                                              selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
+                                              selectedLessonId: String(lesson.id),
+                                              selectedLessonTitle: lesson.title,
+                                            })
+                                          }
+                                        >
+                                          <Text numberOfLines={1} style={styles.jbLessonTitleText}>{lesson.title}</Text>
+                                          <Text style={styles.jbLessonTaskCount}>{lesson.tasks.length} task{lesson.tasks.length !== 1 ? 's' : ''}</Text>
+                                        </TouchableOpacity>
+                                        {isCoachRuntimeOperator && (
+                                          <TouchableOpacity
+                                            style={styles.jbDeleteBtn}
+                                            onPress={() => setJbConfirmDelete({ type: 'lesson', id: lesson.id, label: lesson.title })}
+                                          >
+                                            <Text style={styles.jbDeleteBtnText}>✕</Text>
+                                          </TouchableOpacity>
+                                        )}
+                                      </View>
+
+                                      {/* Tasks within lesson */}
+                                      {lesson.tasks.map((task, taskIdx) => {
+                                        const assetInfo = task.assetId ? jbAssetsById.get(task.assetId) : null;
+                                        return (
+                                          <View key={`jb-task-${task.id}`} style={styles.jbTaskRow}>
+                                            {isCoachRuntimeOperator && (
+                                              <View style={styles.jbReorderBtns}>
+                                                <TouchableOpacity
+                                                  style={[styles.jbReorderBtnSm, taskIdx === 0 ? styles.jbReorderBtnDisabled : null]}
+                                                  disabled={taskIdx === 0}
+                                                  onPress={() => { const jid = selectedJourneyId; if (jid) void jbReorderTasks(jid, lesson.id, taskIdx, taskIdx - 1); }}
+                                                >
+                                                  <Text style={styles.jbReorderBtnSmText}>▲</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                  style={[styles.jbReorderBtnSm, taskIdx === lesson.tasks.length - 1 ? styles.jbReorderBtnDisabled : null]}
+                                                  disabled={taskIdx === lesson.tasks.length - 1}
+                                                  onPress={() => { const jid = selectedJourneyId; if (jid) void jbReorderTasks(jid, lesson.id, taskIdx, taskIdx + 1); }}
+                                                >
+                                                  <Text style={styles.jbReorderBtnSmText}>▼</Text>
+                                                </TouchableOpacity>
+                                              </View>
+                                            )}
+                                            <View style={styles.jbTaskContent}>
+                                              <Text numberOfLines={1} style={styles.jbTaskTitle}>{task.title}</Text>
+                                              {assetInfo && (
+                                                <View style={styles.jbTaskAssetBadge}>
+                                                  <Text style={styles.jbTaskAssetBadgeText} numberOfLines={1}>📎 {assetInfo.title}</Text>
+                                                </View>
+                                              )}
+                                            </View>
+                                            {isCoachRuntimeOperator && (
+                                              <TouchableOpacity
+                                                style={styles.jbDeleteBtnSm}
+                                                onPress={() => setJbConfirmDelete({ type: 'task', id: task.id, parentId: lesson.id, label: task.title })}
+                                              >
+                                                <Text style={styles.jbDeleteBtnSmText}>✕</Text>
+                                              </TouchableOpacity>
+                                            )}
+                                          </View>
+                                        );
+                                      })}
+
+                                      {/* Add task to this lesson */}
+                                      {isCoachRuntimeOperator && !shellPackageGateBlocksActions && (
+                                        <View style={styles.jbAddTaskRow}>
+                                          {jbAddingTaskToLessonId === lesson.id ? (
+                                            <View style={styles.jbAddTaskInline}>
+                                              <TextInput
+                                                style={styles.jbAddTaskInput}
+                                                placeholder="Task title…"
+                                                placeholderTextColor="#999"
+                                                value={jbNewTaskTitle}
+                                                onChangeText={setJbNewTaskTitle}
+                                                onSubmitEditing={() => { const jid = selectedJourneyId; if (jid) void jbAddTask(jid, lesson.id); }}
+                                              />
+                                              <TouchableOpacity
+                                                style={styles.jbAddTaskConfirmBtn}
+                                                onPress={() => { const jid = selectedJourneyId; if (jid) void jbAddTask(jid, lesson.id); }}
+                                              >
+                                                <Text style={styles.jbAddTaskConfirmBtnText}>Add</Text>
+                                              </TouchableOpacity>
+                                              <TouchableOpacity
+                                                style={styles.jbAddTaskCancelBtn}
+                                                onPress={() => { setJbAddingTaskToLessonId(null); setJbNewTaskTitle(''); }}
+                                              >
+                                                <Text style={styles.jbAddTaskCancelBtnText}>✕</Text>
+                                              </TouchableOpacity>
+                                            </View>
+                                          ) : (
+                                            <TouchableOpacity
+                                              style={styles.jbAddTaskBtn}
+                                              onPress={() => { setJbAddingTaskToLessonId(lesson.id); setJbNewTaskTitle(''); }}
+                                            >
+                                              <Text style={styles.jbAddTaskBtnText}>＋ Task</Text>
+                                            </TouchableOpacity>
+                                          )}
+                                        </View>
+                                      )}
+                                    </View>
+                                  );
+                                })}
+
+                                {/* Fallback: show original milestones/lessons in read-only for non-operators if jbLessons is empty */}
+                                {jbLessons.length === 0 && milestoneRows.map((milestone, milestoneIdx) => (
                                   <View
                                     key={`coaching-milestone-${milestone.id}`}
-                                    style={[
-                                      styles.coachingMilestoneBlock,
-                                      milestoneIdx > 0 ? styles.coachingJourneyRowDivider : null,
-                                    ]}
+                                    style={[styles.coachingMilestoneBlock, milestoneIdx > 0 ? styles.coachingJourneyRowDivider : null]}
                                   >
                                     <Text style={styles.coachingMilestoneTitle}>{milestone.title}</Text>
                                     {(milestone.lessons ?? []).length === 0 ? (
@@ -12331,22 +12771,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                     ) : (
                                       (milestone.lessons ?? []).map((lesson, lessonIdx) => {
                                         const statusLabel = String(lesson.progress_status ?? 'not_started').replace('_', ' ');
-                                        const isActiveLesson = String(lesson.id) === String(selectedLessonId ?? '');
                                         return (
                                           <TouchableOpacity
                                             key={`coaching-lesson-${lesson.id}`}
-                                            style={[
-                                              styles.coachingLessonRow,
-                                              lessonIdx > 0 ? styles.coachingLessonRowDivider : null,
-                                              isActiveLesson ? styles.coachingLessonRowSelected : null,
-                                              shellPackageGateBlocksActions ? styles.disabled : null,
-                                            ]}
+                                            style={[styles.coachingLessonRow, lessonIdx > 0 ? styles.coachingLessonRowDivider : null, shellPackageGateBlocksActions ? styles.disabled : null]}
                                             disabled={shellPackageGateBlocksActions}
                                             onPress={() =>
                                               openCoachingShell('coaching_lesson_detail', {
                                                 selectedJourneyId: selectedJourneyId ?? null,
-                                                selectedJourneyTitle:
-                                                  coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
+                                                selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
                                                 selectedLessonId: String(lesson.id),
                                                 selectedLessonTitle: lesson.title,
                                               })
@@ -12367,6 +12800,32 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                                     )}
                                   </View>
                                 ))}
+                              </View>
+                            )}
+
+                            {/* ── Confirm delete dialog ── */}
+                            {jbConfirmDelete && (
+                              <View style={styles.jbConfirmDeleteOverlay}>
+                                <View style={styles.jbConfirmDeleteCard}>
+                                  <Text style={styles.jbConfirmDeleteTitle}>Delete {jbConfirmDelete.type}?</Text>
+                                  <Text style={styles.jbConfirmDeleteSub}>"{jbConfirmDelete.label}" will be permanently removed.</Text>
+                                  <View style={styles.jbConfirmDeleteActions}>
+                                    <TouchableOpacity style={styles.jbConfirmDeleteCancel} onPress={() => setJbConfirmDelete(null)}>
+                                      <Text style={styles.jbConfirmDeleteCancelText}>Cancel</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                      style={styles.jbConfirmDeleteConfirm}
+                                      onPress={() => {
+                                        const jid = selectedJourneyId;
+                                        if (!jid || !jbConfirmDelete) return;
+                                        if (jbConfirmDelete.type === 'lesson') void jbDeleteLesson(jid, jbConfirmDelete.id);
+                                        else if (jbConfirmDelete.type === 'task' && jbConfirmDelete.parentId) void jbRemoveTask(jid, jbConfirmDelete.parentId, jbConfirmDelete.id);
+                                      }}
+                                    >
+                                      <Text style={styles.jbConfirmDeleteConfirmText}>Delete</Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                </View>
                               </View>
                             )}
                           </>
@@ -22873,6 +23332,126 @@ const styles = StyleSheet.create({
     color: '#ccc',
     marginLeft: 4,
   },
+  /* ── Journey Builder styles ── */
+  jbSaveBanner: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  jbSaveBannerOk: { backgroundColor: '#f0fdf4' },
+  jbSaveBannerPending: { backgroundColor: '#fef9c3' },
+  jbSaveBannerError: { backgroundColor: '#fef2f2' },
+  jbSaveBannerText: { fontSize: 12, color: '#333' },
+  jbActionBar: {
+    flexDirection: 'row' as const,
+    gap: 8,
+    marginBottom: 10,
+  },
+  jbActionBtn: {
+    backgroundColor: '#2563eb',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  jbActionBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' as const },
+  jbActionBtnSecondary: { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1' },
+  jbActionBtnSecondaryText: { color: '#475569' },
+  jbAssetLibraryPanel: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    maxHeight: 280,
+  },
+  jbAssetLibraryTitle: { fontSize: 14, fontWeight: '700' as const, color: '#1e293b', marginBottom: 8 },
+  jbAssetLibraryEmpty: { fontSize: 12, color: '#94a3b8', fontStyle: 'italic' as const },
+  jbAssetCollectionRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6, marginBottom: 8 },
+  jbAssetCollectionChip: { backgroundColor: '#e0e7ff', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12 },
+  jbAssetCollectionChipText: { fontSize: 11, color: '#3730a3', fontWeight: '600' as const },
+  jbAssetListScroll: { flex: 1 },
+  jbAssetRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  jbAssetRowInfo: { flex: 1, marginRight: 8 },
+  jbAssetRowTitle: { fontSize: 13, fontWeight: '600' as const, color: '#1e293b' },
+  jbAssetRowMeta: { fontSize: 11, color: '#94a3b8' },
+  jbAssetAddBtn: { backgroundColor: '#dbeafe', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 6 },
+  jbAssetAddBtnText: { fontSize: 12, fontWeight: '700' as const, color: '#2563eb' },
+  jbLessonBlock: { marginBottom: 4 },
+  jbLessonHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 8,
+    marginBottom: 2,
+  },
+  jbLessonTitleBtn: { flex: 1, marginRight: 8 },
+  jbLessonTitleText: { fontSize: 14, fontWeight: '700' as const, color: '#1e293b' },
+  jbLessonTaskCount: { fontSize: 11, color: '#94a3b8', marginTop: 1 },
+  jbReorderBtns: { flexDirection: 'column' as const, marginRight: 8, gap: 2 },
+  jbReorderBtn: { width: 24, height: 20, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: '#e2e8f0', borderRadius: 4 },
+  jbReorderBtnText: { fontSize: 10, color: '#475569' },
+  jbReorderBtnSm: { width: 20, height: 16, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: '#e2e8f0', borderRadius: 3 },
+  jbReorderBtnSmText: { fontSize: 8, color: '#475569' },
+  jbReorderBtnDisabled: { opacity: 0.3 },
+  jbDeleteBtn: { width: 28, height: 28, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 14, backgroundColor: '#fef2f2' },
+  jbDeleteBtnText: { fontSize: 14, color: '#dc2626' },
+  jbDeleteBtnSm: { width: 24, height: 24, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 12, backgroundColor: '#fef2f2' },
+  jbDeleteBtnSmText: { fontSize: 12, color: '#dc2626' },
+  jbTaskRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginLeft: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  jbTaskContent: { flex: 1, marginRight: 6 },
+  jbTaskTitle: { fontSize: 13, fontWeight: '500' as const, color: '#334155' },
+  jbTaskAssetBadge: { marginTop: 2, backgroundColor: '#eff6ff', paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4, alignSelf: 'flex-start' as const },
+  jbTaskAssetBadgeText: { fontSize: 10, color: '#2563eb' },
+  jbAddTaskRow: { marginLeft: 16, paddingVertical: 4, paddingHorizontal: 12 },
+  jbAddTaskBtn: { paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#f0fdf4', borderRadius: 6, alignSelf: 'flex-start' as const },
+  jbAddTaskBtnText: { fontSize: 12, fontWeight: '600' as const, color: '#16a34a' },
+  jbAddTaskInline: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
+  jbAddTaskInput: { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10, fontSize: 13, color: '#1e293b' },
+  jbAddTaskConfirmBtn: { backgroundColor: '#16a34a', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6 },
+  jbAddTaskConfirmBtnText: { fontSize: 12, fontWeight: '700' as const, color: '#fff' },
+  jbAddTaskCancelBtn: { paddingVertical: 6, paddingHorizontal: 8 },
+  jbAddTaskCancelBtnText: { fontSize: 14, color: '#94a3b8' },
+  jbConfirmDeleteOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 10,
+    padding: 16,
+    marginTop: 8,
+  },
+  jbConfirmDeleteCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  jbConfirmDeleteTitle: { fontSize: 16, fontWeight: '700' as const, color: '#dc2626', marginBottom: 6 },
+  jbConfirmDeleteSub: { fontSize: 13, color: '#64748b', marginBottom: 16 },
+  jbConfirmDeleteActions: { flexDirection: 'row' as const, justifyContent: 'flex-end' as const, gap: 10 },
+  jbConfirmDeleteCancel: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#f1f5f9' },
+  jbConfirmDeleteCancelText: { fontSize: 13, fontWeight: '600' as const, color: '#475569' },
+  jbConfirmDeleteConfirm: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#dc2626' },
+  jbConfirmDeleteConfirmText: { fontSize: 13, fontWeight: '700' as const, color: '#fff' },
   coachGoalsWrap: {
     flex: 1,
     paddingHorizontal: 20,
