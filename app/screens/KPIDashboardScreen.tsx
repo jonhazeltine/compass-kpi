@@ -7365,9 +7365,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   );
 
   const sendChannelMessage = useCallback(
-    async (channelId: string) => {
+    async (channelId: string, options?: { bodyOverride?: string }) => {
       const token = session?.access_token;
-      const bodyText = channelMessageDraft.trim();
+      const bodyText = String(options?.bodyOverride ?? channelMessageDraft).trim();
       if (!token) {
         setChannelMessageSubmitError('Sign in is required to send messages.');
         return;
@@ -10573,8 +10573,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       }}
                       messageSubmitting={channelMessageSubmitting}
                       messageSubmitError={channelMessageSubmitError}
-                      onSendMessage={() => {
-                        if (selectedChannelResolvedId) void sendChannelMessage(selectedChannelResolvedId);
+                      onSendMessage={(payload) => {
+                        if (selectedChannelResolvedId) {
+                          void sendChannelMessage(selectedChannelResolvedId, { bodyOverride: payload.body });
+                        }
                       }}
                       onRefreshMessages={() => {
                         if (selectedChannelResolvedId) void fetchChannelMessages(selectedChannelResolvedId);

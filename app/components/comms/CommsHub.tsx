@@ -9,7 +9,7 @@
  * All data fetching / state lives in the parent (KPIDashboardScreen).
  * This component is purely presentational + handles local UI state.
  */
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -58,6 +58,10 @@ export interface MessageRow {
   message_type?: 'message' | 'broadcast' | string;
   created_at?: string | null;
 }
+
+type ThreadSendPayload = {
+  body: string;
+};
 
 export interface FallbackChannelRow {
   scope: string;
@@ -115,7 +119,7 @@ export interface CommsHubProps {
   onChangeMessageDraft: (text: string) => void;
   messageSubmitting: boolean;
   messageSubmitError: string | null;
-  onSendMessage: () => void;
+  onSendMessage: (payload: ThreadSendPayload) => void;
   onRefreshMessages: () => void;
   onOpenAiAssist: (host: string) => void;
 
@@ -136,6 +140,77 @@ export interface CommsHubProps {
   /* ── helpers ─── */
   fmtTime: (iso: string | null | undefined) => string;
   fmtDate: (iso: string | null | undefined) => string;
+}
+
+type ParsedAttachment = { name: string; kind: string };
+type ParsedTaskCard = { taskId: string; title: string; owner: string | null; due: string | null; status: string };
+type ParsedTaskUpdate = { taskId: string; status: string; note: string | null };
+
+const META_RE = /(\w+)="([^"]*)"/g;
+const ATTACH_MARKER = '[attach]';
+const TASK_CARD_MARKER = '[task-card]';
+const TASK_UPDATE_MARKER = '[task-update]';
+
+function parseMeta(line: string) {
+  const out: Record<string, string> = {};
+  let m: RegExpExecArray | null;
+  while ((m = META_RE.exec(line))) {
+    out[m[1]] = m[2];
+  }
+  return out;
+}
+
+function encodeMeta(value: string) {
+  return String(value).replace(/"/g, "'");
+}
+
+function parseThreadMessage(body: string) {
+  const lines = String(body ?? '').split('\n');
+  const textParts: string[] = [];
+  const attachments: ParsedAttachment[] = [];
+  let taskCard: ParsedTaskCard | null = null;
+  let taskUpdate: ParsedTaskUpdate | null = null;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith(ATTACH_MARKER)) {
+      const meta = parseMeta(line);
+      attachments.push({
+        name: meta.name ?? 'Attachment',
+        kind: meta.kind ?? 'file',
+      });
+      continue;
+    }
+    if (line.startsWith(TASK_CARD_MARKER)) {
+      const meta = parseMeta(line);
+      taskCard = {
+        taskId: meta.task_id ?? `task-${Math.random().toString(36).slice(2, 8)}`,
+        title: meta.title ?? 'Task',
+        owner: meta.owner ?? null,
+        due: meta.due ?? null,
+        status: meta.status ?? 'open',
+      };
+      continue;
+    }
+    if (line.startsWith(TASK_UPDATE_MARKER)) {
+      const meta = parseMeta(line);
+      taskUpdate = {
+        taskId: meta.task_id ?? '',
+        status: meta.status ?? 'open',
+        note: meta.note ?? null,
+      };
+      continue;
+    }
+    textParts.push(raw);
+  }
+
+  return {
+    text: textParts.join('\n').trim(),
+    attachments,
+    taskCard,
+    taskUpdate,
+  };
 }
 
 /* ================================================================
@@ -541,11 +616,33 @@ function ThreadView(props: CommsHubProps) {
     currentUserId, selectedChannelId, selectedChannelName,
     messageDraft, onChangeMessageDraft,
     messageSubmitting, messageSubmitError,
-    onSendMessage, onRefreshMessages, onOpenAiAssist,
-    gateBlocksActions, fmtTime,
+    onSendMessage, onRefreshMessages, onOpenAiAssist, onOpenBroadcast,
+    gateBlocksActions, fmtTime, personaVariant, roleCanBroadcast,
   } = props;
 
   const scrollRef = useRef<ScrollView>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<Array<{ id: string; name: string; kind: string }>>([]);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [slashHintError, setSlashHintError] = useState<string | null>(null);
+
+  const canUseTaskCommands = personaVariant === 'coach' || personaVariant === 'team_leader';
+  const showSlashMenu = messageDraft.trim().startsWith('/');
+  const parsedMessages = useMemo(
+    () => messages.map((msg) => ({ msg, parsed: parseThreadMessage(msg.body) })),
+    [messages]
+  );
+  const taskStatusMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of parsedMessages) {
+      if (row.parsed.taskCard) {
+        map.set(row.parsed.taskCard.taskId, row.parsed.taskCard.status || 'open');
+      }
+      if (row.parsed.taskUpdate?.taskId) {
+        map.set(row.parsed.taskUpdate.taskId, row.parsed.taskUpdate.status || 'open');
+      }
+    }
+    return map;
+  }, [parsedMessages]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -553,6 +650,140 @@ function ThreadView(props: CommsHubProps) {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     }
   }, [messages.length]);
+
+  const slashItems = useMemo(() => {
+    const roleScoped = [
+      ...(canUseTaskCommands
+        ? [
+            { command: '/task', help: 'Create task card: /task title | owner | due YYYY-MM-DD' },
+            { command: '/task-update', help: 'Update task: /task-update task_id done|open|blocked | note' },
+          ]
+        : []),
+      ...(roleCanBroadcast ? [{ command: '/broadcast', help: 'Open broadcast composer' }] : []),
+      { command: '/help', help: 'List available slash commands' },
+    ];
+    const query = messageDraft.trim().toLowerCase();
+    return roleScoped.filter((item) => item.command.toLowerCase().startsWith(query));
+  }, [canUseTaskCommands, messageDraft, roleCanBroadcast]);
+
+  const onPickAttachment = (kind: 'image' | 'doc' | 'link') => {
+    const id = `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const suffix = Math.random().toString(36).slice(2, 5).toUpperCase();
+    const name =
+      kind === 'image'
+        ? `Photo-${suffix}.png`
+        : kind === 'doc'
+          ? `Brief-${suffix}.pdf`
+          : `Reference-${suffix}.url`;
+    setPendingAttachments((prev) => [...prev, { id, name, kind }]);
+    setShowAttachMenu(false);
+  };
+
+  const onSlashInsert = (command: string) => {
+    if (command === '/task') {
+      onChangeMessageDraft('/task Follow up with buyer | Sarah Johnson | 2026-03-05');
+      setSlashHintError(null);
+      return;
+    }
+    if (command === '/task-update') {
+      onChangeMessageDraft('/task-update task-abc123 done | Completed outreach');
+      setSlashHintError(null);
+      return;
+    }
+    if (command === '/broadcast') {
+      onOpenBroadcast();
+      return;
+    }
+    if (command === '/help') {
+      onChangeMessageDraft(
+        canUseTaskCommands
+          ? '/task, /task-update' + (roleCanBroadcast ? ', /broadcast' : '')
+          : roleCanBroadcast
+            ? '/broadcast'
+            : 'No slash commands for this role'
+      );
+    }
+  };
+
+  const handleSend = () => {
+    if (gateBlocksActions || messageSubmitting || !selectedChannelId) return;
+    const trimmed = messageDraft.trim();
+    let encodedBody = trimmed;
+
+    if (trimmed.startsWith('/')) {
+      if (trimmed.startsWith('/broadcast')) {
+        if (roleCanBroadcast) {
+          onOpenBroadcast();
+          onChangeMessageDraft('');
+          setSlashHintError(null);
+          return;
+        }
+        setSlashHintError('Broadcast command is not available for this role.');
+        return;
+      }
+
+      if (trimmed.startsWith('/task-update')) {
+        if (!canUseTaskCommands) {
+          setSlashHintError('Task update commands are not available for this role.');
+          return;
+        }
+        const raw = trimmed.replace('/task-update', '').trim();
+        const [left, right] = raw.split('|').map((v) => v.trim());
+        const [taskId, statusRaw] = left.split(/\s+/);
+        const status = String(statusRaw ?? '').toLowerCase();
+        if (!taskId || !['open', 'done', 'blocked'].includes(status)) {
+          setSlashHintError('Use: /task-update task_id done|open|blocked | optional note');
+          return;
+        }
+        encodedBody = `${TASK_UPDATE_MARKER} task_id="${encodeMeta(taskId)}" status="${encodeMeta(status)}"${
+          right ? ` note="${encodeMeta(right)}"` : ''
+        }`;
+      } else if (trimmed.startsWith('/task')) {
+        if (!canUseTaskCommands) {
+          setSlashHintError('Task commands are not available for this role.');
+          return;
+        }
+        const raw = trimmed.replace('/task', '').trim();
+        const [titleRaw, ownerRaw, dueRaw] = raw.split('|').map((v) => v.trim());
+        if (!titleRaw) {
+          setSlashHintError('Use: /task title | owner | due YYYY-MM-DD');
+          return;
+        }
+        const taskId = `task-${Date.now().toString(36).slice(-6)}`;
+        encodedBody = `${TASK_CARD_MARKER} task_id="${taskId}" title="${encodeMeta(titleRaw)}"${
+          ownerRaw ? ` owner="${encodeMeta(ownerRaw)}"` : ''
+        }${dueRaw ? ` due="${encodeMeta(dueRaw)}"` : ''} status="open"`;
+      } else if (trimmed.startsWith('/help')) {
+        const help = canUseTaskCommands
+          ? `/task, /task-update${roleCanBroadcast ? ', /broadcast' : ''}`
+          : roleCanBroadcast
+            ? '/broadcast'
+            : 'No slash commands available for your role';
+        encodedBody = help;
+      } else {
+        setSlashHintError('Unknown command. Use /help.');
+        return;
+      }
+    }
+
+    if (pendingAttachments.length > 0) {
+      const attachmentLines = pendingAttachments.map(
+        (att) => `${ATTACH_MARKER} name="${encodeMeta(att.name)}" kind="${encodeMeta(att.kind)}"`
+      );
+      encodedBody = `${encodedBody || 'Attachment'}\n${attachmentLines.join('\n')}`;
+    }
+
+    if (!encodedBody.trim()) {
+      setSlashHintError('Enter a message, slash command, or attachment.');
+      return;
+    }
+
+    setSlashHintError(null);
+    onSendMessage({ body: encodedBody });
+    onChangeMessageDraft('');
+    setPendingAttachments([]);
+    setShowAttachMenu(false);
+  };
 
   return (
     <View style={st.threadRoot}>
@@ -577,14 +808,15 @@ function ThreadView(props: CommsHubProps) {
               <Text style={st.retryBtnText}>Retry</Text>
             </Pressable>
           </View>
-        ) : messages.length > 0 ? (
-          messages.map((msg, idx) => {
+        ) : parsedMessages.length > 0 ? (
+          parsedMessages.map(({ msg, parsed }, idx) => {
             const isMine = String(msg.sender_user_id ?? '') === String(currentUserId ?? '');
             const isBroadcast = String(msg.message_type ?? '') === 'broadcast';
-            const prev = idx > 0 ? messages[idx - 1] : null;
+            const prev = idx > 0 ? parsedMessages[idx - 1].msg : null;
             const startsGroup = !prev || String(prev.sender_user_id ?? '') !== String(msg.sender_user_id ?? '');
             const senderLabel = msg.sender_name || (isMine ? 'You' : 'Member');
             const time = fmtTime(msg.created_at);
+            const taskCardStatus = parsed.taskCard ? taskStatusMap.get(parsed.taskCard.taskId) ?? parsed.taskCard.status : null;
 
             return (
               <View
@@ -612,18 +844,53 @@ function ThreadView(props: CommsHubProps) {
                     !startsGroup && st.bubbleFollow,
                   ]}
                 >
-                  <Text
-                    style={[
-                      st.bubbleText,
-                      isMine
-                        ? st.bubbleTextSent
-                        : isBroadcast
-                          ? st.bubbleTextBroadcast
-                          : st.bubbleTextReceived,
-                    ]}
-                  >
-                    {msg.body}
-                  </Text>
+                  {parsed.text ? (
+                    <Text
+                      style={[
+                        st.bubbleText,
+                        isMine
+                          ? st.bubbleTextSent
+                          : isBroadcast
+                            ? st.bubbleTextBroadcast
+                            : st.bubbleTextReceived,
+                      ]}
+                    >
+                      {parsed.text}
+                    </Text>
+                  ) : null}
+                  {parsed.taskCard ? (
+                    <View style={st.taskCard}>
+                      <View style={st.taskCardHead}>
+                        <Text style={st.taskCardTitle}>Task</Text>
+                        <Text style={st.taskCardStatus}>{String(taskCardStatus ?? 'open').toUpperCase()}</Text>
+                      </View>
+                      <Text style={st.taskCardBody}>{parsed.taskCard.title}</Text>
+                      <View style={st.taskCardMetaRow}>
+                        {parsed.taskCard.owner ? <Text style={st.taskCardMeta}>Owner: {parsed.taskCard.owner}</Text> : null}
+                        {parsed.taskCard.due ? <Text style={st.taskCardMeta}>Due: {parsed.taskCard.due}</Text> : null}
+                      </View>
+                      <Text style={st.taskCardId}>#{parsed.taskCard.taskId}</Text>
+                    </View>
+                  ) : null}
+                  {parsed.taskUpdate ? (
+                    <View style={st.taskUpdateCard}>
+                      <Text style={st.taskUpdateText}>
+                        Task #{parsed.taskUpdate.taskId}: {parsed.taskUpdate.status.toUpperCase()}
+                      </Text>
+                      {parsed.taskUpdate.note ? <Text style={st.taskUpdateNote}>{parsed.taskUpdate.note}</Text> : null}
+                    </View>
+                  ) : null}
+                  {parsed.attachments.length > 0 ? (
+                    <View style={st.attachmentsWrap}>
+                      {parsed.attachments.map((att, aIdx) => (
+                        <View key={`${msg.id}-att-${aIdx}`} style={st.attachmentChip}>
+                          <Text style={st.attachmentChipText}>
+                            {att.kind === 'image' ? '🖼' : att.kind === 'doc' ? '📄' : '🔗'} {att.name}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
                   {isBroadcast ? (
                     <View style={st.broadcastTag}>
                       <Text style={st.broadcastTagText}>Broadcast</Text>
@@ -653,9 +920,25 @@ function ThreadView(props: CommsHubProps) {
 
       {/* ── Sticky composer ── */}
       <View style={st.composer}>
-        {messageSubmitError ? (
+        {messageSubmitError || slashHintError ? (
           <View style={st.composerError}>
-            <Text style={st.composerErrorText}>{messageSubmitError}</Text>
+            <Text style={st.composerErrorText}>{messageSubmitError ?? slashHintError}</Text>
+          </View>
+        ) : null}
+
+        {pendingAttachments.length > 0 ? (
+          <View style={st.pendingAttachmentRow}>
+            {pendingAttachments.map((att) => (
+              <Pressable
+                key={att.id}
+                style={st.pendingAttachmentChip}
+                onPress={() => setPendingAttachments((prev) => prev.filter((x) => x.id !== att.id))}
+              >
+                <Text style={st.pendingAttachmentChipText}>
+                  {att.kind === 'image' ? '🖼' : att.kind === 'doc' ? '📄' : '🔗'} {att.name} ×
+                </Text>
+              </Pressable>
+            ))}
           </View>
         ) : null}
 
@@ -671,7 +954,43 @@ function ThreadView(props: CommsHubProps) {
           />
         </View>
 
+        {showSlashMenu ? (
+          <View style={st.slashMenu}>
+            {slashItems.length > 0 ? (
+              slashItems.map((item) => (
+                <Pressable key={item.command} style={st.slashItem} onPress={() => onSlashInsert(item.command)}>
+                  <Text style={st.slashCmd}>{item.command}</Text>
+                  <Text style={st.slashHelp}>{item.help}</Text>
+                </Pressable>
+              ))
+            ) : (
+              <Text style={st.slashEmpty}>No available commands for this role.</Text>
+            )}
+          </View>
+        ) : null}
+
+        {showAttachMenu ? (
+          <View style={st.attachMenu}>
+            <Pressable style={st.attachMenuItem} onPress={() => onPickAttachment('image')}>
+              <Text style={st.attachMenuText}>🖼 Photo</Text>
+            </Pressable>
+            <Pressable style={st.attachMenuItem} onPress={() => onPickAttachment('doc')}>
+              <Text style={st.attachMenuText}>📄 Document</Text>
+            </Pressable>
+            <Pressable style={st.attachMenuItem} onPress={() => onPickAttachment('link')}>
+              <Text style={st.attachMenuText}>🔗 Link</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={st.composerActions}>
+          <Pressable
+            style={st.composerGhostBtn}
+            onPress={() => setShowAttachMenu((prev) => !prev)}
+            disabled={gateBlocksActions || messageSubmitting}
+          >
+            <Text style={st.composerGhostBtnText}>📎 Attach</Text>
+          </Pressable>
           <Pressable
             style={st.composerGhostBtn}
             onPress={() => onOpenAiAssist('channel_thread')}
@@ -690,11 +1009,11 @@ function ThreadView(props: CommsHubProps) {
           <Pressable
             style={[
               st.composerSendBtn,
-              (!selectedChannelId || messageSubmitting || gateBlocksActions || !messageDraft.trim())
+              (!selectedChannelId || messageSubmitting || gateBlocksActions || (!messageDraft.trim() && pendingAttachments.length === 0))
                 && st.composerSendBtnDisabled,
             ]}
-            disabled={!selectedChannelId || messageSubmitting || gateBlocksActions || !messageDraft.trim()}
-            onPress={onSendMessage}
+            disabled={!selectedChannelId || messageSubmitting || gateBlocksActions || (!messageDraft.trim() && pendingAttachments.length === 0)}
+            onPress={handleSend}
           >
             <Text style={st.composerSendBtnText}>
               {messageSubmitting ? '…' : '➤'}
@@ -1198,6 +1517,84 @@ const st = StyleSheet.create({
   bubbleTimeInlineSent: {
     textAlign: 'right',
   },
+  taskCard: {
+    marginTop: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 99, 235, 0.24)',
+    padding: 10,
+    gap: 6,
+  },
+  taskCardHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  taskCardTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1E3A8A',
+    textTransform: 'uppercase',
+  },
+  taskCardStatus: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  taskCardBody: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: C.textPrimary,
+  },
+  taskCardMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  taskCardMeta: {
+    fontSize: 11,
+    color: C.textSecondary,
+    fontWeight: '500',
+  },
+  taskCardId: {
+    fontSize: 10,
+    color: C.textTertiary,
+    fontWeight: '600',
+  },
+  taskUpdateCard: {
+    marginTop: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(15, 118, 110, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  taskUpdateText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0F766E',
+  },
+  taskUpdateNote: {
+    fontSize: 12,
+    color: C.textSecondary,
+  },
+  attachmentsWrap: {
+    marginTop: 8,
+    gap: 6,
+  },
+  attachmentChip: {
+    borderRadius: 8,
+    backgroundColor: 'rgba(148, 163, 184, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    alignSelf: 'flex-start',
+  },
+  attachmentChipText: {
+    fontSize: 11,
+    color: C.textSecondary,
+    fontWeight: '600',
+  },
 
   /* ─── sticky composer ─── */
   composer: {
@@ -1218,6 +1615,24 @@ const st = StyleSheet.create({
     fontWeight: '500',
     color: C.error,
   },
+  pendingAttachmentRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  pendingAttachmentChip: {
+    borderRadius: 8,
+    backgroundColor: C.inputBg,
+    borderWidth: 1,
+    borderColor: C.inputBorder,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  pendingAttachmentChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: C.textSecondary,
+  },
   composerRow: {
     backgroundColor: C.inputBg,
     borderRadius: R.composer,
@@ -1237,6 +1652,52 @@ const st = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  slashMenu: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.divider,
+    backgroundColor: C.cardBg,
+    overflow: 'hidden',
+  },
+  slashItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: C.divider,
+    gap: 2,
+  },
+  slashCmd: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.textPrimary,
+  },
+  slashHelp: {
+    fontSize: 11,
+    color: C.textTertiary,
+  },
+  slashEmpty: {
+    fontSize: 12,
+    color: C.textTertiary,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  attachMenu: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  attachMenuItem: {
+    borderRadius: 8,
+    backgroundColor: C.inputBg,
+    borderWidth: 1,
+    borderColor: C.inputBorder,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  attachMenuText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.textSecondary,
   },
   composerGhostBtn: {
     paddingHorizontal: 10,
