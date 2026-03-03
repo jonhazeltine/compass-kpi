@@ -90,11 +90,77 @@ const { screen, roleCanBroadcast, composerBottomInset } = props;
 
 This shrinks the CommsHub flex container to end above the floating nav pill (including LOG button overshoot), ensuring the composer is always visible.
 
+## Fix Part 3: Modern Slim Composer (iMessage-style)
+
+### Problem
+Even with correct flex layout and bottom-nav clearance, the composer consumed ~300-400px of vertical space because Mux Media controls (title + 2 buttons + status), Live Session controls (title + 4 buttons + status), and the action bar (Attach, AI Draft, Refresh, Send) were all permanently visible. This left minimal room for the message thread, especially on shorter devices.
+
+### Solution — Messenger/iMessage-style compact input
+Redesigned the composer from a tall multi-section panel to a slim single-row input bar:
+
+#### Before (always-visible bulk)
+```
+composer
+  ├── Error bar (conditional)
+  ├── Mux Media panel (ALWAYS visible: title + 2 buttons + status)
+  ├── Live Session panel (ALWAYS visible: title + 4 buttons + status)
+  ├── Pending attachments (conditional)
+  ├── TextInput
+  ├── Slash menu (conditional)
+  ├── Attach menu (conditional)
+  └── Action bar (ALWAYS visible: Attach, AI Draft, Refresh, Send)
+```
+
+#### After (slim input row + expandable tools)
+```
+composer
+  ├── Error bar (conditional)
+  ├── Pending attachments (conditional)
+  ├── Status toast (conditional — only when media/live busy)
+  ├── Slash menu (conditional)
+  ├── Primary input row: [⊕] [TextInput] [Send]  ← ONLY always-visible element (~44px)
+  ├── Tools grid (tap ⊕): Attach, AI Draft, Media, Live, Refresh
+  ├── Attach sub-panel (from tools): Photo, Document, Link
+  ├── Media sub-panel (from tools): Get Upload URL, Send Attachment, status
+  └── Live sub-panel (from tools): Start, Refresh, Join, End, status
+```
+
+### Changes — `CommsHub.tsx`
+
+#### State
+- Replaced `showAttachMenu: boolean` with `composerPanel: 'none' | 'tools' | 'attach' | 'media' | 'live'`
+- Single state drives all panel visibility — only one panel open at a time
+
+#### JSX
+- Primary input row: `⊕` button (toggles tools) + `TextInput` (pill-shaped) + `Send` button — all inline
+- Tools grid: 5 icon+label buttons in a flex-wrap row, revealed by ⊕ tap
+- Attach sub-panel: horizontal row of Photo/Document/Link buttons
+- Media sub-panel: bordered card with Upload/Send buttons + status text
+- Live sub-panel: bordered card with Start/Refresh/Join/End buttons + status text
+- Status toast: blue chip that only appears when `mediaUploadBusy` or `liveSessionBusy` is true
+
+#### Styles
+- Removed: `mediaLivePanel`, `mediaLiveRow`, `mediaLiveTitle`, `mediaLiveBtnRow`, `mediaLiveBtn`, `mediaLiveBtnDisabled`, `mediaLiveBtnText`, `mediaLiveStatus`, `composerRow`, `composerActions`, `composerGhostBtn`, `composerGhostBtnText`, `attachMenu`, `attachMenuItem`, `attachMenuText`
+- Added: `composerInputRow`, `composerPlusBtn`, `composerPlusBtnActive`, `composerPlusBtnText`, `composerPlusBtnTextActive`, `composerInputWrap`, `composerToolsGrid`, `composerToolBtn`, `composerToolBtnDisabled`, `composerToolIcon`, `composerToolLabel`, `composerSubPanel`, `composerSubPanelItem`, `composerSubPanelItemText`, `composerSubPanelWrap`, `composerSubPanelTitle`, `composerSubPanelBtnRow`, `composerSubPanelBtn`, `composerSubPanelBtnDisabled`, `composerSubPanelBtnText`, `composerSubPanelStatus`, `composerStatusToast`, `composerStatusText`
+- Slimmed composer padding: `paddingHorizontal: 8, paddingVertical: 6, gap: 6`
+- Send button: 36×36 (was 40×40) — tighter fit in the input row
+
+### Functional parity
+- All Mux Media actions preserved: Get Upload URL, Send Attachment
+- All Live Session actions preserved: Start, Refresh, Join, End
+- Attach options preserved: Photo, Document, Link
+- AI Draft preserved
+- Refresh preserved
+- Slash commands preserved
+- Pending attachments preserved
+- Error bar preserved
+- Status text preserved (now shown as toast only when busy, not as permanent "No media action yet." text)
+
 ## Validation
-- `node node_modules/typescript/bin/tsc --noEmit` (app) — **PASS** (clean, no errors)
+- `npx tsc --noEmit` (app) — **PASS** (clean, no errors)
 - `npm run -s build` (backend) — **PASS** (clean, no errors)
 - Entry-path parity confirmed: single `<ThreadView>` for all paths (All/Channels/DMs)
-- Mux/Live controls remain inside composer — visible and functional
+- Mux/Live controls accessible via ⊕ → Media / Live sub-panels
 
 ## Constraints Verified
 - Two files modified: `CommsHub.tsx` (primary), `KPIDashboardScreen.tsx` (inset calculation)
@@ -102,4 +168,4 @@ This shrinks the CommsHub flex container to end above the floating nav pill (inc
 - No schema/table changes
 - No API endpoint changes
 - No permission boundary regressions
-- Mux/Live controls remain visible and functional
+- Mux/Live controls remain accessible and functional (moved to on-demand panels)

@@ -682,7 +682,7 @@ function ThreadView(props: CommsHubProps) {
 
   const scrollRef = useRef<ScrollView>(null);
   const [pendingAttachments, setPendingAttachments] = useState<Array<{ id: string; name: string; kind: string }>>([]);
-  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [composerPanel, setComposerPanel] = useState<'none' | 'tools' | 'attach' | 'media' | 'live'>('none');
   const [slashHintError, setSlashHintError] = useState<string | null>(null);
 
   const canUseTaskCommands = personaVariant === 'coach' || personaVariant === 'team_leader';
@@ -736,7 +736,7 @@ function ThreadView(props: CommsHubProps) {
           ? `Brief-${suffix}.pdf`
           : `Reference-${suffix}.url`;
     setPendingAttachments((prev) => [...prev, { id, name, kind }]);
-    setShowAttachMenu(false);
+    setComposerPanel('none');
   };
 
   const onSlashInsert = (command: string) => {
@@ -842,7 +842,7 @@ function ThreadView(props: CommsHubProps) {
     onSendMessage({ body: encodedBody });
     onChangeMessageDraft('');
     setPendingAttachments([]);
-    setShowAttachMenu(false);
+    setComposerPanel('none');
   };
 
   return (
@@ -973,71 +973,16 @@ function ThreadView(props: CommsHubProps) {
         )}
       </ScrollView>
 
-      {/* ── Sticky composer ── */}
+      {/* ── Modern slim composer (iMessage-style) ── */}
       <View style={st.composer}>
+        {/* Error bar — only when error */}
         {messageSubmitError || slashHintError ? (
           <View style={st.composerError}>
             <Text style={st.composerErrorText}>{messageSubmitError ?? slashHintError}</Text>
           </View>
         ) : null}
 
-        <View style={st.mediaLivePanel}>
-          <View style={st.mediaLiveRow}>
-            <Text style={st.mediaLiveTitle}>Mux Media</Text>
-            <View style={st.mediaLiveBtnRow}>
-              <Pressable
-                style={[st.mediaLiveBtn, (gateBlocksActions || mediaUploadBusy || !selectedChannelId) && st.mediaLiveBtnDisabled]}
-                disabled={gateBlocksActions || mediaUploadBusy || !selectedChannelId}
-                onPress={onRequestMediaUpload}
-              >
-                <Text style={st.mediaLiveBtnText}>{mediaUploadBusy ? 'Working…' : 'Get Upload URL'}</Text>
-              </Pressable>
-              <Pressable
-                style={[st.mediaLiveBtn, (gateBlocksActions || mediaUploadBusy || !selectedChannelId) && st.mediaLiveBtnDisabled]}
-                disabled={gateBlocksActions || mediaUploadBusy || !selectedChannelId}
-                onPress={onSendLatestMediaAttachment}
-              >
-                <Text style={st.mediaLiveBtnText}>Send Attachment</Text>
-              </Pressable>
-            </View>
-          </View>
-          <Text style={st.mediaLiveStatus}>{mediaUploadStatus ?? 'No media action yet.'}</Text>
-          <View style={[st.mediaLiveRow, { marginTop: 8 }]}>
-            <Text style={st.mediaLiveTitle}>Live Session</Text>
-            <View style={st.mediaLiveBtnRow}>
-              <Pressable
-                style={[st.mediaLiveBtn, (!canHostLiveSession || gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.mediaLiveBtnDisabled]}
-                disabled={!canHostLiveSession || gateBlocksActions || liveSessionBusy || !selectedChannelId}
-                onPress={onStartLiveSession}
-              >
-                <Text style={st.mediaLiveBtnText}>Start</Text>
-              </Pressable>
-              <Pressable
-                style={[st.mediaLiveBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.mediaLiveBtnDisabled]}
-                disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
-                onPress={onRefreshLiveSession}
-              >
-                <Text style={st.mediaLiveBtnText}>Refresh</Text>
-              </Pressable>
-              <Pressable
-                style={[st.mediaLiveBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.mediaLiveBtnDisabled]}
-                disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
-                onPress={onJoinLiveSession}
-              >
-                <Text style={st.mediaLiveBtnText}>Join</Text>
-              </Pressable>
-              <Pressable
-                style={[st.mediaLiveBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.mediaLiveBtnDisabled]}
-                disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
-                onPress={onEndLiveSession}
-              >
-                <Text style={st.mediaLiveBtnText}>End</Text>
-              </Pressable>
-            </View>
-          </View>
-          <Text style={st.mediaLiveStatus}>{liveSessionStatus ?? 'No live session action yet.'}</Text>
-        </View>
-
+        {/* Pending attachments — only when present */}
         {pendingAttachments.length > 0 ? (
           <View style={st.pendingAttachmentRow}>
             {pendingAttachments.map((att) => (
@@ -1054,18 +999,16 @@ function ThreadView(props: CommsHubProps) {
           </View>
         ) : null}
 
-        <View style={st.composerRow}>
-          <TextInput
-            value={messageDraft}
-            onChangeText={onChangeMessageDraft}
-            placeholder="Write a message…"
-            placeholderTextColor={C.textTertiary}
-            multiline
-            style={st.composerInput}
-            editable={!gateBlocksActions && !messageSubmitting}
-          />
-        </View>
+        {/* Active status toast — only when media/live busy */}
+        {(mediaUploadBusy || liveSessionBusy) ? (
+          <View style={st.composerStatusToast}>
+            <Text style={st.composerStatusText}>
+              {mediaUploadBusy ? (mediaUploadStatus ?? 'Uploading…') : (liveSessionStatus ?? 'Working…')}
+            </Text>
+          </View>
+        ) : null}
 
+        {/* Slash menu — only when "/" typed */}
         {showSlashMenu ? (
           <View style={st.slashMenu}>
             {slashItems.length > 0 ? (
@@ -1081,43 +1024,28 @@ function ThreadView(props: CommsHubProps) {
           </View>
         ) : null}
 
-        {showAttachMenu ? (
-          <View style={st.attachMenu}>
-            <Pressable style={st.attachMenuItem} onPress={() => onPickAttachment('image')}>
-              <Text style={st.attachMenuText}>🖼 Photo</Text>
-            </Pressable>
-            <Pressable style={st.attachMenuItem} onPress={() => onPickAttachment('doc')}>
-              <Text style={st.attachMenuText}>📄 Document</Text>
-            </Pressable>
-            <Pressable style={st.attachMenuItem} onPress={() => onPickAttachment('link')}>
-              <Text style={st.attachMenuText}>🔗 Link</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        <View style={st.composerActions}>
+        {/* ── Primary input row: [⊕] [TextInput] [Send] ── */}
+        <View style={st.composerInputRow}>
           <Pressable
-            style={st.composerGhostBtn}
-            onPress={() => setShowAttachMenu((prev) => !prev)}
-            disabled={gateBlocksActions || messageSubmitting}
-          >
-            <Text style={st.composerGhostBtnText}>📎 Attach</Text>
-          </Pressable>
-          <Pressable
-            style={st.composerGhostBtn}
-            onPress={() => onOpenAiAssist('channel_thread')}
+            style={[st.composerPlusBtn, composerPanel !== 'none' && st.composerPlusBtnActive]}
+            onPress={() => setComposerPanel((prev) => prev !== 'none' ? 'none' : 'tools')}
             disabled={gateBlocksActions}
           >
-            <Text style={st.composerGhostBtnText}>✨ AI Draft</Text>
+            <Text style={[st.composerPlusBtnText, composerPanel !== 'none' && st.composerPlusBtnTextActive]}>
+              {composerPanel !== 'none' ? '×' : '+'}
+            </Text>
           </Pressable>
-          <Pressable
-            style={st.composerGhostBtn}
-            onPress={onRefreshMessages}
-            disabled={messageSubmitting}
-          >
-            <Text style={st.composerGhostBtnText}>↻ Refresh</Text>
-          </Pressable>
-          <View style={{ flex: 1 }} />
+          <View style={st.composerInputWrap}>
+            <TextInput
+              value={messageDraft}
+              onChangeText={onChangeMessageDraft}
+              placeholder="Write a message…"
+              placeholderTextColor={C.textTertiary}
+              multiline
+              style={st.composerInput}
+              editable={!gateBlocksActions && !messageSubmitting}
+            />
+          </View>
           <Pressable
             style={[
               st.composerSendBtn,
@@ -1132,6 +1060,117 @@ function ThreadView(props: CommsHubProps) {
             </Text>
           </Pressable>
         </View>
+
+        {/* ── Tools grid (tap ⊕ to reveal) ── */}
+        {composerPanel === 'tools' ? (
+          <View style={st.composerToolsGrid}>
+            <Pressable style={st.composerToolBtn} onPress={() => setComposerPanel('attach')}>
+              <Text style={st.composerToolIcon}>📎</Text>
+              <Text style={st.composerToolLabel}>Attach</Text>
+            </Pressable>
+            <Pressable
+              style={[st.composerToolBtn, gateBlocksActions && st.composerToolBtnDisabled]}
+              disabled={gateBlocksActions}
+              onPress={() => { onOpenAiAssist('channel_thread'); setComposerPanel('none'); }}
+            >
+              <Text style={st.composerToolIcon}>✨</Text>
+              <Text style={st.composerToolLabel}>AI Draft</Text>
+            </Pressable>
+            <Pressable style={st.composerToolBtn} onPress={() => setComposerPanel('media')}>
+              <Text style={st.composerToolIcon}>🎥</Text>
+              <Text style={st.composerToolLabel}>Media</Text>
+            </Pressable>
+            <Pressable style={st.composerToolBtn} onPress={() => setComposerPanel('live')}>
+              <Text style={st.composerToolIcon}>📡</Text>
+              <Text style={st.composerToolLabel}>Live</Text>
+            </Pressable>
+            <Pressable
+              style={[st.composerToolBtn, messageSubmitting && st.composerToolBtnDisabled]}
+              disabled={messageSubmitting}
+              onPress={() => { onRefreshMessages(); setComposerPanel('none'); }}
+            >
+              <Text style={st.composerToolIcon}>↻</Text>
+              <Text style={st.composerToolLabel}>Refresh</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {/* ── Attach sub-panel ── */}
+        {composerPanel === 'attach' ? (
+          <View style={st.composerSubPanel}>
+            <Pressable style={st.composerSubPanelItem} onPress={() => onPickAttachment('image')}>
+              <Text style={st.composerSubPanelItemText}>🖼 Photo</Text>
+            </Pressable>
+            <Pressable style={st.composerSubPanelItem} onPress={() => onPickAttachment('doc')}>
+              <Text style={st.composerSubPanelItemText}>📄 Document</Text>
+            </Pressable>
+            <Pressable style={st.composerSubPanelItem} onPress={() => onPickAttachment('link')}>
+              <Text style={st.composerSubPanelItemText}>🔗 Link</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {/* ── Media sub-panel ── */}
+        {composerPanel === 'media' ? (
+          <View style={st.composerSubPanelWrap}>
+            <Text style={st.composerSubPanelTitle}>Mux Media</Text>
+            <View style={st.composerSubPanelBtnRow}>
+              <Pressable
+                style={[st.composerSubPanelBtn, (gateBlocksActions || mediaUploadBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
+                disabled={gateBlocksActions || mediaUploadBusy || !selectedChannelId}
+                onPress={onRequestMediaUpload}
+              >
+                <Text style={st.composerSubPanelBtnText}>{mediaUploadBusy ? 'Working…' : 'Get Upload URL'}</Text>
+              </Pressable>
+              <Pressable
+                style={[st.composerSubPanelBtn, (gateBlocksActions || mediaUploadBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
+                disabled={gateBlocksActions || mediaUploadBusy || !selectedChannelId}
+                onPress={onSendLatestMediaAttachment}
+              >
+                <Text style={st.composerSubPanelBtnText}>Send Attachment</Text>
+              </Pressable>
+            </View>
+            <Text style={st.composerSubPanelStatus}>{mediaUploadStatus ?? 'No media action yet.'}</Text>
+          </View>
+        ) : null}
+
+        {/* ── Live Session sub-panel ── */}
+        {composerPanel === 'live' ? (
+          <View style={st.composerSubPanelWrap}>
+            <Text style={st.composerSubPanelTitle}>Live Session</Text>
+            <View style={st.composerSubPanelBtnRow}>
+              <Pressable
+                style={[st.composerSubPanelBtn, (!canHostLiveSession || gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
+                disabled={!canHostLiveSession || gateBlocksActions || liveSessionBusy || !selectedChannelId}
+                onPress={onStartLiveSession}
+              >
+                <Text style={st.composerSubPanelBtnText}>Start</Text>
+              </Pressable>
+              <Pressable
+                style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
+                disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
+                onPress={onRefreshLiveSession}
+              >
+                <Text style={st.composerSubPanelBtnText}>Refresh</Text>
+              </Pressable>
+              <Pressable
+                style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
+                disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
+                onPress={onJoinLiveSession}
+              >
+                <Text style={st.composerSubPanelBtnText}>Join</Text>
+              </Pressable>
+              <Pressable
+                style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
+                disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
+                onPress={onEndLiveSession}
+              >
+                <Text style={st.composerSubPanelBtnText}>End</Text>
+              </Pressable>
+            </View>
+            <Text style={st.composerSubPanelStatus}>{liveSessionStatus ?? 'No live session action yet.'}</Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -1732,68 +1771,36 @@ const st = StyleSheet.create({
     fontWeight: '600',
   },
 
-  /* ─── sticky composer ─── */
+  /* ─── modern slim composer (iMessage-style) ─── */
   composer: {
     backgroundColor: C.cardBg,
     borderTopWidth: 1,
     borderTopColor: C.divider,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 6,
   },
   composerError: {
     backgroundColor: C.errorBg,
     borderRadius: 8,
-    padding: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   composerErrorText: {
     fontSize: 12,
     fontWeight: '500',
     color: C.error,
   },
-  mediaLivePanel: {
-    borderWidth: 1,
-    borderColor: '#d9e0ec',
-    borderRadius: 10,
-    backgroundColor: '#f8fafc',
-    padding: 10,
-    gap: 4,
-  },
-  mediaLiveRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  mediaLiveTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#334155',
-  },
-  mediaLiveBtnRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    gap: 6,
-    flex: 1,
-  },
-  mediaLiveBtn: {
-    backgroundColor: '#dbeafe',
-    borderRadius: 999,
+  composerStatusToast: {
+    backgroundColor: '#eff6ff',
+    borderRadius: 8,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 4,
   },
-  mediaLiveBtnDisabled: {
-    opacity: 0.45,
-  },
-  mediaLiveBtnText: {
+  composerStatusText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#1d4ed8',
-  },
-  mediaLiveStatus: {
-    fontSize: 11,
-    color: '#334155',
   },
   pendingAttachmentRow: {
     flexDirection: 'row',
@@ -1806,33 +1813,160 @@ const st = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.inputBorder,
     paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingVertical: 4,
   },
   pendingAttachmentChipText: {
     fontSize: 11,
     fontWeight: '600',
     color: C.textSecondary,
   },
-  composerRow: {
+  /* primary input row: [⊕] [input] [send] */
+  composerInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  composerPlusBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: C.inputBg,
-    borderRadius: R.composer,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: C.inputBorder,
-    paddingHorizontal: S.composerPadH,
-    paddingVertical: S.composerPadV,
-    minHeight: 44,
-    maxHeight: 120,
+  },
+  composerPlusBtnActive: {
+    backgroundColor: C.brand,
+    borderColor: C.brand,
+  },
+  composerPlusBtnText: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: C.textSecondary,
+    marginTop: -1,
+  },
+  composerPlusBtnTextActive: {
+    color: C.textOnBrand,
+  },
+  composerInputWrap: {
+    flex: 1,
+    backgroundColor: C.inputBg,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.inputBorder,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minHeight: 36,
+    maxHeight: 100,
   },
   composerInput: {
     ...T.composerInput,
     color: C.textPrimary,
     padding: 0,
   },
-  composerActions: {
-    flexDirection: 'row',
+  composerSendBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: C.brand,
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
   },
+  composerSendBtnDisabled: {
+    backgroundColor: C.inputBg,
+  },
+  composerSendBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.textOnBrand,
+  },
+  /* tools grid (expanded from ⊕ button) */
+  composerToolsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingTop: 2,
+    paddingHorizontal: 4,
+  },
+  composerToolBtn: {
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: C.inputBg,
+    borderWidth: 1,
+    borderColor: C.inputBorder,
+  },
+  composerToolBtnDisabled: {
+    opacity: 0.45,
+  },
+  composerToolIcon: {
+    fontSize: 20,
+  },
+  composerToolLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: C.textSecondary,
+  },
+  /* attach sub-panel (row of attachment type buttons) */
+  composerSubPanel: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  composerSubPanelItem: {
+    borderRadius: 10,
+    backgroundColor: C.inputBg,
+    borderWidth: 1,
+    borderColor: C.inputBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  composerSubPanelItemText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.textSecondary,
+  },
+  /* media / live sub-panels */
+  composerSubPanelWrap: {
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 10,
+    gap: 6,
+  },
+  composerSubPanelTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  composerSubPanelBtnRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  composerSubPanelBtn: {
+    backgroundColor: '#dbeafe',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  composerSubPanelBtnDisabled: {
+    opacity: 0.45,
+  },
+  composerSubPanelBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  composerSubPanelStatus: {
+    fontSize: 11,
+    color: '#334155',
+  },
+  /* slash menu */
   slashMenu: {
     borderRadius: 10,
     borderWidth: 1,
@@ -1861,50 +1995,6 @@ const st = StyleSheet.create({
     color: C.textTertiary,
     paddingHorizontal: 10,
     paddingVertical: 10,
-  },
-  attachMenu: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  attachMenuItem: {
-    borderRadius: 8,
-    backgroundColor: C.inputBg,
-    borderWidth: 1,
-    borderColor: C.inputBorder,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  attachMenuText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: C.textSecondary,
-  },
-  composerGhostBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: R.badge,
-    backgroundColor: C.inputBg,
-  },
-  composerGhostBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: C.textSecondary,
-  },
-  composerSendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: C.brand,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  composerSendBtnDisabled: {
-    backgroundColor: C.inputBg,
-  },
-  composerSendBtnText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: C.textOnBrand,
   },
 
   /* ─── broadcast compose ─── */
