@@ -20210,7 +20210,6 @@ const styles = StyleSheet.create({
   coachingShellWrapComms: {
     flex: 1,
     minHeight: 0,
-    overflow: 'hidden',
   },
   coachingShellCard: {
     backgroundColor: '#fff',
