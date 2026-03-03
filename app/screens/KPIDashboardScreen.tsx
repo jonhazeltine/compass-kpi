@@ -16,6 +16,7 @@ import {
   TextInput,
   TouchableOpacity,
   useColorScheme,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -2451,6 +2452,7 @@ const isLightColor = (hex: string): boolean => {
 export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const { session } = useAuth();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
   const [state, setState] = useState<LoadState>('loading');
@@ -8794,7 +8796,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       style={styles.screenRoot}
     >
       <ScrollView
-        style={activeTab === 'comms' ? { flex: 1 } : undefined}
         contentContainerStyle={[
           styles.content,
           { paddingBottom: contentBottomPad },
@@ -11903,7 +11904,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             })()}
           </View>
         ) : activeTab === 'comms' ? (
-          <View style={[styles.coachingShellWrap, styles.coachingShellWrapComms]}>
+          <View style={[styles.coachingShellWrap, styles.coachingShellWrapComms, { height: windowHeight - insets.top }]}>
             {(() => {
               const sourceLabelByKey: Record<CoachingShellEntrySource, string> = {
                 home: 'Home / Priority',
@@ -15152,8 +15153,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f6f7f9',
   },
   contentComms: {
-    flexGrow: 1,
-    flexBasis: 0,
     paddingHorizontal: 0,
     paddingTop: 0,
     paddingBottom: 0,
