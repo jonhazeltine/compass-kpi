@@ -156,6 +156,49 @@ composer
 - Error bar preserved
 - Status text preserved (now shown as toast only when busy, not as permanent "No media action yet." text)
 
+## Fix Part 4: Disappearing Composer (Zero-Height Content Container)
+
+### Problem
+The composer would intermittently disappear entirely — not pushed off-screen, but genuinely absent from the view. Also disappeared after sending a message. One specific user (coachleader) consistently had no message bar.
+
+### Root Cause (two issues compounding)
+
+**Issue 1: `flex: 1` on `contentContainerStyle`**
+The outer ScrollView's `contentContainerStyle` used `flex: 1` for the comms tab. `flex: 1` expands to `flexGrow: 1, flexShrink: 1, flexBasis: 0`. The `flexShrink: 1` component allowed the content container to collapse to zero height during certain React Native layout passes (mount, re-render after send, keyboard changes). When the content container collapsed to 0, the entire flex tree (coachingShellWrapComms → CommsHub → ThreadView → Composer) also collapsed to nothing.
+
+**Issue 2: coachingShellCard DOM interference**
+When `isCommsScreen` was true, the old coaching shell card View (containing a full message thread + old-style composer) was hidden via `display: 'none'`. However, `display: 'none'` still keeps the element in the component tree, and any brief layout flash before the property takes effect could interfere with flex measurement of the content container.
+
+### Fix — `KPIDashboardScreen.tsx`
+
+#### 1. contentComms style
+```typescript
+// Before:
+contentComms: { flex: 1, paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0 }
+// After:
+contentComms: { flexGrow: 1, flexShrink: 0, paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, gap: 0 }
+```
+- `flexGrow: 1` fills the ScrollView height (same as before)
+- `flexShrink: 0` prevents the content container from ever shrinking to zero
+- Combined with `overflow: 'hidden'` on `coachingShellWrapComms`, content stays bounded
+
+#### 2. coachingShellCard rendering
+```typescript
+// Before:
+<View style={[styles.coachingShellCard, isCommsScreen && { display: 'none' } as any]}>
+  ...full old-style thread/composer/broadcast UI (~1500 lines)...
+</View>
+// After:
+{!isCommsScreen ? (
+<View style={styles.coachingShellCard}>
+  ...full old-style thread/composer/broadcast UI (~1500 lines)...
+</View>
+) : null}
+```
+- Removes the entire coachingShellCard from the component tree when comms is active
+- Eliminates DOM interference with flex measurement
+- Also saves significant render cost (old-style thread + composer no longer instantiated)
+
 ## Validation
 - `npx tsc --noEmit` (app) — **PASS** (clean, no errors)
 - `npm run -s build` (backend) — **PASS** (clean, no errors)
@@ -163,7 +206,7 @@ composer
 - Mux/Live controls accessible via ⊕ → Media / Live sub-panels
 
 ## Constraints Verified
-- Two files modified: `CommsHub.tsx` (primary), `KPIDashboardScreen.tsx` (inset calculation)
+- Two files modified: `CommsHub.tsx` (primary), `KPIDashboardScreen.tsx` (inset calculation + layout fix)
 - No new components or files
 - No schema/table changes
 - No API endpoint changes
