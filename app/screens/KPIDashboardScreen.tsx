@@ -16,7 +16,7 @@ import {
   TextInput,
   TouchableOpacity,
   useColorScheme,
-  useWindowDimensions,
+
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -2452,7 +2452,7 @@ const isLightColor = (hex: string): boolean => {
 export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const { session } = useAuth();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
   const [state, setState] = useState<LoadState>('loading');
@@ -8796,6 +8796,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       style={styles.screenRoot}
     >
       <ScrollView
+        style={activeTab === 'comms' ? { display: 'none' } : undefined}
         contentContainerStyle={[
           styles.content,
           { paddingBottom: contentBottomPad },
@@ -11903,2017 +11904,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               );
             })()}
           </View>
-        ) : activeTab === 'comms' ? (
-          <View style={[styles.coachingShellWrap, styles.coachingShellWrapComms, { height: windowHeight - insets.top }]}>
-            {(() => {
-              const sourceLabelByKey: Record<CoachingShellEntrySource, string> = {
-                home: 'Home / Priority',
-                challenge_details: 'Challenge Details',
-                team_leader_dashboard: 'Team Dashboard (Leader)',
-                team_member_dashboard: 'Team Dashboard (Member)',
-                user_tab: 'Comms Hub',
-                unknown: 'Direct Shell',
-              };
-              const preferredChannelScope = coachingShellContext.preferredChannelScope;
-              const sourceLabel = sourceLabelByKey[coachingShellContext.source];
-              const roleCanOpenBroadcast = isCoachRuntimeOperator || (teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime);
-              const commsPersonaVariant: 'coach' | 'team_leader' | 'sponsor' | 'member' | 'solo' = isCoachRuntimeOperator
-                ? 'coach'
-                : isChallengeSponsorRuntime
-                  ? 'sponsor'
-                  : teamPersonaVariant === 'leader'
-                    ? 'team_leader'
-                    : runtimeRoleSignals.some((signal) => signal.includes('solo'))
-                      ? 'solo'
-                      : 'member';
-              const commsPersonaBadgeLabel = commsPersonaVariant.replace('_', ' ');
-              const commsPersonaSummary =
-                commsPersonaVariant === 'coach'
-                  ? 'Coach layout: monitor channels, keep journeys active, and draft guidance with approval-first controls.'
-                  : commsPersonaVariant === 'team_leader'
-                    ? 'Team Leader layout: run team communications, keep journeys moving, and publish reviewed broadcasts.'
-                    : commsPersonaVariant === 'sponsor'
-                      ? 'Sponsor layout: monitor sponsor-scoped channels and journey progress visibility. KPI logging stays disabled.'
-                      : commsPersonaVariant === 'solo'
-                        ? 'Solo layout: focus on your journey milestones and direct channel updates.'
-                        : 'Member layout: keep up with team/challenge updates and journey lesson progress.';
-              const allChannelApiRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
-              const effectiveCommsScopeFilter: CommsHubScopeFilter =
-                commsHubScopeFilter === 'global' && !isCoachRuntimeOperator ? 'all' : commsHubScopeFilter;
-              const scopeFilterMatch = (row: ChannelApiRow) => {
-                const scope = normalizeChannelTypeToScope(row.type);
-                if (effectiveCommsScopeFilter === 'all') return true;
-                if (effectiveCommsScopeFilter === 'team') return scope === 'team';
-                if (effectiveCommsScopeFilter === 'cohort') return scope === 'cohort';
-                if (effectiveCommsScopeFilter === 'global') return scope === 'community';
-                return true;
-              };
-              const searchNeedle = commsHubSearchQuery.trim().toLowerCase();
-              const normalizedSelfName = String(resolvedDisplayName ?? '')
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, ' ')
-                .trim();
-              const normalizeName = (value: string | null | undefined) =>
-                String(value ?? '')
-                  .toLowerCase()
-                  .replace(/[^a-z0-9]+/g, ' ')
-                  .trim();
-              const deriveDmNameFromChannel = (rawName: string) => {
-                const segments = String(rawName ?? '')
-                  .split(/[/|,&]/)
-                  .map((segment) => segment.trim())
-                  .filter(Boolean);
-                if (segments.length === 0) return 'Direct message';
-                const nonSelf = segments.find((segment) => {
-                  const key = normalizeName(segment);
-                  if (!key) return false;
-                  if (!normalizedSelfName) return true;
-                  return key !== normalizedSelfName && !normalizedSelfName.includes(key);
-                });
-                return nonSelf ?? segments[0] ?? 'Direct message';
-              };
-              const resolveDmDirectoryMemberFromRow = (row: ChannelApiRow | null | undefined) => {
-                if (!row) return null;
-                const type = String(row.type ?? '').toLowerCase();
-                if (type !== 'direct' && type !== 'dm') return null;
-                const contextId = String(row.context_id ?? '').trim();
-                if (contextId) {
-                  const contextMatch = teamMemberDirectory.find((member) => {
-                    const memberUserId = String(member.userId ?? '').trim();
-                    return memberUserId.length > 0 && memberUserId === contextId;
-                  });
-                  if (contextMatch) return contextMatch;
-                }
-                const channelNameKey = normalizeName(row.name);
-                if (!channelNameKey) return null;
-                return (
-                  teamMemberDirectory.find((member) => {
-                    const memberNameKey = normalizeName(member.name);
-                    return Boolean(memberNameKey) && (
-                      channelNameKey.includes(memberNameKey) ||
-                      memberNameKey.includes(channelNameKey)
-                    );
-                  }) ?? null
-                );
-              };
-              const searchMatch = (row: ChannelApiRow) => {
-                if (!searchNeedle) return true;
-                const scope = normalizeChannelTypeToScope(row.type) ?? 'community';
-                const chips = [row.name, row.type, scope, row.my_role ?? '', String(row.unread_count ?? 0)];
-                return chips.some((v) => String(v).toLowerCase().includes(searchNeedle));
-              };
-              const filteredChannelApiRows = (coachingShellContext.preferredChannelScope
-                ? allChannelApiRows.filter((row) => {
-                    const scope = normalizeChannelTypeToScope(row.type);
-                    return scope === coachingShellContext.preferredChannelScope || scope === 'community';
-                  })
-                : allChannelApiRows) as ChannelApiRow[];
-              const dmApiRows = allChannelApiRows.filter((row) => String(row.type ?? '').toLowerCase() === 'direct');
-              const scopeFilteredChannelRows = allChannelApiRows
-                .filter((row) => String(row.type ?? '').toLowerCase() !== 'direct')
-                .filter(scopeFilterMatch)
-                .filter(searchMatch);
-              const scopeFilteredDmRows = dmApiRows.filter(searchMatch);
-              const broadcastTargetOptions: Array<'team' | 'cohort' | 'channel' | 'segment'> = isCoachRuntimeOperator
-                ? ['team', 'cohort', 'channel', 'segment']
-                : teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime
-                  ? ['team', 'cohort', 'channel']
-                  : [];
-              const effectiveBroadcastTargetScope = broadcastTargetOptions.includes(broadcastTargetScope)
-                ? broadcastTargetScope
-                : (broadcastTargetOptions[0] ?? 'team');
-              const broadcastCandidateRows = allChannelApiRows
-                .filter((row) => String(row.type ?? '').toLowerCase() !== 'direct')
-                .filter((row) => {
-                  const scope = normalizeChannelTypeToScope(row.type);
-                  if (effectiveBroadcastTargetScope === 'team') return scope === 'team';
-                  if (effectiveBroadcastTargetScope === 'cohort') return scope === 'cohort';
-                  if (effectiveBroadcastTargetScope === 'segment') return false;
-                  return true;
-                })
-                .filter(searchMatch);
-              const primaryTabRows =
-                commsHubPrimaryTab === 'dms'
-                  ? scopeFilteredDmRows
-                  : commsHubPrimaryTab === 'channels'
-                    ? scopeFilteredChannelRows
-                    : filteredChannelApiRows;
-              const sortByReadAndActivity = (a: ChannelApiRow, b: ChannelApiRow) => {
-                const unreadDelta = Number(b.unread_count ?? 0) - Number(a.unread_count ?? 0);
-                if (unreadDelta !== 0) return unreadDelta;
-                const aTime = new Date(String(a.last_seen_at ?? a.created_at ?? 0)).getTime();
-                const bTime = new Date(String(b.last_seen_at ?? b.created_at ?? 0)).getTime();
-                return bTime - aTime;
-              };
-              const sortedPrimaryTabRows = [...primaryTabRows].sort(sortByReadAndActivity);
-              const sortedBroadcastCandidateRows = [...broadcastCandidateRows].sort(sortByReadAndActivity);
-              const searchPlaceholder =
-                commsHubPrimaryTab === 'channels'
-                  ? effectiveCommsScopeFilter === 'all'
-                    ? 'Search channels...'
-                    : `Search ${effectiveCommsScopeFilter} channels...`
-                  : commsHubPrimaryTab === 'dms'
-                    ? 'Search direct messages...'
-                    : commsHubPrimaryTab === 'broadcast'
-                      ? 'Search broadcast destinations...'
-                      : 'Search all communications...';
-              const selectedChannelRow =
-                filteredChannelApiRows.find((row) => String(row.id) === String(selectedChannelId ?? '')) ??
-                allChannelApiRows.find((row) => String(row.id) === String(selectedChannelId ?? '')) ??
-                null;
-              const selectedChannelResolvedId = selectedChannelRow ? String(selectedChannelRow.id) : null;
-              const selectedChannelResolvedName = selectedChannelRow?.name ?? selectedChannelName ?? null;
-              const selectedChannelType = String(selectedChannelRow?.type ?? '').toLowerCase();
-              const selectedChannelScope = normalizeChannelTypeToScope(selectedChannelRow?.type) ?? 'community';
-              const selectedChannelDisplayName =
-                selectedChannelScope === 'team' && coachingShellContext.threadHeaderDisplayName
-                  ? coachingShellContext.threadHeaderDisplayName
-                  : selectedChannelResolvedName;
-              const selectedDmDirectoryMember = resolveDmDirectoryMemberFromRow(selectedChannelRow);
-              const headerAvatarKind: 'dm' | 'team' | 'channel' =
-                selectedDmDirectoryMember != null ? 'dm' : selectedChannelScope === 'team' ? 'team' : 'channel';
-              const headerAvatarLabel =
-                selectedDmDirectoryMember != null
-                  ? selectedDmDirectoryMember.name
-                      .split(' ')
-                      .map((part) => part[0])
-                      .join('')
-                      .toUpperCase()
-                      .slice(0, 2)
-                  : headerAvatarKind === 'team'
-                    ? teamIdentityAvatar
-                    : String(selectedChannelResolvedName ?? 'CH')
-                        .split(' ')
-                        .map((part) => part[0])
-                        .join('')
-                        .toUpperCase()
-                        .slice(0, 2) || 'CH';
-              const headerAvatarTone =
-                selectedDmDirectoryMember?.avatarTone ??
-                (headerAvatarKind === 'team' ? teamIdentityBackground : '#e9edf5');
-              const journeyListRows = Array.isArray(coachingJourneys) ? coachingJourneys : [];
-              const selectedJourneyId =
-                coachingShellContext.selectedJourneyId ?? (journeyListRows[0]?.id ? String(journeyListRows[0].id) : null);
-              const selectedJourneyTitle =
-                coachingShellContext.selectedJourneyTitle ??
-                (journeyListRows.find((row) => String(row.id) === selectedJourneyId)?.title ?? null);
-              const milestoneRows = Array.isArray(coachingJourneyDetail?.milestones) ? coachingJourneyDetail.milestones : [];
-              const allLessonRows = milestoneRows.flatMap((milestone) =>
-                (Array.isArray(milestone.lessons) ? milestone.lessons : []).map((lesson) => ({
-                  ...lesson,
-                  milestoneTitle: milestone.title,
-                }))
-              );
-              const selectedLessonId =
-                coachingShellContext.selectedLessonId ?? (allLessonRows[0]?.id ? String(allLessonRows[0].id) : null);
-              const selectedLesson =
-                allLessonRows.find((lesson) => String(lesson.id) === selectedLessonId) ?? null;
-              const selectedLessonStatus = String(selectedLesson?.progress_status ?? 'not_started') as
-                | 'not_started'
-                | 'in_progress'
-                | 'completed';
-              const contextualThreadTitle = coachingShellContext.threadTitle ?? 'Channel Thread';
-              const contextualThreadSub =
-                coachingShellContext.threadSub ??
-                'Read and send updates in this channel.';
-              const contextualChannelSub = preferredChannelScope
-                ? `Choose a ${coachingShellContext.preferredChannelLabel ?? preferredChannelScope} channel.`
-                : 'Choose a channel to continue.';
-              const shellMeta: Record<
-                CoachingShellScreen,
-                { title: string; sub: string; badge: string; primary?: { label: string; to: CoachingShellScreen }[] }
-              > = {
-                inbox: {
-                  title: 'Inbox',
-                  sub: 'Review coaching updates and next actions.',
-                  badge: 'communication',
-                  primary: [{ label: 'Open Channels', to: 'inbox_channels' }],
-                },
-                inbox_channels: {
-                  title: 'Inbox / Channels',
-                  sub: contextualChannelSub,
-                  badge: 'communication',
-                },
-                channel_thread: {
-                  title: contextualThreadTitle,
-                  sub: contextualThreadSub,
-                  badge: 'communication',
-                },
-                coach_broadcast_compose: {
-                  title: 'Broadcast Composer',
-                  sub: roleCanOpenBroadcast
-                    ? `Draft a broadcast for ${coachingShellContext.broadcastAudienceLabel ?? 'your team channel'}.`
-                    : 'Leader-only broadcast tool.',
-                  badge: roleCanOpenBroadcast ? 'leader-gated' : 'blocked',
-                },
-                coaching_journeys: {
-                  title: 'Coaching Journeys',
-                  sub: 'Tap a journey to open milestones and lessons.',
-                  badge: 'coaching_content',
-                },
-                coaching_journey_detail: {
-                  title: 'Coaching Journey Detail',
-                  sub: selectedJourneyTitle
-                    ? `Tap a lesson in ${selectedJourneyTitle} to open lesson detail.`
-                    : 'Select a journey to view milestones.',
-                  badge: 'coaching_content',
-                },
-                coaching_lesson_detail: {
-                  title: 'Coaching Lesson Detail',
-                  sub: selectedLesson
-                    ? 'Read the lesson and update progress.'
-                    : 'Choose a lesson from Journey Detail.',
-                  badge: 'coaching_content',
-                },
-              };
-              const meta = shellMeta[coachingShellScreen];
-              const shellPackageOutcome =
-                coachingShellScreen === 'inbox' || coachingShellScreen === 'inbox_channels'
-                  ? pickRuntimePackageVisibility(
-                    channelsPackageVisibility,
-                    normalizePackagingReadModelToVisibilityOutcome(selectedChannelRow?.packaging_read_model ?? null),
-                    selectedChannelRow?.package_visibility ?? null
-                  )
-                  : coachingShellScreen === 'channel_thread'
-                    ? pickRuntimePackageVisibility(
-                        channelThreadPackageVisibility,
-                        normalizePackagingReadModelToVisibilityOutcome(selectedChannelRow?.packaging_read_model ?? null),
-                        selectedChannelRow?.package_visibility ?? null,
-                        channelsPackageVisibility
-                      )
-                    : coachingShellScreen === 'coach_broadcast_compose'
-                      ? pickRuntimePackageVisibility(
-                          normalizePackagingReadModelToVisibilityOutcome(selectedChannelRow?.packaging_read_model ?? null),
-                          selectedChannelRow?.package_visibility ?? null,
-                          channelsPackageVisibility
-                        )
-                      : coachingShellScreen === 'coaching_journeys'
-                        ? pickRuntimePackageVisibility(
-                            coachingJourneysPackageVisibility,
-                            normalizePackagingReadModelToVisibilityOutcome(coachingProgressSummary?.packaging_read_model ?? null),
-                            coachingProgressSummary?.package_visibility ?? null,
-                            normalizePackagingReadModelToVisibilityOutcome(journeyListRows[0]?.packaging_read_model ?? null),
-                            journeyListRows[0]?.package_visibility ?? null
-                          )
-                        : pickRuntimePackageVisibility(
-                            normalizePackagingReadModelToVisibilityOutcome(coachingJourneyDetail?.packaging_read_model ?? null),
-                            coachingJourneyDetail?.package_visibility ?? null,
-                            normalizePackagingReadModelToVisibilityOutcome(coachingJourneyDetail?.journey?.packaging_read_model ?? null),
-                            coachingJourneyDetail?.journey?.package_visibility ?? null,
-                            coachingJourneysPackageVisibility,
-                            normalizePackagingReadModelToVisibilityOutcome(coachingProgressSummary?.packaging_read_model ?? null),
-                            coachingProgressSummary?.package_visibility ?? null
-                          );
-              const shellPackageGatePresentation = deriveCoachingPackageGatePresentation(meta.title, shellPackageOutcome);
-              const shellPackageGateBlocksActions =
-                shellPackageGatePresentation.tone === 'gated' || shellPackageGatePresentation.tone === 'blocked';
-              const channelRows = ([
-                { scope: 'team', label: 'Team Updates', context: 'Team updates' },
-                { scope: 'challenge', label: 'Challenge Updates', context: 'Challenge updates' },
-                { scope: 'sponsor', label: 'Sponsor Updates', context: 'Sponsor updates' },
-                { scope: 'cohort', label: 'Cohort Updates', context: 'Cohort updates' },
-                { scope: 'community', label: 'Community Updates', context: 'Community updates' },
-              ] as const)
-                .filter((row) => {
-                  if (!preferredChannelScope) return true;
-                  return row.scope === preferredChannelScope || row.scope === 'community';
-                })
-                .map((row) => ({
-                  ...row,
-                  context:
-                    preferredChannelScope === row.scope
-                      ? `${row.context} • linked from ${sourceLabel}`
-                      : `${row.context} • optional`,
-                }));
-              const fallbackChannelRowsVisible = !Array.isArray(channelsApiRows) || (channelsApiRows?.length ?? 0) === 0;
-              const isCommsScreen =
-                coachingShellScreen === 'inbox' ||
-                coachingShellScreen === 'inbox_channels' ||
-                coachingShellScreen === 'channel_thread' ||
-                coachingShellScreen === 'coach_broadcast_compose';
-              const isCoachingContentScreen =
-                coachingShellScreen === 'coaching_journeys' ||
-                coachingShellScreen === 'coaching_journey_detail' ||
-                coachingShellScreen === 'coaching_lesson_detail';
-
-              const commsChannelRows: CommsChannelRow[] = sortedPrimaryTabRows.map((row) => {
-                const channelType = String(row.type ?? '').toLowerCase();
-                const isDirect = channelType === 'direct' || channelType === 'dm';
-                const dmMember = isDirect ? resolveDmDirectoryMemberFromRow(row) : null;
-                const backendDmName = isDirect ? String(row.dm_display_name ?? '').trim() : '';
-                const resolvedName = isDirect
-                  ? backendDmName || dmMember?.name || deriveDmNameFromChannel(row.name)
-                  : row.name;
-                const runtimePreview = channelPreviewById[String(row.id)] ?? null;
-                const backendPreview = String(row.last_message_preview ?? '').trim() || null;
-                const snippet = runtimePreview ?? backendPreview ?? (isDirect ? `${dmMember?.roleLabel ?? 'Member'} · Direct message` : null);
-                return {
-                  id: String(row.id),
-                  name: resolvedName,
-                  type: row.type ?? null,
-                  scope: isDirect ? 'dm' : normalizeChannelTypeToScope(row.type) ?? 'community',
-                  unread_count: row.unread_count ?? null,
-                  member_count: null,
-                  my_role: row.my_role ?? null,
-                  last_seen_at: row.last_seen_at ?? null,
-                  last_message_at: row.last_message_at ?? null,
-                  created_at: row.created_at ?? null,
-                  snippet,
-                };
-              });
-              const commsRosterDmRows = teamMemberDirectory
-                .filter((member) => Boolean(member.userId))
-                .map((member) => ({
-                  id: String(member.userId),
-                  name: member.name,
-                  role: member.roleLabel,
-                }));
-
-              return (
-                <>
-                  {isCommsScreen ? (
-                    <CommsHub
-                      screen={coachingShellScreen as 'inbox' | 'inbox_channels' | 'channel_thread' | 'coach_broadcast_compose'}
-                      primaryTab={commsHubPrimaryTab}
-                      scopeFilter={effectiveCommsScopeFilter}
-                      searchQuery={commsHubSearchQuery}
-                      onChangePrimaryTab={(tab) => {
-                        setCommsHubPrimaryTab(tab);
-                        if (tab === 'all') {
-                          openCoachingShell('inbox', {
-                            source: 'user_tab',
-                            preferredChannelScope: null,
-                            preferredChannelLabel: null,
-                            threadTitle: null,
-                            threadSub: null,
-                            broadcastAudienceLabel: null,
-                            broadcastRoleAllowed: false,
-                          });
-                        } else if (tab === 'channels' || tab === 'dms') {
-                          openCoachingShell('inbox_channels', {
-                            source: 'user_tab',
-                            preferredChannelScope: null,
-                            preferredChannelLabel: null,
-                            threadTitle: null,
-                            threadSub: null,
-                            broadcastAudienceLabel: null,
-                            broadcastRoleAllowed: false,
-                          });
-                        } else if (tab === 'broadcast' && roleCanOpenBroadcast) {
-                          // Broadcast tab: only navigate if role gate allows
-                          openCoachingShell('coach_broadcast_compose');
-                        }
-                      }}
-                      onChangeScopeFilter={setCommsHubScopeFilter}
-                      onChangeSearchQuery={setCommsHubSearchQuery}
-                      onOpenChannel={(chId, chName, scope) => {
-                        setSelectedChannelId(chId);
-                        setSelectedChannelName(chName);
-                        setChannelMessages(null);
-                        setChannelMessageDraft('');
-                        setChannelMessageSubmitError(null);
-                        setBroadcastError(null);
-                        setBroadcastSuccessNote(null);
-                        openCoachingShell('channel_thread', {
-                          preferredChannelScope: scope as any,
-                          preferredChannelLabel: chName,
-                          threadTitle: chName,
-                          threadSub: `Messages in ${chName}.`,
-                          broadcastAudienceLabel:
-                            scope === 'team' && roleCanOpenBroadcast
-                              ? chName
-                              : coachingShellContext.broadcastAudienceLabel,
-                          broadcastRoleAllowed: scope === 'team' ? roleCanOpenBroadcast : false,
-                        });
-                      }}
-                      onOpenDm={(dmId, dmName) => {
-                        void openDirectThreadForMember({
-                          targetUserId: dmId,
-                          memberName: dmName,
-                          source: 'user_tab',
-                        }).catch((err) => {
-                          setSelectedChannelId(null);
-                          setSelectedChannelName(null);
-                          setChannelsError(err instanceof Error ? err.message : `Unable to open direct thread with ${dmName}.`);
-                        });
-                      }}
-                      onOpenBroadcast={() => {
-                        if (!roleCanOpenBroadcast) return; // safety: member/sponsor/solo cannot reach broadcast
-                        openCoachingShell('coach_broadcast_compose');
-                      }}
-                      onOpenChannelsCta={() => openCoachingShell('inbox_channels', {
-                        source: 'user_tab',
-                        preferredChannelScope: null,
-                        preferredChannelLabel: null,
-                        threadTitle: null,
-                        threadSub: null,
-                        broadcastAudienceLabel: null,
-                        broadcastRoleAllowed: false,
-                      })}
-                      onBack={() => openCoachingShell('inbox_channels', {
-                        source: 'user_tab',
-                        preferredChannelScope: null,
-                        preferredChannelLabel: null,
-                        threadTitle: null,
-                        threadSub: null,
-                        broadcastAudienceLabel: null,
-                        broadcastRoleAllowed: false,
-                      })}
-                      headerAvatarLabel={headerAvatarLabel}
-                      headerAvatarTone={headerAvatarTone}
-                      headerAvatarKind={headerAvatarKind}
-                      onPressHeaderAvatar={
-                        selectedDmDirectoryMember
-                          ? () => {
-                              setTeamFlowScreen('dashboard');
-                              setTeamProfileMemberId(selectedDmDirectoryMember.id);
-                              setActiveTab('team');
-                              setViewMode('log');
-                            }
-                          : null
-                      }
-                      personaVariant={commsPersonaVariant}
-                      roleCanBroadcast={roleCanOpenBroadcast}
-                      channels={commsChannelRows}
-                      channelsLoading={channelsLoading}
-                      channelsError={channelsError}
-                      onRetryChannels={() => void fetchChannels()}
-                      fallbackChannels={channelRows.map((r) => ({ scope: r.scope, label: r.label, context: r.context }))}
-                      fallbackDms={commsRosterDmRows}
-                      useFallback={fallbackChannelRowsVisible}
-                      selectedChannelId={selectedChannelResolvedId}
-                      selectedChannelName={selectedChannelDisplayName}
-                      messages={Array.isArray(channelMessages) ? channelMessages : []}
-                      messagesLoading={channelMessagesLoading}
-                      messagesError={channelMessagesError}
-                      currentUserId={session?.user?.id ?? null}
-                      messageDraft={channelMessageDraft}
-                      onChangeMessageDraft={(text) => {
-                        setChannelMessageDraft(text);
-                        if (channelMessageSubmitError) setChannelMessageSubmitError(null);
-                      }}
-                      messageSubmitting={channelMessageSubmitting}
-                      messageSubmitError={channelMessageSubmitError}
-                      onSendMessage={(payload) => {
-                        if (selectedChannelResolvedId) {
-                          void sendChannelMessage(selectedChannelResolvedId, { bodyOverride: payload.body });
-                        }
-                      }}
-                      onRefreshMessages={() => {
-                        if (selectedChannelResolvedId) void fetchChannelMessages(selectedChannelResolvedId);
-                      }}
-                      onOpenAiAssist={(host) =>
-                        openAiAssistShell(
-                          {
-                            host: host as any,
-                            title: host === 'channel_thread' ? 'AI Reply Draft (Approval-First)' : 'AI Broadcast Draft (Approval-First)',
-                            sub: 'Draft only. Human send is required.',
-                            targetLabel: selectedChannelResolvedName ?? contextualThreadTitle,
-                            approvedInsertOnly: true,
-                          },
-                          {
-                            prompt: host === 'channel_thread'
-                              ? `Draft a reply for ${selectedChannelResolvedName ?? contextualThreadTitle} that is supportive and action-oriented.`
-                              : `Draft a team coaching broadcast for ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'this audience'} with a clear next action.`,
-                            draft: host === 'channel_thread' ? channelMessageDraft : broadcastDraft,
-                          }
-                        )
-                      }
-                      onRequestMediaUpload={() => void requestMediaUploadUrl(selectedChannelResolvedId)}
-                      onSendLatestMediaAttachment={() => void sendLatestMediaAttachment(selectedChannelResolvedId)}
-                      mediaUploadBusy={mediaUploadBusy}
-                      mediaUploadStatus={mediaUploadStatus}
-                      liveSessionBusy={liveSessionBusy}
-                      liveSessionStatus={liveSessionStatus}
-                      canHostLiveSession={isCoachRuntimeOperator || (teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime)}
-                      onStartLiveSession={() => void startLiveSession(selectedChannelResolvedId)}
-                      onRefreshLiveSession={() => void refreshLiveSession()}
-                      onJoinLiveSession={() => void joinLiveSession()}
-                      onEndLiveSession={() => void endLiveSession()}
-                      composerBottomInset={commsComposerBottomInset}
-                      broadcastDraft={broadcastDraft}
-                      onChangeBroadcastDraft={setBroadcastDraft}
-                      broadcastTargetScope={effectiveBroadcastTargetScope}
-                      broadcastTargetOptions={broadcastTargetOptions}
-                      onChangeBroadcastTarget={setBroadcastTargetScope}
-                      broadcastSubmitting={broadcastSubmitting}
-                      broadcastError={broadcastError}
-                      broadcastSuccessNote={broadcastSuccessNote}
-                      onSendBroadcast={() => {
-                        const targetId =
-                          sortedBroadcastCandidateRows[0]?.id ?? selectedChannelResolvedId;
-                        if (targetId) void sendChannelBroadcast(String(targetId));
-                      }}
-                      gateBlocksActions={shellPackageGateBlocksActions}
-                      fmtTime={fmtMonthDayTime}
-                      fmtDate={fmtShortMonthDay}
-                    />
-                  ) : null}
-                  {!isCommsScreen ? (
-                  <View style={styles.coachingShellCard}>
-                    {/* Comms chrome — hidden for coaching content screens (journey/lesson) */}
-                    {!isCoachingContentScreen && (
-                    <View>
-                    <View style={styles.coachingShellTopRow}>
-                      <Text style={styles.coachingShellTitle}>Comms Hub</Text>
-                      <View style={styles.coachingShellBadge}>
-                        <Text style={styles.coachingShellBadgeText}>{commsPersonaBadgeLabel}</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.coachingShellSub}>{commsPersonaSummary}</Text>
-                    <View style={styles.commsHubTabRow}>
-                      {([
-                        { key: 'all' as const, label: 'All' },
-                        { key: 'channels' as const, label: 'Channels' },
-                        { key: 'dms' as const, label: 'DMs' },
-                        ...(roleCanOpenBroadcast ? [{ key: 'broadcast' as const, label: 'Broadcast' }] : []),
-                      ] as const).map((tab) => (
-                        <TouchableOpacity
-                          key={`comms-tab-${tab.key}`}
-                          style={[
-                            styles.commsHubTabBtn,
-                            commsHubPrimaryTab === tab.key ? styles.commsHubTabBtnActive : null,
-                          ]}
-                          onPress={() => {
-                            setCommsHubPrimaryTab(tab.key);
-                            if (tab.key === 'all') {
-                              openCoachingShell('inbox', {
-                                source: 'user_tab',
-                                preferredChannelScope: null,
-                                preferredChannelLabel: null,
-                                threadTitle: null,
-                                threadSub: null,
-                                broadcastAudienceLabel: null,
-                                broadcastRoleAllowed: false,
-                              });
-                              return;
-                            }
-                            if (tab.key === 'channels' || tab.key === 'dms') {
-                              openCoachingShell('inbox_channels', {
-                                source: 'user_tab',
-                                preferredChannelScope: null,
-                                preferredChannelLabel: null,
-                                threadTitle: null,
-                                threadSub: null,
-                                broadcastAudienceLabel: null,
-                                broadcastRoleAllowed: false,
-                              });
-                              return;
-                            }
-                            openCoachingShell('coach_broadcast_compose');
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.commsHubTabBtnText,
-                              commsHubPrimaryTab === tab.key ? styles.commsHubTabBtnTextActive : null,
-                            ]}
-                          >
-                            {tab.label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                    {commsHubPrimaryTab === 'channels' ? (
-                      <View style={styles.commsHubFilterRow}>
-                        {([
-                          { key: 'all' as const, label: 'All Types' },
-                          { key: 'team' as const, label: 'Team' },
-                          { key: 'cohort' as const, label: 'Cohort' },
-                          ...(isCoachRuntimeOperator ? [{ key: 'global' as const, label: 'Global' }] : []),
-                        ] as const).map((filter) => (
-                          <TouchableOpacity
-                            key={`comms-scope-${filter.key}`}
-                            style={[
-                              styles.commsHubFilterBtn,
-                              effectiveCommsScopeFilter === filter.key ? styles.commsHubFilterBtnActive : null,
-                            ]}
-                            onPress={() => setCommsHubScopeFilter(filter.key)}
-                          >
-                            <Text
-                              style={[
-                                styles.commsHubFilterBtnText,
-                                effectiveCommsScopeFilter === filter.key ? styles.commsHubFilterBtnTextActive : null,
-                              ]}
-                            >
-                              {filter.label}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ) : null}
-                    <View style={styles.commsHubSearchWrap}>
-                      <Text style={styles.commsHubSearchIcon}>⌕</Text>
-                      <TextInput
-                        value={commsHubSearchQuery}
-                        onChangeText={setCommsHubSearchQuery}
-                        placeholder={searchPlaceholder}
-                        placeholderTextColor="#9aa3b0"
-                        style={styles.coachingShellSearchInput}
-                      />
-                    </View>
-                    </View>
-                    )}
-                    {!isCoachingContentScreen && (
-                    <>
-                    <Text style={styles.coachingShellSub}>Current: {meta.title} · {meta.sub}</Text>
-                    {renderCoachingPackageGateBanner(meta.title, shellPackageOutcome, { compact: true })}
-                    {shellPackageGateBlocksActions ? (
-                      renderKnownLimitedDataChip('coaching package access')
-                    ) : (
-                      <>
-                        {meta.primary?.map((action) => (
-                          <TouchableOpacity
-                            key={`${coachingShellScreen}-${action.to}`}
-                            style={styles.coachingShellPrimaryBtn}
-                            onPress={() => openCoachingShell(action.to)}
-                          >
-                            <Text style={styles.coachingShellPrimaryBtnText}>{action.label}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </>
-                    )}
-                    {coachingShellScreen === 'inbox'
-                      ? renderCoachingNotificationSurface(
-                          'Coaching notifications inbox rows',
-                          inboxNotificationRows,
-                          inboxNotificationSummaryEffective,
-                          {
-                            maxRows: 4,
-                            mode: 'list',
-                            emptyHint: 'No coaching notification rows are available yet.',
-                          }
-                        )
-                      : null}
-                    {coachingShellScreen === 'inbox' || coachingShellScreen === 'inbox_channels'
-                      ? renderRuntimeStateBanner(inboxRuntimeStateModel, { compact: true })
-                      : null}
-                    {coachingShellScreen === 'inbox_channels' ? (
-                      <View style={styles.coachingShellList}>
-                        {(fallbackChannelsNotificationRows.length > 0 ||
-                          Number(channelsNotificationSummary?.total_count ?? 0) > 0 ||
-                          Number(channelsNotificationSummary?.unread_count ?? 0) > 0)
-                          ? renderCoachingNotificationSurface(
-                              'Channel notification rows',
-                              fallbackChannelsNotificationRows,
-                              channelsNotificationSummary ??
-                                summarizeNotificationRows(fallbackChannelsNotificationRows, { sourceLabel: 'channels:effective' }),
-                              {
-                                compact: true,
-                                maxRows: 3,
-                                mode: 'list',
-                                emptyHint: 'No channel notification rows yet.',
-                              }
-                            )
-                          : null}
-                        {channelsLoading ? (
-                          <View style={styles.coachingJourneyEmptyCard}>
-                            <ActivityIndicator size="small" />
-                            <Text style={styles.coachingJourneyEmptyTitle}>Loading channels…</Text>
-                          </View>
-                        ) : channelsError ? (
-                          <View style={styles.coachingJourneyEmptyCard}>
-                            <Text style={styles.coachingJourneyEmptyTitle}>Channels failed to load</Text>
-                            <Text style={styles.coachingJourneyEmptySub}>{channelsError}</Text>
-                            <TouchableOpacity style={styles.coachingJourneyRetryBtn} onPress={() => void fetchChannels()}>
-                              <Text style={styles.coachingJourneyRetryBtnText}>Retry Channels</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ) : sortedPrimaryTabRows.length > 0 ? (
-                          sortedPrimaryTabRows.map((row) => {
-                            const rowScope = normalizeChannelTypeToScope(row.type) ?? 'community';
-                            const isSelected = String(row.id) === String(selectedChannelResolvedId ?? '');
-                            const typeLabel = String(row.type ?? 'channel');
-                            const scopeLabel =
-                              rowScope === 'community'
-                                ? 'Community'
-                                : rowScope === 'challenge'
-                                  ? 'Challenge'
-                                  : rowScope.charAt(0).toUpperCase() + rowScope.slice(1);
-                            const lastActivityPreview = row.last_seen_at
-                              ? `Last activity ${fmtMonthDayTime(row.last_seen_at)}`
-                              : row.created_at
-                                ? `Created ${fmtShortMonthDay(row.created_at)}`
-                                : 'Recent activity unavailable';
-                            return (
-                              <TouchableOpacity
-                                key={`api-channel-${row.id}`}
-                              style={[
-                                styles.coachingShellListRow,
-                                isSelected ? styles.coachingShellListRowSelected : null,
-                                shellPackageGateBlocksActions ? styles.disabled : null,
-                              ]}
-                                disabled={shellPackageGateBlocksActions}
-                                onPress={() => {
-                                  if (shellPackageGateBlocksActions) return;
-                                  setSelectedChannelId(String(row.id));
-                                  setSelectedChannelName(row.name);
-                                  setChannelMessageSubmitError(null);
-                                  setBroadcastError(null);
-                                  setBroadcastSuccessNote(null);
-                                  openCoachingShell('channel_thread', {
-                                    preferredChannelScope: rowScope,
-                                    preferredChannelLabel: row.name,
-                                    threadTitle: row.name,
-                                    threadSub: `Messages in ${row.name}.`,
-                                    broadcastAudienceLabel:
-                                      rowScope === 'team' && roleCanOpenBroadcast
-                                        ? row.name
-                                        : coachingShellContext.broadcastAudienceLabel,
-                                    broadcastRoleAllowed: rowScope === 'team' ? roleCanOpenBroadcast : false,
-                                  });
-                                }}
-                              >
-                                <View style={styles.coachingShellListIcon}>
-                                  <Text style={styles.coachingShellListIconText}>#</Text>
-                                </View>
-                                <View style={styles.coachingShellListCopy}>
-                                  <View style={styles.commsChannelRowTitleWrap}>
-                                    <Text numberOfLines={1} style={styles.coachingShellListTitle}>{row.name}</Text>
-                                    {Number(row.unread_count ?? 0) > 0 ? (
-                                      <View style={styles.commsUnreadBadge}>
-                                        <Text style={styles.commsUnreadBadgeText}>{Math.max(0, Number(row.unread_count ?? 0))}</Text>
-                                      </View>
-                                    ) : null}
-                                  </View>
-                                  <View style={styles.coachingShellChipRow}>
-                                    <View style={styles.coachingShellChip}>
-                                      <Text style={styles.coachingShellChipText}>{scopeLabel}</Text>
-                                    </View>
-                                    <View style={styles.coachingShellChip}>
-                                      <Text style={styles.coachingShellChipText}>{typeLabel}</Text>
-                                    </View>
-                                    {row.my_role ? (
-                                      <View style={styles.coachingShellChip}>
-                                        <Text style={styles.coachingShellChipText}>{row.my_role}</Text>
-                                      </View>
-                                    ) : null}
-                                  </View>
-                                  <Text numberOfLines={1} style={styles.coachingShellListSubText}>{lastActivityPreview}</Text>
-                                </View>
-                                <Text style={styles.coachingShellListChevron}>›</Text>
-                              </TouchableOpacity>
-                            );
-                          })
-                        ) : fallbackChannelRowsVisible ? (
-                          commsHubPrimaryTab === 'dms'
-                            ? commsRosterDmRows.map((member) => (
-                                <TouchableOpacity
-                                  key={member.id}
-                                  style={[styles.coachingShellListRow, shellPackageGateBlocksActions ? styles.disabled : null]}
-                                  disabled={shellPackageGateBlocksActions}
-                                  onPress={() =>
-                                    shellPackageGateBlocksActions
-                                      ? undefined
-                                      : void openDirectThreadForMember({
-                                          targetUserId: member.id,
-                                          memberName: member.name,
-                                          source: 'user_tab',
-                                        }).catch((err) => {
-                                          setSelectedChannelId(null);
-                                          setSelectedChannelName(null);
-                                          setChannelsError(err instanceof Error ? err.message : `Unable to open direct thread with ${member.name}.`);
-                                        })
-                                  }
-                                >
-                                  <View style={styles.coachingShellListIcon}>
-                                    <Text style={styles.coachingShellListIconText}>@</Text>
-                                  </View>
-                                  <View style={styles.coachingShellListCopy}>
-                                    <Text style={styles.coachingShellListTitle}>{member.name}</Text>
-                                    <Text style={styles.coachingShellListSubText}>Direct thread • {member.role}</Text>
-                                  </View>
-                                  <Text style={styles.coachingShellListChevron}>›</Text>
-                                </TouchableOpacity>
-                              ))
-                            : channelRows.map((row) => (
-                                <TouchableOpacity
-                                  key={row.label}
-                                  style={[styles.coachingShellListRow, shellPackageGateBlocksActions ? styles.disabled : null]}
-                                  disabled={shellPackageGateBlocksActions}
-                                  onPress={() =>
-                                    shellPackageGateBlocksActions
-                                      ? undefined
-                                      : openCoachingShell('channel_thread', {
-                                          preferredChannelScope: row.scope,
-                                          preferredChannelLabel: row.label,
-                                          threadTitle: row.label,
-                                          threadSub: `${row.context}.`,
-                                          broadcastAudienceLabel:
-                                            row.scope === 'team' && roleCanOpenBroadcast
-                                              ? coachingShellContext.broadcastAudienceLabel ?? 'The Elite Group'
-                                              : null,
-                                          broadcastRoleAllowed: row.scope === 'team' ? roleCanOpenBroadcast : false,
-                                        })
-                                  }
-                                >
-                                  <View style={styles.coachingShellListIcon}>
-                                    <Text style={styles.coachingShellListIconText}>#</Text>
-                                  </View>
-                                  <View style={styles.coachingShellListCopy}>
-                                    <View style={styles.commsChannelRowTitleWrap}>
-                                      <Text style={styles.coachingShellListTitle}>{row.label}</Text>
-                                    </View>
-                                    <Text numberOfLines={1} style={styles.coachingShellListSubText}>{row.context}</Text>
-                                  </View>
-                                  <Text style={styles.coachingShellListChevron}>›</Text>
-                                </TouchableOpacity>
-                              ))
-                        ) : (
-                          <View style={styles.coachingJourneyEmptyCard}>
-                            <Text style={styles.coachingJourneyEmptyTitle}>
-                              {commsHubPrimaryTab === 'dms' ? 'No direct messages for this view' : 'No channels for this scope'}
-                            </Text>
-                            <Text style={styles.coachingJourneyEmptySub}>
-                              {commsHubPrimaryTab === 'dms'
-                                ? 'No direct message rows match the active search/filter.'
-                                : 'The API returned channels, but none match the current scope/search filter.'}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    ) : null}
-                    {coachingShellScreen === 'channel_thread' ? (
-                      <View style={styles.coachingShellComposeCard}>
-                        {renderRuntimeStateBanner(channelThreadRuntimeStateModel, { compact: true })}
-                        <Text style={styles.coachingShellComposeTitle}>
-                          {selectedChannelResolvedName ?? contextualThreadTitle}
-                        </Text>
-                        <Text style={styles.coachingShellComposeSub}>
-                          {selectedChannelResolvedId
-                            ? 'Channel messages'
-                            : 'Select a channel to start messaging.'}
-                        </Text>
-                        {renderCoachingNotificationSurface(
-                          'Thread system notifications',
-                          channelThreadNotificationItems,
-                          channelThreadNotificationSummary,
-                          {
-                            compact: true,
-                            maxRows: 2,
-                            mode: 'thread',
-                            emptyHint: 'No thread notification rows returned for this channel.',
-                          }
-                        )}
-                        {shellPackageGateBlocksActions ? (
-                          renderKnownLimitedDataChip('thread actions')
-                        ) : (
-                          <TouchableOpacity
-                            style={styles.coachingAiAssistBtn}
-                            onPress={() =>
-                              openAiAssistShell(
-                                {
-                                  host: 'channel_thread',
-                                  title: 'AI Reply Draft (Approval-First)',
-                                  sub: 'Draft only. Human send is required.',
-                                  targetLabel: selectedChannelResolvedName ?? contextualThreadTitle,
-                                  approvedInsertOnly: true,
-                                },
-                                {
-                                  prompt: `Draft a reply for ${selectedChannelResolvedName ?? contextualThreadTitle} that is supportive and action-oriented.`,
-                                  draft: channelMessageDraft,
-                                }
-                              )
-                            }
-                          >
-                            <Text style={styles.coachingAiAssistBtnText}>AI Assist Draft / Rewrite</Text>
-                          </TouchableOpacity>
-                        )}
-                        {channelMessagesError ? (
-                          <Text style={styles.coachingJourneyInlineError}>{channelMessagesError}</Text>
-                        ) : null}
-                        {channelMessagesLoading ? (
-                          <View style={styles.coachingJourneyEmptyCard}>
-                            <ActivityIndicator size="small" />
-                            <Text style={styles.coachingJourneyEmptyTitle}>Loading messages…</Text>
-                          </View>
-                        ) : Array.isArray(channelMessages) && channelMessages.length > 0 ? (
-                          <View style={styles.coachingThreadMessagesList}>
-                            {channelMessages.map((message, index) => {
-                              const isMine = String(message.sender_user_id ?? '') === String(session?.user?.id ?? '');
-                              const isBroadcast = String(message.message_type ?? '') === 'broadcast';
-                              const previous = index > 0 ? channelMessages[index - 1] : null;
-                              const startsGroup =
-                                !previous || String(previous.sender_user_id ?? '') !== String(message.sender_user_id ?? '');
-                              const metaLabel = startsGroup
-                                ? `${isBroadcast ? 'Broadcast' : 'Message'} • ${fmtMonthDayTime(message.created_at ?? null)}`
-                                : fmtMonthDayTime(message.created_at ?? null);
-                              return (
-                                <View
-                                  key={`channel-message-${message.id}`}
-                                  style={[
-                                    styles.coachingThreadMessageBubble,
-                                    isMine ? styles.coachingThreadMessageBubbleMine : null,
-                                    startsGroup ? styles.coachingThreadMessageBubbleStart : styles.coachingThreadMessageBubbleFollow,
-                                  ]}
-                                >
-                                  <Text style={[styles.coachingThreadMessageMeta, !startsGroup ? styles.coachingThreadMessageMetaFollow : null]}>
-                                    {metaLabel}
-                                  </Text>
-                                  <Text style={styles.coachingThreadMessageBody}>{message.body}</Text>
-                                </View>
-                              );
-                            })}
-                          </View>
-                        ) : (
-                          <View style={styles.coachingJourneyEmptyCard}>
-                            <Text style={styles.coachingJourneyEmptyTitle}>
-                              {selectedChannelResolvedId ? 'No messages yet' : 'Thread shell only'}
-                            </Text>
-                            <Text style={styles.coachingJourneyEmptySub}>
-                              {selectedChannelResolvedId
-                                ? 'This channel has no visible messages yet.'
-                                : 'Select an API channel from Inbox / Channels to enable read/send behavior.'}
-                            </Text>
-                          </View>
-                        )}
-                        <View style={styles.coachingThreadComposerWrap}>
-                          <TextInput
-                            value={channelMessageDraft}
-                            onChangeText={(text) => {
-                              setChannelMessageDraft(text);
-                              if (channelMessageSubmitError) setChannelMessageSubmitError(null);
-                            }}
-                            placeholder="Write a message…"
-                            placeholderTextColor="#9aa3b0"
-                            multiline
-                            style={styles.coachingThreadComposerInput}
-                          />
-                          {channelMessageSubmitError ? (
-                            <Text style={styles.coachingJourneyInlineError}>{channelMessageSubmitError}</Text>
-                          ) : null}
-                          <View style={styles.commsComposerActionRow}>
-                            <TouchableOpacity
-                              style={[styles.commsComposerGhostBtn, channelMessageSubmitting ? styles.disabled : null]}
-                              disabled={channelMessageSubmitting}
-                              onPress={() => {
-                                if (selectedChannelResolvedId) {
-                                  void fetchChannelMessages(selectedChannelResolvedId);
-                                }
-                              }}
-                            >
-                              <Text style={styles.commsComposerGhostBtnText}>Refresh</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[
-                                styles.commsComposerSendBtn,
-                                (!selectedChannelResolvedId || channelMessageSubmitting || shellPackageGateBlocksActions)
-                                  ? styles.disabled
-                                  : null,
-                              ]}
-                              disabled={!selectedChannelResolvedId || channelMessageSubmitting || shellPackageGateBlocksActions}
-                              onPress={() => {
-                                if (selectedChannelResolvedId) void sendChannelMessage(selectedChannelResolvedId);
-                              }}
-                            >
-                              <Text style={styles.commsComposerSendBtnText}>
-                                {channelMessageSubmitting ? 'Sending…' : 'Send'}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      </View>
-                    ) : null}
-                    {coachingShellScreen === 'coach_broadcast_compose' ? (
-                      <View style={styles.coachingShellComposeCard}>
-                        <Text style={styles.coachingShellComposeTitle}>Broadcast Composer</Text>
-                        <Text style={styles.coachingShellComposeSub}>
-                          {roleCanOpenBroadcast
-                            ? `Role-gated broadcast entry. Audience context: ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'choose a destination'}.`
-                            : 'Broadcast is hidden for member/solo/sponsor runtime flows.'}
-                        </Text>
-                        {!roleCanOpenBroadcast || shellPackageGateBlocksActions ? (
-                          renderKnownLimitedDataChip('broadcast compose access')
-                        ) : (
-                          <TouchableOpacity
-                            style={styles.coachingAiAssistBtn}
-                            onPress={() =>
-                              openAiAssistShell(
-                                {
-                                  host: 'coach_broadcast_compose',
-                                  title: 'AI Broadcast Draft (Approval-First)',
-                                  sub: 'Draft only. Human send is required.',
-                                  targetLabel:
-                                    coachingShellContext.broadcastAudienceLabel ??
-                                    selectedChannelResolvedName ??
-                                    'Broadcast audience',
-                                  approvedInsertOnly: true,
-                                },
-                                {
-                                  prompt: `Draft a team coaching broadcast for ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'this audience'} with a clear next action.`,
-                                  draft: broadcastDraft,
-                                }
-                              )
-                            }
-                          >
-                              <Text style={styles.coachingAiAssistBtnText}>AI Assist Draft / Rewrite</Text>
-                            </TouchableOpacity>
-                        )}
-                        {roleCanOpenBroadcast ? (
-                          <>
-                            <View style={styles.commsHubTabRow}>
-                              {broadcastTargetOptions.map((target) => (
-                                <TouchableOpacity
-                                  key={`broadcast-target-${target}`}
-                                  style={[
-                                    styles.commsHubFilterBtn,
-                                    effectiveBroadcastTargetScope === target ? styles.commsHubFilterBtnActive : null,
-                                  ]}
-                                  onPress={() => {
-                                    setBroadcastTargetScope(target);
-                                    setBroadcastError(null);
-                                    setBroadcastSuccessNote(null);
-                                  }}
-                                >
-                                  <Text
-                                    style={[
-                                      styles.commsHubFilterBtnText,
-                                      effectiveBroadcastTargetScope === target ? styles.commsHubFilterBtnTextActive : null,
-                                    ]}
-                                  >
-                                    {target === 'team'
-                                      ? 'Team'
-                                      : target === 'cohort'
-                                        ? 'Cohort'
-                                        : target === 'segment'
-                                          ? 'Segment'
-                                          : 'Channel'}
-                                  </Text>
-                                </TouchableOpacity>
-                              ))}
-                            </View>
-                            {effectiveBroadcastTargetScope === 'segment' ? (
-                              <View style={styles.coachingJourneyEmptyCard}>
-                                <Text style={styles.coachingJourneyEmptyTitle}>Segment broadcasts are coach-only</Text>
-                                <Text style={styles.coachingJourneyEmptySub}>
-                                  Segments are broadcast targets and do not appear in channel lists.
-                                </Text>
-                              </View>
-                            ) : null}
-                            <View style={styles.coachingShellList}>
-                              {effectiveBroadcastTargetScope !== 'segment' && sortedBroadcastCandidateRows.length > 0 ? (
-                                sortedBroadcastCandidateRows.slice(0, 8).map((row) => {
-                                  const isActive = String(row.id) === String(selectedChannelResolvedId ?? '');
-                                  const scope = normalizeChannelTypeToScope(row.type) ?? 'community';
-                                  return (
-                                    <TouchableOpacity
-                                      key={`broadcast-destination-${row.id}`}
-                                      style={[styles.coachingShellListRow, isActive ? styles.coachingShellListRowSelected : null]}
-                                      onPress={() => {
-                                        setSelectedChannelId(String(row.id));
-                                        setSelectedChannelName(row.name);
-                                      }}
-                                    >
-                                      <View style={styles.coachingShellListIcon}>
-                                        <Text style={styles.coachingShellListIconText}>#</Text>
-                                      </View>
-                                      <View style={styles.coachingShellListCopy}>
-                                        <View style={styles.commsChannelRowTitleWrap}>
-                                          <Text style={styles.coachingShellListTitle}>{row.name}</Text>
-                                          {Number(row.unread_count ?? 0) > 0 ? (
-                                            <View style={styles.commsUnreadBadge}>
-                                              <Text style={styles.commsUnreadBadgeText}>{Math.max(0, Number(row.unread_count ?? 0))}</Text>
-                                            </View>
-                                          ) : null}
-                                        </View>
-                                        <Text numberOfLines={1} style={styles.coachingShellListSubText}>
-                                          {scope} • {String(row.type ?? 'channel')}
-                                        </Text>
-                                      </View>
-                                      <Text style={styles.coachingShellListChevron}>›</Text>
-                                    </TouchableOpacity>
-                                  );
-                                })
-                              ) : (
-                                <View style={styles.coachingJourneyEmptyCard}>
-                                  <Text style={styles.coachingJourneyEmptyTitle}>
-                                    {effectiveBroadcastTargetScope === 'segment'
-                                      ? 'Select a non-segment target to route by channel'
-                                      : 'No destination channels found'}
-                                  </Text>
-                                  <Text style={styles.coachingJourneyEmptySub}>
-                                    {effectiveBroadcastTargetScope === 'segment'
-                                      ? 'Team, cohort, and channel targets use channel destinations.'
-                                      : 'No channels match this target scope for your current role.'}
-                                  </Text>
-                                </View>
-                              )}
-                            </View>
-                          </>
-                        ) : null}
-                        <View style={styles.coachingShellInputGhost}>
-                          <Text style={styles.coachingShellInputGhostText}>
-                            {roleCanOpenBroadcast
-                              ? `Broadcast path: /api/channels/{id}/broadcast (${selectedChannelResolvedId ? `selected ${selectedChannelResolvedName ?? 'channel'}` : 'select a destination channel first'})`
-                              : 'Audience selector unavailable for this persona'}
-                          </Text>
-                        </View>
-                        <TextInput
-                          value={broadcastDraft}
-                          onChangeText={(text) => {
-                            setBroadcastDraft(text);
-                            if (broadcastError) setBroadcastError(null);
-                            if (broadcastSuccessNote) setBroadcastSuccessNote(null);
-                          }}
-                          placeholder="Broadcast message body…"
-                          placeholderTextColor="#9aa3b0"
-                          multiline
-                          style={[styles.coachingThreadComposerInput, styles.coachingThreadComposerInputTall]}
-                        />
-                        {broadcastError ? <Text style={styles.coachingJourneyInlineError}>{broadcastError}</Text> : null}
-                        {broadcastSuccessNote ? <Text style={styles.coachingThreadSuccessText}>{broadcastSuccessNote}</Text> : null}
-                        <View style={styles.commsComposerActionRow}>
-                          <TouchableOpacity
-                            style={[styles.commsComposerGhostBtn, channelsLoading ? styles.disabled : null]}
-                            disabled={channelsLoading}
-                            onPress={() => void fetchChannels()}
-                          >
-                            <Text style={styles.commsComposerGhostBtnText}>Refresh Channels</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[
-                              styles.commsComposerSendBtn,
-                              (!roleCanOpenBroadcast || !selectedChannelResolvedId || broadcastSubmitting || shellPackageGateBlocksActions)
-                                ? styles.disabled
-                                : null,
-                            ]}
-                            disabled={!roleCanOpenBroadcast || !selectedChannelResolvedId || broadcastSubmitting || shellPackageGateBlocksActions}
-                            onPress={() => {
-                              if (selectedChannelResolvedId) void sendChannelBroadcast(selectedChannelResolvedId);
-                            }}
-                          >
-                            <Text style={styles.commsComposerSendBtnText}>
-                              {shellPackageGateBlocksActions
-                                ? 'Package Gated'
-                                : broadcastSubmitting
-                                  ? 'Sending…'
-                                  : roleCanOpenBroadcast
-                                    ? 'Send Broadcast'
-                                    : 'Leader Only'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ) : null}
-                    </>
-                    )}
-                    {coachingShellScreen === 'coaching_journeys' ? (
-                      <View style={styles.coachingJourneyModule}>
-                        {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
-                        {renderCoachingNotificationSurface(
-                          'Coaching journey notifications',
-                          journeysNotificationRows,
-                          journeysNotificationSummaryEffective,
-                          {
-                            compact: true,
-                            maxRows: 3,
-                            mode: 'banner',
-                            emptyHint: 'No coaching journey notifications available.',
-                          }
-                        )}
-                        {shellPackageGateBlocksActions ? (
-                          renderKnownLimitedDataChip('journey actions')
-                        ) : (
-                          <TouchableOpacity
-                            style={styles.coachingAiAssistBtn}
-                            onPress={() =>
-                              openAiAssistShell(
-                                {
-                                  host: 'coaching_journeys',
-                                  title: 'AI Coaching Suggestion (Approval-First)',
-                                  sub: 'Draft only. Human review required.',
-                                  targetLabel: selectedJourneyTitle ?? 'Coaching Journeys',
-                                  approvedInsertOnly: true,
-                                },
-                                {
-                                  prompt: `Draft a coaching suggestion based on ${selectedJourneyTitle ?? 'the current journeys'} progress summary.`,
-                                }
-                              )
-                            }
-                          >
-                            <Text style={styles.coachingAiAssistBtnText}>AI Coaching Suggestion Draft</Text>
-                          </TouchableOpacity>
-                        )}
-                        <View style={styles.coachingJourneySummaryRow}>
-                          <View style={styles.coachingJourneySummaryCard}>
-                            <Text style={styles.coachingJourneySummaryLabel}>Progress Rows</Text>
-                            <Text style={styles.coachingJourneySummaryValue}>
-                              {coachingProgressLoading ? '…' : String(coachingProgressSummary?.total_progress_rows ?? 0)}
-                            </Text>
-                          </View>
-                          <View style={styles.coachingJourneySummaryCard}>
-                            <Text style={styles.coachingJourneySummaryLabel}>Completed</Text>
-                            <Text style={styles.coachingJourneySummaryValue}>
-                              {coachingProgressLoading
-                                ? '…'
-                                : String(coachingProgressSummary?.status_counts?.completed ?? 0)}
-                            </Text>
-                          </View>
-                          <View style={styles.coachingJourneySummaryCard}>
-                            <Text style={styles.coachingJourneySummaryLabel}>Completion</Text>
-                            <Text style={styles.coachingJourneySummaryValue}>
-                              {coachingProgressLoading
-                                ? '…'
-                                : `${Math.round(Number(coachingProgressSummary?.completion_percent ?? 0))}%`}
-                            </Text>
-                          </View>
-                        </View>
-                        {coachingProgressError ? (
-                          <Text style={styles.coachingJourneyInlineError}>{coachingProgressError}</Text>
-                        ) : null}
-                        {coachingJourneysLoading ? (
-                          <View style={styles.coachingJourneyEmptyCard}>
-                            <ActivityIndicator size="small" />
-                            <Text style={styles.coachingJourneyEmptyTitle}>Loading coaching journeys…</Text>
-                          </View>
-                        ) : coachingJourneysError ? (
-                          <View style={styles.coachingJourneyEmptyCard}>
-                            <Text style={styles.coachingJourneyEmptyTitle}>Journeys failed to load</Text>
-                            <Text style={styles.coachingJourneyEmptySub}>Could not load journeys.</Text>
-                            <TouchableOpacity
-                              style={styles.coachingJourneyRetryBtn}
-                              onPress={() => {
-                                void fetchCoachingJourneys();
-                                void fetchCoachingProgressSummary();
-                              }}
-                            >
-                              <Text style={styles.coachingJourneyRetryBtnText}>Retry Journeys</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ) : journeyListRows.length === 0 ? (
-                          <View style={styles.coachingJourneyEmptyCard}>
-                            <Text style={styles.coachingJourneyEmptyTitle}>No journeys available</Text>
-                            <Text style={styles.coachingJourneyEmptySub}>No visible journeys in this scope.</Text>
-                          </View>
-                        ) : (
-                          <View style={styles.coachingJourneyListCard}>
-                            {journeyListRows.map((journey, idx) => {
-                              const lessonsTotal = Number(journey.lessons_total ?? 0);
-                              const lessonsCompleted = Number(journey.lessons_completed ?? 0);
-                              const pct = Math.max(0, Math.round(Number(journey.completion_percent ?? 0)));
-                              const isSelected = String(journey.id) === String(selectedJourneyId ?? '');
-                              return (
-                                <TouchableOpacity
-                                  key={`coaching-journey-${journey.id}`}
-                                  style={[
-                                    styles.coachingJourneyRow,
-                                    idx > 0 && styles.coachingJourneyRowDivider,
-                                    isSelected ? styles.coachingJourneyRowSelected : null,
-                                    shellPackageGateBlocksActions ? styles.disabled : null,
-                                  ]}
-                                  disabled={shellPackageGateBlocksActions}
-                                  onPress={() =>
-                                    openCoachingShell('coaching_journey_detail', {
-                                      source: coachingShellContext.source,
-                                      selectedJourneyId: String(journey.id),
-                                      selectedJourneyTitle: journey.title,
-                                      selectedLessonId: null,
-                                      selectedLessonTitle: null,
-                                    })
-                                  }
-                                >
-                                  <View style={styles.coachingJourneyRowCopy}>
-                                    <Text numberOfLines={1} style={styles.coachingJourneyRowTitle}>{journey.title}</Text>
-                                    <Text numberOfLines={2} style={styles.coachingJourneyRowSub}>
-                                      {(journey.description || 'No journey description yet.').trim()}
-                                    </Text>
-                                    <Text style={styles.coachingJourneyRowMeta}>
-                                      {Number(journey.milestones_count ?? 0)} milestones • {lessonsCompleted}/{lessonsTotal} lessons completed
-                                    </Text>
-                                  </View>
-                                  <View style={styles.coachingJourneyRowMetricWrap}>
-                                    <Text style={styles.coachingJourneyRowMetric}>{pct}%</Text>
-                                    <Text style={styles.coachingJourneyRowChevron}>›</Text>
-                                  </View>
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        )}
-                      </View>
-                    ) : null}
-                    {coachingShellScreen === 'coaching_journey_detail' ? (
-                      <View style={styles.coachingJourneyModule}>
-                        {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
-                        {renderCoachingNotificationSurface(
-                          'Journey detail notifications',
-                          journeysNotificationRows,
-                          journeysNotificationSummaryEffective,
-                          {
-                            compact: true,
-                            maxRows: 2,
-                            mode: 'banner',
-                            emptyHint: 'No journey detail notifications available.',
-                          }
-                        )}
-                        {!selectedJourneyId ? (
-                          <View style={styles.coachingJourneyEmptyCard}>
-                            <Text style={styles.coachingJourneyEmptyTitle}>Choose a journey first</Text>
-                            <Text style={styles.coachingJourneyEmptySub}>Open Coaching Journeys to continue.</Text>
-                          </View>
-                        ) : coachingJourneyDetailLoading ? (
-                          <View style={styles.coachingJourneyEmptyCard}>
-                            <ActivityIndicator size="small" />
-                            <Text style={styles.coachingJourneyEmptyTitle}>Loading journey detail…</Text>
-                          </View>
-                        ) : coachingJourneyDetailError ? (
-                          <View style={styles.coachingJourneyEmptyCard}>
-                            <Text style={styles.coachingJourneyEmptyTitle}>Journey detail failed to load</Text>
-                            <Text style={styles.coachingJourneyEmptySub}>Could not load journey detail.</Text>
-                            <TouchableOpacity
-                              style={styles.coachingJourneyRetryBtn}
-                              onPress={() => {
-                                if (selectedJourneyId) void fetchCoachingJourneyDetail(selectedJourneyId);
-                              }}
-                            >
-                              <Text style={styles.coachingJourneyRetryBtnText}>Retry Detail</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ) : (
-                          <>
-                            <View style={styles.coachingJourneyDetailHeader}>
-                              <Text style={styles.coachingJourneyDetailTitle}>
-                                {coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'Journey Detail'}
-                              </Text>
-                              <Text style={styles.coachingJourneyDetailSub}>
-                                {String(coachingJourneyDetail?.journey?.description ?? 'Milestones and lessons loaded from coaching endpoints.')}
-                              </Text>
-                            </View>
-                            <View style={styles.coachingLessonActionRow}>
-                              <TouchableOpacity
-                                style={styles.coachingLessonActionBtn}
-                                onPress={() =>
-                                  openCoachingShell('coaching_journeys', {
-                                    source: coachingShellContext.source,
-                                    selectedJourneyId: selectedJourneyId ?? null,
-                                    selectedJourneyTitle:
-                                      coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
-                                    selectedLessonId: null,
-                                    selectedLessonTitle: null,
-                                  })
-                                }
-                              >
-                                <Text style={styles.coachingLessonActionBtnText}>Back to Journeys</Text>
-                              </TouchableOpacity>
-                            </View>
-                            {shellPackageGateBlocksActions ? (
-                              renderKnownLimitedDataChip('journey detail actions')
-                            ) : (
-                              <TouchableOpacity
-                                style={styles.coachingAiAssistBtn}
-                                onPress={() =>
-                                  openAiAssistShell(
-                                    {
-                                      host: 'coaching_journey_detail',
-                                      title: 'AI Journey Coaching Draft (Approval-First)',
-                                      sub: 'Draft only. Human review required.',
-                                      targetLabel:
-                                        coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'Journey Detail',
-                                      approvedInsertOnly: true,
-                                    },
-                                    {
-                                      prompt: `Draft a coaching note for the journey ${coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'current journey'} using milestone progress context.`,
-                                    }
-                                  )
-                                }
-                              >
-                                <Text style={styles.coachingAiAssistBtnText}>AI Journey Draft</Text>
-                              </TouchableOpacity>
-                            )}
-
-                            {/* ── Enrolled members list ── */}
-                            {(() => {
-                              const journeyTitle = coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? '';
-                              const journeyId = selectedJourneyId ?? '';
-                              const enrolledMembers = teamMemberDirectory.filter(
-                                (m) => m.journeys.some((j) => j === journeyTitle || j === journeyId)
-                              );
-                              return (
-                                <View style={styles.cwfJourneyMembersWrap}>
-                                  <View style={styles.cwfJourneyMembersHeader}>
-                                    <Text style={styles.cwfJourneyMembersTitle}>
-                                      Members {enrolledMembers.length > 0 ? `(${enrolledMembers.length})` : ''}
-                                    </Text>
-                                    {enrolledMembers.length > 0 && isCoachRuntimeOperator && (
-                                      <TouchableOpacity
-                                        style={styles.cwfJourneyMembersBroadcastBtn}
-                                        onPress={() => {
-                                          openCoachingShell('coach_broadcast_compose', {
-                                            broadcastAudienceLabel: `${journeyTitle} enrollees`,
-                                            broadcastRoleAllowed: true,
-                                          });
-                                        }}
-                                      >
-                                        <Text style={styles.cwfJourneyMembersBroadcastText}>📣 Broadcast</Text>
-                                      </TouchableOpacity>
-                                    )}
-                                  </View>
-                                  {enrolledMembers.length === 0 ? (
-                                    <Text style={styles.cwfEmpty}>No enrolled members found for this journey.</Text>
-                                  ) : (
-                                    enrolledMembers.slice(0, 20).map((member) => (
-                                      <TouchableOpacity
-                                        key={member.id}
-                                        style={styles.cwfJourneyMemberRow}
-                                        onPress={() => setTeamProfileMemberId(member.id)}
-                                      >
-                                        <View style={[styles.cwfJourneyMemberAvatar, { backgroundColor: member.avatarTone || '#e8f0fe' }]}>
-                                          <Text style={styles.cwfJourneyMemberAvatarText}>
-                                            {member.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
-                                          </Text>
-                                        </View>
-                                        <View style={styles.cwfJourneyMemberInfo}>
-                                          <Text style={styles.cwfJourneyMemberName} numberOfLines={1}>{member.name}</Text>
-                                          <Text style={styles.cwfJourneyMemberRole} numberOfLines={1}>{member.roleLabel || 'Member'}</Text>
-                                        </View>
-                                        <Text style={styles.cwfJourneyMemberChevron}>›</Text>
-                                      </TouchableOpacity>
-                                    ))
-                                  )}
-                                </View>
-                              );
-                            })()}
-
-                            {/* ── Journey Builder: save status banner ── */}
-                            {jbSaveState !== 'idle' && (
-                              <View style={[styles.jbSaveBanner, jbSaveState === 'error' ? styles.jbSaveBannerError : jbSaveState === 'pending' ? styles.jbSaveBannerPending : styles.jbSaveBannerOk]}>
-                                <Text style={styles.jbSaveBannerText}>
-                                  {jbSaveState === 'pending' ? '⏳ ' : jbSaveState === 'error' ? '⚠️ ' : '✅ '}
-                                  {jbSaveMessage}
-                                </Text>
-                              </View>
-                            )}
-
-                            {/* Moving-item banner */}
-                            {jbMovingItem && (
-                              <View style={{ backgroundColor: '#eff6ff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, marginBottom: 6, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const }}>
-                                <Text style={{ fontSize: 12, color: '#1e40af' }}>
-                                  Moving {jbMovingItem.type === 'lesson' ? 'lesson' : 'task'} — tap another ⠿ to place
-                                </Text>
-                                <TouchableOpacity onPress={() => setJbMovingItem(null)} style={{ paddingHorizontal: 8, paddingVertical: 2 }}>
-                                  <Text style={{ fontSize: 12, fontWeight: '600' as const, color: '#3b82f6' }}>Cancel</Text>
-                                </TouchableOpacity>
-                              </View>
-                            )}
-
-                            {/* ── Journey Builder: action bar (coach operators) ── */}
-                            {isCoachRuntimeOperator && !shellPackageGateBlocksActions && (
-                              <View style={styles.jbActionBar}>
-                                <TouchableOpacity
-                                  style={styles.jbActionBtn}
-                                  onPress={() => {
-                                    const jid = selectedJourneyId;
-                                    if (jid) void jbAddLesson(jid);
-                                  }}
-                                >
-                                  <Text style={styles.jbActionBtnText}>＋ Lesson</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={[styles.jbActionBtn, styles.jbActionBtnSecondary]}
-                                  onPress={() => setJbShowAssetLibrary((prev) => !prev)}
-                                >
-                                  <Text style={[styles.jbActionBtnText, styles.jbActionBtnSecondaryText]}>
-                                    {jbShowAssetLibrary ? '✕ Close Library' : '📚 Asset Library'}
-                                  </Text>
-                                </TouchableOpacity>
-                              </View>
-                            )}
-
-                            {/* ── Asset Library Panel ── */}
-                            {jbShowAssetLibrary && isCoachRuntimeOperator && (
-                              <View style={styles.jbAssetLibraryPanel}>
-                                <Text style={styles.jbAssetLibraryTitle}>Asset Library</Text>
-                                {jbAssets.length === 0 ? (
-                                  <Text style={styles.jbAssetLibraryEmpty}>No assets available. Assets from the coaching library will appear here.</Text>
-                                ) : (
-                                  <>
-                                    {jbCollections.length > 0 && (
-                                      <View style={styles.jbAssetCollectionRow}>
-                                        {jbCollections.map((col) => (
-                                          <TouchableOpacity key={col.id} style={styles.jbAssetCollectionChip}>
-                                            <Text style={styles.jbAssetCollectionChipText} numberOfLines={1}>{col.name} ({col.assetIds.length})</Text>
-                                          </TouchableOpacity>
-                                        ))}
-                                      </View>
-                                    )}
-                                    <ScrollView style={styles.jbAssetListScroll} nestedScrollEnabled>
-                                      {jbAssets.map((asset) => (
-                                        <View key={asset.id} style={styles.jbAssetRow}>
-                                          <View style={styles.jbAssetRowInfo}>
-                                            <Text style={styles.jbAssetRowTitle} numberOfLines={1}>{asset.title}</Text>
-                                            <Text style={styles.jbAssetRowMeta} numberOfLines={1}>{asset.category} · {asset.duration}</Text>
-                                          </View>
-                                          {/* Tap an asset to assign it to a lesson via a quick-pick */}
-                                          <TouchableOpacity
-                                            style={styles.jbAssetAddBtn}
-                                            onPress={() => {
-                                              // If there's only one lesson, auto-add. Otherwise prompt to pick a lesson.
-                                              const jid = selectedJourneyId;
-                                              if (!jid) return;
-                                              if (jbLessons.length === 1) {
-                                                void jbAddAssetAsTask(jid, jbLessons[0].id, asset);
-                                              } else if (jbLessons.length > 1) {
-                                                // Show a simple prompt: pick which lesson
-                                                setJbAddingTaskToLessonId(null);
-                                                // For multi-lesson, we'll use the first lesson and let user reorder
-                                                void jbAddAssetAsTask(jid, jbLessons[0].id, asset);
-                                              }
-                                            }}
-                                          >
-                                            <Text style={styles.jbAssetAddBtnText}>＋ Add</Text>
-                                          </TouchableOpacity>
-                                        </View>
-                                      ))}
-                                    </ScrollView>
-                                  </>
-                                )}
-                              </View>
-                            )}
-
-                            {/* ── Journey Builder: Lessons + Tasks (editable) ── */}
-                            {jbLessons.length === 0 && milestoneRows.length === 0 ? (
-                              <View style={styles.coachingJourneyEmptyCard}>
-                                <Text style={styles.coachingJourneyEmptyTitle}>No lessons yet</Text>
-                                <Text style={styles.coachingJourneyEmptySub}>
-                                  {isCoachRuntimeOperator ? 'Tap "+ Lesson" above to create your first lesson.' : 'No lessons have been created for this journey.'}
-                                </Text>
-                              </View>
-                            ) : (
-                              <View style={styles.coachingJourneyListCard}>
-                                {jbLessons.map((lesson, lessonIdx) => {
-                                  const isActiveLesson = String(lesson.id) === String(selectedLessonId ?? '');
-                                  return (
-                                    <View key={`jb-lesson-${lesson.id}`} style={[styles.jbLessonBlock, lessonIdx > 0 ? styles.coachingJourneyRowDivider : null, jbMovingItem?.type === 'lesson' && jbMovingItem.lessonIdx === lessonIdx ? { borderWidth: 1.5, borderColor: '#3b82f6', borderRadius: 8, backgroundColor: '#eff6ff' } : null]}>
-                                      {/* Lesson header with reorder + delete */}
-                                      <View style={styles.jbLessonHeader}>
-                                        {isCoachRuntimeOperator && (
-                                          <JbGrip
-                                            isPickedUp={jbMovingItem?.type === 'lesson' && jbMovingItem.lessonIdx === lessonIdx}
-                                            isDropTarget={!!jbMovingItem && jbMovingItem.type === 'lesson' && jbMovingItem.lessonIdx !== lessonIdx}
-                                            onPress={() => {
-                                              const jid = selectedJourneyId;
-                                              if (!jid) return;
-                                              if (!jbMovingItem) {
-                                                setJbMovingItem({ type: 'lesson', lessonIdx, lessonId: lesson.id });
-                                              } else if (jbMovingItem.type === 'lesson' && jbMovingItem.lessonIdx === lessonIdx) {
-                                                setJbMovingItem(null);
-                                              } else if (jbMovingItem.type === 'lesson') {
-                                                void jbReorderLessons(jid, jbMovingItem.lessonIdx, lessonIdx);
-                                                setJbMovingItem(null);
-                                              } else {
-                                                setJbMovingItem(null);
-                                              }
-                                            }}
-                                          />
-                                        )}
-                                        {jbEditingLessonId === lesson.id && isCoachRuntimeOperator ? (
-                                          <View style={[styles.jbLessonTitleBtn, styles.jbEditingWrap]}>
-                                            <TextInput
-                                              style={styles.jbEditInput}
-                                              value={jbEditingLessonTitle}
-                                              onChangeText={setJbEditingLessonTitle}
-                                              autoFocus
-                                              selectTextOnFocus
-                                              onBlur={() => { const jid = selectedJourneyId; if (jid) void jbRenameLesson(jid, lesson.id, jbEditingLessonTitle); }}
-                                              onSubmitEditing={() => { const jid = selectedJourneyId; if (jid) void jbRenameLesson(jid, lesson.id, jbEditingLessonTitle); }}
-                                              placeholder="Lesson title…"
-                                              placeholderTextColor="#999"
-                                            />
-                                            <Text style={styles.jbLessonTaskCount}>{lesson.tasks.length} task{lesson.tasks.length !== 1 ? 's' : ''}</Text>
-                                          </View>
-                                        ) : (
-                                          <TouchableOpacity
-                                            style={[styles.jbLessonTitleBtn, isActiveLesson ? styles.coachingLessonRowSelected : null]}
-                                            onPress={() =>
-                                              openCoachingShell('coaching_lesson_detail', {
-                                                selectedJourneyId: selectedJourneyId ?? null,
-                                                selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
-                                                selectedLessonId: String(lesson.id),
-                                                selectedLessonTitle: lesson.title,
-                                              })
-                                            }
-                                            onLongPress={() => {
-                                              if (isCoachRuntimeOperator) {
-                                                setJbEditingLessonId(lesson.id);
-                                                setJbEditingLessonTitle(lesson.title);
-                                              }
-                                            }}
-                                          >
-                                            <Text numberOfLines={1} style={styles.jbLessonTitleText}>{lesson.title}</Text>
-                                            {isCoachRuntimeOperator && <Text style={styles.jbEditHint}>long-press to rename</Text>}
-                                            <Text style={styles.jbLessonTaskCount}>{lesson.tasks.length} task{lesson.tasks.length !== 1 ? 's' : ''}</Text>
-                                          </TouchableOpacity>
-                                        )}
-                                        {isCoachRuntimeOperator && (
-                                          <TouchableOpacity
-                                            style={styles.jbDeleteBtn}
-                                            onPress={() => setJbConfirmDelete({ type: 'lesson', id: lesson.id, label: lesson.title })}
-                                          >
-                                            <Text style={styles.jbDeleteBtnText}>✕</Text>
-                                          </TouchableOpacity>
-                                        )}
-                                      </View>
-
-                                      {/* Tasks within lesson */}
-                                      {lesson.tasks.map((task, taskIdx) => {
-                                        const assetInfo = task.assetId ? jbAssetsById.get(task.assetId) : null;
-                                        return (
-                                          <View key={`jb-task-${task.id}`} style={[styles.jbTaskRow, jbMovingItem?.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx === taskIdx ? { borderWidth: 1, borderColor: '#3b82f6', borderRadius: 6, backgroundColor: '#eff6ff' } : null]}>
-                                            {isCoachRuntimeOperator && (
-                                              <JbGrip
-                                                small
-                                                isPickedUp={jbMovingItem?.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx === taskIdx}
-                                                isDropTarget={!!jbMovingItem && jbMovingItem.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx !== taskIdx}
-                                                onPress={() => {
-                                                  const jid = selectedJourneyId;
-                                                  if (!jid) return;
-                                                  if (!jbMovingItem) {
-                                                    setJbMovingItem({ type: 'task', lessonIdx, lessonId: lesson.id, taskIdx, taskId: task.id });
-                                                  } else if (jbMovingItem.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx === taskIdx) {
-                                                    setJbMovingItem(null);
-                                                  } else if (jbMovingItem.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx !== undefined) {
-                                                    void jbReorderTasks(jid, lesson.id, jbMovingItem.taskIdx, taskIdx);
-                                                    setJbMovingItem(null);
-                                                  } else {
-                                                    setJbMovingItem(null);
-                                                  }
-                                                }}
-                                              />
-                                            )}
-                                            <View style={styles.jbTaskContent}>
-                                              {jbEditingTaskKey === `${lesson.id}:${task.id}` && isCoachRuntimeOperator ? (
-                                                <TextInput
-                                                  style={styles.jbEditInputSm}
-                                                  value={jbEditingTaskTitle}
-                                                  onChangeText={setJbEditingTaskTitle}
-                                                  autoFocus
-                                                  selectTextOnFocus
-                                                  onBlur={() => { const jid = selectedJourneyId; if (jid) void jbRenameTask(jid, lesson.id, task.id, jbEditingTaskTitle); }}
-                                                  onSubmitEditing={() => { const jid = selectedJourneyId; if (jid) void jbRenameTask(jid, lesson.id, task.id, jbEditingTaskTitle); }}
-                                                  placeholder="Task title…"
-                                                  placeholderTextColor="#999"
-                                                />
-                                              ) : (
-                                                <TouchableOpacity
-                                                  onLongPress={() => {
-                                                    if (isCoachRuntimeOperator) {
-                                                      setJbEditingTaskKey(`${lesson.id}:${task.id}`);
-                                                      setJbEditingTaskTitle(task.title);
-                                                    }
-                                                  }}
-                                                >
-                                                  <Text numberOfLines={1} style={styles.jbTaskTitle}>{task.title}</Text>
-                                                </TouchableOpacity>
-                                              )}
-                                              {assetInfo && (
-                                                <View style={styles.jbTaskAssetBadge}>
-                                                  <Text style={styles.jbTaskAssetBadgeText} numberOfLines={1}>📎 {assetInfo.title}</Text>
-                                                </View>
-                                              )}
-                                            </View>
-                                            {isCoachRuntimeOperator && (
-                                              <TouchableOpacity
-                                                style={styles.jbDeleteBtnSm}
-                                                onPress={() => setJbConfirmDelete({ type: 'task', id: task.id, parentId: lesson.id, label: task.title })}
-                                              >
-                                                <Text style={styles.jbDeleteBtnSmText}>✕</Text>
-                                              </TouchableOpacity>
-                                            )}
-                                          </View>
-                                        );
-                                      })}
-
-                                      {/* Add task to this lesson */}
-                                      {isCoachRuntimeOperator && !shellPackageGateBlocksActions && (
-                                        <View style={styles.jbAddTaskRow}>
-                                          {jbAddingTaskToLessonId === lesson.id ? (
-                                            <View style={styles.jbAddTaskInline}>
-                                              <TextInput
-                                                style={styles.jbAddTaskInput}
-                                                placeholder="Task title…"
-                                                placeholderTextColor="#999"
-                                                value={jbNewTaskTitle}
-                                                onChangeText={setJbNewTaskTitle}
-                                                onSubmitEditing={() => { const jid = selectedJourneyId; if (jid) void jbAddTask(jid, lesson.id); }}
-                                              />
-                                              <TouchableOpacity
-                                                style={styles.jbAddTaskConfirmBtn}
-                                                onPress={() => { const jid = selectedJourneyId; if (jid) void jbAddTask(jid, lesson.id); }}
-                                              >
-                                                <Text style={styles.jbAddTaskConfirmBtnText}>Add</Text>
-                                              </TouchableOpacity>
-                                              <TouchableOpacity
-                                                style={styles.jbAddTaskCancelBtn}
-                                                onPress={() => { setJbAddingTaskToLessonId(null); setJbNewTaskTitle(''); }}
-                                              >
-                                                <Text style={styles.jbAddTaskCancelBtnText}>✕</Text>
-                                              </TouchableOpacity>
-                                            </View>
-                                          ) : (
-                                            <TouchableOpacity
-                                              style={styles.jbAddTaskBtn}
-                                              onPress={() => { setJbAddingTaskToLessonId(lesson.id); setJbNewTaskTitle(''); }}
-                                            >
-                                              <Text style={styles.jbAddTaskBtnText}>＋ Task</Text>
-                                            </TouchableOpacity>
-                                          )}
-                                        </View>
-                                      )}
-                                    </View>
-                                  );
-                                })}
-
-                                {/* Fallback: show original milestones/lessons in read-only for non-operators if jbLessons is empty */}
-                                {jbLessons.length === 0 && milestoneRows.map((milestone, milestoneIdx) => (
-                                  <View
-                                    key={`coaching-milestone-${milestone.id}`}
-                                    style={[styles.coachingMilestoneBlock, milestoneIdx > 0 ? styles.coachingJourneyRowDivider : null]}
-                                  >
-                                    <Text style={styles.coachingMilestoneTitle}>{milestone.title}</Text>
-                                    {(milestone.lessons ?? []).length === 0 ? (
-                                      <Text style={styles.coachingMilestoneEmpty}>No active lessons yet.</Text>
-                                    ) : (
-                                      (milestone.lessons ?? []).map((lesson, lessonIdx) => {
-                                        const statusLabel = String(lesson.progress_status ?? 'not_started').replace('_', ' ');
-                                        return (
-                                          <TouchableOpacity
-                                            key={`coaching-lesson-${lesson.id}`}
-                                            style={[styles.coachingLessonRow, lessonIdx > 0 ? styles.coachingLessonRowDivider : null, shellPackageGateBlocksActions ? styles.disabled : null]}
-                                            disabled={shellPackageGateBlocksActions}
-                                            onPress={() =>
-                                              openCoachingShell('coaching_lesson_detail', {
-                                                selectedJourneyId: selectedJourneyId ?? null,
-                                                selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
-                                                selectedLessonId: String(lesson.id),
-                                                selectedLessonTitle: lesson.title,
-                                              })
-                                            }
-                                          >
-                                            <View style={styles.coachingLessonRowCopy}>
-                                              <Text numberOfLines={1} style={styles.coachingLessonRowTitle}>{lesson.title}</Text>
-                                              <Text numberOfLines={2} style={styles.coachingLessonRowSub}>
-                                                {lesson.body?.trim() || 'Lesson content body available on lesson detail.'}
-                                              </Text>
-                                            </View>
-                                            <View style={styles.coachingLessonRowStatusPill}>
-                                              <Text style={styles.coachingLessonRowStatusText}>{statusLabel}</Text>
-                                            </View>
-                                          </TouchableOpacity>
-                                        );
-                                      })
-                                    )}
-                                  </View>
-                                ))}
-                              </View>
-                            )}
-
-                            {/* ── Confirm delete dialog ── */}
-                            {jbConfirmDelete && (
-                              <View style={styles.jbConfirmDeleteOverlay}>
-                                <View style={styles.jbConfirmDeleteCard}>
-                                  <Text style={styles.jbConfirmDeleteTitle}>Delete {jbConfirmDelete.type}?</Text>
-                                  <Text style={styles.jbConfirmDeleteSub}>"{jbConfirmDelete.label}" will be permanently removed.</Text>
-                                  <View style={styles.jbConfirmDeleteActions}>
-                                    <TouchableOpacity style={styles.jbConfirmDeleteCancel} onPress={() => setJbConfirmDelete(null)}>
-                                      <Text style={styles.jbConfirmDeleteCancelText}>Cancel</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                      style={styles.jbConfirmDeleteConfirm}
-                                      onPress={() => {
-                                        const jid = selectedJourneyId;
-                                        if (!jid || !jbConfirmDelete) return;
-                                        if (jbConfirmDelete.type === 'lesson') void jbDeleteLesson(jid, jbConfirmDelete.id);
-                                        else if (jbConfirmDelete.type === 'task' && jbConfirmDelete.parentId) void jbRemoveTask(jid, jbConfirmDelete.parentId, jbConfirmDelete.id);
-                                      }}
-                                    >
-                                      <Text style={styles.jbConfirmDeleteConfirmText}>Delete</Text>
-                                    </TouchableOpacity>
-                                  </View>
-                                </View>
-                              </View>
-                            )}
-                          </>
-                        )}
-                      </View>
-                    ) : null}
-                    {coachingShellScreen === 'coaching_lesson_detail' ? (
-                      <View style={styles.coachingJourneyModule}>
-                        {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
-                        {renderCoachingNotificationSurface(
-                          'Lesson notifications',
-                          selectedLesson
-                            ? [
-                                {
-                                  id: `lesson-progress-notice-${selectedLesson.id}`,
-                                  notification_class:
-                                    selectedLessonStatus === 'completed'
-                                      ? 'lesson_completed_status'
-                                      : selectedLessonStatus === 'in_progress'
-                                        ? 'lesson_progress_reminder'
-                                        : 'lesson_assignment_prompt',
-                                  title:
-                                    selectedLessonStatus === 'completed'
-                                      ? 'Lesson completed'
-                                      : selectedLessonStatus === 'in_progress'
-                                        ? 'Lesson in progress'
-                                        : 'Lesson ready to start',
-                                  body:
-                                    selectedLessonStatus === 'completed'
-                                      ? 'Progress is already recorded. Notification UI is informational only.'
-                                      : 'Use explicit progress buttons below to update status. Notification taps do not write progress.',
-                                  read_state: selectedLessonStatus === 'completed' ? 'read' : 'unread',
-                                  severity: selectedLessonStatus === 'completed' ? 'success' : 'info',
-                                  delivery_channels: ['in_app', 'banner'],
-                                  route_target: { screen: 'coaching_lesson_detail', lesson_id: String(selectedLesson.id) },
-                                  source_family: 'lesson_detail_local',
-                                },
-                                ...aiApprovalNotificationRows.slice(0, 1),
-                              ]
-                            : aiApprovalNotificationRows.slice(0, 1),
-                          summarizeNotificationRows(
-                            selectedLesson
-                              ? [
-                                  {
-                                    id: `lesson-progress-notice-${selectedLesson.id}`,
-                                    notification_class: 'lesson_progress_status',
-                                    title: 'Lesson progress status',
-                                  },
-                                  ...aiApprovalNotificationRows.slice(0, 1),
-                                ]
-                              : aiApprovalNotificationRows.slice(0, 1),
-                            { sourceLabel: 'lesson_detail' }
-                          ),
-                          {
-                            compact: true,
-                            maxRows: 2,
-                            mode: 'banner',
-                            emptyHint: 'No lesson notifications available.',
-                          }
-                        )}
-                        {!selectedLesson ? (
-                          <View style={styles.coachingJourneyEmptyCard}>
-                            <Text style={styles.coachingJourneyEmptyTitle}>Choose a lesson first</Text>
-                            <Text style={styles.coachingJourneyEmptySub}>Open a lesson from Journey Detail.</Text>
-                          </View>
-                        ) : (
-                          <View style={styles.coachingJourneyListCard}>
-                            <View style={styles.coachingLessonDetailHeader}>
-                              <View style={styles.coachingLessonActionRow}>
-                                <TouchableOpacity
-                                  style={styles.coachingLessonActionBtn}
-                                  onPress={() =>
-                                    openCoachingShell('coaching_journey_detail', {
-                                      source: coachingShellContext.source,
-                                      selectedJourneyId: selectedJourneyId ?? null,
-                                      selectedJourneyTitle:
-                                        coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
-                                      selectedLessonId: String(selectedLesson.id),
-                                      selectedLessonTitle: selectedLesson.title,
-                                    })
-                                  }
-                                >
-                                  <Text style={styles.coachingLessonActionBtnText}>Back to Journey</Text>
-                                </TouchableOpacity>
-                              </View>
-                              <Text style={styles.coachingLessonDetailTitle}>
-                                {coachingShellContext.selectedLessonTitle ?? selectedLesson.title}
-                              </Text>
-                              <Text style={styles.coachingLessonDetailMeta}>
-                                {selectedLesson.milestoneTitle} • {selectedJourneyTitle ?? coachingJourneyDetail?.journey?.title ?? 'Journey'}
-                              </Text>
-                              <Text style={styles.coachingLessonDetailBody}>
-                                {selectedLesson.body?.trim() || 'No lesson content yet.'}
-                              </Text>
-                            </View>
-                            {shellPackageGateBlocksActions ? (
-                              renderKnownLimitedDataChip('lesson actions')
-                            ) : (
-                              <TouchableOpacity
-                                style={styles.coachingAiAssistBtn}
-                                onPress={() =>
-                                  openAiAssistShell(
-                                    {
-                                      host: 'coaching_lesson_detail',
-                                      title: 'AI Lesson Reflection Draft (Approval-First)',
-                                      sub: 'Draft only. Human review required.',
-                                      targetLabel: selectedLesson.title,
-                                      approvedInsertOnly: true,
-                                    },
-                                    {
-                                      prompt: `Draft a short reflection prompt and next-step coaching note for the lesson "${selectedLesson.title}".`,
-                                    }
-                                  )
-                                }
-                              >
-                                <Text style={styles.coachingAiAssistBtnText}>AI Lesson Draft</Text>
-                              </TouchableOpacity>
-                            )}
-                            <View style={styles.coachingLessonProgressCard}>
-                              <Text style={styles.coachingLessonProgressTitle}>Lesson Progress</Text>
-                              <Text style={styles.coachingLessonProgressStatus}>
-                                Current status: {selectedLessonStatus.replace('_', ' ')}
-                              </Text>
-                              {selectedLesson.completed_at ? (
-                                <Text style={styles.coachingLessonProgressTime}>
-                                  Completed: {fmtMonthDayTime(selectedLesson.completed_at)}
-                                </Text>
-                              ) : null}
-                              {coachingLessonProgressError ? (
-                                <Text style={styles.coachingJourneyInlineError}>{coachingLessonProgressError}</Text>
-                              ) : null}
-                              {shellPackageGateBlocksActions ? (
-                                renderKnownLimitedDataChip('lesson progress updates')
-                              ) : (
-                                <View style={styles.coachingLessonActionRow}>
-                                  {(['not_started', 'in_progress', 'completed'] as const).map((status) => {
-                                    const isCurrent = selectedLessonStatus === status;
-                                    const isSubmitting =
-                                      coachingLessonProgressSubmittingId === String(selectedLesson.id);
-                                    return (
-                                      <TouchableOpacity
-                                        key={`lesson-progress-${status}`}
-                                        style={[
-                                          styles.coachingLessonActionBtn,
-                                          isCurrent ? styles.coachingLessonActionBtnActive : null,
-                                          isSubmitting ? styles.disabled : null,
-                                        ]}
-                                        disabled={isSubmitting}
-                                        onPress={() => {
-                                          void submitCoachingLessonProgress(String(selectedLesson.id), status);
-                                        }}
-                                      >
-                                        <Text
-                                          style={[
-                                            styles.coachingLessonActionBtnText,
-                                            isCurrent ? styles.coachingLessonActionBtnTextActive : null,
-                                          ]}
-                                        >
-                                          {isSubmitting && isCurrent
-                                            ? 'Saving…'
-                                            : status === 'not_started'
-                                              ? 'Reset'
-                                              : status === 'in_progress'
-                                                ? 'Start'
-                                                : 'Complete'}
-                                        </Text>
-                                      </TouchableOpacity>
-                                    );
-                                  })}
-                                </View>
-                              )}
-                            </View>
-                          </View>
-                        )}
-                      </View>
-                    ) : null}
-                  </View>
-                  ) : null}
-
-                </>
-              );
-            })()}
-          </View>
-        ) : viewMode === 'home' ? (
+        ) : activeTab === 'comms' ? null : viewMode === 'home' ? (
           <>
             {renderHudRail()}
 
@@ -14444,6 +12435,2018 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           </>
         )}
       </ScrollView>
+
+      {activeTab === 'comms' ? (
+        <View style={[styles.coachingShellWrap, styles.coachingShellWrapComms]}>
+          {(() => {
+            const sourceLabelByKey: Record<CoachingShellEntrySource, string> = {
+              home: 'Home / Priority',
+              challenge_details: 'Challenge Details',
+              team_leader_dashboard: 'Team Dashboard (Leader)',
+              team_member_dashboard: 'Team Dashboard (Member)',
+              user_tab: 'Comms Hub',
+              unknown: 'Direct Shell',
+            };
+            const preferredChannelScope = coachingShellContext.preferredChannelScope;
+            const sourceLabel = sourceLabelByKey[coachingShellContext.source];
+            const roleCanOpenBroadcast = isCoachRuntimeOperator || (teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime);
+            const commsPersonaVariant: 'coach' | 'team_leader' | 'sponsor' | 'member' | 'solo' = isCoachRuntimeOperator
+              ? 'coach'
+              : isChallengeSponsorRuntime
+                ? 'sponsor'
+                : teamPersonaVariant === 'leader'
+                  ? 'team_leader'
+                  : runtimeRoleSignals.some((signal) => signal.includes('solo'))
+                    ? 'solo'
+                    : 'member';
+            const commsPersonaBadgeLabel = commsPersonaVariant.replace('_', ' ');
+            const commsPersonaSummary =
+              commsPersonaVariant === 'coach'
+                ? 'Coach layout: monitor channels, keep journeys active, and draft guidance with approval-first controls.'
+                : commsPersonaVariant === 'team_leader'
+                  ? 'Team Leader layout: run team communications, keep journeys moving, and publish reviewed broadcasts.'
+                  : commsPersonaVariant === 'sponsor'
+                    ? 'Sponsor layout: monitor sponsor-scoped channels and journey progress visibility. KPI logging stays disabled.'
+                    : commsPersonaVariant === 'solo'
+                      ? 'Solo layout: focus on your journey milestones and direct channel updates.'
+                      : 'Member layout: keep up with team/challenge updates and journey lesson progress.';
+            const allChannelApiRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
+            const effectiveCommsScopeFilter: CommsHubScopeFilter =
+              commsHubScopeFilter === 'global' && !isCoachRuntimeOperator ? 'all' : commsHubScopeFilter;
+            const scopeFilterMatch = (row: ChannelApiRow) => {
+              const scope = normalizeChannelTypeToScope(row.type);
+              if (effectiveCommsScopeFilter === 'all') return true;
+              if (effectiveCommsScopeFilter === 'team') return scope === 'team';
+              if (effectiveCommsScopeFilter === 'cohort') return scope === 'cohort';
+              if (effectiveCommsScopeFilter === 'global') return scope === 'community';
+              return true;
+            };
+            const searchNeedle = commsHubSearchQuery.trim().toLowerCase();
+            const normalizedSelfName = String(resolvedDisplayName ?? '')
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, ' ')
+              .trim();
+            const normalizeName = (value: string | null | undefined) =>
+              String(value ?? '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, ' ')
+                .trim();
+            const deriveDmNameFromChannel = (rawName: string) => {
+              const segments = String(rawName ?? '')
+                .split(/[/|,&]/)
+                .map((segment) => segment.trim())
+                .filter(Boolean);
+              if (segments.length === 0) return 'Direct message';
+              const nonSelf = segments.find((segment) => {
+                const key = normalizeName(segment);
+                if (!key) return false;
+                if (!normalizedSelfName) return true;
+                return key !== normalizedSelfName && !normalizedSelfName.includes(key);
+              });
+              return nonSelf ?? segments[0] ?? 'Direct message';
+            };
+            const resolveDmDirectoryMemberFromRow = (row: ChannelApiRow | null | undefined) => {
+              if (!row) return null;
+              const type = String(row.type ?? '').toLowerCase();
+              if (type !== 'direct' && type !== 'dm') return null;
+              const contextId = String(row.context_id ?? '').trim();
+              if (contextId) {
+                const contextMatch = teamMemberDirectory.find((member) => {
+                  const memberUserId = String(member.userId ?? '').trim();
+                  return memberUserId.length > 0 && memberUserId === contextId;
+                });
+                if (contextMatch) return contextMatch;
+              }
+              const channelNameKey = normalizeName(row.name);
+              if (!channelNameKey) return null;
+              return (
+                teamMemberDirectory.find((member) => {
+                  const memberNameKey = normalizeName(member.name);
+                  return Boolean(memberNameKey) && (
+                    channelNameKey.includes(memberNameKey) ||
+                    memberNameKey.includes(channelNameKey)
+                  );
+                }) ?? null
+              );
+            };
+            const searchMatch = (row: ChannelApiRow) => {
+              if (!searchNeedle) return true;
+              const scope = normalizeChannelTypeToScope(row.type) ?? 'community';
+              const chips = [row.name, row.type, scope, row.my_role ?? '', String(row.unread_count ?? 0)];
+              return chips.some((v) => String(v).toLowerCase().includes(searchNeedle));
+            };
+            const filteredChannelApiRows = (coachingShellContext.preferredChannelScope
+              ? allChannelApiRows.filter((row) => {
+                  const scope = normalizeChannelTypeToScope(row.type);
+                  return scope === coachingShellContext.preferredChannelScope || scope === 'community';
+                })
+              : allChannelApiRows) as ChannelApiRow[];
+            const dmApiRows = allChannelApiRows.filter((row) => String(row.type ?? '').toLowerCase() === 'direct');
+            const scopeFilteredChannelRows = allChannelApiRows
+              .filter((row) => String(row.type ?? '').toLowerCase() !== 'direct')
+              .filter(scopeFilterMatch)
+              .filter(searchMatch);
+            const scopeFilteredDmRows = dmApiRows.filter(searchMatch);
+            const broadcastTargetOptions: Array<'team' | 'cohort' | 'channel' | 'segment'> = isCoachRuntimeOperator
+              ? ['team', 'cohort', 'channel', 'segment']
+              : teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime
+                ? ['team', 'cohort', 'channel']
+                : [];
+            const effectiveBroadcastTargetScope = broadcastTargetOptions.includes(broadcastTargetScope)
+              ? broadcastTargetScope
+              : (broadcastTargetOptions[0] ?? 'team');
+            const broadcastCandidateRows = allChannelApiRows
+              .filter((row) => String(row.type ?? '').toLowerCase() !== 'direct')
+              .filter((row) => {
+                const scope = normalizeChannelTypeToScope(row.type);
+                if (effectiveBroadcastTargetScope === 'team') return scope === 'team';
+                if (effectiveBroadcastTargetScope === 'cohort') return scope === 'cohort';
+                if (effectiveBroadcastTargetScope === 'segment') return false;
+                return true;
+              })
+              .filter(searchMatch);
+            const primaryTabRows =
+              commsHubPrimaryTab === 'dms'
+                ? scopeFilteredDmRows
+                : commsHubPrimaryTab === 'channels'
+                  ? scopeFilteredChannelRows
+                  : filteredChannelApiRows;
+            const sortByReadAndActivity = (a: ChannelApiRow, b: ChannelApiRow) => {
+              const unreadDelta = Number(b.unread_count ?? 0) - Number(a.unread_count ?? 0);
+              if (unreadDelta !== 0) return unreadDelta;
+              const aTime = new Date(String(a.last_seen_at ?? a.created_at ?? 0)).getTime();
+              const bTime = new Date(String(b.last_seen_at ?? b.created_at ?? 0)).getTime();
+              return bTime - aTime;
+            };
+            const sortedPrimaryTabRows = [...primaryTabRows].sort(sortByReadAndActivity);
+            const sortedBroadcastCandidateRows = [...broadcastCandidateRows].sort(sortByReadAndActivity);
+            const searchPlaceholder =
+              commsHubPrimaryTab === 'channels'
+                ? effectiveCommsScopeFilter === 'all'
+                  ? 'Search channels...'
+                  : `Search ${effectiveCommsScopeFilter} channels...`
+                : commsHubPrimaryTab === 'dms'
+                  ? 'Search direct messages...'
+                  : commsHubPrimaryTab === 'broadcast'
+                    ? 'Search broadcast destinations...'
+                    : 'Search all communications...';
+            const selectedChannelRow =
+              filteredChannelApiRows.find((row) => String(row.id) === String(selectedChannelId ?? '')) ??
+              allChannelApiRows.find((row) => String(row.id) === String(selectedChannelId ?? '')) ??
+              null;
+            const selectedChannelResolvedId = selectedChannelRow ? String(selectedChannelRow.id) : null;
+            const selectedChannelResolvedName = selectedChannelRow?.name ?? selectedChannelName ?? null;
+            const selectedChannelType = String(selectedChannelRow?.type ?? '').toLowerCase();
+            const selectedChannelScope = normalizeChannelTypeToScope(selectedChannelRow?.type) ?? 'community';
+            const selectedChannelDisplayName =
+              selectedChannelScope === 'team' && coachingShellContext.threadHeaderDisplayName
+                ? coachingShellContext.threadHeaderDisplayName
+                : selectedChannelResolvedName;
+            const selectedDmDirectoryMember = resolveDmDirectoryMemberFromRow(selectedChannelRow);
+            const headerAvatarKind: 'dm' | 'team' | 'channel' =
+              selectedDmDirectoryMember != null ? 'dm' : selectedChannelScope === 'team' ? 'team' : 'channel';
+            const headerAvatarLabel =
+              selectedDmDirectoryMember != null
+                ? selectedDmDirectoryMember.name
+                    .split(' ')
+                    .map((part) => part[0])
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2)
+                : headerAvatarKind === 'team'
+                  ? teamIdentityAvatar
+                  : String(selectedChannelResolvedName ?? 'CH')
+                      .split(' ')
+                      .map((part) => part[0])
+                      .join('')
+                      .toUpperCase()
+                      .slice(0, 2) || 'CH';
+            const headerAvatarTone =
+              selectedDmDirectoryMember?.avatarTone ??
+              (headerAvatarKind === 'team' ? teamIdentityBackground : '#e9edf5');
+            const journeyListRows = Array.isArray(coachingJourneys) ? coachingJourneys : [];
+            const selectedJourneyId =
+              coachingShellContext.selectedJourneyId ?? (journeyListRows[0]?.id ? String(journeyListRows[0].id) : null);
+            const selectedJourneyTitle =
+              coachingShellContext.selectedJourneyTitle ??
+              (journeyListRows.find((row) => String(row.id) === selectedJourneyId)?.title ?? null);
+            const milestoneRows = Array.isArray(coachingJourneyDetail?.milestones) ? coachingJourneyDetail.milestones : [];
+            const allLessonRows = milestoneRows.flatMap((milestone) =>
+              (Array.isArray(milestone.lessons) ? milestone.lessons : []).map((lesson) => ({
+                ...lesson,
+                milestoneTitle: milestone.title,
+              }))
+            );
+            const selectedLessonId =
+              coachingShellContext.selectedLessonId ?? (allLessonRows[0]?.id ? String(allLessonRows[0].id) : null);
+            const selectedLesson =
+              allLessonRows.find((lesson) => String(lesson.id) === selectedLessonId) ?? null;
+            const selectedLessonStatus = String(selectedLesson?.progress_status ?? 'not_started') as
+              | 'not_started'
+              | 'in_progress'
+              | 'completed';
+            const contextualThreadTitle = coachingShellContext.threadTitle ?? 'Channel Thread';
+            const contextualThreadSub =
+              coachingShellContext.threadSub ??
+              'Read and send updates in this channel.';
+            const contextualChannelSub = preferredChannelScope
+              ? `Choose a ${coachingShellContext.preferredChannelLabel ?? preferredChannelScope} channel.`
+              : 'Choose a channel to continue.';
+            const shellMeta: Record<
+              CoachingShellScreen,
+              { title: string; sub: string; badge: string; primary?: { label: string; to: CoachingShellScreen }[] }
+            > = {
+              inbox: {
+                title: 'Inbox',
+                sub: 'Review coaching updates and next actions.',
+                badge: 'communication',
+                primary: [{ label: 'Open Channels', to: 'inbox_channels' }],
+              },
+              inbox_channels: {
+                title: 'Inbox / Channels',
+                sub: contextualChannelSub,
+                badge: 'communication',
+              },
+              channel_thread: {
+                title: contextualThreadTitle,
+                sub: contextualThreadSub,
+                badge: 'communication',
+              },
+              coach_broadcast_compose: {
+                title: 'Broadcast Composer',
+                sub: roleCanOpenBroadcast
+                  ? `Draft a broadcast for ${coachingShellContext.broadcastAudienceLabel ?? 'your team channel'}.`
+                  : 'Leader-only broadcast tool.',
+                badge: roleCanOpenBroadcast ? 'leader-gated' : 'blocked',
+              },
+              coaching_journeys: {
+                title: 'Coaching Journeys',
+                sub: 'Tap a journey to open milestones and lessons.',
+                badge: 'coaching_content',
+              },
+              coaching_journey_detail: {
+                title: 'Coaching Journey Detail',
+                sub: selectedJourneyTitle
+                  ? `Tap a lesson in ${selectedJourneyTitle} to open lesson detail.`
+                  : 'Select a journey to view milestones.',
+                badge: 'coaching_content',
+              },
+              coaching_lesson_detail: {
+                title: 'Coaching Lesson Detail',
+                sub: selectedLesson
+                  ? 'Read the lesson and update progress.'
+                  : 'Choose a lesson from Journey Detail.',
+                badge: 'coaching_content',
+              },
+            };
+            const meta = shellMeta[coachingShellScreen];
+            const shellPackageOutcome =
+              coachingShellScreen === 'inbox' || coachingShellScreen === 'inbox_channels'
+                ? pickRuntimePackageVisibility(
+                  channelsPackageVisibility,
+                  normalizePackagingReadModelToVisibilityOutcome(selectedChannelRow?.packaging_read_model ?? null),
+                  selectedChannelRow?.package_visibility ?? null
+                )
+                : coachingShellScreen === 'channel_thread'
+                  ? pickRuntimePackageVisibility(
+                      channelThreadPackageVisibility,
+                      normalizePackagingReadModelToVisibilityOutcome(selectedChannelRow?.packaging_read_model ?? null),
+                      selectedChannelRow?.package_visibility ?? null,
+                      channelsPackageVisibility
+                    )
+                  : coachingShellScreen === 'coach_broadcast_compose'
+                    ? pickRuntimePackageVisibility(
+                        normalizePackagingReadModelToVisibilityOutcome(selectedChannelRow?.packaging_read_model ?? null),
+                        selectedChannelRow?.package_visibility ?? null,
+                        channelsPackageVisibility
+                      )
+                    : coachingShellScreen === 'coaching_journeys'
+                      ? pickRuntimePackageVisibility(
+                          coachingJourneysPackageVisibility,
+                          normalizePackagingReadModelToVisibilityOutcome(coachingProgressSummary?.packaging_read_model ?? null),
+                          coachingProgressSummary?.package_visibility ?? null,
+                          normalizePackagingReadModelToVisibilityOutcome(journeyListRows[0]?.packaging_read_model ?? null),
+                          journeyListRows[0]?.package_visibility ?? null
+                        )
+                      : pickRuntimePackageVisibility(
+                          normalizePackagingReadModelToVisibilityOutcome(coachingJourneyDetail?.packaging_read_model ?? null),
+                          coachingJourneyDetail?.package_visibility ?? null,
+                          normalizePackagingReadModelToVisibilityOutcome(coachingJourneyDetail?.journey?.packaging_read_model ?? null),
+                          coachingJourneyDetail?.journey?.package_visibility ?? null,
+                          coachingJourneysPackageVisibility,
+                          normalizePackagingReadModelToVisibilityOutcome(coachingProgressSummary?.packaging_read_model ?? null),
+                          coachingProgressSummary?.package_visibility ?? null
+                        );
+            const shellPackageGatePresentation = deriveCoachingPackageGatePresentation(meta.title, shellPackageOutcome);
+            const shellPackageGateBlocksActions =
+              shellPackageGatePresentation.tone === 'gated' || shellPackageGatePresentation.tone === 'blocked';
+            const channelRows = ([
+              { scope: 'team', label: 'Team Updates', context: 'Team updates' },
+              { scope: 'challenge', label: 'Challenge Updates', context: 'Challenge updates' },
+              { scope: 'sponsor', label: 'Sponsor Updates', context: 'Sponsor updates' },
+              { scope: 'cohort', label: 'Cohort Updates', context: 'Cohort updates' },
+              { scope: 'community', label: 'Community Updates', context: 'Community updates' },
+            ] as const)
+              .filter((row) => {
+                if (!preferredChannelScope) return true;
+                return row.scope === preferredChannelScope || row.scope === 'community';
+              })
+              .map((row) => ({
+                ...row,
+                context:
+                  preferredChannelScope === row.scope
+                    ? `${row.context} • linked from ${sourceLabel}`
+                    : `${row.context} • optional`,
+              }));
+            const fallbackChannelRowsVisible = !Array.isArray(channelsApiRows) || (channelsApiRows?.length ?? 0) === 0;
+            const isCommsScreen =
+              coachingShellScreen === 'inbox' ||
+              coachingShellScreen === 'inbox_channels' ||
+              coachingShellScreen === 'channel_thread' ||
+              coachingShellScreen === 'coach_broadcast_compose';
+            const isCoachingContentScreen =
+              coachingShellScreen === 'coaching_journeys' ||
+              coachingShellScreen === 'coaching_journey_detail' ||
+              coachingShellScreen === 'coaching_lesson_detail';
+
+            const commsChannelRows: CommsChannelRow[] = sortedPrimaryTabRows.map((row) => {
+              const channelType = String(row.type ?? '').toLowerCase();
+              const isDirect = channelType === 'direct' || channelType === 'dm';
+              const dmMember = isDirect ? resolveDmDirectoryMemberFromRow(row) : null;
+              const backendDmName = isDirect ? String(row.dm_display_name ?? '').trim() : '';
+              const resolvedName = isDirect
+                ? backendDmName || dmMember?.name || deriveDmNameFromChannel(row.name)
+                : row.name;
+              const runtimePreview = channelPreviewById[String(row.id)] ?? null;
+              const backendPreview = String(row.last_message_preview ?? '').trim() || null;
+              const snippet = runtimePreview ?? backendPreview ?? (isDirect ? `${dmMember?.roleLabel ?? 'Member'} · Direct message` : null);
+              return {
+                id: String(row.id),
+                name: resolvedName,
+                type: row.type ?? null,
+                scope: isDirect ? 'dm' : normalizeChannelTypeToScope(row.type) ?? 'community',
+                unread_count: row.unread_count ?? null,
+                member_count: null,
+                my_role: row.my_role ?? null,
+                last_seen_at: row.last_seen_at ?? null,
+                last_message_at: row.last_message_at ?? null,
+                created_at: row.created_at ?? null,
+                snippet,
+              };
+            });
+            const commsRosterDmRows = teamMemberDirectory
+              .filter((member) => Boolean(member.userId))
+              .map((member) => ({
+                id: String(member.userId),
+                name: member.name,
+                role: member.roleLabel,
+              }));
+
+            return (
+              <>
+                {isCommsScreen ? (
+                  <CommsHub
+                    screen={coachingShellScreen as 'inbox' | 'inbox_channels' | 'channel_thread' | 'coach_broadcast_compose'}
+                    primaryTab={commsHubPrimaryTab}
+                    scopeFilter={effectiveCommsScopeFilter}
+                    searchQuery={commsHubSearchQuery}
+                    onChangePrimaryTab={(tab) => {
+                      setCommsHubPrimaryTab(tab);
+                      if (tab === 'all') {
+                        openCoachingShell('inbox', {
+                          source: 'user_tab',
+                          preferredChannelScope: null,
+                          preferredChannelLabel: null,
+                          threadTitle: null,
+                          threadSub: null,
+                          broadcastAudienceLabel: null,
+                          broadcastRoleAllowed: false,
+                        });
+                      } else if (tab === 'channels' || tab === 'dms') {
+                        openCoachingShell('inbox_channels', {
+                          source: 'user_tab',
+                          preferredChannelScope: null,
+                          preferredChannelLabel: null,
+                          threadTitle: null,
+                          threadSub: null,
+                          broadcastAudienceLabel: null,
+                          broadcastRoleAllowed: false,
+                        });
+                      } else if (tab === 'broadcast' && roleCanOpenBroadcast) {
+                        // Broadcast tab: only navigate if role gate allows
+                        openCoachingShell('coach_broadcast_compose');
+                      }
+                    }}
+                    onChangeScopeFilter={setCommsHubScopeFilter}
+                    onChangeSearchQuery={setCommsHubSearchQuery}
+                    onOpenChannel={(chId, chName, scope) => {
+                      setSelectedChannelId(chId);
+                      setSelectedChannelName(chName);
+                      setChannelMessages(null);
+                      setChannelMessageDraft('');
+                      setChannelMessageSubmitError(null);
+                      setBroadcastError(null);
+                      setBroadcastSuccessNote(null);
+                      openCoachingShell('channel_thread', {
+                        preferredChannelScope: scope as any,
+                        preferredChannelLabel: chName,
+                        threadTitle: chName,
+                        threadSub: `Messages in ${chName}.`,
+                        broadcastAudienceLabel:
+                          scope === 'team' && roleCanOpenBroadcast
+                            ? chName
+                            : coachingShellContext.broadcastAudienceLabel,
+                        broadcastRoleAllowed: scope === 'team' ? roleCanOpenBroadcast : false,
+                      });
+                    }}
+                    onOpenDm={(dmId, dmName) => {
+                      void openDirectThreadForMember({
+                        targetUserId: dmId,
+                        memberName: dmName,
+                        source: 'user_tab',
+                      }).catch((err) => {
+                        setSelectedChannelId(null);
+                        setSelectedChannelName(null);
+                        setChannelsError(err instanceof Error ? err.message : `Unable to open direct thread with ${dmName}.`);
+                      });
+                    }}
+                    onOpenBroadcast={() => {
+                      if (!roleCanOpenBroadcast) return; // safety: member/sponsor/solo cannot reach broadcast
+                      openCoachingShell('coach_broadcast_compose');
+                    }}
+                    onOpenChannelsCta={() => openCoachingShell('inbox_channels', {
+                      source: 'user_tab',
+                      preferredChannelScope: null,
+                      preferredChannelLabel: null,
+                      threadTitle: null,
+                      threadSub: null,
+                      broadcastAudienceLabel: null,
+                      broadcastRoleAllowed: false,
+                    })}
+                    onBack={() => openCoachingShell('inbox_channels', {
+                      source: 'user_tab',
+                      preferredChannelScope: null,
+                      preferredChannelLabel: null,
+                      threadTitle: null,
+                      threadSub: null,
+                      broadcastAudienceLabel: null,
+                      broadcastRoleAllowed: false,
+                    })}
+                    headerAvatarLabel={headerAvatarLabel}
+                    headerAvatarTone={headerAvatarTone}
+                    headerAvatarKind={headerAvatarKind}
+                    onPressHeaderAvatar={
+                      selectedDmDirectoryMember
+                        ? () => {
+                            setTeamFlowScreen('dashboard');
+                            setTeamProfileMemberId(selectedDmDirectoryMember.id);
+                            setActiveTab('team');
+                            setViewMode('log');
+                          }
+                        : null
+                    }
+                    personaVariant={commsPersonaVariant}
+                    roleCanBroadcast={roleCanOpenBroadcast}
+                    channels={commsChannelRows}
+                    channelsLoading={channelsLoading}
+                    channelsError={channelsError}
+                    onRetryChannels={() => void fetchChannels()}
+                    fallbackChannels={channelRows.map((r) => ({ scope: r.scope, label: r.label, context: r.context }))}
+                    fallbackDms={commsRosterDmRows}
+                    useFallback={fallbackChannelRowsVisible}
+                    selectedChannelId={selectedChannelResolvedId}
+                    selectedChannelName={selectedChannelDisplayName}
+                    messages={Array.isArray(channelMessages) ? channelMessages : []}
+                    messagesLoading={channelMessagesLoading}
+                    messagesError={channelMessagesError}
+                    currentUserId={session?.user?.id ?? null}
+                    messageDraft={channelMessageDraft}
+                    onChangeMessageDraft={(text) => {
+                      setChannelMessageDraft(text);
+                      if (channelMessageSubmitError) setChannelMessageSubmitError(null);
+                    }}
+                    messageSubmitting={channelMessageSubmitting}
+                    messageSubmitError={channelMessageSubmitError}
+                    onSendMessage={(payload) => {
+                      if (selectedChannelResolvedId) {
+                        void sendChannelMessage(selectedChannelResolvedId, { bodyOverride: payload.body });
+                      }
+                    }}
+                    onRefreshMessages={() => {
+                      if (selectedChannelResolvedId) void fetchChannelMessages(selectedChannelResolvedId);
+                    }}
+                    onOpenAiAssist={(host) =>
+                      openAiAssistShell(
+                        {
+                          host: host as any,
+                          title: host === 'channel_thread' ? 'AI Reply Draft (Approval-First)' : 'AI Broadcast Draft (Approval-First)',
+                          sub: 'Draft only. Human send is required.',
+                          targetLabel: selectedChannelResolvedName ?? contextualThreadTitle,
+                          approvedInsertOnly: true,
+                        },
+                        {
+                          prompt: host === 'channel_thread'
+                            ? `Draft a reply for ${selectedChannelResolvedName ?? contextualThreadTitle} that is supportive and action-oriented.`
+                            : `Draft a team coaching broadcast for ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'this audience'} with a clear next action.`,
+                          draft: host === 'channel_thread' ? channelMessageDraft : broadcastDraft,
+                        }
+                      )
+                    }
+                    onRequestMediaUpload={() => void requestMediaUploadUrl(selectedChannelResolvedId)}
+                    onSendLatestMediaAttachment={() => void sendLatestMediaAttachment(selectedChannelResolvedId)}
+                    mediaUploadBusy={mediaUploadBusy}
+                    mediaUploadStatus={mediaUploadStatus}
+                    liveSessionBusy={liveSessionBusy}
+                    liveSessionStatus={liveSessionStatus}
+                    canHostLiveSession={isCoachRuntimeOperator || (teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime)}
+                    onStartLiveSession={() => void startLiveSession(selectedChannelResolvedId)}
+                    onRefreshLiveSession={() => void refreshLiveSession()}
+                    onJoinLiveSession={() => void joinLiveSession()}
+                    onEndLiveSession={() => void endLiveSession()}
+                    composerBottomInset={commsComposerBottomInset}
+                    broadcastDraft={broadcastDraft}
+                    onChangeBroadcastDraft={setBroadcastDraft}
+                    broadcastTargetScope={effectiveBroadcastTargetScope}
+                    broadcastTargetOptions={broadcastTargetOptions}
+                    onChangeBroadcastTarget={setBroadcastTargetScope}
+                    broadcastSubmitting={broadcastSubmitting}
+                    broadcastError={broadcastError}
+                    broadcastSuccessNote={broadcastSuccessNote}
+                    onSendBroadcast={() => {
+                      const targetId =
+                        sortedBroadcastCandidateRows[0]?.id ?? selectedChannelResolvedId;
+                      if (targetId) void sendChannelBroadcast(String(targetId));
+                    }}
+                    gateBlocksActions={shellPackageGateBlocksActions}
+                    fmtTime={fmtMonthDayTime}
+                    fmtDate={fmtShortMonthDay}
+                  />
+                ) : null}
+                {!isCommsScreen ? (
+                <View style={styles.coachingShellCard}>
+                  {/* Comms chrome — hidden for coaching content screens (journey/lesson) */}
+                  {!isCoachingContentScreen && (
+                  <View>
+                  <View style={styles.coachingShellTopRow}>
+                    <Text style={styles.coachingShellTitle}>Comms Hub</Text>
+                    <View style={styles.coachingShellBadge}>
+                      <Text style={styles.coachingShellBadgeText}>{commsPersonaBadgeLabel}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.coachingShellSub}>{commsPersonaSummary}</Text>
+                  <View style={styles.commsHubTabRow}>
+                    {([
+                      { key: 'all' as const, label: 'All' },
+                      { key: 'channels' as const, label: 'Channels' },
+                      { key: 'dms' as const, label: 'DMs' },
+                      ...(roleCanOpenBroadcast ? [{ key: 'broadcast' as const, label: 'Broadcast' }] : []),
+                    ] as const).map((tab) => (
+                      <TouchableOpacity
+                        key={`comms-tab-${tab.key}`}
+                        style={[
+                          styles.commsHubTabBtn,
+                          commsHubPrimaryTab === tab.key ? styles.commsHubTabBtnActive : null,
+                        ]}
+                        onPress={() => {
+                          setCommsHubPrimaryTab(tab.key);
+                          if (tab.key === 'all') {
+                            openCoachingShell('inbox', {
+                              source: 'user_tab',
+                              preferredChannelScope: null,
+                              preferredChannelLabel: null,
+                              threadTitle: null,
+                              threadSub: null,
+                              broadcastAudienceLabel: null,
+                              broadcastRoleAllowed: false,
+                            });
+                            return;
+                          }
+                          if (tab.key === 'channels' || tab.key === 'dms') {
+                            openCoachingShell('inbox_channels', {
+                              source: 'user_tab',
+                              preferredChannelScope: null,
+                              preferredChannelLabel: null,
+                              threadTitle: null,
+                              threadSub: null,
+                              broadcastAudienceLabel: null,
+                              broadcastRoleAllowed: false,
+                            });
+                            return;
+                          }
+                          openCoachingShell('coach_broadcast_compose');
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.commsHubTabBtnText,
+                            commsHubPrimaryTab === tab.key ? styles.commsHubTabBtnTextActive : null,
+                          ]}
+                        >
+                          {tab.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {commsHubPrimaryTab === 'channels' ? (
+                    <View style={styles.commsHubFilterRow}>
+                      {([
+                        { key: 'all' as const, label: 'All Types' },
+                        { key: 'team' as const, label: 'Team' },
+                        { key: 'cohort' as const, label: 'Cohort' },
+                        ...(isCoachRuntimeOperator ? [{ key: 'global' as const, label: 'Global' }] : []),
+                      ] as const).map((filter) => (
+                        <TouchableOpacity
+                          key={`comms-scope-${filter.key}`}
+                          style={[
+                            styles.commsHubFilterBtn,
+                            effectiveCommsScopeFilter === filter.key ? styles.commsHubFilterBtnActive : null,
+                          ]}
+                          onPress={() => setCommsHubScopeFilter(filter.key)}
+                        >
+                          <Text
+                            style={[
+                              styles.commsHubFilterBtnText,
+                              effectiveCommsScopeFilter === filter.key ? styles.commsHubFilterBtnTextActive : null,
+                            ]}
+                          >
+                            {filter.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ) : null}
+                  <View style={styles.commsHubSearchWrap}>
+                    <Text style={styles.commsHubSearchIcon}>⌕</Text>
+                    <TextInput
+                      value={commsHubSearchQuery}
+                      onChangeText={setCommsHubSearchQuery}
+                      placeholder={searchPlaceholder}
+                      placeholderTextColor="#9aa3b0"
+                      style={styles.coachingShellSearchInput}
+                    />
+                  </View>
+                  </View>
+                  )}
+                  {!isCoachingContentScreen && (
+                  <>
+                  <Text style={styles.coachingShellSub}>Current: {meta.title} · {meta.sub}</Text>
+                  {renderCoachingPackageGateBanner(meta.title, shellPackageOutcome, { compact: true })}
+                  {shellPackageGateBlocksActions ? (
+                    renderKnownLimitedDataChip('coaching package access')
+                  ) : (
+                    <>
+                      {meta.primary?.map((action) => (
+                        <TouchableOpacity
+                          key={`${coachingShellScreen}-${action.to}`}
+                          style={styles.coachingShellPrimaryBtn}
+                          onPress={() => openCoachingShell(action.to)}
+                        >
+                          <Text style={styles.coachingShellPrimaryBtnText}>{action.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </>
+                  )}
+                  {coachingShellScreen === 'inbox'
+                    ? renderCoachingNotificationSurface(
+                        'Coaching notifications inbox rows',
+                        inboxNotificationRows,
+                        inboxNotificationSummaryEffective,
+                        {
+                          maxRows: 4,
+                          mode: 'list',
+                          emptyHint: 'No coaching notification rows are available yet.',
+                        }
+                      )
+                    : null}
+                  {coachingShellScreen === 'inbox' || coachingShellScreen === 'inbox_channels'
+                    ? renderRuntimeStateBanner(inboxRuntimeStateModel, { compact: true })
+                    : null}
+                  {coachingShellScreen === 'inbox_channels' ? (
+                    <View style={styles.coachingShellList}>
+                      {(fallbackChannelsNotificationRows.length > 0 ||
+                        Number(channelsNotificationSummary?.total_count ?? 0) > 0 ||
+                        Number(channelsNotificationSummary?.unread_count ?? 0) > 0)
+                        ? renderCoachingNotificationSurface(
+                            'Channel notification rows',
+                            fallbackChannelsNotificationRows,
+                            channelsNotificationSummary ??
+                              summarizeNotificationRows(fallbackChannelsNotificationRows, { sourceLabel: 'channels:effective' }),
+                            {
+                              compact: true,
+                              maxRows: 3,
+                              mode: 'list',
+                              emptyHint: 'No channel notification rows yet.',
+                            }
+                          )
+                        : null}
+                      {channelsLoading ? (
+                        <View style={styles.coachingJourneyEmptyCard}>
+                          <ActivityIndicator size="small" />
+                          <Text style={styles.coachingJourneyEmptyTitle}>Loading channels…</Text>
+                        </View>
+                      ) : channelsError ? (
+                        <View style={styles.coachingJourneyEmptyCard}>
+                          <Text style={styles.coachingJourneyEmptyTitle}>Channels failed to load</Text>
+                          <Text style={styles.coachingJourneyEmptySub}>{channelsError}</Text>
+                          <TouchableOpacity style={styles.coachingJourneyRetryBtn} onPress={() => void fetchChannels()}>
+                            <Text style={styles.coachingJourneyRetryBtnText}>Retry Channels</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : sortedPrimaryTabRows.length > 0 ? (
+                        sortedPrimaryTabRows.map((row) => {
+                          const rowScope = normalizeChannelTypeToScope(row.type) ?? 'community';
+                          const isSelected = String(row.id) === String(selectedChannelResolvedId ?? '');
+                          const typeLabel = String(row.type ?? 'channel');
+                          const scopeLabel =
+                            rowScope === 'community'
+                              ? 'Community'
+                              : rowScope === 'challenge'
+                                ? 'Challenge'
+                                : rowScope.charAt(0).toUpperCase() + rowScope.slice(1);
+                          const lastActivityPreview = row.last_seen_at
+                            ? `Last activity ${fmtMonthDayTime(row.last_seen_at)}`
+                            : row.created_at
+                              ? `Created ${fmtShortMonthDay(row.created_at)}`
+                              : 'Recent activity unavailable';
+                          return (
+                            <TouchableOpacity
+                              key={`api-channel-${row.id}`}
+                            style={[
+                              styles.coachingShellListRow,
+                              isSelected ? styles.coachingShellListRowSelected : null,
+                              shellPackageGateBlocksActions ? styles.disabled : null,
+                            ]}
+                              disabled={shellPackageGateBlocksActions}
+                              onPress={() => {
+                                if (shellPackageGateBlocksActions) return;
+                                setSelectedChannelId(String(row.id));
+                                setSelectedChannelName(row.name);
+                                setChannelMessageSubmitError(null);
+                                setBroadcastError(null);
+                                setBroadcastSuccessNote(null);
+                                openCoachingShell('channel_thread', {
+                                  preferredChannelScope: rowScope,
+                                  preferredChannelLabel: row.name,
+                                  threadTitle: row.name,
+                                  threadSub: `Messages in ${row.name}.`,
+                                  broadcastAudienceLabel:
+                                    rowScope === 'team' && roleCanOpenBroadcast
+                                      ? row.name
+                                      : coachingShellContext.broadcastAudienceLabel,
+                                  broadcastRoleAllowed: rowScope === 'team' ? roleCanOpenBroadcast : false,
+                                });
+                              }}
+                            >
+                              <View style={styles.coachingShellListIcon}>
+                                <Text style={styles.coachingShellListIconText}>#</Text>
+                              </View>
+                              <View style={styles.coachingShellListCopy}>
+                                <View style={styles.commsChannelRowTitleWrap}>
+                                  <Text numberOfLines={1} style={styles.coachingShellListTitle}>{row.name}</Text>
+                                  {Number(row.unread_count ?? 0) > 0 ? (
+                                    <View style={styles.commsUnreadBadge}>
+                                      <Text style={styles.commsUnreadBadgeText}>{Math.max(0, Number(row.unread_count ?? 0))}</Text>
+                                    </View>
+                                  ) : null}
+                                </View>
+                                <View style={styles.coachingShellChipRow}>
+                                  <View style={styles.coachingShellChip}>
+                                    <Text style={styles.coachingShellChipText}>{scopeLabel}</Text>
+                                  </View>
+                                  <View style={styles.coachingShellChip}>
+                                    <Text style={styles.coachingShellChipText}>{typeLabel}</Text>
+                                  </View>
+                                  {row.my_role ? (
+                                    <View style={styles.coachingShellChip}>
+                                      <Text style={styles.coachingShellChipText}>{row.my_role}</Text>
+                                    </View>
+                                  ) : null}
+                                </View>
+                                <Text numberOfLines={1} style={styles.coachingShellListSubText}>{lastActivityPreview}</Text>
+                              </View>
+                              <Text style={styles.coachingShellListChevron}>›</Text>
+                            </TouchableOpacity>
+                          );
+                        })
+                      ) : fallbackChannelRowsVisible ? (
+                        commsHubPrimaryTab === 'dms'
+                          ? commsRosterDmRows.map((member) => (
+                              <TouchableOpacity
+                                key={member.id}
+                                style={[styles.coachingShellListRow, shellPackageGateBlocksActions ? styles.disabled : null]}
+                                disabled={shellPackageGateBlocksActions}
+                                onPress={() =>
+                                  shellPackageGateBlocksActions
+                                    ? undefined
+                                    : void openDirectThreadForMember({
+                                        targetUserId: member.id,
+                                        memberName: member.name,
+                                        source: 'user_tab',
+                                      }).catch((err) => {
+                                        setSelectedChannelId(null);
+                                        setSelectedChannelName(null);
+                                        setChannelsError(err instanceof Error ? err.message : `Unable to open direct thread with ${member.name}.`);
+                                      })
+                                }
+                              >
+                                <View style={styles.coachingShellListIcon}>
+                                  <Text style={styles.coachingShellListIconText}>@</Text>
+                                </View>
+                                <View style={styles.coachingShellListCopy}>
+                                  <Text style={styles.coachingShellListTitle}>{member.name}</Text>
+                                  <Text style={styles.coachingShellListSubText}>Direct thread • {member.role}</Text>
+                                </View>
+                                <Text style={styles.coachingShellListChevron}>›</Text>
+                              </TouchableOpacity>
+                            ))
+                          : channelRows.map((row) => (
+                              <TouchableOpacity
+                                key={row.label}
+                                style={[styles.coachingShellListRow, shellPackageGateBlocksActions ? styles.disabled : null]}
+                                disabled={shellPackageGateBlocksActions}
+                                onPress={() =>
+                                  shellPackageGateBlocksActions
+                                    ? undefined
+                                    : openCoachingShell('channel_thread', {
+                                        preferredChannelScope: row.scope,
+                                        preferredChannelLabel: row.label,
+                                        threadTitle: row.label,
+                                        threadSub: `${row.context}.`,
+                                        broadcastAudienceLabel:
+                                          row.scope === 'team' && roleCanOpenBroadcast
+                                            ? coachingShellContext.broadcastAudienceLabel ?? 'The Elite Group'
+                                            : null,
+                                        broadcastRoleAllowed: row.scope === 'team' ? roleCanOpenBroadcast : false,
+                                      })
+                                }
+                              >
+                                <View style={styles.coachingShellListIcon}>
+                                  <Text style={styles.coachingShellListIconText}>#</Text>
+                                </View>
+                                <View style={styles.coachingShellListCopy}>
+                                  <View style={styles.commsChannelRowTitleWrap}>
+                                    <Text style={styles.coachingShellListTitle}>{row.label}</Text>
+                                  </View>
+                                  <Text numberOfLines={1} style={styles.coachingShellListSubText}>{row.context}</Text>
+                                </View>
+                                <Text style={styles.coachingShellListChevron}>›</Text>
+                              </TouchableOpacity>
+                            ))
+                      ) : (
+                        <View style={styles.coachingJourneyEmptyCard}>
+                          <Text style={styles.coachingJourneyEmptyTitle}>
+                            {commsHubPrimaryTab === 'dms' ? 'No direct messages for this view' : 'No channels for this scope'}
+                          </Text>
+                          <Text style={styles.coachingJourneyEmptySub}>
+                            {commsHubPrimaryTab === 'dms'
+                              ? 'No direct message rows match the active search/filter.'
+                              : 'The API returned channels, but none match the current scope/search filter.'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  ) : null}
+                  {coachingShellScreen === 'channel_thread' ? (
+                    <View style={styles.coachingShellComposeCard}>
+                      {renderRuntimeStateBanner(channelThreadRuntimeStateModel, { compact: true })}
+                      <Text style={styles.coachingShellComposeTitle}>
+                        {selectedChannelResolvedName ?? contextualThreadTitle}
+                      </Text>
+                      <Text style={styles.coachingShellComposeSub}>
+                        {selectedChannelResolvedId
+                          ? 'Channel messages'
+                          : 'Select a channel to start messaging.'}
+                      </Text>
+                      {renderCoachingNotificationSurface(
+                        'Thread system notifications',
+                        channelThreadNotificationItems,
+                        channelThreadNotificationSummary,
+                        {
+                          compact: true,
+                          maxRows: 2,
+                          mode: 'thread',
+                          emptyHint: 'No thread notification rows returned for this channel.',
+                        }
+                      )}
+                      {shellPackageGateBlocksActions ? (
+                        renderKnownLimitedDataChip('thread actions')
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.coachingAiAssistBtn}
+                          onPress={() =>
+                            openAiAssistShell(
+                              {
+                                host: 'channel_thread',
+                                title: 'AI Reply Draft (Approval-First)',
+                                sub: 'Draft only. Human send is required.',
+                                targetLabel: selectedChannelResolvedName ?? contextualThreadTitle,
+                                approvedInsertOnly: true,
+                              },
+                              {
+                                prompt: `Draft a reply for ${selectedChannelResolvedName ?? contextualThreadTitle} that is supportive and action-oriented.`,
+                                draft: channelMessageDraft,
+                              }
+                            )
+                          }
+                        >
+                          <Text style={styles.coachingAiAssistBtnText}>AI Assist Draft / Rewrite</Text>
+                        </TouchableOpacity>
+                      )}
+                      {channelMessagesError ? (
+                        <Text style={styles.coachingJourneyInlineError}>{channelMessagesError}</Text>
+                      ) : null}
+                      {channelMessagesLoading ? (
+                        <View style={styles.coachingJourneyEmptyCard}>
+                          <ActivityIndicator size="small" />
+                          <Text style={styles.coachingJourneyEmptyTitle}>Loading messages…</Text>
+                        </View>
+                      ) : Array.isArray(channelMessages) && channelMessages.length > 0 ? (
+                        <View style={styles.coachingThreadMessagesList}>
+                          {channelMessages.map((message, index) => {
+                            const isMine = String(message.sender_user_id ?? '') === String(session?.user?.id ?? '');
+                            const isBroadcast = String(message.message_type ?? '') === 'broadcast';
+                            const previous = index > 0 ? channelMessages[index - 1] : null;
+                            const startsGroup =
+                              !previous || String(previous.sender_user_id ?? '') !== String(message.sender_user_id ?? '');
+                            const metaLabel = startsGroup
+                              ? `${isBroadcast ? 'Broadcast' : 'Message'} • ${fmtMonthDayTime(message.created_at ?? null)}`
+                              : fmtMonthDayTime(message.created_at ?? null);
+                            return (
+                              <View
+                                key={`channel-message-${message.id}`}
+                                style={[
+                                  styles.coachingThreadMessageBubble,
+                                  isMine ? styles.coachingThreadMessageBubbleMine : null,
+                                  startsGroup ? styles.coachingThreadMessageBubbleStart : styles.coachingThreadMessageBubbleFollow,
+                                ]}
+                              >
+                                <Text style={[styles.coachingThreadMessageMeta, !startsGroup ? styles.coachingThreadMessageMetaFollow : null]}>
+                                  {metaLabel}
+                                </Text>
+                                <Text style={styles.coachingThreadMessageBody}>{message.body}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      ) : (
+                        <View style={styles.coachingJourneyEmptyCard}>
+                          <Text style={styles.coachingJourneyEmptyTitle}>
+                            {selectedChannelResolvedId ? 'No messages yet' : 'Thread shell only'}
+                          </Text>
+                          <Text style={styles.coachingJourneyEmptySub}>
+                            {selectedChannelResolvedId
+                              ? 'This channel has no visible messages yet.'
+                              : 'Select an API channel from Inbox / Channels to enable read/send behavior.'}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.coachingThreadComposerWrap}>
+                        <TextInput
+                          value={channelMessageDraft}
+                          onChangeText={(text) => {
+                            setChannelMessageDraft(text);
+                            if (channelMessageSubmitError) setChannelMessageSubmitError(null);
+                          }}
+                          placeholder="Write a message…"
+                          placeholderTextColor="#9aa3b0"
+                          multiline
+                          style={styles.coachingThreadComposerInput}
+                        />
+                        {channelMessageSubmitError ? (
+                          <Text style={styles.coachingJourneyInlineError}>{channelMessageSubmitError}</Text>
+                        ) : null}
+                        <View style={styles.commsComposerActionRow}>
+                          <TouchableOpacity
+                            style={[styles.commsComposerGhostBtn, channelMessageSubmitting ? styles.disabled : null]}
+                            disabled={channelMessageSubmitting}
+                            onPress={() => {
+                              if (selectedChannelResolvedId) {
+                                void fetchChannelMessages(selectedChannelResolvedId);
+                              }
+                            }}
+                          >
+                            <Text style={styles.commsComposerGhostBtnText}>Refresh</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[
+                              styles.commsComposerSendBtn,
+                              (!selectedChannelResolvedId || channelMessageSubmitting || shellPackageGateBlocksActions)
+                                ? styles.disabled
+                                : null,
+                            ]}
+                            disabled={!selectedChannelResolvedId || channelMessageSubmitting || shellPackageGateBlocksActions}
+                            onPress={() => {
+                              if (selectedChannelResolvedId) void sendChannelMessage(selectedChannelResolvedId);
+                            }}
+                          >
+                            <Text style={styles.commsComposerSendBtnText}>
+                              {channelMessageSubmitting ? 'Sending…' : 'Send'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  ) : null}
+                  {coachingShellScreen === 'coach_broadcast_compose' ? (
+                    <View style={styles.coachingShellComposeCard}>
+                      <Text style={styles.coachingShellComposeTitle}>Broadcast Composer</Text>
+                      <Text style={styles.coachingShellComposeSub}>
+                        {roleCanOpenBroadcast
+                          ? `Role-gated broadcast entry. Audience context: ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'choose a destination'}.`
+                          : 'Broadcast is hidden for member/solo/sponsor runtime flows.'}
+                      </Text>
+                      {!roleCanOpenBroadcast || shellPackageGateBlocksActions ? (
+                        renderKnownLimitedDataChip('broadcast compose access')
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.coachingAiAssistBtn}
+                          onPress={() =>
+                            openAiAssistShell(
+                              {
+                                host: 'coach_broadcast_compose',
+                                title: 'AI Broadcast Draft (Approval-First)',
+                                sub: 'Draft only. Human send is required.',
+                                targetLabel:
+                                  coachingShellContext.broadcastAudienceLabel ??
+                                  selectedChannelResolvedName ??
+                                  'Broadcast audience',
+                                approvedInsertOnly: true,
+                              },
+                              {
+                                prompt: `Draft a team coaching broadcast for ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'this audience'} with a clear next action.`,
+                                draft: broadcastDraft,
+                              }
+                            )
+                          }
+                        >
+                            <Text style={styles.coachingAiAssistBtnText}>AI Assist Draft / Rewrite</Text>
+                          </TouchableOpacity>
+                      )}
+                      {roleCanOpenBroadcast ? (
+                        <>
+                          <View style={styles.commsHubTabRow}>
+                            {broadcastTargetOptions.map((target) => (
+                              <TouchableOpacity
+                                key={`broadcast-target-${target}`}
+                                style={[
+                                  styles.commsHubFilterBtn,
+                                  effectiveBroadcastTargetScope === target ? styles.commsHubFilterBtnActive : null,
+                                ]}
+                                onPress={() => {
+                                  setBroadcastTargetScope(target);
+                                  setBroadcastError(null);
+                                  setBroadcastSuccessNote(null);
+                                }}
+                              >
+                                <Text
+                                  style={[
+                                    styles.commsHubFilterBtnText,
+                                    effectiveBroadcastTargetScope === target ? styles.commsHubFilterBtnTextActive : null,
+                                  ]}
+                                >
+                                  {target === 'team'
+                                    ? 'Team'
+                                    : target === 'cohort'
+                                      ? 'Cohort'
+                                      : target === 'segment'
+                                        ? 'Segment'
+                                        : 'Channel'}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                          {effectiveBroadcastTargetScope === 'segment' ? (
+                            <View style={styles.coachingJourneyEmptyCard}>
+                              <Text style={styles.coachingJourneyEmptyTitle}>Segment broadcasts are coach-only</Text>
+                              <Text style={styles.coachingJourneyEmptySub}>
+                                Segments are broadcast targets and do not appear in channel lists.
+                              </Text>
+                            </View>
+                          ) : null}
+                          <View style={styles.coachingShellList}>
+                            {effectiveBroadcastTargetScope !== 'segment' && sortedBroadcastCandidateRows.length > 0 ? (
+                              sortedBroadcastCandidateRows.slice(0, 8).map((row) => {
+                                const isActive = String(row.id) === String(selectedChannelResolvedId ?? '');
+                                const scope = normalizeChannelTypeToScope(row.type) ?? 'community';
+                                return (
+                                  <TouchableOpacity
+                                    key={`broadcast-destination-${row.id}`}
+                                    style={[styles.coachingShellListRow, isActive ? styles.coachingShellListRowSelected : null]}
+                                    onPress={() => {
+                                      setSelectedChannelId(String(row.id));
+                                      setSelectedChannelName(row.name);
+                                    }}
+                                  >
+                                    <View style={styles.coachingShellListIcon}>
+                                      <Text style={styles.coachingShellListIconText}>#</Text>
+                                    </View>
+                                    <View style={styles.coachingShellListCopy}>
+                                      <View style={styles.commsChannelRowTitleWrap}>
+                                        <Text style={styles.coachingShellListTitle}>{row.name}</Text>
+                                        {Number(row.unread_count ?? 0) > 0 ? (
+                                          <View style={styles.commsUnreadBadge}>
+                                            <Text style={styles.commsUnreadBadgeText}>{Math.max(0, Number(row.unread_count ?? 0))}</Text>
+                                          </View>
+                                        ) : null}
+                                      </View>
+                                      <Text numberOfLines={1} style={styles.coachingShellListSubText}>
+                                        {scope} • {String(row.type ?? 'channel')}
+                                      </Text>
+                                    </View>
+                                    <Text style={styles.coachingShellListChevron}>›</Text>
+                                  </TouchableOpacity>
+                                );
+                              })
+                            ) : (
+                              <View style={styles.coachingJourneyEmptyCard}>
+                                <Text style={styles.coachingJourneyEmptyTitle}>
+                                  {effectiveBroadcastTargetScope === 'segment'
+                                    ? 'Select a non-segment target to route by channel'
+                                    : 'No destination channels found'}
+                                </Text>
+                                <Text style={styles.coachingJourneyEmptySub}>
+                                  {effectiveBroadcastTargetScope === 'segment'
+                                    ? 'Team, cohort, and channel targets use channel destinations.'
+                                    : 'No channels match this target scope for your current role.'}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        </>
+                      ) : null}
+                      <View style={styles.coachingShellInputGhost}>
+                        <Text style={styles.coachingShellInputGhostText}>
+                          {roleCanOpenBroadcast
+                            ? `Broadcast path: /api/channels/{id}/broadcast (${selectedChannelResolvedId ? `selected ${selectedChannelResolvedName ?? 'channel'}` : 'select a destination channel first'})`
+                            : 'Audience selector unavailable for this persona'}
+                        </Text>
+                      </View>
+                      <TextInput
+                        value={broadcastDraft}
+                        onChangeText={(text) => {
+                          setBroadcastDraft(text);
+                          if (broadcastError) setBroadcastError(null);
+                          if (broadcastSuccessNote) setBroadcastSuccessNote(null);
+                        }}
+                        placeholder="Broadcast message body…"
+                        placeholderTextColor="#9aa3b0"
+                        multiline
+                        style={[styles.coachingThreadComposerInput, styles.coachingThreadComposerInputTall]}
+                      />
+                      {broadcastError ? <Text style={styles.coachingJourneyInlineError}>{broadcastError}</Text> : null}
+                      {broadcastSuccessNote ? <Text style={styles.coachingThreadSuccessText}>{broadcastSuccessNote}</Text> : null}
+                      <View style={styles.commsComposerActionRow}>
+                        <TouchableOpacity
+                          style={[styles.commsComposerGhostBtn, channelsLoading ? styles.disabled : null]}
+                          disabled={channelsLoading}
+                          onPress={() => void fetchChannels()}
+                        >
+                          <Text style={styles.commsComposerGhostBtnText}>Refresh Channels</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.commsComposerSendBtn,
+                            (!roleCanOpenBroadcast || !selectedChannelResolvedId || broadcastSubmitting || shellPackageGateBlocksActions)
+                              ? styles.disabled
+                              : null,
+                          ]}
+                          disabled={!roleCanOpenBroadcast || !selectedChannelResolvedId || broadcastSubmitting || shellPackageGateBlocksActions}
+                          onPress={() => {
+                            if (selectedChannelResolvedId) void sendChannelBroadcast(selectedChannelResolvedId);
+                          }}
+                        >
+                          <Text style={styles.commsComposerSendBtnText}>
+                            {shellPackageGateBlocksActions
+                              ? 'Package Gated'
+                              : broadcastSubmitting
+                                ? 'Sending…'
+                                : roleCanOpenBroadcast
+                                  ? 'Send Broadcast'
+                                  : 'Leader Only'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : null}
+                  </>
+                  )}
+                  {coachingShellScreen === 'coaching_journeys' ? (
+                    <View style={styles.coachingJourneyModule}>
+                      {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
+                      {renderCoachingNotificationSurface(
+                        'Coaching journey notifications',
+                        journeysNotificationRows,
+                        journeysNotificationSummaryEffective,
+                        {
+                          compact: true,
+                          maxRows: 3,
+                          mode: 'banner',
+                          emptyHint: 'No coaching journey notifications available.',
+                        }
+                      )}
+                      {shellPackageGateBlocksActions ? (
+                        renderKnownLimitedDataChip('journey actions')
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.coachingAiAssistBtn}
+                          onPress={() =>
+                            openAiAssistShell(
+                              {
+                                host: 'coaching_journeys',
+                                title: 'AI Coaching Suggestion (Approval-First)',
+                                sub: 'Draft only. Human review required.',
+                                targetLabel: selectedJourneyTitle ?? 'Coaching Journeys',
+                                approvedInsertOnly: true,
+                              },
+                              {
+                                prompt: `Draft a coaching suggestion based on ${selectedJourneyTitle ?? 'the current journeys'} progress summary.`,
+                              }
+                            )
+                          }
+                        >
+                          <Text style={styles.coachingAiAssistBtnText}>AI Coaching Suggestion Draft</Text>
+                        </TouchableOpacity>
+                      )}
+                      <View style={styles.coachingJourneySummaryRow}>
+                        <View style={styles.coachingJourneySummaryCard}>
+                          <Text style={styles.coachingJourneySummaryLabel}>Progress Rows</Text>
+                          <Text style={styles.coachingJourneySummaryValue}>
+                            {coachingProgressLoading ? '…' : String(coachingProgressSummary?.total_progress_rows ?? 0)}
+                          </Text>
+                        </View>
+                        <View style={styles.coachingJourneySummaryCard}>
+                          <Text style={styles.coachingJourneySummaryLabel}>Completed</Text>
+                          <Text style={styles.coachingJourneySummaryValue}>
+                            {coachingProgressLoading
+                              ? '…'
+                              : String(coachingProgressSummary?.status_counts?.completed ?? 0)}
+                          </Text>
+                        </View>
+                        <View style={styles.coachingJourneySummaryCard}>
+                          <Text style={styles.coachingJourneySummaryLabel}>Completion</Text>
+                          <Text style={styles.coachingJourneySummaryValue}>
+                            {coachingProgressLoading
+                              ? '…'
+                              : `${Math.round(Number(coachingProgressSummary?.completion_percent ?? 0))}%`}
+                          </Text>
+                        </View>
+                      </View>
+                      {coachingProgressError ? (
+                        <Text style={styles.coachingJourneyInlineError}>{coachingProgressError}</Text>
+                      ) : null}
+                      {coachingJourneysLoading ? (
+                        <View style={styles.coachingJourneyEmptyCard}>
+                          <ActivityIndicator size="small" />
+                          <Text style={styles.coachingJourneyEmptyTitle}>Loading coaching journeys…</Text>
+                        </View>
+                      ) : coachingJourneysError ? (
+                        <View style={styles.coachingJourneyEmptyCard}>
+                          <Text style={styles.coachingJourneyEmptyTitle}>Journeys failed to load</Text>
+                          <Text style={styles.coachingJourneyEmptySub}>Could not load journeys.</Text>
+                          <TouchableOpacity
+                            style={styles.coachingJourneyRetryBtn}
+                            onPress={() => {
+                              void fetchCoachingJourneys();
+                              void fetchCoachingProgressSummary();
+                            }}
+                          >
+                            <Text style={styles.coachingJourneyRetryBtnText}>Retry Journeys</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : journeyListRows.length === 0 ? (
+                        <View style={styles.coachingJourneyEmptyCard}>
+                          <Text style={styles.coachingJourneyEmptyTitle}>No journeys available</Text>
+                          <Text style={styles.coachingJourneyEmptySub}>No visible journeys in this scope.</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.coachingJourneyListCard}>
+                          {journeyListRows.map((journey, idx) => {
+                            const lessonsTotal = Number(journey.lessons_total ?? 0);
+                            const lessonsCompleted = Number(journey.lessons_completed ?? 0);
+                            const pct = Math.max(0, Math.round(Number(journey.completion_percent ?? 0)));
+                            const isSelected = String(journey.id) === String(selectedJourneyId ?? '');
+                            return (
+                              <TouchableOpacity
+                                key={`coaching-journey-${journey.id}`}
+                                style={[
+                                  styles.coachingJourneyRow,
+                                  idx > 0 && styles.coachingJourneyRowDivider,
+                                  isSelected ? styles.coachingJourneyRowSelected : null,
+                                  shellPackageGateBlocksActions ? styles.disabled : null,
+                                ]}
+                                disabled={shellPackageGateBlocksActions}
+                                onPress={() =>
+                                  openCoachingShell('coaching_journey_detail', {
+                                    source: coachingShellContext.source,
+                                    selectedJourneyId: String(journey.id),
+                                    selectedJourneyTitle: journey.title,
+                                    selectedLessonId: null,
+                                    selectedLessonTitle: null,
+                                  })
+                                }
+                              >
+                                <View style={styles.coachingJourneyRowCopy}>
+                                  <Text numberOfLines={1} style={styles.coachingJourneyRowTitle}>{journey.title}</Text>
+                                  <Text numberOfLines={2} style={styles.coachingJourneyRowSub}>
+                                    {(journey.description || 'No journey description yet.').trim()}
+                                  </Text>
+                                  <Text style={styles.coachingJourneyRowMeta}>
+                                    {Number(journey.milestones_count ?? 0)} milestones • {lessonsCompleted}/{lessonsTotal} lessons completed
+                                  </Text>
+                                </View>
+                                <View style={styles.coachingJourneyRowMetricWrap}>
+                                  <Text style={styles.coachingJourneyRowMetric}>{pct}%</Text>
+                                  <Text style={styles.coachingJourneyRowChevron}>›</Text>
+                                </View>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  ) : null}
+                  {coachingShellScreen === 'coaching_journey_detail' ? (
+                    <View style={styles.coachingJourneyModule}>
+                      {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
+                      {renderCoachingNotificationSurface(
+                        'Journey detail notifications',
+                        journeysNotificationRows,
+                        journeysNotificationSummaryEffective,
+                        {
+                          compact: true,
+                          maxRows: 2,
+                          mode: 'banner',
+                          emptyHint: 'No journey detail notifications available.',
+                        }
+                      )}
+                      {!selectedJourneyId ? (
+                        <View style={styles.coachingJourneyEmptyCard}>
+                          <Text style={styles.coachingJourneyEmptyTitle}>Choose a journey first</Text>
+                          <Text style={styles.coachingJourneyEmptySub}>Open Coaching Journeys to continue.</Text>
+                        </View>
+                      ) : coachingJourneyDetailLoading ? (
+                        <View style={styles.coachingJourneyEmptyCard}>
+                          <ActivityIndicator size="small" />
+                          <Text style={styles.coachingJourneyEmptyTitle}>Loading journey detail…</Text>
+                        </View>
+                      ) : coachingJourneyDetailError ? (
+                        <View style={styles.coachingJourneyEmptyCard}>
+                          <Text style={styles.coachingJourneyEmptyTitle}>Journey detail failed to load</Text>
+                          <Text style={styles.coachingJourneyEmptySub}>Could not load journey detail.</Text>
+                          <TouchableOpacity
+                            style={styles.coachingJourneyRetryBtn}
+                            onPress={() => {
+                              if (selectedJourneyId) void fetchCoachingJourneyDetail(selectedJourneyId);
+                            }}
+                          >
+                            <Text style={styles.coachingJourneyRetryBtnText}>Retry Detail</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <>
+                          <View style={styles.coachingJourneyDetailHeader}>
+                            <Text style={styles.coachingJourneyDetailTitle}>
+                              {coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'Journey Detail'}
+                            </Text>
+                            <Text style={styles.coachingJourneyDetailSub}>
+                              {String(coachingJourneyDetail?.journey?.description ?? 'Milestones and lessons loaded from coaching endpoints.')}
+                            </Text>
+                          </View>
+                          <View style={styles.coachingLessonActionRow}>
+                            <TouchableOpacity
+                              style={styles.coachingLessonActionBtn}
+                              onPress={() =>
+                                openCoachingShell('coaching_journeys', {
+                                  source: coachingShellContext.source,
+                                  selectedJourneyId: selectedJourneyId ?? null,
+                                  selectedJourneyTitle:
+                                    coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
+                                  selectedLessonId: null,
+                                  selectedLessonTitle: null,
+                                })
+                              }
+                            >
+                              <Text style={styles.coachingLessonActionBtnText}>Back to Journeys</Text>
+                            </TouchableOpacity>
+                          </View>
+                          {shellPackageGateBlocksActions ? (
+                            renderKnownLimitedDataChip('journey detail actions')
+                          ) : (
+                            <TouchableOpacity
+                              style={styles.coachingAiAssistBtn}
+                              onPress={() =>
+                                openAiAssistShell(
+                                  {
+                                    host: 'coaching_journey_detail',
+                                    title: 'AI Journey Coaching Draft (Approval-First)',
+                                    sub: 'Draft only. Human review required.',
+                                    targetLabel:
+                                      coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'Journey Detail',
+                                    approvedInsertOnly: true,
+                                  },
+                                  {
+                                    prompt: `Draft a coaching note for the journey ${coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'current journey'} using milestone progress context.`,
+                                  }
+                                )
+                              }
+                            >
+                              <Text style={styles.coachingAiAssistBtnText}>AI Journey Draft</Text>
+                            </TouchableOpacity>
+                          )}
+
+                          {/* ── Enrolled members list ── */}
+                          {(() => {
+                            const journeyTitle = coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? '';
+                            const journeyId = selectedJourneyId ?? '';
+                            const enrolledMembers = teamMemberDirectory.filter(
+                              (m) => m.journeys.some((j) => j === journeyTitle || j === journeyId)
+                            );
+                            return (
+                              <View style={styles.cwfJourneyMembersWrap}>
+                                <View style={styles.cwfJourneyMembersHeader}>
+                                  <Text style={styles.cwfJourneyMembersTitle}>
+                                    Members {enrolledMembers.length > 0 ? `(${enrolledMembers.length})` : ''}
+                                  </Text>
+                                  {enrolledMembers.length > 0 && isCoachRuntimeOperator && (
+                                    <TouchableOpacity
+                                      style={styles.cwfJourneyMembersBroadcastBtn}
+                                      onPress={() => {
+                                        openCoachingShell('coach_broadcast_compose', {
+                                          broadcastAudienceLabel: `${journeyTitle} enrollees`,
+                                          broadcastRoleAllowed: true,
+                                        });
+                                      }}
+                                    >
+                                      <Text style={styles.cwfJourneyMembersBroadcastText}>📣 Broadcast</Text>
+                                    </TouchableOpacity>
+                                  )}
+                                </View>
+                                {enrolledMembers.length === 0 ? (
+                                  <Text style={styles.cwfEmpty}>No enrolled members found for this journey.</Text>
+                                ) : (
+                                  enrolledMembers.slice(0, 20).map((member) => (
+                                    <TouchableOpacity
+                                      key={member.id}
+                                      style={styles.cwfJourneyMemberRow}
+                                      onPress={() => setTeamProfileMemberId(member.id)}
+                                    >
+                                      <View style={[styles.cwfJourneyMemberAvatar, { backgroundColor: member.avatarTone || '#e8f0fe' }]}>
+                                        <Text style={styles.cwfJourneyMemberAvatarText}>
+                                          {member.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                        </Text>
+                                      </View>
+                                      <View style={styles.cwfJourneyMemberInfo}>
+                                        <Text style={styles.cwfJourneyMemberName} numberOfLines={1}>{member.name}</Text>
+                                        <Text style={styles.cwfJourneyMemberRole} numberOfLines={1}>{member.roleLabel || 'Member'}</Text>
+                                      </View>
+                                      <Text style={styles.cwfJourneyMemberChevron}>›</Text>
+                                    </TouchableOpacity>
+                                  ))
+                                )}
+                              </View>
+                            );
+                          })()}
+
+                          {/* ── Journey Builder: save status banner ── */}
+                          {jbSaveState !== 'idle' && (
+                            <View style={[styles.jbSaveBanner, jbSaveState === 'error' ? styles.jbSaveBannerError : jbSaveState === 'pending' ? styles.jbSaveBannerPending : styles.jbSaveBannerOk]}>
+                              <Text style={styles.jbSaveBannerText}>
+                                {jbSaveState === 'pending' ? '⏳ ' : jbSaveState === 'error' ? '⚠️ ' : '✅ '}
+                                {jbSaveMessage}
+                              </Text>
+                            </View>
+                          )}
+
+                          {/* Moving-item banner */}
+                          {jbMovingItem && (
+                            <View style={{ backgroundColor: '#eff6ff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, marginBottom: 6, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const }}>
+                              <Text style={{ fontSize: 12, color: '#1e40af' }}>
+                                Moving {jbMovingItem.type === 'lesson' ? 'lesson' : 'task'} — tap another ⠿ to place
+                              </Text>
+                              <TouchableOpacity onPress={() => setJbMovingItem(null)} style={{ paddingHorizontal: 8, paddingVertical: 2 }}>
+                                <Text style={{ fontSize: 12, fontWeight: '600' as const, color: '#3b82f6' }}>Cancel</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+
+                          {/* ── Journey Builder: action bar (coach operators) ── */}
+                          {isCoachRuntimeOperator && !shellPackageGateBlocksActions && (
+                            <View style={styles.jbActionBar}>
+                              <TouchableOpacity
+                                style={styles.jbActionBtn}
+                                onPress={() => {
+                                  const jid = selectedJourneyId;
+                                  if (jid) void jbAddLesson(jid);
+                                }}
+                              >
+                                <Text style={styles.jbActionBtnText}>＋ Lesson</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.jbActionBtn, styles.jbActionBtnSecondary]}
+                                onPress={() => setJbShowAssetLibrary((prev) => !prev)}
+                              >
+                                <Text style={[styles.jbActionBtnText, styles.jbActionBtnSecondaryText]}>
+                                  {jbShowAssetLibrary ? '✕ Close Library' : '📚 Asset Library'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+
+                          {/* ── Asset Library Panel ── */}
+                          {jbShowAssetLibrary && isCoachRuntimeOperator && (
+                            <View style={styles.jbAssetLibraryPanel}>
+                              <Text style={styles.jbAssetLibraryTitle}>Asset Library</Text>
+                              {jbAssets.length === 0 ? (
+                                <Text style={styles.jbAssetLibraryEmpty}>No assets available. Assets from the coaching library will appear here.</Text>
+                              ) : (
+                                <>
+                                  {jbCollections.length > 0 && (
+                                    <View style={styles.jbAssetCollectionRow}>
+                                      {jbCollections.map((col) => (
+                                        <TouchableOpacity key={col.id} style={styles.jbAssetCollectionChip}>
+                                          <Text style={styles.jbAssetCollectionChipText} numberOfLines={1}>{col.name} ({col.assetIds.length})</Text>
+                                        </TouchableOpacity>
+                                      ))}
+                                    </View>
+                                  )}
+                                  <ScrollView style={styles.jbAssetListScroll} nestedScrollEnabled>
+                                    {jbAssets.map((asset) => (
+                                      <View key={asset.id} style={styles.jbAssetRow}>
+                                        <View style={styles.jbAssetRowInfo}>
+                                          <Text style={styles.jbAssetRowTitle} numberOfLines={1}>{asset.title}</Text>
+                                          <Text style={styles.jbAssetRowMeta} numberOfLines={1}>{asset.category} · {asset.duration}</Text>
+                                        </View>
+                                        {/* Tap an asset to assign it to a lesson via a quick-pick */}
+                                        <TouchableOpacity
+                                          style={styles.jbAssetAddBtn}
+                                          onPress={() => {
+                                            // If there's only one lesson, auto-add. Otherwise prompt to pick a lesson.
+                                            const jid = selectedJourneyId;
+                                            if (!jid) return;
+                                            if (jbLessons.length === 1) {
+                                              void jbAddAssetAsTask(jid, jbLessons[0].id, asset);
+                                            } else if (jbLessons.length > 1) {
+                                              // Show a simple prompt: pick which lesson
+                                              setJbAddingTaskToLessonId(null);
+                                              // For multi-lesson, we'll use the first lesson and let user reorder
+                                              void jbAddAssetAsTask(jid, jbLessons[0].id, asset);
+                                            }
+                                          }}
+                                        >
+                                          <Text style={styles.jbAssetAddBtnText}>＋ Add</Text>
+                                        </TouchableOpacity>
+                                      </View>
+                                    ))}
+                                  </ScrollView>
+                                </>
+                              )}
+                            </View>
+                          )}
+
+                          {/* ── Journey Builder: Lessons + Tasks (editable) ── */}
+                          {jbLessons.length === 0 && milestoneRows.length === 0 ? (
+                            <View style={styles.coachingJourneyEmptyCard}>
+                              <Text style={styles.coachingJourneyEmptyTitle}>No lessons yet</Text>
+                              <Text style={styles.coachingJourneyEmptySub}>
+                                {isCoachRuntimeOperator ? 'Tap "+ Lesson" above to create your first lesson.' : 'No lessons have been created for this journey.'}
+                              </Text>
+                            </View>
+                          ) : (
+                            <View style={styles.coachingJourneyListCard}>
+                              {jbLessons.map((lesson, lessonIdx) => {
+                                const isActiveLesson = String(lesson.id) === String(selectedLessonId ?? '');
+                                return (
+                                  <View key={`jb-lesson-${lesson.id}`} style={[styles.jbLessonBlock, lessonIdx > 0 ? styles.coachingJourneyRowDivider : null, jbMovingItem?.type === 'lesson' && jbMovingItem.lessonIdx === lessonIdx ? { borderWidth: 1.5, borderColor: '#3b82f6', borderRadius: 8, backgroundColor: '#eff6ff' } : null]}>
+                                    {/* Lesson header with reorder + delete */}
+                                    <View style={styles.jbLessonHeader}>
+                                      {isCoachRuntimeOperator && (
+                                        <JbGrip
+                                          isPickedUp={jbMovingItem?.type === 'lesson' && jbMovingItem.lessonIdx === lessonIdx}
+                                          isDropTarget={!!jbMovingItem && jbMovingItem.type === 'lesson' && jbMovingItem.lessonIdx !== lessonIdx}
+                                          onPress={() => {
+                                            const jid = selectedJourneyId;
+                                            if (!jid) return;
+                                            if (!jbMovingItem) {
+                                              setJbMovingItem({ type: 'lesson', lessonIdx, lessonId: lesson.id });
+                                            } else if (jbMovingItem.type === 'lesson' && jbMovingItem.lessonIdx === lessonIdx) {
+                                              setJbMovingItem(null);
+                                            } else if (jbMovingItem.type === 'lesson') {
+                                              void jbReorderLessons(jid, jbMovingItem.lessonIdx, lessonIdx);
+                                              setJbMovingItem(null);
+                                            } else {
+                                              setJbMovingItem(null);
+                                            }
+                                          }}
+                                        />
+                                      )}
+                                      {jbEditingLessonId === lesson.id && isCoachRuntimeOperator ? (
+                                        <View style={[styles.jbLessonTitleBtn, styles.jbEditingWrap]}>
+                                          <TextInput
+                                            style={styles.jbEditInput}
+                                            value={jbEditingLessonTitle}
+                                            onChangeText={setJbEditingLessonTitle}
+                                            autoFocus
+                                            selectTextOnFocus
+                                            onBlur={() => { const jid = selectedJourneyId; if (jid) void jbRenameLesson(jid, lesson.id, jbEditingLessonTitle); }}
+                                            onSubmitEditing={() => { const jid = selectedJourneyId; if (jid) void jbRenameLesson(jid, lesson.id, jbEditingLessonTitle); }}
+                                            placeholder="Lesson title…"
+                                            placeholderTextColor="#999"
+                                          />
+                                          <Text style={styles.jbLessonTaskCount}>{lesson.tasks.length} task{lesson.tasks.length !== 1 ? 's' : ''}</Text>
+                                        </View>
+                                      ) : (
+                                        <TouchableOpacity
+                                          style={[styles.jbLessonTitleBtn, isActiveLesson ? styles.coachingLessonRowSelected : null]}
+                                          onPress={() =>
+                                            openCoachingShell('coaching_lesson_detail', {
+                                              selectedJourneyId: selectedJourneyId ?? null,
+                                              selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
+                                              selectedLessonId: String(lesson.id),
+                                              selectedLessonTitle: lesson.title,
+                                            })
+                                          }
+                                          onLongPress={() => {
+                                            if (isCoachRuntimeOperator) {
+                                              setJbEditingLessonId(lesson.id);
+                                              setJbEditingLessonTitle(lesson.title);
+                                            }
+                                          }}
+                                        >
+                                          <Text numberOfLines={1} style={styles.jbLessonTitleText}>{lesson.title}</Text>
+                                          {isCoachRuntimeOperator && <Text style={styles.jbEditHint}>long-press to rename</Text>}
+                                          <Text style={styles.jbLessonTaskCount}>{lesson.tasks.length} task{lesson.tasks.length !== 1 ? 's' : ''}</Text>
+                                        </TouchableOpacity>
+                                      )}
+                                      {isCoachRuntimeOperator && (
+                                        <TouchableOpacity
+                                          style={styles.jbDeleteBtn}
+                                          onPress={() => setJbConfirmDelete({ type: 'lesson', id: lesson.id, label: lesson.title })}
+                                        >
+                                          <Text style={styles.jbDeleteBtnText}>✕</Text>
+                                        </TouchableOpacity>
+                                      )}
+                                    </View>
+
+                                    {/* Tasks within lesson */}
+                                    {lesson.tasks.map((task, taskIdx) => {
+                                      const assetInfo = task.assetId ? jbAssetsById.get(task.assetId) : null;
+                                      return (
+                                        <View key={`jb-task-${task.id}`} style={[styles.jbTaskRow, jbMovingItem?.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx === taskIdx ? { borderWidth: 1, borderColor: '#3b82f6', borderRadius: 6, backgroundColor: '#eff6ff' } : null]}>
+                                          {isCoachRuntimeOperator && (
+                                            <JbGrip
+                                              small
+                                              isPickedUp={jbMovingItem?.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx === taskIdx}
+                                              isDropTarget={!!jbMovingItem && jbMovingItem.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx !== taskIdx}
+                                              onPress={() => {
+                                                const jid = selectedJourneyId;
+                                                if (!jid) return;
+                                                if (!jbMovingItem) {
+                                                  setJbMovingItem({ type: 'task', lessonIdx, lessonId: lesson.id, taskIdx, taskId: task.id });
+                                                } else if (jbMovingItem.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx === taskIdx) {
+                                                  setJbMovingItem(null);
+                                                } else if (jbMovingItem.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx !== undefined) {
+                                                  void jbReorderTasks(jid, lesson.id, jbMovingItem.taskIdx, taskIdx);
+                                                  setJbMovingItem(null);
+                                                } else {
+                                                  setJbMovingItem(null);
+                                                }
+                                              }}
+                                            />
+                                          )}
+                                          <View style={styles.jbTaskContent}>
+                                            {jbEditingTaskKey === `${lesson.id}:${task.id}` && isCoachRuntimeOperator ? (
+                                              <TextInput
+                                                style={styles.jbEditInputSm}
+                                                value={jbEditingTaskTitle}
+                                                onChangeText={setJbEditingTaskTitle}
+                                                autoFocus
+                                                selectTextOnFocus
+                                                onBlur={() => { const jid = selectedJourneyId; if (jid) void jbRenameTask(jid, lesson.id, task.id, jbEditingTaskTitle); }}
+                                                onSubmitEditing={() => { const jid = selectedJourneyId; if (jid) void jbRenameTask(jid, lesson.id, task.id, jbEditingTaskTitle); }}
+                                                placeholder="Task title…"
+                                                placeholderTextColor="#999"
+                                              />
+                                            ) : (
+                                              <TouchableOpacity
+                                                onLongPress={() => {
+                                                  if (isCoachRuntimeOperator) {
+                                                    setJbEditingTaskKey(`${lesson.id}:${task.id}`);
+                                                    setJbEditingTaskTitle(task.title);
+                                                  }
+                                                }}
+                                              >
+                                                <Text numberOfLines={1} style={styles.jbTaskTitle}>{task.title}</Text>
+                                              </TouchableOpacity>
+                                            )}
+                                            {assetInfo && (
+                                              <View style={styles.jbTaskAssetBadge}>
+                                                <Text style={styles.jbTaskAssetBadgeText} numberOfLines={1}>📎 {assetInfo.title}</Text>
+                                              </View>
+                                            )}
+                                          </View>
+                                          {isCoachRuntimeOperator && (
+                                            <TouchableOpacity
+                                              style={styles.jbDeleteBtnSm}
+                                              onPress={() => setJbConfirmDelete({ type: 'task', id: task.id, parentId: lesson.id, label: task.title })}
+                                            >
+                                              <Text style={styles.jbDeleteBtnSmText}>✕</Text>
+                                            </TouchableOpacity>
+                                          )}
+                                        </View>
+                                      );
+                                    })}
+
+                                    {/* Add task to this lesson */}
+                                    {isCoachRuntimeOperator && !shellPackageGateBlocksActions && (
+                                      <View style={styles.jbAddTaskRow}>
+                                        {jbAddingTaskToLessonId === lesson.id ? (
+                                          <View style={styles.jbAddTaskInline}>
+                                            <TextInput
+                                              style={styles.jbAddTaskInput}
+                                              placeholder="Task title…"
+                                              placeholderTextColor="#999"
+                                              value={jbNewTaskTitle}
+                                              onChangeText={setJbNewTaskTitle}
+                                              onSubmitEditing={() => { const jid = selectedJourneyId; if (jid) void jbAddTask(jid, lesson.id); }}
+                                            />
+                                            <TouchableOpacity
+                                              style={styles.jbAddTaskConfirmBtn}
+                                              onPress={() => { const jid = selectedJourneyId; if (jid) void jbAddTask(jid, lesson.id); }}
+                                            >
+                                              <Text style={styles.jbAddTaskConfirmBtnText}>Add</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                              style={styles.jbAddTaskCancelBtn}
+                                              onPress={() => { setJbAddingTaskToLessonId(null); setJbNewTaskTitle(''); }}
+                                            >
+                                              <Text style={styles.jbAddTaskCancelBtnText}>✕</Text>
+                                            </TouchableOpacity>
+                                          </View>
+                                        ) : (
+                                          <TouchableOpacity
+                                            style={styles.jbAddTaskBtn}
+                                            onPress={() => { setJbAddingTaskToLessonId(lesson.id); setJbNewTaskTitle(''); }}
+                                          >
+                                            <Text style={styles.jbAddTaskBtnText}>＋ Task</Text>
+                                          </TouchableOpacity>
+                                        )}
+                                      </View>
+                                    )}
+                                  </View>
+                                );
+                              })}
+
+                              {/* Fallback: show original milestones/lessons in read-only for non-operators if jbLessons is empty */}
+                              {jbLessons.length === 0 && milestoneRows.map((milestone, milestoneIdx) => (
+                                <View
+                                  key={`coaching-milestone-${milestone.id}`}
+                                  style={[styles.coachingMilestoneBlock, milestoneIdx > 0 ? styles.coachingJourneyRowDivider : null]}
+                                >
+                                  <Text style={styles.coachingMilestoneTitle}>{milestone.title}</Text>
+                                  {(milestone.lessons ?? []).length === 0 ? (
+                                    <Text style={styles.coachingMilestoneEmpty}>No active lessons yet.</Text>
+                                  ) : (
+                                    (milestone.lessons ?? []).map((lesson, lessonIdx) => {
+                                      const statusLabel = String(lesson.progress_status ?? 'not_started').replace('_', ' ');
+                                      return (
+                                        <TouchableOpacity
+                                          key={`coaching-lesson-${lesson.id}`}
+                                          style={[styles.coachingLessonRow, lessonIdx > 0 ? styles.coachingLessonRowDivider : null, shellPackageGateBlocksActions ? styles.disabled : null]}
+                                          disabled={shellPackageGateBlocksActions}
+                                          onPress={() =>
+                                            openCoachingShell('coaching_lesson_detail', {
+                                              selectedJourneyId: selectedJourneyId ?? null,
+                                              selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
+                                              selectedLessonId: String(lesson.id),
+                                              selectedLessonTitle: lesson.title,
+                                            })
+                                          }
+                                        >
+                                          <View style={styles.coachingLessonRowCopy}>
+                                            <Text numberOfLines={1} style={styles.coachingLessonRowTitle}>{lesson.title}</Text>
+                                            <Text numberOfLines={2} style={styles.coachingLessonRowSub}>
+                                              {lesson.body?.trim() || 'Lesson content body available on lesson detail.'}
+                                            </Text>
+                                          </View>
+                                          <View style={styles.coachingLessonRowStatusPill}>
+                                            <Text style={styles.coachingLessonRowStatusText}>{statusLabel}</Text>
+                                          </View>
+                                        </TouchableOpacity>
+                                      );
+                                    })
+                                  )}
+                                </View>
+                              ))}
+                            </View>
+                          )}
+
+                          {/* ── Confirm delete dialog ── */}
+                          {jbConfirmDelete && (
+                            <View style={styles.jbConfirmDeleteOverlay}>
+                              <View style={styles.jbConfirmDeleteCard}>
+                                <Text style={styles.jbConfirmDeleteTitle}>Delete {jbConfirmDelete.type}?</Text>
+                                <Text style={styles.jbConfirmDeleteSub}>"{jbConfirmDelete.label}" will be permanently removed.</Text>
+                                <View style={styles.jbConfirmDeleteActions}>
+                                  <TouchableOpacity style={styles.jbConfirmDeleteCancel} onPress={() => setJbConfirmDelete(null)}>
+                                    <Text style={styles.jbConfirmDeleteCancelText}>Cancel</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={styles.jbConfirmDeleteConfirm}
+                                    onPress={() => {
+                                      const jid = selectedJourneyId;
+                                      if (!jid || !jbConfirmDelete) return;
+                                      if (jbConfirmDelete.type === 'lesson') void jbDeleteLesson(jid, jbConfirmDelete.id);
+                                      else if (jbConfirmDelete.type === 'task' && jbConfirmDelete.parentId) void jbRemoveTask(jid, jbConfirmDelete.parentId, jbConfirmDelete.id);
+                                    }}
+                                  >
+                                    <Text style={styles.jbConfirmDeleteConfirmText}>Delete</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            </View>
+                          )}
+                        </>
+                      )}
+                    </View>
+                  ) : null}
+                  {coachingShellScreen === 'coaching_lesson_detail' ? (
+                    <View style={styles.coachingJourneyModule}>
+                      {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
+                      {renderCoachingNotificationSurface(
+                        'Lesson notifications',
+                        selectedLesson
+                          ? [
+                              {
+                                id: `lesson-progress-notice-${selectedLesson.id}`,
+                                notification_class:
+                                  selectedLessonStatus === 'completed'
+                                    ? 'lesson_completed_status'
+                                    : selectedLessonStatus === 'in_progress'
+                                      ? 'lesson_progress_reminder'
+                                      : 'lesson_assignment_prompt',
+                                title:
+                                  selectedLessonStatus === 'completed'
+                                    ? 'Lesson completed'
+                                    : selectedLessonStatus === 'in_progress'
+                                      ? 'Lesson in progress'
+                                      : 'Lesson ready to start',
+                                body:
+                                  selectedLessonStatus === 'completed'
+                                    ? 'Progress is already recorded. Notification UI is informational only.'
+                                    : 'Use explicit progress buttons below to update status. Notification taps do not write progress.',
+                                read_state: selectedLessonStatus === 'completed' ? 'read' : 'unread',
+                                severity: selectedLessonStatus === 'completed' ? 'success' : 'info',
+                                delivery_channels: ['in_app', 'banner'],
+                                route_target: { screen: 'coaching_lesson_detail', lesson_id: String(selectedLesson.id) },
+                                source_family: 'lesson_detail_local',
+                              },
+                              ...aiApprovalNotificationRows.slice(0, 1),
+                            ]
+                          : aiApprovalNotificationRows.slice(0, 1),
+                        summarizeNotificationRows(
+                          selectedLesson
+                            ? [
+                                {
+                                  id: `lesson-progress-notice-${selectedLesson.id}`,
+                                  notification_class: 'lesson_progress_status',
+                                  title: 'Lesson progress status',
+                                },
+                                ...aiApprovalNotificationRows.slice(0, 1),
+                              ]
+                            : aiApprovalNotificationRows.slice(0, 1),
+                          { sourceLabel: 'lesson_detail' }
+                        ),
+                        {
+                          compact: true,
+                          maxRows: 2,
+                          mode: 'banner',
+                          emptyHint: 'No lesson notifications available.',
+                        }
+                      )}
+                      {!selectedLesson ? (
+                        <View style={styles.coachingJourneyEmptyCard}>
+                          <Text style={styles.coachingJourneyEmptyTitle}>Choose a lesson first</Text>
+                          <Text style={styles.coachingJourneyEmptySub}>Open a lesson from Journey Detail.</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.coachingJourneyListCard}>
+                          <View style={styles.coachingLessonDetailHeader}>
+                            <View style={styles.coachingLessonActionRow}>
+                              <TouchableOpacity
+                                style={styles.coachingLessonActionBtn}
+                                onPress={() =>
+                                  openCoachingShell('coaching_journey_detail', {
+                                    source: coachingShellContext.source,
+                                    selectedJourneyId: selectedJourneyId ?? null,
+                                    selectedJourneyTitle:
+                                      coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
+                                    selectedLessonId: String(selectedLesson.id),
+                                    selectedLessonTitle: selectedLesson.title,
+                                  })
+                                }
+                              >
+                                <Text style={styles.coachingLessonActionBtnText}>Back to Journey</Text>
+                              </TouchableOpacity>
+                            </View>
+                            <Text style={styles.coachingLessonDetailTitle}>
+                              {coachingShellContext.selectedLessonTitle ?? selectedLesson.title}
+                            </Text>
+                            <Text style={styles.coachingLessonDetailMeta}>
+                              {selectedLesson.milestoneTitle} • {selectedJourneyTitle ?? coachingJourneyDetail?.journey?.title ?? 'Journey'}
+                            </Text>
+                            <Text style={styles.coachingLessonDetailBody}>
+                              {selectedLesson.body?.trim() || 'No lesson content yet.'}
+                            </Text>
+                          </View>
+                          {shellPackageGateBlocksActions ? (
+                            renderKnownLimitedDataChip('lesson actions')
+                          ) : (
+                            <TouchableOpacity
+                              style={styles.coachingAiAssistBtn}
+                              onPress={() =>
+                                openAiAssistShell(
+                                  {
+                                    host: 'coaching_lesson_detail',
+                                    title: 'AI Lesson Reflection Draft (Approval-First)',
+                                    sub: 'Draft only. Human review required.',
+                                    targetLabel: selectedLesson.title,
+                                    approvedInsertOnly: true,
+                                  },
+                                  {
+                                    prompt: `Draft a short reflection prompt and next-step coaching note for the lesson "${selectedLesson.title}".`,
+                                  }
+                                )
+                              }
+                            >
+                              <Text style={styles.coachingAiAssistBtnText}>AI Lesson Draft</Text>
+                            </TouchableOpacity>
+                          )}
+                          <View style={styles.coachingLessonProgressCard}>
+                            <Text style={styles.coachingLessonProgressTitle}>Lesson Progress</Text>
+                            <Text style={styles.coachingLessonProgressStatus}>
+                              Current status: {selectedLessonStatus.replace('_', ' ')}
+                            </Text>
+                            {selectedLesson.completed_at ? (
+                              <Text style={styles.coachingLessonProgressTime}>
+                                Completed: {fmtMonthDayTime(selectedLesson.completed_at)}
+                              </Text>
+                            ) : null}
+                            {coachingLessonProgressError ? (
+                              <Text style={styles.coachingJourneyInlineError}>{coachingLessonProgressError}</Text>
+                            ) : null}
+                            {shellPackageGateBlocksActions ? (
+                              renderKnownLimitedDataChip('lesson progress updates')
+                            ) : (
+                              <View style={styles.coachingLessonActionRow}>
+                                {(['not_started', 'in_progress', 'completed'] as const).map((status) => {
+                                  const isCurrent = selectedLessonStatus === status;
+                                  const isSubmitting =
+                                    coachingLessonProgressSubmittingId === String(selectedLesson.id);
+                                  return (
+                                    <TouchableOpacity
+                                      key={`lesson-progress-${status}`}
+                                      style={[
+                                        styles.coachingLessonActionBtn,
+                                        isCurrent ? styles.coachingLessonActionBtnActive : null,
+                                        isSubmitting ? styles.disabled : null,
+                                      ]}
+                                      disabled={isSubmitting}
+                                      onPress={() => {
+                                        void submitCoachingLessonProgress(String(selectedLesson.id), status);
+                                      }}
+                                    >
+                                      <Text
+                                        style={[
+                                          styles.coachingLessonActionBtnText,
+                                          isCurrent ? styles.coachingLessonActionBtnTextActive : null,
+                                        ]}
+                                      >
+                                        {isSubmitting && isCurrent
+                                          ? 'Saving…'
+                                          : status === 'not_started'
+                                            ? 'Reset'
+                                            : status === 'in_progress'
+                                              ? 'Start'
+                                              : 'Complete'}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  ) : null}
+                </View>
+                ) : null}
+
+              </>
+            );
+          })()}
+        </View>
+      ) : null}
 
       {activeFlightFx.map((flightFx) => (
         <React.Fragment key={flightFx.key}>
@@ -20210,6 +20213,7 @@ const styles = StyleSheet.create({
   coachingShellWrapComms: {
     flex: 1,
     minHeight: 0,
+    overflow: 'hidden',
   },
   coachingShellCard: {
     backgroundColor: '#fff',

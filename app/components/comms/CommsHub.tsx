@@ -1305,6 +1305,7 @@ const st = StyleSheet.create({
     flex: 1,
     backgroundColor: C.pageBg,
     gap: 0,
+    overflow: 'hidden',
   },
 
   /* ─── top bar ─── */
