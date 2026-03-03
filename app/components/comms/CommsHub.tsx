@@ -45,6 +45,7 @@ export interface ChannelRow {
   member_count?: number | null;
   my_role?: string | null;
   last_seen_at?: string | null;
+  last_message_at?: string | null;
   created_at?: string | null;
   snippet?: string | null;
 }
@@ -137,6 +138,7 @@ export interface CommsHubProps {
   onRefreshLiveSession: () => void;
   onJoinLiveSession: () => void;
   onEndLiveSession: () => void;
+  composerBottomInset?: number;
 
   /* ── broadcast composer ─── */
   broadcastDraft: string;
@@ -557,7 +559,13 @@ function ChannelRowItem({
 }) {
   const vis = channelScopeVisual(row.scope);
   const hasUnread = Number(row.unread_count ?? 0) > 0;
-  const timeLabel = row.last_seen_at ? fmtTime(row.last_seen_at) : row.created_at ? fmtDate(row.created_at) : '';
+  const timeLabel = row.last_message_at
+    ? fmtTime(row.last_message_at)
+    : row.last_seen_at
+      ? fmtTime(row.last_seen_at)
+      : row.created_at
+        ? fmtDate(row.created_at)
+        : '';
   const snippet = row.snippet || (row.member_count ? `${row.member_count} members` : 'No messages yet');
 
   return (
@@ -668,6 +676,7 @@ function ThreadView(props: CommsHubProps) {
     onSendMessage, onRefreshMessages, onOpenAiAssist, onOpenBroadcast,
     onRequestMediaUpload, onSendLatestMediaAttachment, mediaUploadBusy, mediaUploadStatus,
     liveSessionBusy, liveSessionStatus, canHostLiveSession, onStartLiveSession, onRefreshLiveSession, onJoinLiveSession, onEndLiveSession,
+    composerBottomInset,
     gateBlocksActions, fmtTime, personaVariant, roleCanBroadcast,
   } = props;
 
@@ -845,12 +854,7 @@ function ThreadView(props: CommsHubProps) {
         contentContainerStyle={st.threadScrollInner}
         keyboardShouldPersistTaps="handled"
       >
-        {messagesLoading && messages.length === 0 ? (
-          <View style={st.threadEmpty}>
-            <ActivityIndicator size="small" color={C.brand} />
-            <Text style={st.emptyTitle}>Loading messages…</Text>
-          </View>
-        ) : messagesError ? (
+        {messagesError ? (
           <View style={st.threadEmpty}>
             <Text style={st.emptyIcon}>⚠</Text>
             <Text style={st.emptyTitle}>Messages failed to load</Text>
@@ -1257,6 +1261,7 @@ const st = StyleSheet.create({
     flex: 1,
     backgroundColor: C.pageBg,
     gap: 0,
+    overflow: 'hidden',
   },
 
   /* ─── top bar ─── */
