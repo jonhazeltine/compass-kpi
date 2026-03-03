@@ -128,6 +128,7 @@ type DragPayload =
   | null;
 
 const COACH_ROUTE_KEYS: CoachRouteKey[] = ['coachingLibrary', 'coachingJourneys', 'coachingCohorts', 'coachingChannels'];
+const SEED_JOURNEY_PREVIEW_LIMIT = 6;
 
 const COACH_WORKSPACES: Record<CoachWorkspaceMode, CoachSurface> = {
   journeys: {
@@ -178,6 +179,11 @@ function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
   const [item] = copy.splice(fromIndex, 1);
   copy.splice(toIndex, 0, item);
   return copy;
+}
+
+function isSeedPlaceholderJourney(name: string): boolean {
+  const value = name.trim().toLowerCase();
+  return value.includes('seed sample coaching') || value.includes('(seed-') || value.includes('seed-m6-');
 }
 
 /* ─── Category color helpers ─── */
@@ -255,6 +261,10 @@ export default function CoachPortalScreen() {
   const [journeys, setJourneys] = useState<JourneyDraft[]>([]);
   const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
   const [newJourneyName, setNewJourneyName] = useState('');
+  const [journeySelectorOpen, setJourneySelectorOpen] = useState(false);
+  const [journeyQuery, setJourneyQuery] = useState('');
+  const [seedPurgeConfirmOpen, setSeedPurgeConfirmOpen] = useState(false);
+  const [seedPurgePending, setSeedPurgePending] = useState(false);
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [activeTaskMenu, setActiveTaskMenu] = useState<{ lessonId: string; taskId: string } | null>(null);
   const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
@@ -359,6 +369,15 @@ export default function CoachPortalScreen() {
   const selectedJourney = useMemo(
     () => journeys.find((journey) => journey.id === selectedJourneyId) ?? journeys[0] ?? null,
     [journeys, selectedJourneyId]
+  );
+  const filteredJourneys = useMemo(() => {
+    const query = journeyQuery.trim().toLowerCase();
+    if (!query) return journeys;
+    return journeys.filter((journey) => journey.name.toLowerCase().includes(query));
+  }, [journeys, journeyQuery]);
+  const seedPlaceholderJourneys = useMemo(
+    () => journeys.filter((journey) => isSeedPlaceholderJourney(journey.name)),
+    [journeys]
   );
 
   const selectedCohort = cohorts.find((row) => row.id === selectedCohortId) ?? cohorts[0] ?? null;
@@ -561,30 +580,8 @@ export default function CoachPortalScreen() {
         })
       );
       setJourneys(journeyDetails);
-
-      const derivedAssets: LibraryAsset[] = [];
-      const derivedCollections: LibraryCollection[] = [];
-      for (const journey of journeyDetails) {
-        const assetIds: string[] = [];
-        for (const lesson of journey.lessons) {
-          const assetId = `asset-${lesson.id}`;
-          assetIds.push(assetId);
-          derivedAssets.push({
-            id: assetId,
-            title: lesson.title,
-            category: 'Lesson Pack',
-            scope: journey.name,
-            duration: '--',
-          });
-        }
-        derivedCollections.push({
-          id: `col-${journey.id}`,
-          name: journey.name,
-          assetIds,
-        });
-      }
-      setAssets(derivedAssets);
-      setCollections(derivedCollections);
+      setAssets([]);
+      setCollections([]);
       if (journeyDetails.length > 0) {
         setSelectedJourneyId((prev) => prev && journeyDetails.some((j) => j.id === prev) ? prev : journeyDetails[0].id);
         setSelectedLessonId(journeyDetails[0].lessons[0]?.id ?? null);
@@ -592,13 +589,8 @@ export default function CoachPortalScreen() {
         setSelectedJourneyId(null);
         setSelectedLessonId(null);
       }
-      if (derivedCollections.length > 0) {
-        setSelectedCollectionId((prev) => prev && derivedCollections.some((c) => c.id === prev) ? prev : derivedCollections[0].id);
-        setExpandedCollectionIds([derivedCollections[0].id]);
-      } else {
-        setSelectedCollectionId('');
-        setExpandedCollectionIds([]);
-      }
+      setSelectedCollectionId('');
+      setExpandedCollectionIds([]);
 
       setSaveState('idle');
       setSaveMessage('Connected to backend coaching endpoints.');
@@ -1339,6 +1331,47 @@ export default function CoachPortalScreen() {
     }
   };
 
+  const purgeSeedPlaceholderJourneys = async () => {
+    if (!canComposeDraft || !session?.access_token || seedPurgePending) return;
+    const matches = seedPlaceholderJourneys;
+    if (!matches.length) {
+      setSeedPurgeConfirmOpen(false);
+      setSaveState('saved');
+      setSaveMessage('No seed placeholder journeys found to purge.');
+      return;
+    }
+    setSeedPurgePending(true);
+    setSaveState('pending');
+    setSaveMessage(`Purging ${matches.length} placeholder journeys...`);
+    const failed: string[] = [];
+    for (const journey of matches) {
+      try {
+        await sendCoachJson(
+          `/api/coaching/journeys/${journey.id}`,
+          session.access_token as string,
+          'DELETE'
+        );
+      } catch {
+        failed.push(journey.name);
+      }
+    }
+    setSeedPurgePending(false);
+    setSeedPurgeConfirmOpen(false);
+    await refreshPortalData();
+    const deleted = matches.length - failed.length;
+    if (failed.length > 0) {
+      setSaveState('error');
+      setSaveMessage(
+        `Purged ${deleted} placeholder journeys. Failed ${failed.length}: ${failed.slice(0, 2).join(', ')}${
+          failed.length > 2 ? '...' : ''
+        }`
+      );
+      return;
+    }
+    setSaveState('saved');
+    setSaveMessage(`Purged ${deleted} placeholder journeys.`);
+  };
+
   /* ════════════════════════════════════════════
      RENDER
      ════════════════════════════════════════════ */
@@ -1457,63 +1490,70 @@ export default function CoachPortalScreen() {
                 );
               })()}
               <View style={s.sidebarScroll}>
-                {collections.map((collection) => {
-                  const expanded = expandedCollectionIds.includes(collection.id);
-                  const selected = collection.id === selectedCollectionId;
-                  const nestedAssets = collection.assetIds
-                    .map((id) => assetsById.get(id))
-                    .filter((a): a is LibraryAsset => Boolean(a))
-                    .filter((a) => !libraryQuery.trim() || filteredAssetIds.has(a.id));
-                  return (
-                    <View key={collection.id} style={s.folderGroup}>
-                      <Pressable
-                        style={[s.folderRow, selected && s.folderRowActive]}
-                        onPress={() => { if (!handleClickDropToCollection(collection.id)) { setSelectedCollectionId(collection.id); toggleCollectionExpanded(collection.id); } }}
-                        {...({ dataSet: { dropCollection: collection.id } } as any)}
-                      >
-                        <Text style={s.folderIcon}>{expanded ? '▾' : '▸'}</Text>
-                        <Text style={[s.folderName, selected && s.folderNameActive]}>{collection.name}</Text>
-                        <View style={s.folderCount}><Text style={s.folderCountText}>{collection.assetIds.length}</Text></View>
-                      </Pressable>
-                      {expanded ? (
-                        <View style={s.assetList}>
-                          {nestedAssets.length ? nestedAssets.map((asset) => {
-                            const catColor = getCategoryColor(asset.category);
-                            const isSelected = draggingAssetId === asset.id;
-                            return (
-                              <View
-                                key={asset.id}
-                                style={[s.assetRow, isSelected && s.assetRowDragging, { userSelect: 'none', cursor: 'grab' } as any]}
-                                {...({
-                                  onPointerDown: (e: any) => onGrabPointerDown(e, { type: 'asset', assetId: asset.id, sourceCollectionId: collection.id }, asset.title),
-                                } as any)}
-                              >
-                                <Text style={s.dragHandle}>{isSelected ? '✓' : '⠿'}</Text>
-                                <Pressable
-                                  style={s.assetInfo}
-                                  onPress={() => {
-                                    if (draggingAssetId === asset.id) { clearAllDragState(); }
-                                    else startAssetDrag(asset.id, collection.id);
-                                  }}
+                {collections.length === 0 ? (
+                  <View style={s.libraryEmptyState}>
+                    <Text style={s.libraryEmptyTitle}>No library assets configured yet.</Text>
+                    <Text style={s.libraryEmptyBody}>Journeys and library assets are separate.</Text>
+                  </View>
+                ) : (
+                  collections.map((collection) => {
+                    const expanded = expandedCollectionIds.includes(collection.id);
+                    const selected = collection.id === selectedCollectionId;
+                    const nestedAssets = collection.assetIds
+                      .map((id) => assetsById.get(id))
+                      .filter((a): a is LibraryAsset => Boolean(a))
+                      .filter((a) => !libraryQuery.trim() || filteredAssetIds.has(a.id));
+                    return (
+                      <View key={collection.id} style={s.folderGroup}>
+                        <Pressable
+                          style={[s.folderRow, selected && s.folderRowActive]}
+                          onPress={() => { if (!handleClickDropToCollection(collection.id)) { setSelectedCollectionId(collection.id); toggleCollectionExpanded(collection.id); } }}
+                          {...({ dataSet: { dropCollection: collection.id } } as any)}
+                        >
+                          <Text style={s.folderIcon}>{expanded ? '▾' : '▸'}</Text>
+                          <Text style={[s.folderName, selected && s.folderNameActive]}>{collection.name}</Text>
+                          <View style={s.folderCount}><Text style={s.folderCountText}>{collection.assetIds.length}</Text></View>
+                        </Pressable>
+                        {expanded ? (
+                          <View style={s.assetList}>
+                            {nestedAssets.length ? nestedAssets.map((asset) => {
+                              const catColor = getCategoryColor(asset.category);
+                              const isSelected = draggingAssetId === asset.id;
+                              return (
+                                <View
+                                  key={asset.id}
+                                  style={[s.assetRow, isSelected && s.assetRowDragging, { userSelect: 'none', cursor: 'grab' } as any]}
+                                  {...({
+                                    onPointerDown: (e: any) => onGrabPointerDown(e, { type: 'asset', assetId: asset.id, sourceCollectionId: collection.id }, asset.title),
+                                  } as any)}
                                 >
-                                  <Text style={s.assetTitle} numberOfLines={1}>{asset.title}</Text>
-                                  <View style={s.assetMeta}>
-                                    <View style={[s.categoryBadge, { backgroundColor: catColor.bg }]}>
-                                      <Text style={[s.categoryBadgeText, { color: catColor.text }]}>{asset.category}</Text>
+                                  <Text style={s.dragHandle}>{isSelected ? '✓' : '⠿'}</Text>
+                                  <Pressable
+                                    style={s.assetInfo}
+                                    onPress={() => {
+                                      if (draggingAssetId === asset.id) { clearAllDragState(); }
+                                      else startAssetDrag(asset.id, collection.id);
+                                    }}
+                                  >
+                                    <Text style={s.assetTitle} numberOfLines={1}>{asset.title}</Text>
+                                    <View style={s.assetMeta}>
+                                      <View style={[s.categoryBadge, { backgroundColor: catColor.bg }]}>
+                                        <Text style={[s.categoryBadgeText, { color: catColor.text }]}>{asset.category}</Text>
+                                      </View>
+                                      <Text style={s.assetDuration}>{asset.duration}</Text>
                                     </View>
-                                    <Text style={s.assetDuration}>{asset.duration}</Text>
-                                  </View>
-                                </Pressable>
-                              </View>
-                            );
-                          }) : (
-                            <Text style={s.emptyHint}>No matching content</Text>
-                          )}
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
+                                  </Pressable>
+                                </View>
+                              );
+                            }) : (
+                              <Text style={s.emptyHint}>No matching content</Text>
+                            )}
+                          </View>
+                        ) : null}
+                      </View>
+                    );
+                  })
+                )}
               </View>
             </View>
 
@@ -1525,27 +1565,87 @@ export default function CoachPortalScreen() {
                   <Text style={s.canvasSectionTitle}>Journeys</Text>
                   <Text style={s.canvasSectionCount}>{journeys.length} total</Text>
                 </View>
-                <View style={s.journeyChips}>
-                  {journeys.map((j) => {
-                    const sel = j.id === selectedJourney?.id;
-                    return (
-                      <View key={j.id} style={[s.journeyChip, sel && s.journeyChipActive]}>
-                        <Pressable style={s.journeyChipBody} onPress={() => setSelectedJourneyId(j.id)}>
-                          <Text style={[s.journeyChipText, sel && s.journeyChipTextActive]}>{j.name}</Text>
-                          <Text style={s.journeyChipMeta}>{j.audience} · {j.lessons.length} lessons</Text>
-                        </Pressable>
-                        {canComposeDraft ? (
-                          <Pressable
-                            style={s.chipDeleteBtn}
-                            onPress={() => setConfirmDelete({ type: 'journey', id: j.id, label: j.name })}
-                          >
-                            <Text style={s.chipDeleteBtnText}>✕</Text>
-                          </Pressable>
-                        ) : null}
-                      </View>
-                    );
-                  })}
+                <View style={s.journeySelectorCard}>
+                  {selectedJourney ? (
+                    <View style={s.journeySelectorCurrent}>
+                      <Text style={s.journeySelectorCurrentName} numberOfLines={1}>{selectedJourney.name}</Text>
+                      <Text style={s.journeySelectorCurrentMeta}>{selectedJourney.audience} · {selectedJourney.lessons.length} lessons</Text>
+                    </View>
+                  ) : (
+                    <View style={s.journeySelectorCurrent}>
+                      <Text style={s.journeySelectorCurrentName}>No journeys yet</Text>
+                      <Text style={s.journeySelectorCurrentMeta}>Create your first journey below.</Text>
+                    </View>
+                  )}
+                  <View style={s.journeySelectorActions}>
+                    <Pressable
+                      style={s.journeySelectorBtn}
+                      onPress={() => setJourneySelectorOpen((prev) => !prev)}
+                    >
+                      <Text style={s.journeySelectorBtnText}>{journeySelectorOpen ? 'Close selector' : 'Open selector'}</Text>
+                    </Pressable>
+                    {canComposeDraft ? (
+                      <Pressable
+                        style={[s.journeySelectorBtn, seedPlaceholderJourneys.length === 0 && s.journeySelectorBtnDisabled]}
+                        disabled={seedPlaceholderJourneys.length === 0}
+                        onPress={() => setSeedPurgeConfirmOpen(true)}
+                      >
+                        <Text style={s.journeySelectorBtnText}>Purge Seed Placeholders</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                 </View>
+                {journeySelectorOpen ? (
+                  <View style={s.journeySelectorPanel}>
+                    <TextInput
+                      value={journeyQuery}
+                      onChangeText={setJourneyQuery}
+                      placeholder="Search journeys..."
+                      placeholderTextColor="#94A3B8"
+                      style={s.journeySelectorSearch}
+                    />
+                    <ScrollView style={s.journeySelectorList} contentContainerStyle={s.journeySelectorListInner}>
+                      {filteredJourneys.length === 0 ? (
+                        <Text style={s.journeySelectorEmpty}>No journeys match search.</Text>
+                      ) : (
+                        filteredJourneys.map((journey) => {
+                          const selected = selectedJourney?.id === journey.id;
+                          return (
+                            <Pressable
+                              key={journey.id}
+                              style={[s.journeySelectorItem, selected && s.journeySelectorItemActive]}
+                              onPress={() => {
+                                setSelectedJourneyId(journey.id);
+                                setJourneySelectorOpen(false);
+                              }}
+                            >
+                              <View style={s.journeySelectorItemBody}>
+                                <Text style={[s.journeySelectorItemTitle, selected && s.journeySelectorItemTitleActive]} numberOfLines={1}>
+                                  {journey.name}
+                                </Text>
+                                <Text style={s.journeySelectorItemMeta}>{journey.audience} · {journey.lessons.length} lessons</Text>
+                              </View>
+                              {canComposeDraft ? (
+                                <Pressable
+                                  style={s.chipDeleteBtn}
+                                  onPress={(event: any) => {
+                                    event?.stopPropagation?.();
+                                    setConfirmDelete({ type: 'journey', id: journey.id, label: journey.name });
+                                  }}
+                                >
+                                  <Text style={s.chipDeleteBtnText}>✕</Text>
+                                </Pressable>
+                              ) : null}
+                            </Pressable>
+                          );
+                        })
+                      )}
+                    </ScrollView>
+                  </View>
+                ) : null}
+                {canComposeDraft && seedPlaceholderJourneys.length > 0 ? (
+                  <Text style={s.journeyPurgeHint}>{seedPlaceholderJourneys.length} seed placeholder journeys available to purge.</Text>
+                ) : null}
                 {/* Inline + Journey */}
                 {canComposeDraft ? (
                   <View style={s.inlineCreateRow}>
@@ -1931,6 +2031,40 @@ export default function CoachPortalScreen() {
           </View>
         </View>
       ) : null}
+      {seedPurgeConfirmOpen ? (
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Purge Seed Placeholders?</Text>
+            <Text style={s.modalBody}>
+              This will delete {seedPlaceholderJourneys.length} journey
+              {seedPlaceholderJourneys.length === 1 ? '' : 's'} that match seed placeholder patterns.
+            </Text>
+            <View style={s.purgePreviewList}>
+              {seedPlaceholderJourneys.slice(0, SEED_JOURNEY_PREVIEW_LIMIT).map((journey) => (
+                <Text key={journey.id} style={s.purgePreviewItem}>• {journey.name}</Text>
+              ))}
+              {seedPlaceholderJourneys.length > SEED_JOURNEY_PREVIEW_LIMIT ? (
+                <Text style={s.purgePreviewItem}>• +{seedPlaceholderJourneys.length - SEED_JOURNEY_PREVIEW_LIMIT} more</Text>
+              ) : null}
+            </View>
+            <View style={s.modalActions}>
+              <Pressable
+                style={s.modalCancelBtn}
+                onPress={() => !seedPurgePending && setSeedPurgeConfirmOpen(false)}
+              >
+                <Text style={s.modalCancelBtnText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[s.modalDeleteBtn, seedPurgePending && s.modalDeleteBtnDisabled]}
+                disabled={seedPurgePending}
+                onPress={() => { void purgeSeedPlaceholderJourneys(); }}
+              >
+                <Text style={s.modalDeleteBtnText}>{seedPurgePending ? 'Purging...' : 'Confirm Purge'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -2243,6 +2377,24 @@ const s = StyleSheet.create({
     cursor: 'grab' as any,
     userSelect: 'none' as any,
   },
+  libraryEmptyState: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+    backgroundColor: '#0F172A',
+    padding: 14,
+    gap: 6,
+  },
+  libraryEmptyTitle: {
+    color: '#E2E8F0',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  libraryEmptyBody: {
+    color: '#94A3B8',
+    fontSize: 12,
+    lineHeight: 18,
+  },
 
   /* ── Canvas ── */
   canvas: {
@@ -2280,13 +2432,75 @@ const s = StyleSheet.create({
     fontWeight: '500',
   },
 
-  /* ── Journey selector chips ── */
-  journeyChips: {
+  /* ── Journey selector ── */
+  journeySelectorCard: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    padding: 12,
+    gap: 10,
+    backgroundColor: '#F8FAFC',
+  },
+  journeySelectorCurrent: {
+    gap: 2,
+  },
+  journeySelectorCurrentName: {
+    color: '#0F172A',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  journeySelectorCurrentMeta: {
+    color: '#64748B',
+    fontSize: 12,
+  },
+  journeySelectorActions: {
     flexDirection: 'row',
     gap: 8,
     flexWrap: 'wrap',
   },
-  journeyChip: {
+  journeySelectorBtn: {
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#EFF6FF',
+  },
+  journeySelectorBtnDisabled: {
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F1F5F9',
+    opacity: 0.65,
+  },
+  journeySelectorBtnText: {
+    color: '#1D4ED8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  journeySelectorPanel: {
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    gap: 10,
+  },
+  journeySelectorSearch: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    color: '#0F172A',
+    fontSize: 13,
+    backgroundColor: '#FFFFFF',
+  },
+  journeySelectorList: {
+    maxHeight: 280,
+  },
+  journeySelectorListInner: {
+    gap: 8,
+  },
+  journeySelectorItem: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
@@ -2296,27 +2510,38 @@ const s = StyleSheet.create({
     paddingRight: 6,
     paddingVertical: 10,
     backgroundColor: '#FFFFFF',
-    minWidth: 180,
   },
-  journeyChipActive: {
+  journeySelectorItemActive: {
     borderColor: '#2563EB',
     backgroundColor: '#EFF6FF',
   },
-  journeyChipBody: {
+  journeySelectorItemBody: {
     flex: 1,
+    gap: 2,
   },
-  journeyChipText: {
+  journeySelectorItemTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: '#334155',
   },
-  journeyChipTextActive: {
+  journeySelectorItemTitleActive: {
     color: '#1D4ED8',
   },
-  journeyChipMeta: {
+  journeySelectorItemMeta: {
     fontSize: 11,
     color: '#64748B',
     marginTop: 2,
+  },
+  journeySelectorEmpty: {
+    fontSize: 12,
+    color: '#64748B',
+    fontStyle: 'italic',
+    paddingVertical: 6,
+  },
+  journeyPurgeHint: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '500',
   },
   chipDeleteBtn: {
     width: 22,
@@ -3203,6 +3428,20 @@ const s = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 10,
   },
+  purgePreviewList: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+    marginBottom: 16,
+  },
+  purgePreviewItem: {
+    color: '#334155',
+    fontSize: 12,
+  },
   modalCancelBtn: {
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -3221,6 +3460,9 @@ const s = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     backgroundColor: '#DC2626',
+  },
+  modalDeleteBtnDisabled: {
+    opacity: 0.6,
   },
   modalDeleteBtnText: {
     fontSize: 13,
