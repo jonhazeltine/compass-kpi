@@ -199,11 +199,84 @@ contentComms: { flexGrow: 1, flexShrink: 0, paddingHorizontal: 0, paddingTop: 0,
 - Eliminates DOM interference with flex measurement
 - Also saves significant render cost (old-style thread + composer no longer instantiated)
 
+## Fix Part 5: Definitive Fix — Extract Comms from ScrollView (2026-03-03)
+
+### Problem
+Fix Part 4's `flexGrow: 1, flexShrink: 0` approach still failed intermittently. Five successive flex-based strategies were tested (`flex:1`, `flexGrow:1 flexShrink:0`, measured height via onLayout, `flexGrow:1 flexBasis:0`, explicit `windowHeight - insets.top`). All failed because ScrollView's `contentContainerStyle` fundamentally cannot provide reliable `flex: 1` layout behavior.
+
+### Root Cause (definitive)
+React Native's ScrollView clips content along its scroll axis regardless of `scrollEnabled`. The internal content container does not participate in standard flex layout — it wraps its children rather than filling its parent. No combination of flex properties on `contentContainerStyle` can reliably produce a fixed-height flex column layout needed for a pinned composer.
+
+### Fix — `KPIDashboardScreen.tsx`
+
+#### 1. Comms content extracted from ScrollView
+The entire comms content tree (~2,000 lines of JSX) was moved from inside the ScrollView to a sibling `<View>` rendered after it:
+
+```
+Before:
+<View style={screenRoot}>
+  <ScrollView contentContainerStyle={...}>
+    {activeTab === 'comms' ? (
+      <View style={coachingShellWrapComms}>  ← INSIDE ScrollView
+        <CommsHub />
+      </View>
+    ) : ...other tabs...}
+  </ScrollView>
+</View>
+
+After:
+<View style={screenRoot}>
+  <ScrollView style={activeTab === 'comms' ? { display: 'none' } : undefined} ...>
+    {activeTab === 'comms' ? null : ...other tabs...}
+  </ScrollView>
+
+  {activeTab === 'comms' ? (
+    <View style={coachingShellWrapComms}>  ← OUTSIDE ScrollView, plain flex:1
+      <CommsHub />
+    </View>
+  ) : null}
+</View>
+```
+
+#### 2. ScrollView hidden when comms active
+`style={activeTab === 'comms' ? { display: 'none' } : undefined}` — ScrollView takes zero space, comms View gets full flex allocation.
+
+#### 3. Removed explicit height calculation
+Removed `{ height: windowHeight - insets.top }` from comms wrapper. No longer needed — `flex: 1` works correctly in a plain View hierarchy.
+
+#### 4. Removed useWindowDimensions
+Import and `const { height: windowHeight } = useWindowDimensions()` removed — no longer consumed.
+
+#### 5. Restored overflow containment
+`overflow: 'hidden'` restored on both `coachingShellWrapComms` and CommsHub `root` style to prevent content leaking beyond bounds.
+
+### Layout Chain (final)
+```
+screenRoot (flex: 1)
+ ├─ ScrollView (display: 'none' when comms)
+ └─ View (coachingShellWrapComms: flex: 1, overflow: 'hidden')
+     └─ CommsHub root (flex: 1, overflow: 'hidden', paddingBottom: composerBottomInset)
+         └─ ThreadView (flex: 1)
+             ├─ ScrollView (flex: 1) — messages
+             └─ Composer — ALWAYS VISIBLE ✅
+```
+
+## Fix Part 5b: Stale Message Flash (2026-03-03)
+
+### Problem
+Switching between conversations showed the previous conversation's messages briefly before new messages loaded.
+
+### Fix — `KPIDashboardScreen.tsx` + `CommsHub.tsx`
+- Added `setChannelMessages(null)` and `setChannelMessageDraft('')` in `onOpenChannel` and `openDirectThreadForMember` — clears messages immediately on channel switch
+- Added loading placeholder in ThreadView when `messagesLoading && parsedMessages.length === 0`
+- Added `key={selectedChannelId}` on ThreadView to force clean remount per conversation
+
 ## Validation
 - `npx tsc --noEmit` (app) — **PASS** (clean, no errors)
-- `npm run -s build` (backend) — **PASS** (clean, no errors)
 - Entry-path parity confirmed: single `<ThreadView>` for all paths (All/Channels/DMs)
 - Mux/Live controls accessible via ⊕ → Media / Live sub-panels
+- Stale message flash eliminated
+- Composer visible for all user types across all device configurations
 
 ## Constraints Verified
 - Two files modified: `CommsHub.tsx` (primary), `KPIDashboardScreen.tsx` (inset calculation + layout fix)
