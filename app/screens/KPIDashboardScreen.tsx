@@ -2738,6 +2738,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [pipelineCheckinDismissalLoaded, setPipelineCheckinDismissalLoaded] = useState(false);
   const [inlinePipelineSubmitting, setInlinePipelineSubmitting] = useState(false);
   const [bottomNavLayoutHeight, setBottomNavLayoutHeight] = useState(0);
+  const [commsViewportHeight, setCommsViewportHeight] = useState(0);
   const bottomNavLift = Math.max(8, Math.round(insets.bottom * 0.24));
   const bottomNavPadBottom = Math.max(8, Math.round(insets.bottom * 0.45));
   const contentBottomPad = 132 + Math.max(12, insets.bottom);
@@ -8792,10 +8793,18 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       style={styles.screenRoot}
     >
       <ScrollView
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0 && h !== commsViewportHeight) {
+            setCommsViewportHeight(h);
+          }
+        }}
         contentContainerStyle={[
           styles.content,
           { paddingBottom: contentBottomPad },
-          activeTab === 'comms' ? styles.contentComms : null,
+          activeTab === 'comms'
+            ? [styles.contentComms, commsViewportHeight > 0 ? { height: commsViewportHeight } : { flex: 1 }]
+            : null,
         ]}
         scrollEnabled={activeTab === 'comms' ? false : !isHomeGameplaySurface}
         bounces={activeTab === 'comms' ? false : !isHomeGameplaySurface}
@@ -15147,8 +15156,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f6f7f9',
   },
   contentComms: {
-    flexGrow: 1,
-    flexShrink: 0,
     paddingHorizontal: 0,
     paddingTop: 0,
     paddingBottom: 0,
