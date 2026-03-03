@@ -117,6 +117,18 @@ type ChallengeJoinPayload = {
   sponsored_challenge_id?: string;
 };
 
+type ChallengeCreatePayload = {
+  name: string;
+  description?: string;
+  mode: "solo" | "team";
+  team_id?: string;
+  start_at?: string;
+  end_at: string;
+  template_id?: string;
+  late_join_includes_history?: boolean;
+  invite_user_ids?: string[];
+};
+
 type ChannelType = "team" | "challenge" | "sponsor" | "cohort" | "direct";
 
 type ChannelCreatePayload = {
@@ -392,6 +404,19 @@ type MeProfileUpdatePayload = {
   kpi_weekly_inputs?: Record<string, { historicalWeeklyAverage: number; targetWeeklyCount: number }>;
   pipeline_listings_pending?: number;
   pipeline_buyers_uc?: number;
+  geo_city?: string;
+  geo_state?: string;
+};
+
+type CanonicalTier = "free" | "basic" | "pro" | "team" | "coach" | "enterprise";
+type EffectivePlan = "free" | "pro" | "team" | "coach" | "enterprise";
+type EntitlementValue = boolean | number | string | null;
+type EntitlementsMap = Record<string, EntitlementValue>;
+type SeatContext = {
+  scope: "none" | "team" | "coach";
+  included: number | null;
+  used: number | null;
+  overage: number | null;
 };
 
 type PackagingReadModel = {
@@ -1227,25 +1252,47 @@ app.get("/me", async (req, res) => {
       return res.status(auth.status).json({ error: auth.error });
     }
 
-    let userRow: { role?: string | null; tier?: string | null; account_status?: string | null } | null = null;
+    let userRow: {
+      role?: string | null;
+      tier?: string | null;
+      account_status?: string | null;
+      geo_city?: string | null;
+      geo_state?: string | null;
+    } | null = null;
     if (dataClient) {
       await ensureUserRow(auth.user.id);
       const { data } = await dataClient
         .from("users")
-        .select("role,tier,account_status")
+        .select("role,tier,account_status,geo_city,geo_state")
         .eq("id", auth.user.id)
         .maybeSingle();
       if (data) {
-        userRow = data as { role?: string | null; tier?: string | null; account_status?: string | null };
+        userRow = data as {
+          role?: string | null;
+          tier?: string | null;
+          account_status?: string | null;
+          geo_city?: string | null;
+          geo_state?: string | null;
+        };
       }
     }
+
+    const tier = normalizeTier(userRow?.tier ?? "free");
+    const effectivePlan = effectivePlanFromTier(tier);
+    const entitlements = await loadTierEntitlements(tier);
+    const seatContext = await buildSeatContext(auth.user.id, tier);
 
     return res.json({
       id: auth.user.id,
       email: auth.user.email,
       role: userRow?.role ?? null,
-      tier: userRow?.tier ?? null,
+      tier,
+      effective_plan: effectivePlan,
+      entitlements,
+      seat_context: seatContext,
       account_status: userRow?.account_status ?? null,
+      geo_city: userRow?.geo_city ?? null,
+      geo_state: userRow?.geo_state ?? null,
       user_metadata: auth.user.user_metadata,
     });
   } catch (err) {
@@ -1282,6 +1329,12 @@ app.patch("/me", async (req, res) => {
     }
     if (payload.commission_rate_percent !== undefined) {
       userPatch.commission_rate = payload.commission_rate_percent / 100;
+    }
+    if (payload.geo_city !== undefined) {
+      userPatch.geo_city = payload.geo_city || null;
+    }
+    if (payload.geo_state !== undefined) {
+      userPatch.geo_state = payload.geo_state || null;
     }
     if (Object.keys(userPatch).length > 0) {
       const { error: updateUserRowError } = await dataClient
@@ -1330,6 +1383,192 @@ app.patch("/me", async (req, res) => {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in PATCH /me", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/billing/checkout-session", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    if (!isRecord(req.body) || typeof req.body.plan_sku !== "string" || !req.body.plan_sku.trim()) {
+      return res.status(422).json({ error: "plan_sku is required" });
+    }
+    const planSku = req.body.plan_sku.trim();
+    const targetTier = mapPlanSkuToTier(planSku);
+    const checkoutUrl = process.env.STRIPE_CHECKOUT_BASE_URL
+      ? `${process.env.STRIPE_CHECKOUT_BASE_URL}?prefilled_email=${encodeURIComponent(auth.user.email ?? "")}&client_reference_id=${encodeURIComponent(auth.user.id)}&plan=${encodeURIComponent(planSku)}`
+      : `https://billing.mock.compass.local/checkout?plan=${encodeURIComponent(planSku)}&user_id=${encodeURIComponent(auth.user.id)}`;
+
+    await dataClient.from("payment_events").insert({
+      provider: "stripe",
+      event_id: `checkout_req_${crypto.randomUUID()}`,
+      event_type: "checkout.session.requested",
+      user_id: auth.user.id,
+      payload: {
+        plan_sku: planSku,
+        target_tier: targetTier,
+        checkout_url: checkoutUrl,
+      },
+      processing_status: "processed",
+      processed_at: new Date().toISOString(),
+    });
+
+    return res.json({
+      provider: "stripe",
+      checkout_url: checkoutUrl,
+      plan_sku: planSku,
+      target_tier: targetTier,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/billing/checkout-session", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/billing/portal-session", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+
+    const { data: subscription } = await dataClient
+      .from("subscriptions")
+      .select("stripe_customer_id,plan_sku,tier,status")
+      .eq("user_id", auth.user.id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const portalUrl = process.env.STRIPE_PORTAL_BASE_URL
+      ? `${process.env.STRIPE_PORTAL_BASE_URL}?customer=${encodeURIComponent(String((subscription as { stripe_customer_id?: unknown })?.stripe_customer_id ?? ""))}`
+      : `https://billing.mock.compass.local/portal?user_id=${encodeURIComponent(auth.user.id)}`;
+    return res.json({
+      provider: "stripe",
+      portal_url: portalUrl,
+      subscription: subscription ?? null,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/billing/portal-session", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/webhooks/stripe", async (req, res) => {
+  try {
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    const rawBody = (req as RawBodyRequest).rawBody ?? JSON.stringify(req.body ?? {});
+    const validSignature = verifyStripeWebhookSignature({
+      rawBody,
+      signatureHeader: req.headers["stripe-signature"],
+      secret: process.env.STRIPE_WEBHOOK_SECRET,
+    });
+    if (!validSignature) {
+      return res.status(401).json({ error: "Invalid Stripe webhook signature" });
+    }
+    if (!isRecord(req.body)) {
+      return res.status(400).json({ error: "Webhook body must be an object" });
+    }
+    const eventId = typeof req.body.id === "string" ? req.body.id : `evt_${crypto.randomUUID()}`;
+    const eventType = typeof req.body.type === "string" ? req.body.type : "unknown";
+    const eventDataObj = isRecord(req.body.data) && isRecord(req.body.data.object) ? req.body.data.object : {};
+    const stripeSubscriptionId =
+      typeof eventDataObj.id === "string" && String(eventType).startsWith("customer.subscription.")
+        ? eventDataObj.id
+        : typeof eventDataObj.subscription === "string"
+          ? eventDataObj.subscription
+          : null;
+    const customerId = typeof eventDataObj.customer === "string" ? eventDataObj.customer : null;
+    const planSku =
+      typeof eventDataObj.plan === "string"
+        ? eventDataObj.plan
+        : isRecord(eventDataObj.plan) && typeof eventDataObj.plan.id === "string"
+          ? eventDataObj.plan.id
+          : isRecord(eventDataObj.items) && Array.isArray(eventDataObj.items.data)
+            ? (() => {
+                const first = eventDataObj.items.data.find((item) => isRecord(item) && isRecord(item.price) && typeof item.price.id === "string");
+                return isRecord(first) && isRecord(first.price) && typeof first.price.id === "string" ? first.price.id : null;
+              })()
+            : null;
+    const mappedTier = mapPlanSkuToTier(planSku);
+    const subscriptionStatus = normalizeSubscriptionStatus(eventDataObj.status);
+
+    let userId: string | null = null;
+    if (typeof eventDataObj.client_reference_id === "string") {
+      userId = eventDataObj.client_reference_id;
+    } else if (isRecord(eventDataObj.metadata) && typeof eventDataObj.metadata.user_id === "string") {
+      userId = eventDataObj.metadata.user_id;
+    } else if (customerId) {
+      const { data: byCustomer } = await dataClient
+        .from("subscriptions")
+        .select("user_id")
+        .eq("stripe_customer_id", customerId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      userId = byCustomer ? String((byCustomer as { user_id?: unknown }).user_id ?? "") : null;
+    }
+    if (userId) {
+      await ensureUserRow(userId);
+    }
+
+    let subscriptionId: string | null = null;
+    if (userId) {
+      const { data: subscriptionRow, error: upsertError } = await dataClient
+        .from("subscriptions")
+        .upsert(
+          {
+            user_id: userId,
+            stripe_customer_id: customerId,
+            stripe_subscription_id: stripeSubscriptionId,
+            plan_sku: planSku,
+            tier: mappedTier,
+            status: subscriptionStatus,
+            current_period_start:
+              typeof eventDataObj.current_period_start === "number"
+                ? new Date(eventDataObj.current_period_start * 1000).toISOString()
+                : null,
+            current_period_end:
+              typeof eventDataObj.current_period_end === "number"
+                ? new Date(eventDataObj.current_period_end * 1000).toISOString()
+                : null,
+            cancel_at_period_end: Boolean(eventDataObj.cancel_at_period_end),
+            metadata: isRecord(eventDataObj.metadata) ? eventDataObj.metadata : {},
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "stripe_subscription_id" }
+        )
+        .select("id")
+        .single();
+      if (!upsertError && subscriptionRow) {
+        subscriptionId = String((subscriptionRow as { id?: unknown }).id ?? "");
+      }
+      if (!upsertError) {
+        const nextTier: CanonicalTier = subscriptionStatus === "active" || subscriptionStatus === "trialing" ? mappedTier : "free";
+        await dataClient.from("users").update({ tier: nextTier, updated_at: new Date().toISOString() }).eq("id", userId);
+      }
+    }
+
+    await dataClient.from("payment_events").upsert(
+      {
+        provider: "stripe",
+        event_id: eventId,
+        event_type: eventType,
+        user_id: userId,
+        subscription_id: subscriptionId,
+        payload: req.body,
+        processed_at: new Date().toISOString(),
+        processing_status: "processed",
+      },
+      { onConflict: "provider,event_id" }
+    );
+
+    return res.json({ received: true, event_id: eventId, event_type: eventType });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/webhooks/stripe", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -5975,6 +6214,148 @@ app.post("/teams/:id/members", async (req, res) => {
   }
 });
 
+app.post("/challenges", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+    if (!dataClient) {
+      return res.status(500).json({ error: "Supabase data client not configured" });
+    }
+
+    const payloadCheck = validateChallengeCreatePayload(req.body);
+    if (!payloadCheck.ok) {
+      return res.status(payloadCheck.status).json({ error: payloadCheck.error });
+    }
+    const payload = payloadCheck.payload;
+
+    await ensureUserRow(auth.user.id);
+    const { data: userRow, error: userError } = await dataClient
+      .from("users")
+      .select("tier")
+      .eq("id", auth.user.id)
+      .single();
+    if (userError) {
+      return handleSupabaseError(res, "Failed to load user tier", userError);
+    }
+    const tier = normalizeTier((userRow as { tier?: unknown }).tier);
+    const entitlements = await loadTierEntitlements(tier);
+    if (!toEntitlementBool(entitlements, "can_start_challenges", true)) {
+      return res.status(403).json({ error: "Your plan cannot start challenges" });
+    }
+
+    const inviteLimit = toEntitlementNumber(entitlements, "challenge_invite_limit", -1);
+    const requestedInviteCount = payload.invite_user_ids?.length ?? 0;
+    if (inviteLimit >= 0 && requestedInviteCount > inviteLimit) {
+      return res.status(403).json({ error: `Invite limit exceeded for your plan (max ${inviteLimit})` });
+    }
+
+    const nowIso = new Date().toISOString();
+    if (payload.mode === "team") {
+      if (!payload.team_id) {
+        return res.status(422).json({ error: "team_id is required when mode=team" });
+      }
+      const leaderCheck = await checkTeamLeader(payload.team_id, auth.user.id);
+      if (!leaderCheck.ok) {
+        return res.status(leaderCheck.status).json({ error: leaderCheck.error });
+      }
+      if (!leaderCheck.isLeader) {
+        return res.status(403).json({ error: "Only team leaders can host team challenges" });
+      }
+      if (!toEntitlementBool(entitlements, "can_host_team_challenges", false)) {
+        return res.status(403).json({ error: "Your plan cannot host team challenges" });
+      }
+    } else {
+      // Team leaders can host one active private cross-team challenge on Team plan.
+      if (tier === "team") {
+        const { data: leaderRows, error: leaderRowsError } = await dataClient
+          .from("team_memberships")
+          .select("id")
+          .eq("user_id", auth.user.id)
+          .eq("role", "team_leader")
+          .limit(1);
+        if (leaderRowsError) {
+          return handleSupabaseError(res, "Failed to evaluate team leader scope", leaderRowsError);
+        }
+        if (!leaderRows || leaderRows.length === 0) {
+          return res.status(403).json({ error: "Private cross-team challenge hosting requires team leader role" });
+        }
+        const privateLimit = toEntitlementNumber(entitlements, "team_private_cross_team_limit", 0);
+        if (privateLimit >= 0) {
+          const { count, error: countError } = await dataClient
+            .from("challenges")
+            .select("id", { count: "exact", head: true })
+            .eq("created_by", auth.user.id)
+            .is("team_id", null)
+            .eq("is_active", true)
+            .gte("end_at", nowIso);
+          if (countError) {
+            return handleSupabaseError(res, "Failed to enforce private challenge host limit", countError);
+          }
+          if (Number(count ?? 0) >= privateLimit) {
+            return res.status(403).json({ error: "Team plan allows one active private cross-team challenge" });
+          }
+        }
+      }
+      if (tier === "coach" && !toEntitlementBool(entitlements, "coach_private_challenge_unlimited", false)) {
+        return res.status(403).json({ error: "Coach private challenge hosting is not enabled for this plan" });
+      }
+    }
+
+    const { data: challenge, error: challengeError } = await dataClient
+      .from("challenges")
+      .insert({
+        template_id: payload.template_id ?? null,
+        team_id: payload.mode === "team" ? payload.team_id ?? null : null,
+        name: payload.name,
+        description: payload.description ?? null,
+        mode: payload.mode,
+        is_active: true,
+        start_at: payload.start_at ?? nowIso,
+        end_at: payload.end_at,
+        late_join_includes_history: Boolean(payload.late_join_includes_history),
+        created_by: auth.user.id,
+      })
+      .select("id,name,description,mode,team_id,start_at,end_at,late_join_includes_history,is_active,created_by,created_at")
+      .single();
+    if (challengeError) {
+      return handleSupabaseError(res, "Failed to create challenge", challengeError);
+    }
+
+    const challengeId = String((challenge as { id?: unknown }).id ?? "");
+    if (!challengeId) {
+      return res.status(500).json({ error: "Challenge id missing from create response" });
+    }
+
+    await dataClient
+      .from("challenge_participants")
+      .upsert(
+        {
+          challenge_id: challengeId,
+          user_id: auth.user.id,
+          team_id: payload.mode === "team" ? payload.team_id ?? null : null,
+          joined_at: nowIso,
+          effective_start_at: payload.start_at ?? nowIso,
+          sponsored_challenge_id: null,
+        },
+        { onConflict: "challenge_id,user_id" }
+      );
+
+    return res.status(201).json({
+      challenge,
+      invite_policy: {
+        invite_limit: inviteLimit,
+        requested_invites: requestedInviteCount,
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /challenges", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.get("/challenges", async (req, res) => {
   try {
     const auth = await authenticateRequest(req.headers.authorization);
@@ -6064,17 +6445,19 @@ app.get("/sponsored-challenges", async (req, res) => {
     await ensureUserRow(auth.user.id);
     const { data: userRow, error: userError } = await dataClient
       .from("users")
-      .select("tier")
+      .select("tier,geo_city,geo_state")
       .eq("id", auth.user.id)
       .single();
     if (userError) return handleSupabaseError(res, "Failed to load user tier", userError);
     const userTier = String((userRow as { tier?: unknown }).tier ?? "free");
+    const userGeoCity = (userRow as { geo_city?: unknown }).geo_city;
+    const userGeoState = (userRow as { geo_state?: unknown }).geo_state;
 
     const nowIso = new Date().toISOString();
     const { data: rows, error } = await dataClient
       .from("sponsored_challenges")
       .select(
-        "id,name,description,reward_text,cta_label,cta_url,disclaimer,required_tier,start_at,end_at,is_active,sponsors(id,name,logo_url,brand_color,is_active)"
+        "id,name,description,reward_text,cta_label,cta_url,disclaimer,required_tier,start_at,end_at,is_active,geo_scope,geo_target_values,sponsors(id,name,logo_url,brand_color,is_active)"
       )
       .eq("is_active", true)
       .lte("start_at", nowIso)
@@ -6085,6 +6468,14 @@ app.get("/sponsored-challenges", async (req, res) => {
     const challenges = (rows ?? [])
       .filter((row) => isTierAtLeast(userTier, String((row as { required_tier?: unknown }).required_tier ?? "free")))
       .filter((row) => Boolean((row as { sponsors?: { is_active?: unknown } }).sponsors?.is_active))
+      .filter((row) =>
+        isSponsoredChallengeGeoEligible({
+          geoScope: (row as { geo_scope?: unknown }).geo_scope,
+          geoTargetValues: (row as { geo_target_values?: unknown }).geo_target_values,
+          userCity: userGeoCity,
+          userState: userGeoState,
+        })
+      )
       .map((row) => ({
         id: row.id,
         name: row.name,
@@ -6096,6 +6487,8 @@ app.get("/sponsored-challenges", async (req, res) => {
         required_tier: row.required_tier,
         start_at: row.start_at,
         end_at: row.end_at,
+        geo_scope: (row as { geo_scope?: unknown }).geo_scope ?? "national",
+        geo_target_values: (row as { geo_target_values?: unknown }).geo_target_values ?? [],
         sponsor: (row as { sponsors?: unknown }).sponsors ?? null,
         packaging_read_model: packagingReadModelForSponsoredChallenge(row as { id?: unknown; sponsors?: { id?: unknown } | null; disclaimer?: unknown }),
       }));
@@ -6120,16 +6513,18 @@ app.get("/sponsored-challenges/:id", async (req, res) => {
     await ensureUserRow(auth.user.id);
     const { data: userRow, error: userError } = await dataClient
       .from("users")
-      .select("tier")
+      .select("tier,geo_city,geo_state")
       .eq("id", auth.user.id)
       .single();
     if (userError) return handleSupabaseError(res, "Failed to load user tier", userError);
     const userTier = String((userRow as { tier?: unknown }).tier ?? "free");
+    const userGeoCity = (userRow as { geo_city?: unknown }).geo_city;
+    const userGeoState = (userRow as { geo_state?: unknown }).geo_state;
 
     const { data: row, error } = await dataClient
       .from("sponsored_challenges")
       .select(
-        "id,name,description,reward_text,cta_label,cta_url,disclaimer,required_tier,start_at,end_at,is_active,sponsors(id,name,logo_url,brand_color,is_active)"
+        "id,name,description,reward_text,cta_label,cta_url,disclaimer,required_tier,start_at,end_at,is_active,geo_scope,geo_target_values,sponsors(id,name,logo_url,brand_color,is_active)"
       )
       .eq("id", sponsoredChallengeId)
       .single();
@@ -6148,6 +6543,16 @@ app.get("/sponsored-challenges/:id", async (req, res) => {
     if (!isTierAtLeast(userTier, String((row as { required_tier?: unknown }).required_tier ?? "free"))) {
       return res.status(403).json({ error: "Your subscription tier does not have access to this sponsored challenge" });
     }
+    if (
+      !isSponsoredChallengeGeoEligible({
+        geoScope: (row as { geo_scope?: unknown }).geo_scope,
+        geoTargetValues: (row as { geo_target_values?: unknown }).geo_target_values,
+        userCity: userGeoCity,
+        userState: userGeoState,
+      })
+    ) {
+      return res.status(403).json({ error: "Sponsored challenge is not available in your geography" });
+    }
 
     return res.json({
       sponsored_challenge: {
@@ -6161,6 +6566,8 @@ app.get("/sponsored-challenges/:id", async (req, res) => {
         required_tier: row.required_tier,
         start_at: row.start_at,
         end_at: row.end_at,
+        geo_scope: (row as { geo_scope?: unknown }).geo_scope ?? "national",
+        geo_target_values: (row as { geo_target_values?: unknown }).geo_target_values ?? [],
         sponsor: (row as { sponsors?: unknown }).sponsors ?? null,
         packaging_read_model: packagingReadModelForSponsoredChallenge(row as { id?: unknown; sponsors?: { id?: unknown } | null; disclaimer?: unknown }),
       },
@@ -6168,6 +6575,149 @@ app.get("/sponsored-challenges/:id", async (req, res) => {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in GET /sponsored-challenges/:id", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/custom-kpis", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+
+    await ensureUserRow(auth.user.id);
+    const { data: rows, error } = await dataClient
+      .from("kpis")
+      .select("id,name,slug,type,requires_direct_value_input,is_active,created_by,created_at,updated_at")
+      .eq("type", "Custom")
+      .eq("created_by", auth.user.id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true });
+    if (error) return handleSupabaseError(res, "Failed to fetch custom KPIs", error);
+    return res.json({ custom_kpis: rows ?? [] });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/custom-kpis", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/custom-kpis", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    if (!isRecord(req.body) || typeof req.body.name !== "string" || !req.body.name.trim()) {
+      return res.status(422).json({ error: "name is required" });
+    }
+
+    await ensureUserRow(auth.user.id);
+    const { data: userRow, error: userError } = await dataClient
+      .from("users")
+      .select("tier")
+      .eq("id", auth.user.id)
+      .single();
+    if (userError) return handleSupabaseError(res, "Failed to load user tier", userError);
+    const entitlements = await loadTierEntitlements(normalizeTier((userRow as { tier?: unknown }).tier ?? "free"));
+    if (!toEntitlementBool(entitlements, "can_create_custom_kpis", false)) {
+      return res.status(403).json({ error: "Custom KPIs require Pro, Team, Coach, or Enterprise plan" });
+    }
+
+    const name = req.body.name.trim();
+    const slugCandidate = typeof req.body.slug === "string" && req.body.slug.trim() ? req.body.slug.trim() : name;
+    const slug = normalizeKpiIdentifier(slugCandidate);
+    if (!slug) return res.status(422).json({ error: "name/slug must contain at least one alphanumeric character" });
+    const requiresDirect =
+      req.body.requires_direct_value_input === undefined ? true : Boolean(req.body.requires_direct_value_input);
+
+    const { data, error } = await dataClient
+      .from("kpis")
+      .insert({
+        name,
+        slug,
+        type: "Custom",
+        requires_direct_value_input: requiresDirect,
+        is_active: true,
+        created_by: auth.user.id,
+      })
+      .select("id,name,slug,type,requires_direct_value_input,is_active,created_by,created_at,updated_at")
+      .single();
+    if (error) return handleSupabaseError(res, "Failed to create custom KPI", error);
+    return res.status(201).json({ custom_kpi: data });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/custom-kpis", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.put("/api/custom-kpis/:id", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    const customKpiId = String(req.params.id ?? "").trim();
+    if (!customKpiId) return res.status(422).json({ error: "custom KPI id is required" });
+    if (!isRecord(req.body)) return res.status(400).json({ error: "Body must be a JSON object" });
+
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (req.body.name !== undefined) {
+      if (typeof req.body.name !== "string" || !req.body.name.trim()) {
+        return res.status(422).json({ error: "name must be a non-empty string when provided" });
+      }
+      patch.name = req.body.name.trim();
+    }
+    if (req.body.slug !== undefined) {
+      if (typeof req.body.slug !== "string" || !req.body.slug.trim()) {
+        return res.status(422).json({ error: "slug must be a non-empty string when provided" });
+      }
+      const slug = normalizeKpiIdentifier(req.body.slug.trim());
+      if (!slug) return res.status(422).json({ error: "slug must contain at least one alphanumeric character" });
+      patch.slug = slug;
+    }
+    if (req.body.requires_direct_value_input !== undefined) {
+      patch.requires_direct_value_input = Boolean(req.body.requires_direct_value_input);
+    }
+    if (Object.keys(patch).length === 1) {
+      return res.status(422).json({ error: "At least one mutable field is required" });
+    }
+
+    const { data, error } = await dataClient
+      .from("kpis")
+      .update(patch)
+      .eq("id", customKpiId)
+      .eq("created_by", auth.user.id)
+      .eq("type", "Custom")
+      .select("id,name,slug,type,requires_direct_value_input,is_active,created_by,created_at,updated_at")
+      .single();
+    if (error) return handleSupabaseError(res, "Failed to update custom KPI", error);
+    return res.json({ custom_kpi: data });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in PUT /api/custom-kpis/:id", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.delete("/api/custom-kpis/:id", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    const customKpiId = String(req.params.id ?? "").trim();
+    if (!customKpiId) return res.status(422).json({ error: "custom KPI id is required" });
+
+    const { error } = await dataClient
+      .from("kpis")
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq("id", customKpiId)
+      .eq("created_by", auth.user.id)
+      .eq("type", "Custom");
+    if (error) return handleSupabaseError(res, "Failed to archive custom KPI", error);
+    return res.status(204).send();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in DELETE /api/custom-kpis/:id", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -7044,7 +7594,7 @@ app.post("/challenge-participants", async (req, res) => {
 
     const { data: challenge, error: challengeError } = await dataClient
       .from("challenges")
-      .select("id,mode,team_id,start_at,end_at,late_join_includes_history,is_active")
+      .select("id,mode,team_id,start_at,end_at,late_join_includes_history,is_active,created_by")
       .eq("id", payload.challenge_id)
       .single();
     if (challengeError) {
@@ -7055,8 +7605,39 @@ app.post("/challenge-participants", async (req, res) => {
     }
 
     const targetUserId = payload.user_id ?? auth.user.id;
+    const actorIsEnrollingSomeoneElse = targetUserId !== auth.user.id;
 
-    if (targetUserId !== auth.user.id) {
+    await ensureUserRow(targetUserId);
+    const { data: targetTierRow, error: targetTierError } = await dataClient
+      .from("users")
+      .select("tier")
+      .eq("id", targetUserId)
+      .single();
+    if (targetTierError) {
+      return handleSupabaseError(res, "Failed to load target user tier", targetTierError);
+    }
+    const targetTier = normalizeTier((targetTierRow as { tier?: unknown }).tier ?? "free");
+    const targetEntitlements = await loadTierEntitlements(targetTier);
+    const activeParticipationLimit = Math.max(1, toEntitlementNumber(targetEntitlements, "active_challenge_participation_limit", 1));
+
+    const nowIso = new Date().toISOString();
+    const { data: activeParticipationRows, error: activeParticipationError } = await dataClient
+      .from("challenge_participants")
+      .select("challenge_id,challenges!inner(id,is_active,end_at)")
+      .eq("user_id", targetUserId)
+      .eq("challenges.is_active", true)
+      .gte("challenges.end_at", nowIso);
+    if (activeParticipationError) {
+      return handleSupabaseError(res, "Failed to evaluate active challenge participation limits", activeParticipationError);
+    }
+    const activeChallengeIds = new Set(
+      (activeParticipationRows ?? []).map((row) => String((row as { challenge_id?: unknown }).challenge_id ?? "")).filter(Boolean)
+    );
+    if (!activeChallengeIds.has(payload.challenge_id) && activeChallengeIds.size >= activeParticipationLimit) {
+      return res.status(403).json({ error: "User already has an active challenge; only one active participation is allowed" });
+    }
+
+    if (actorIsEnrollingSomeoneElse) {
       if (!challenge.team_id) {
         return res.status(403).json({ error: "Leader enrollment requires team challenge context" });
       }
@@ -7066,6 +7647,32 @@ app.post("/challenge-participants", async (req, res) => {
       }
       if (!leaderCheck.isLeader) {
         return res.status(403).json({ error: "Only team leaders can enroll other users" });
+      }
+      const { data: actorTierRow, error: actorTierError } = await dataClient
+        .from("users")
+        .select("tier")
+        .eq("id", auth.user.id)
+        .single();
+      if (actorTierError) {
+        return handleSupabaseError(res, "Failed to evaluate inviter tier", actorTierError);
+      }
+      const actorTier = normalizeTier((actorTierRow as { tier?: unknown }).tier ?? "free");
+      const actorEntitlements = await loadTierEntitlements(actorTier);
+      const inviteLimit = toEntitlementNumber(actorEntitlements, "challenge_invite_limit", -1);
+      if (inviteLimit >= 0) {
+        const { count, error: inviteCountError } = await dataClient
+          .from("challenge_participants")
+          .select("id", { count: "exact", head: true })
+          .eq("challenge_id", payload.challenge_id);
+        if (inviteCountError) {
+          return handleSupabaseError(res, "Failed to enforce invite limit", inviteCountError);
+        }
+        const existingParticipantCount = Math.max(0, Number(count ?? 0));
+        const creatorId = String((challenge as { created_by?: unknown }).created_by ?? "");
+        const nonCreatorCount = creatorId ? Math.max(0, existingParticipantCount - 1) : existingParticipantCount;
+        if (!activeChallengeIds.has(payload.challenge_id) && nonCreatorCount >= inviteLimit) {
+          return res.status(403).json({ error: `Invite cap reached for current host plan (max ${inviteLimit})` });
+        }
       }
     }
 
@@ -7081,8 +7688,6 @@ app.post("/challenge-participants", async (req, res) => {
         return res.status(403).json({ error: "User must be a team member to join this challenge" });
       }
     }
-
-    await ensureUserRow(targetUserId);
 
     const includeHistory = payload.include_prior_logs ?? Boolean(challenge.late_join_includes_history);
     const effectiveStartAt = includeHistory
@@ -7601,6 +8206,65 @@ function validateTeamMemberAddPayload(body: unknown):
   };
 }
 
+function validateChallengeCreatePayload(body: unknown):
+  | { ok: true; payload: ChallengeCreatePayload }
+  | { ok: false; status: number; error: string } {
+  if (!isRecord(body)) {
+    return { ok: false, status: 400, error: "Body must be a JSON object" };
+  }
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name) return { ok: false, status: 422, error: "name is required" };
+  const mode = body.mode === "team" ? "team" : body.mode === "solo" ? "solo" : null;
+  if (!mode) return { ok: false, status: 422, error: "mode must be one of: solo, team" };
+  const endAtRaw = typeof body.end_at === "string" ? body.end_at.trim() : "";
+  if (!endAtRaw) return { ok: false, status: 422, error: "end_at is required" };
+  const endAt = new Date(endAtRaw);
+  if (Number.isNaN(endAt.getTime())) return { ok: false, status: 422, error: "end_at must be a valid ISO date" };
+  const startAtRaw = typeof body.start_at === "string" ? body.start_at.trim() : "";
+  const startAt = startAtRaw ? new Date(startAtRaw) : new Date();
+  if (Number.isNaN(startAt.getTime())) return { ok: false, status: 422, error: "start_at must be a valid ISO date when provided" };
+  if (endAt.getTime() <= startAt.getTime()) {
+    return { ok: false, status: 422, error: "end_at must be later than start_at" };
+  }
+  if (mode === "team" && (typeof body.team_id !== "string" || !body.team_id.trim())) {
+    return { ok: false, status: 422, error: "team_id is required when mode=team" };
+  }
+  if (body.description !== undefined && typeof body.description !== "string") {
+    return { ok: false, status: 422, error: "description must be a string when provided" };
+  }
+  if (body.template_id !== undefined && typeof body.template_id !== "string") {
+    return { ok: false, status: 422, error: "template_id must be a string when provided" };
+  }
+  if (body.late_join_includes_history !== undefined && typeof body.late_join_includes_history !== "boolean") {
+    return { ok: false, status: 422, error: "late_join_includes_history must be boolean when provided" };
+  }
+  const inviteUserIds =
+    body.invite_user_ids === undefined
+      ? []
+      : Array.isArray(body.invite_user_ids)
+        ? body.invite_user_ids
+            .map((value) => (typeof value === "string" ? value.trim() : ""))
+            .filter(Boolean)
+        : null;
+  if (inviteUserIds === null) {
+    return { ok: false, status: 422, error: "invite_user_ids must be an array of user ids when provided" };
+  }
+  return {
+    ok: true,
+    payload: {
+      name,
+      description: typeof body.description === "string" ? body.description.trim() : undefined,
+      mode,
+      team_id: typeof body.team_id === "string" ? body.team_id.trim() : undefined,
+      start_at: startAt.toISOString(),
+      end_at: endAt.toISOString(),
+      template_id: typeof body.template_id === "string" ? body.template_id.trim() : undefined,
+      late_join_includes_history: Boolean(body.late_join_includes_history),
+      invite_user_ids: Array.from(new Set(inviteUserIds)),
+    },
+  };
+}
+
 function validateChallengeJoinPayload(body: unknown):
   | { ok: true; payload: ChallengeJoinPayload }
   | { ok: false; status: number; error: string } {
@@ -7740,6 +8404,27 @@ function validateMeProfileUpdatePayload(body: unknown):
   try {
     parseOptionalPipelineField("pipeline_listings_pending");
     parseOptionalPipelineField("pipeline_buyers_uc");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Invalid profile update payload";
+    return { ok: false, status: 422, error: msg };
+  }
+
+  const parseOptionalGeoField = (field: "geo_city" | "geo_state") => {
+    const raw = candidate[field];
+    if (raw === undefined) return;
+    if (raw === null) {
+      payload[field] = "";
+      return;
+    }
+    if (typeof raw !== "string") {
+      throw new Error(`${field} must be a string when provided`);
+    }
+    payload[field] = raw.trim();
+  };
+
+  try {
+    parseOptionalGeoField("geo_city");
+    parseOptionalGeoField("geo_state");
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Invalid profile update payload";
     return { ok: false, status: 422, error: msg };
@@ -9982,21 +10667,158 @@ async function writeKpiLogForUser(
   };
 }
 
-function isTierAtLeast(userTierRaw: string, requiredTierRaw: string): boolean {
-  const normalize = (v: string): "free" | "basic" | "teams" | "enterprise" => {
-    const t = v.toLowerCase();
-    if (t === "enterprise") return "enterprise";
-    if (t === "teams" || t === "team") return "teams";
-    if (t === "basic") return "basic";
-    return "free";
+function normalizeTier(value: unknown): CanonicalTier {
+  const t = String(value ?? "free").trim().toLowerCase();
+  if (t === "enterprise") return "enterprise";
+  if (t === "coach") return "coach";
+  if (t === "team" || t === "teams") return "team";
+  if (t === "pro") return "pro";
+  if (t === "basic") return "basic";
+  return "free";
+}
+
+function effectivePlanFromTier(tier: CanonicalTier): EffectivePlan {
+  if (tier === "basic") return "pro";
+  if (tier === "pro") return "pro";
+  if (tier === "team") return "team";
+  if (tier === "coach") return "coach";
+  if (tier === "enterprise") return "enterprise";
+  return "free";
+}
+
+function defaultEntitlementsForTier(tier: CanonicalTier): EntitlementsMap {
+  const isPaidSolo = tier === "basic" || tier === "pro";
+  const isTeam = tier === "team";
+  const isCoach = tier === "coach";
+  const isEnterprise = tier === "enterprise";
+  return {
+    kpi_cap_per_category: 8,
+    active_challenge_participation_limit: 1,
+    can_join_challenges: true,
+    can_start_challenges: true,
+    challenge_invite_limit: isPaidSolo || isTeam || isCoach || isEnterprise ? -1 : 3,
+    can_create_custom_kpis: isPaidSolo || isTeam || isCoach || isEnterprise,
+    advanced_insights: isPaidSolo || isTeam || isCoach || isEnterprise,
+    can_export: isPaidSolo || isTeam || isCoach || isEnterprise,
+    history_days: isEnterprise ? 3650 : isPaidSolo || isTeam || isCoach ? 365 : 30,
+    can_host_team_challenges: isTeam || isEnterprise,
+    team_private_cross_team_limit: isTeam ? 1 : isEnterprise ? -1 : 0,
+    coach_private_challenge_unlimited: isCoach || isEnterprise,
   };
-  const rank: Record<"free" | "basic" | "teams" | "enterprise", number> = {
+}
+
+async function loadTierEntitlements(tier: CanonicalTier): Promise<EntitlementsMap> {
+  if (!dataClient) {
+    return defaultEntitlementsForTier(tier);
+  }
+  const { data, error } = await dataClient
+    .from("tier_entitlements")
+    .select("entitlement_key,entitlement_value")
+    .eq("tier", tier);
+  if (error || !data || data.length === 0) {
+    return defaultEntitlementsForTier(tier);
+  }
+  const seeded = defaultEntitlementsForTier(tier);
+  for (const row of data) {
+    const key = String((row as { entitlement_key?: unknown }).entitlement_key ?? "").trim();
+    if (!key) continue;
+    seeded[key] = parseEntitlementValue((row as { entitlement_value?: unknown }).entitlement_value);
+  }
+  return seeded;
+}
+
+function parseEntitlementValue(raw: unknown): EntitlementValue {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "boolean" || typeof raw === "number" || typeof raw === "string") return raw;
+  if (Array.isArray(raw)) return JSON.stringify(raw);
+  if (isRecord(raw)) {
+    if (raw.value !== undefined && (typeof raw.value === "boolean" || typeof raw.value === "number" || typeof raw.value === "string")) {
+      return raw.value;
+    }
+    return JSON.stringify(raw);
+  }
+  return String(raw);
+}
+
+function toEntitlementNumber(map: EntitlementsMap, key: string, fallback: number): number {
+  const value = map[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function toEntitlementBool(map: EntitlementsMap, key: string, fallback: boolean): boolean {
+  const value = map[key];
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const lower = value.trim().toLowerCase();
+    if (lower === "true" || lower === "1" || lower === "yes") return true;
+    if (lower === "false" || lower === "0" || lower === "no") return false;
+  }
+  return fallback;
+}
+
+function mapPlanSkuToTier(planSkuRaw: unknown): CanonicalTier {
+  const sku = String(planSkuRaw ?? "").trim().toLowerCase();
+  if (!sku) return "free";
+  if (sku.includes("enterprise")) return "enterprise";
+  if (sku.includes("coach")) return "coach";
+  if (sku.includes("team")) return "team";
+  if (sku.includes("pro") || sku.includes("basic")) return "pro";
+  return "free";
+}
+
+function normalizeSubscriptionStatus(value: unknown): "trialing" | "active" | "past_due" | "canceled" | "incomplete" | "incomplete_expired" | "inactive" {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "trialing") return "trialing";
+  if (normalized === "active") return "active";
+  if (normalized === "past_due") return "past_due";
+  if (normalized === "canceled") return "canceled";
+  if (normalized === "incomplete") return "incomplete";
+  if (normalized === "incomplete_expired") return "incomplete_expired";
+  return "inactive";
+}
+
+function verifyStripeWebhookSignature(input: {
+  rawBody: string;
+  signatureHeader: string | string[] | undefined;
+  secret: string | undefined;
+}): boolean {
+  const secret = input.secret;
+  if (!secret) return true; // dev-mode permissive when secret is not configured
+  const signatureRaw = Array.isArray(input.signatureHeader) ? input.signatureHeader[0] : input.signatureHeader;
+  if (!signatureRaw || typeof signatureRaw !== "string") return false;
+  const parts = signatureRaw.split(",").map((part) => part.trim());
+  let timestampRaw: string | null = null;
+  let signatureHex: string | null = null;
+  for (const part of parts) {
+    const [key, value] = part.split("=");
+    if (key === "t") timestampRaw = value ?? null;
+    if (key === "v1") signatureHex = value ?? null;
+  }
+  const timestamp = Number(timestampRaw);
+  if (!Number.isInteger(timestamp) || !signatureHex) return false;
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(`${timestamp}.${input.rawBody}`)
+    .digest("hex");
+  return timingSafeEqualHex(signatureHex.toLowerCase(), expected.toLowerCase());
+}
+
+function isTierAtLeast(userTierRaw: string, requiredTierRaw: string): boolean {
+  const normalizeForRank = (v: string): EffectivePlan => effectivePlanFromTier(normalizeTier(v));
+  const rank: Record<EffectivePlan, number> = {
     free: 0,
-    basic: 1,
-    teams: 2,
+    pro: 1,
+    team: 2,
+    coach: 2,
     enterprise: 3,
   };
-  return rank[normalize(userTierRaw)] >= rank[normalize(requiredTierRaw)];
+  return rank[normalizeForRank(userTierRaw)] >= rank[normalizeForRank(requiredTierRaw)];
 }
 
 async function logAdminActivity(
@@ -10063,6 +10885,84 @@ async function checkTeamLeader(teamId: string, userId: string): Promise<
     return membership;
   }
   return { ok: true, isLeader: membership.member && membership.role === "team_leader" };
+}
+
+async function buildSeatContext(userId: string, tier: CanonicalTier): Promise<SeatContext> {
+  if (!dataClient) {
+    return { scope: "none", included: null, used: null, overage: null };
+  }
+  if (tier === "team") {
+    const { data: teamRows, error: teamRowsError } = await dataClient
+      .from("team_memberships")
+      .select("team_id")
+      .eq("user_id", userId)
+      .eq("role", "team_leader")
+      .limit(1);
+    if (teamRowsError || !teamRows || teamRows.length === 0) {
+      return { scope: "team", included: 10, used: 0, overage: 0 };
+    }
+    const teamId = String((teamRows[0] as { team_id?: unknown }).team_id ?? "");
+    if (!teamId) return { scope: "team", included: 10, used: 0, overage: 0 };
+    const { count } = await dataClient
+      .from("team_memberships")
+      .select("id", { count: "exact", head: true })
+      .eq("team_id", teamId);
+    const used = Math.max(0, Number(count ?? 0));
+    return { scope: "team", included: 10, used, overage: Math.max(0, used - 10) };
+  }
+  if (tier === "coach") {
+    const { count } = await dataClient
+      .from("coaching_engagements")
+      .select("id", { count: "exact", head: true })
+      .eq("coach_id", userId)
+      .in("status", ["pending", "active"]);
+    const used = Math.max(0, Number(count ?? 0));
+    return { scope: "coach", included: 25, used, overage: Math.max(0, used - 25) };
+  }
+  return { scope: "none", included: null, used: null, overage: null };
+}
+
+function normalizeGeoScope(value: unknown): "city" | "state" | "multi_state" | "national" {
+  const normalized = String(value ?? "national").trim().toLowerCase();
+  if (normalized === "city") return "city";
+  if (normalized === "state") return "state";
+  if (normalized === "multi_state") return "multi_state";
+  return "national";
+}
+
+function normalizeGeoTokens(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const tokens = values
+    .map((token) => (typeof token === "string" ? token.trim().toLowerCase() : ""))
+    .filter(Boolean);
+  return Array.from(new Set(tokens));
+}
+
+function isSponsoredChallengeGeoEligible(input: {
+  geoScope: unknown;
+  geoTargetValues: unknown;
+  userCity: unknown;
+  userState: unknown;
+}): boolean {
+  const scope = normalizeGeoScope(input.geoScope);
+  if (scope === "national") return true;
+  const targets = normalizeGeoTokens(input.geoTargetValues);
+  if (targets.length === 0) return false;
+  const city = String(input.userCity ?? "").trim().toLowerCase();
+  const state = String(input.userState ?? "").trim().toLowerCase();
+  if (scope === "city") {
+    if (!city || !state) return false;
+    return targets.includes(`${city},${state}`) || targets.includes(city);
+  }
+  if (scope === "state") {
+    if (!state) return false;
+    return targets.includes(state);
+  }
+  if (scope === "multi_state") {
+    if (!state) return false;
+    return targets.includes(state);
+  }
+  return true;
 }
 
 async function hasSharedTeamMembership(

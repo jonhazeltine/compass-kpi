@@ -606,6 +606,34 @@
 - Then overlapping provider continuity contributions are removed/ignored deterministically
 - And no duplicate contribution remains in horizon provenance accounting
 
+### E11) M6 Challenge-First Persona Routing
+- Given a non-team, non-coach persona
+- When app shell resolves bottom tabs
+- Then tab slot #2 renders `Challenges` (crossed-swords icon) instead of `Team`
+- And `Coach` tab remains visible
+- Given a team member or team leader
+- Then tab slot #2 remains `Team`
+
+### E12) M6 Entitlements + Participation Guardrails
+- Given a free-tier user
+- When creating and inviting participants to hosted challenges
+- Then invite limit of `3` is enforced with deterministic error response
+- Given any user already active in one challenge
+- When attempting to join another active challenge
+- Then server rejects enrollment (`422`) and leaves existing membership intact
+
+### E13) M6 Billing/Geo/Custom KPI Runtime
+- Given billing webhook events for subscription create/update/cancel
+- When `POST /api/webhooks/stripe` receives signed events
+- Then subscription state persists and `GET /me` reflects updated plan/entitlements
+- Given sponsored challenges with geo scopes and a user with `geo_city/geo_state`
+- When user requests sponsored challenge list/detail
+- Then only geo-eligible sponsored challenges are returned
+- Given free-tier user attempts custom KPI create
+- Then create is blocked (`403`)
+- Given basic/pro/team/coach user attempts custom KPI create
+- Then create succeeds and KPI is owner-scoped (`created_by = caller`)
+
 ## Regression Checklist
 
 - Auth routes still enforce bearer token requirements.

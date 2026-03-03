@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AdminAuthzProvider } from './contexts/AdminAuthzContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { EntitlementsProvider } from './contexts/EntitlementsContext';
 import AuthFlowScreen from './screens/AuthFlowScreen';
 import AdminShellScreen from './screens/AdminShellScreen';
 import CoachPortalScreen from './screens/CoachPortalScreen';
@@ -97,9 +98,11 @@ export default function App() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <AuthProvider>
-          <AdminAuthzProvider>
-            <AppContent />
-          </AdminAuthzProvider>
+          <EntitlementsProvider>
+            <AdminAuthzProvider>
+              <AppContent />
+            </AdminAuthzProvider>
+          </EntitlementsProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

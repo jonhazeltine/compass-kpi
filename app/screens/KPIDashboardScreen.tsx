@@ -31,11 +31,14 @@ import PillProjectionsBg from '../assets/figma/kpi_icon_bank/pill_projections_bg
 import PillQuicklogBg from '../assets/figma/kpi_icon_bank/pill_quicklog_bg_v1.svg';
 import PillVitalityBg from '../assets/figma/kpi_icon_bank/pill_vitality_bg_orange_v2.svg';
 import TabCoachIcon from '../assets/figma/kpi_icon_bank/tab_coach_themeable_v3.svg';
+import TabChallengeSwordsIcon from '../assets/figma/kpi_icon_bank/tab_challenge_swords_themeable_v1.svg';
 import TabDashboardIcon from '../assets/figma/kpi_icon_bank/tab_dashboard_themeable_v1.svg';
 import TabMessagesIcon from '../assets/figma/kpi_icon_bank/tab_messages_v1.svg';
 import TabReportsIcon from '../assets/figma/kpi_icon_bank/tab_reports_v1.svg';
 import TabTeamIcon from '../assets/figma/kpi_icon_bank/tab_team_themeable_v1.svg';
 import { useAuth } from '../contexts/AuthContext';
+import { useEntitlements } from '../contexts/EntitlementsContext';
+import PaywallModal from '../components/PaywallModal';
 import {
   getFeedbackConfig,
   registerFeedbackCueSource,
@@ -122,7 +125,12 @@ type DashboardPayload = {
 };
 
 type MePayload = {
+  tier?: string | null;
+  effective_plan?: string | null;
+  entitlements?: Record<string, boolean | number | string | null> | null;
   role?: string | null;
+  geo_city?: string | null;
+  geo_state?: string | null;
   user_metadata?: {
     selected_kpis?: string[];
     favorite_kpis?: string[];
@@ -2396,7 +2404,7 @@ const feedbackAudioAssets = {
 
 const bottomTabIconSvgByKey = {
   home: TabDashboardIcon,
-  challenge: TabCoachIcon,
+  challenge: TabChallengeSwordsIcon,
   coach: TabCoachIcon,
   logs: TabReportsIcon,
   team: TabTeamIcon,
@@ -2419,7 +2427,6 @@ const bottomTabIconStyleByKey: Record<BottomTab, any> = {
   comms: { transform: [{ translateY: 3.5 }] },
 };
 
-const bottomTabOrder: BottomTab[] = ['comms', 'team', 'home', 'logs', 'coach'];
 const bottomTabAccessibilityLabel: Record<BottomTab, string> = {
   challenge: 'Challenges',
   coach: 'Coach',
@@ -2451,6 +2458,7 @@ const isLightColor = (hex: string): boolean => {
 
 export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const { session } = useAuth();
+  const { tier: entitlementTier, effectivePlan, can: entitlementCan, limit: entitlementLimitFromContext } = useEntitlements();
   const insets = useSafeAreaInsets();
 
   const colorScheme = useColorScheme();
@@ -2466,7 +2474,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   const [logsReportsSubview, setLogsReportsSubview] = useState<LogsReportsSubview>('logs');
   const [activeTab, setActiveTab] = useState<BottomTab>('home');
-  const [challengeFlowScreen, setChallengeFlowScreen] = useState<'list' | 'details' | 'leaderboard'>('list');
+  const [challengeFlowScreen, setChallengeFlowScreen] = useState<'explore' | 'list' | 'details' | 'leaderboard'>('list');
   const [challengeListFilter, setChallengeListFilter] = useState<ChallengeListFilter>('all');
   const [challengeMemberListTab, setChallengeMemberListTab] = useState<ChallengeMemberListTab>('all');
   const [challengeStateTab, setChallengeStateTab] = useState<ChallengeStateTab>('active');
@@ -2480,6 +2488,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [challengePreviewItem, setChallengePreviewItem] = useState<ChallengeFlowItem | null>(null);
   const [challengeKpiDrillItem, setChallengeKpiDrillItem] = useState<{ key: string; label: string; type: string } | null>(null);
   const [runtimeMeRole, setRuntimeMeRole] = useState<string | null>(null);
+  const [runtimeMeTier, setRuntimeMeTier] = useState<string>('free');
+  const [runtimeEntitlements, setRuntimeEntitlements] = useState<Record<string, boolean | number | string | null>>({});
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  const [paywallTitle, setPaywallTitle] = useState('Upgrade required');
+  const [paywallMessage, setPaywallMessage] = useState('This feature requires a higher plan.');
+  const [paywallRequiredPlan, setPaywallRequiredPlan] = useState('pro');
   const [challengeMemberCreateModalVisible, setChallengeMemberCreateModalVisible] = useState(false);
   const [challengeMemberCreateMode, setChallengeMemberCreateMode] = useState<'public' | 'team'>('team');
   const [teamFlowScreen, setTeamFlowScreen] = useState<TeamFlowScreen>('dashboard');
@@ -2813,6 +2827,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
 
       const dashPayload = dashBody as DashboardPayload;
       setPayload(dashPayload);
+      setRuntimeMeTier(typeof meBody?.tier === 'string' && meBody.tier.trim() ? meBody.tier.trim().toLowerCase() : 'free');
+      setRuntimeEntitlements(
+        meBody?.entitlements && typeof meBody.entitlements === 'object'
+          ? meBody.entitlements
+          : {}
+      );
       const resolvedMeRole =
         typeof meBody?.role === 'string' && meBody.role.trim().length > 0
           ? meBody.role.toLowerCase()
@@ -5262,6 +5282,9 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     }
     if (tab === 'challenge') {
       setViewMode('log');
+      if (isSoloPersona) {
+        setChallengeFlowScreen('explore');
+      }
       return;
     }
     if (tab === 'logs') {
@@ -5929,6 +5952,42 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     sessionUserMeta.team_role,
     runtimeMeRole,
   ]);
+  const entitlementValueByKey = useCallback(
+    (key: string): boolean | number | string | null | undefined => {
+      const runtimeValue = runtimeEntitlements[key];
+      if (runtimeValue !== undefined) return runtimeValue;
+      const ctxValue = (entitlementCan(key, false) ? true : undefined) as boolean | undefined;
+      if (ctxValue !== undefined) return ctxValue;
+      return undefined;
+    },
+    [entitlementCan, runtimeEntitlements]
+  );
+  const entitlementFlag = useCallback(
+    (key: string, fallback: boolean): boolean => {
+      const value = entitlementValueByKey(key);
+      if (typeof value === 'boolean') return value;
+      if (typeof value === 'number') return value !== 0;
+      if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+        if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+      }
+      return entitlementCan(key, fallback);
+    },
+    [entitlementCan, entitlementValueByKey]
+  );
+  const entitlementNumber = useCallback(
+    (key: string, fallback: number): number => {
+      const value = entitlementValueByKey(key);
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (typeof value === 'string' && value.trim()) {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) return parsed;
+      }
+      return entitlementLimitFromContext(key, fallback);
+    },
+    [entitlementLimitFromContext, entitlementValueByKey]
+  );
   const isCoachRuntimeOperator = useMemo(() => {
     if (runtimeRoleSignals.some((signal) => signal.includes('coach'))) return true;
     const sessionUserId = String(session?.user?.id ?? '').trim();
@@ -5942,11 +6001,29 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     () => runtimeRoleSignals.some((signal) => signal.includes('sponsor')),
     [runtimeRoleSignals]
   );
+  const hasExplicitTeamRole = useMemo(
+    () =>
+      runtimeRoleSignals.some(
+        (signal) =>
+          signal === 'member' ||
+          signal === 'team_member' ||
+          signal === 'teammember' ||
+          signal === 'leader' ||
+          signal === 'team_leader' ||
+          signal.includes('manager')
+      ),
+    [runtimeRoleSignals]
+  );
+  const isSoloPersona = !isCoachRuntimeOperator && !isChallengeSponsorRuntime && !hasExplicitTeamRole;
+  const bottomTabOrder = useMemo<BottomTab[]>(
+    () => (isSoloPersona ? ['comms', 'challenge', 'home', 'logs', 'coach'] : ['comms', 'team', 'home', 'logs', 'coach']),
+    [isSoloPersona]
+  );
   const isTeamLeaderCreatorParticipant = useMemo(
     () => teamPersonaVariant === 'leader' || runtimeRoleSignals.some((signal) => signal.includes('lead') || signal.includes('manager')),
     [runtimeRoleSignals, teamPersonaVariant]
   );
-  const challengeCreateAllowed = teamPersonaVariant === 'member' || isTeamLeaderCreatorParticipant;
+  const challengeCreateAllowed = entitlementFlag('can_start_challenges', true);
   const challengeMemberListItems = useMemo(
     () =>
       challengeListItems.filter((item) =>
@@ -6117,6 +6194,16 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setChallengeSelectedId(challengeCurrentStateRows[0].id);
     }
   }, [challengeCurrentStateRows, challengeSelectedId]);
+  useEffect(() => {
+    const hasActiveParticipation = challengeListItems.some((item) => item.joined && item.bucket !== 'completed');
+    if (isSoloPersona && activeTab === 'challenge' && !hasActiveParticipation && challengeFlowScreen !== 'explore') {
+      setChallengeFlowScreen('explore');
+      return;
+    }
+    if (!isSoloPersona && challengeFlowScreen === 'explore') {
+      setChallengeFlowScreen('list');
+    }
+  }, [activeTab, challengeFlowScreen, challengeListItems, isSoloPersona]);
   const challengeIsCompleted = challengeSelected?.bucket === 'completed';
   const challengeHasApiBackedDetail = isApiBackedChallenge(challengeSelected);
   const challengeIsPlaceholderOnly = !challengeHasApiBackedDetail;
@@ -9626,24 +9713,77 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             {/* ── Challenges sub-screen (original challenge surface) ── */}
             {activeTab === 'challenge' ? (
               <>
-                <TouchableOpacity
-                  style={styles.coachChallengesBackBtn}
-                  onPress={() => {
-                    setCoachTabScreen(coachTabDefault);
-                    setActiveTab('coach');
-                  }}
-                >
-                  <Text style={styles.coachChallengesBackText}>← Back to Coach</Text>
+                {!isSoloPersona ? (
+                  <TouchableOpacity
+                    style={styles.coachChallengesBackBtn}
+                    onPress={() => {
+                      setCoachTabScreen(coachTabDefault);
+                      setActiveTab('coach');
+                    }}
+                  >
+                    <Text style={styles.coachChallengesBackText}>← Back to Coach</Text>
+                  </TouchableOpacity>
+                ) : null}
+            {!isSoloPersona ? (
+              <View style={styles.teamChallengeTopTabsRow}>
+                <TouchableOpacity style={styles.teamChallengeTopTab} onPress={() => setActiveTab('team')}>
+                  <Text style={styles.teamChallengeTopTabText}>Team</Text>
                 </TouchableOpacity>
-            <View style={styles.teamChallengeTopTabsRow}>
-              <TouchableOpacity style={styles.teamChallengeTopTab} onPress={() => setActiveTab('team')}>
-                <Text style={styles.teamChallengeTopTabText}>Team</Text>
-              </TouchableOpacity>
-              <View style={[styles.teamChallengeTopTab, styles.teamChallengeTopTabActive]}>
-                <Text style={[styles.teamChallengeTopTabText, styles.teamChallengeTopTabTextActive]}>Challenges</Text>
+                <View style={[styles.teamChallengeTopTab, styles.teamChallengeTopTabActive]}>
+                  <Text style={[styles.teamChallengeTopTabText, styles.teamChallengeTopTabTextActive]}>Challenges</Text>
+                </View>
               </View>
-            </View>
-            {challengeFlowScreen === 'list' ? (
+            ) : null}
+            {challengeFlowScreen === 'explore' ? (
+              <View style={styles.challengeExploreShell}>
+                <View style={styles.challengeExploreHero}>
+                  <Text style={styles.challengeExploreEyebrow}>CHALLENGE MODE</Text>
+                  <Text style={styles.challengeExploreTitle}>Find Your Next Challenge</Text>
+                  <Text style={styles.challengeExploreSub}>
+                    Join sponsored and community challenges now. Start your own challenge in seconds.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.challengeExploreStartBtn}
+                    onPress={() => {
+                      if (!challengeCreateAllowed) {
+                        setPaywallTitle('Challenge hosting locked');
+                        setPaywallRequiredPlan('pro');
+                        setPaywallMessage('Upgrade to start challenges and invite your network.');
+                        setPaywallVisible(true);
+                        return;
+                      }
+                      setChallengeMemberCreateMode('public');
+                      setChallengeMemberCreateModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.challengeExploreStartBtnText}>Start a Challenge</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.challengeExploreLimitText}>
+                    Invite cap: {Math.max(0, entitlementNumber('challenge_invite_limit', 3))}
+                  </Text>
+                </View>
+                <View style={styles.challengeExploreSection}>
+                  <Text style={styles.challengeExploreSectionTitle}>Browse Available Challenges</Text>
+                  {challengeFilteredListItems.slice(0, 6).map((item) => (
+                    <TouchableOpacity
+                      key={`explore-${item.id}`}
+                      style={styles.challengeListItemCard}
+                      activeOpacity={0.75}
+                      onPress={() => setChallengePreviewItem(item)}
+                    >
+                      <View style={styles.challengeListItemTopRow}>
+                        <Text numberOfLines={1} style={styles.challengeListItemTitle}>{item.title}</Text>
+                        <Text style={styles.challengeListItemMetaText}>{item.daysLabel}</Text>
+                      </View>
+                      <Text numberOfLines={1} style={styles.challengeListItemSub}>{item.subtitle}</Text>
+                      <View style={styles.challengeListItemProgressTrack}>
+                        <View style={[styles.challengeListItemProgressFill, { width: `${Math.min(100, Math.max(0, item.progressPct))}%` }]} />
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : challengeFlowScreen === 'list' ? (
               <>
                 <View style={styles.challengeListShell}>
                   {/* ── Hero Card (replaces old header) ── */}
@@ -10092,7 +10232,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   <View style={styles.challengeDetailsNavRow}>
                     <TouchableOpacity
                       style={styles.challengeDetailsIconBtn}
-                      onPress={() => setChallengeFlowScreen('list')}
+                      onPress={() => setChallengeFlowScreen(isSoloPersona ? 'explore' : 'list')}
                     >
                       <Text style={styles.challengeDetailsIconBtnText}>‹</Text>
                     </TouchableOpacity>
@@ -14575,6 +14715,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           );
         })}
       </View>
+
+      <PaywallModal
+        visible={paywallVisible}
+        title={paywallTitle}
+        message={paywallMessage}
+        currentTier={runtimeMeTier || entitlementTier || 'free'}
+        requiredPlan={paywallRequiredPlan}
+        onClose={() => setPaywallVisible(false)}
+        onUpgrade={() => {
+          setPaywallVisible(false);
+          Alert.alert('Upgrade flow', 'Billing checkout wiring is active via /api/billing/checkout-session.');
+        }}
+      />
 
       <Modal visible={aiAssistVisible} transparent animationType="fade" onRequestClose={() => setAiAssistVisible(false)}>
         <Pressable style={styles.aiAssistBackdrop} onPress={() => setAiAssistVisible(false)}>
@@ -24520,5 +24673,64 @@ const styles = StyleSheet.create({
     color: '#3366cc',
     fontWeight: '600',
     fontSize: 14,
+  },
+  challengeExploreShell: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  challengeExploreHero: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#c8d7f6',
+    backgroundColor: '#eef4ff',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  challengeExploreEyebrow: {
+    fontSize: 12,
+    letterSpacing: 0.8,
+    color: '#4c70b6',
+    fontWeight: '700',
+  },
+  challengeExploreTitle: {
+    marginTop: 6,
+    fontSize: 28,
+    lineHeight: 32,
+    fontWeight: '800',
+    color: '#17223a',
+  },
+  challengeExploreSub: {
+    marginTop: 8,
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#4d6285',
+  },
+  challengeExploreStartBtn: {
+    marginTop: 14,
+    borderRadius: 14,
+    minHeight: 46,
+    backgroundColor: '#2f5fd0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  challengeExploreStartBtnText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  challengeExploreLimitText: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#65789e',
+  },
+  challengeExploreSection: {
+    gap: 10,
+  },
+  challengeExploreSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#2c3954',
   },
 });

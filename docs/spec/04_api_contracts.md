@@ -649,6 +649,36 @@ These notes are additive contract guidance only. They do not introduce a new end
 - `GET /ops/summary/sprint1`, `GET /ops/summary/sprint2`, and `GET /ops/summary/sprint3`
   - Read-only diagnostics for no-UI verification; no writes, no mutations.
 
+## M6 Challenge-First Direct Migration Additions (2026-03-03)
+- Tier model is canonicalized to: `free | basic | pro | team | coach | enterprise`.
+  - `basic` is launch-parity with `pro` entitlements.
+  - Entitlements resolve server-side from `tier_entitlements`.
+- `GET /me` (existing, additive fields):
+  - returns `effective_plan`, `entitlements`, and `seat_context`.
+  - also returns profile geo fields: `geo_city`, `geo_state`.
+- `PATCH /me` (existing, additive write fields):
+  - accepts `geo_city` and `geo_state`.
+- `POST /challenges` (new in existing challenge family):
+  - creates challenge with host-plan and role enforcement.
+  - host policy: free/basic/pro can host private challenges (invite caps enforced); team-leader team-host constraints; coach private-host constraints.
+- `POST /challenge-participants` (existing, hardened):
+  - enforces active participation limit (`1` active challenge at a time).
+  - enforces enrollment/invite limits using entitlement policy.
+- `GET /sponsored-challenges` and `GET /sponsored-challenges/{id}` (existing, additive behavior):
+  - apply geo eligibility filtering (`city|state|multi_state|national`) against user profile location.
+  - response includes `geo_scope`, `geo_target_values`.
+- Billing routes (new):
+  - `POST /api/billing/checkout-session`
+  - `POST /api/billing/portal-session`
+  - `POST /api/webhooks/stripe`
+  - webhook syncs subscription lifecycle into runtime tier/subscription state.
+- Custom KPI routes (new family):
+  - `GET /api/custom-kpis`
+  - `POST /api/custom-kpis`
+  - `PUT /api/custom-kpis/{id}`
+  - `DELETE /api/custom-kpis/{id}`
+  - ownership rule: system KPI `created_by IS NULL`, custom KPI `created_by = user.id`.
+
 ## Error Model
 - Legacy routes continue using status/error payloads.
 - Sprint 8+ routes may return standardized error envelope:
