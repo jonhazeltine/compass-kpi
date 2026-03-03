@@ -15145,7 +15145,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f6f7f9',
   },
   contentComms: {
-    flexGrow: 1,
+    flex: 1,
     paddingHorizontal: 0,
     paddingTop: 0,
     paddingBottom: 0,
