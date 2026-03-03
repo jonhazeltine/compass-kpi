@@ -14532,11 +14532,6 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   <View style={styles.bottomLogOuter}>
                     <View style={styles.bottomLogGlowRing} />
                     <View style={styles.bottomLogBtn}>
-                      {unreadMessagesBadgeLabel ? (
-                        <View style={[styles.bottomNavUnreadBadge, styles.bottomNavUnreadBadgeLog]}>
-                          <Text style={styles.bottomNavUnreadBadgeText}>{unreadMessagesBadgeLabel}</Text>
-                        </View>
-                      ) : null}
                       <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleOne]} />
                       <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleTwo]} />
                       <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleThree]} />
@@ -23081,8 +23076,8 @@ const styles = StyleSheet.create({
   },
   bottomNavUnreadBadge: {
     position: 'absolute',
-    top: -3,
-    right: 16,
+    top: -4,
+    right: -4,
     minWidth: 17,
     height: 17,
     borderRadius: 999,
@@ -23094,10 +23089,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 25,
     elevation: 25,
-  },
-  bottomNavUnreadBadgeLog: {
-    top: 8,
-    right: 5,
   },
   bottomNavUnreadBadgeText: {
     color: '#ffffff',
