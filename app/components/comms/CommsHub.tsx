@@ -247,7 +247,7 @@ export default function CommsHub(props: CommsHubProps) {
 
       {/* ─── View router ─── */}
       {screen === 'channel_thread' ? (
-        <ThreadView {...props} />
+        <ThreadView key={props.selectedChannelId ?? 'thread'} {...props} />
       ) : screen === 'coach_broadcast_compose' ? (
         /* BroadcastCompose self-guards when !roleCanBroadcast (shows locked state) */
         <BroadcastCompose {...props} />
@@ -854,7 +854,12 @@ function ThreadView(props: CommsHubProps) {
         contentContainerStyle={st.threadScrollInner}
         keyboardShouldPersistTaps="handled"
       >
-        {messagesError ? (
+        {messagesLoading && parsedMessages.length === 0 ? (
+          <View style={st.threadEmpty}>
+            <Text style={st.emptyIcon}>💬</Text>
+            <Text style={st.emptyTitle}>Loading messages…</Text>
+          </View>
+        ) : messagesError ? (
           <View style={st.threadEmpty}>
             <Text style={st.emptyIcon}>⚠</Text>
             <Text style={st.emptyTitle}>Messages failed to load</Text>

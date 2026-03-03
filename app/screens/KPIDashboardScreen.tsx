@@ -8478,6 +8478,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setChannelsError(null);
       setSelectedChannelId(targetChannelId);
       setSelectedChannelName(targetChannelName);
+      setChannelMessages(null);
+      setChannelMessageDraft('');
       openCoachingShell('channel_thread', {
         source,
         preferredChannelScope: 'community',
@@ -12314,6 +12316,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       onOpenChannel={(chId, chName, scope) => {
                         setSelectedChannelId(chId);
                         setSelectedChannelName(chName);
+                        setChannelMessages(null);
+                        setChannelMessageDraft('');
                         setChannelMessageSubmitError(null);
                         setBroadcastError(null);
                         setBroadcastSuccessNote(null);
