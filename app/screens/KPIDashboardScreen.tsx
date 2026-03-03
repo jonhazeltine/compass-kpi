@@ -12443,7 +12443,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       fmtDate={fmtShortMonthDay}
                     />
                   ) : null}
-                  <View style={[styles.coachingShellCard, isCommsScreen && { display: 'none' } as any]}>
+                  {!isCommsScreen ? (
+                  <View style={styles.coachingShellCard}>
                     {/* Comms chrome — hidden for coaching content screens (journey/lesson) */}
                     {!isCoachingContentScreen && (
                     <View>
@@ -13900,6 +13901,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       </View>
                     ) : null}
                   </View>
+                  ) : null}
 
                 </>
               );
@@ -15145,7 +15147,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f6f7f9',
   },
   contentComms: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 0,
     paddingHorizontal: 0,
     paddingTop: 0,
     paddingBottom: 0,
