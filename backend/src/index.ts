@@ -341,6 +341,10 @@ type LiveSessionRecord = {
   title: string;
   status: LiveSessionStatus;
   host_user_id: string;
+  provider: "mux_live";
+  host_url: string;
+  join_url: string;
+  live_url: string;
   started_at: string;
   ends_at: string | null;
   created_at: string;
@@ -4408,18 +4412,47 @@ app.post("/api/coaching/media/live-sessions", async (req, res) => {
     const existingSessionId = liveSessionByIdempotencyKey.get(idempotencyLookup);
     if (existingSessionId) {
       const existing = liveSessionStore.get(existingSessionId);
-      if (existing) return res.status(200).json({ session: existing, idempotent_replay: true });
+      if (existing) {
+        return res.status(200).json({
+          session: existing,
+          idempotent_replay: true,
+          provider: existing.provider,
+          host_url: existing.host_url,
+          join_url: existing.join_url,
+          live_url: existing.live_url,
+        });
+      }
+    }
+
+    if (resolveLiveProviderMode() === "unavailable") {
+      return errorEnvelopeResponse(
+        res,
+        503,
+        "provider_unavailable",
+        "Mux live provider is unavailable",
+        req.headers["x-request-id"]
+      );
     }
 
     const nowIso = new Date().toISOString();
     const startsAt = payload.starts_at ?? nowIso;
     const status: LiveSessionStatus = new Date(startsAt).getTime() > Date.now() ? "scheduled" : "live";
+    const sessionId = `live_${crypto.randomUUID()}`;
+    const launchUrls = buildLiveSessionLaunchUrls({
+      sessionId,
+      channelId: payload.channel_id,
+      role: "host",
+    });
     const record: LiveSessionRecord = {
-      session_id: `live_${crypto.randomUUID()}`,
+      session_id: sessionId,
       channel_id: payload.channel_id,
       title: payload.title,
       status,
       host_user_id: auth.user.id,
+      provider: "mux_live",
+      host_url: launchUrls.host_url,
+      join_url: launchUrls.join_url,
+      live_url: launchUrls.live_url,
       started_at: startsAt,
       ends_at: payload.ends_at ?? null,
       created_at: nowIso,
@@ -4428,7 +4461,14 @@ app.post("/api/coaching/media/live-sessions", async (req, res) => {
 
     liveSessionStore.set(record.session_id, record);
     liveSessionByIdempotencyKey.set(idempotencyLookup, record.session_id);
-    return res.status(201).json({ session: record, idempotent_replay: false });
+    return res.status(201).json({
+      session: record,
+      idempotent_replay: false,
+      provider: record.provider,
+      host_url: record.host_url,
+      join_url: record.join_url,
+      live_url: record.live_url,
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/coaching/media/live-sessions", err);
@@ -4461,7 +4501,13 @@ app.get("/api/coaching/media/live-sessions/:id", async (req, res) => {
       return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
     }
 
-    return res.json({ session });
+    return res.json({
+      session,
+      provider: session.provider,
+      host_url: session.host_url,
+      join_url: session.join_url,
+      live_url: session.live_url,
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in GET /api/coaching/media/live-sessions/:id", err);
@@ -4501,6 +4547,15 @@ app.post("/api/coaching/media/live-sessions/:id/join-token", async (req, res) =>
     if (!payloadCheck.ok) {
       return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
     }
+    if (resolveLiveProviderMode() === "unavailable") {
+      return errorEnvelopeResponse(
+        res,
+        503,
+        "provider_unavailable",
+        "Mux live provider is unavailable",
+        req.headers["x-request-id"]
+      );
+    }
     const requestedRole = payloadCheck.payload.role ?? "participant";
     const role: "host" | "participant" | "viewer" = session.host_user_id === auth.user.id ? "host" : requestedRole;
     const issuedAtMs = Date.now();
@@ -4517,6 +4572,12 @@ app.post("/api/coaching/media/live-sessions/:id/join-token", async (req, res) =>
     const sessionUpdate: LiveSessionRecord = {
       ...session,
       status: session.status === "scheduled" ? "live" : session.status,
+      ...buildLiveSessionLaunchUrls({
+        sessionId,
+        channelId: session.channel_id,
+        role,
+        token,
+      }),
       updated_at: new Date().toISOString(),
     };
     liveSessionStore.set(sessionId, sessionUpdate);
@@ -4526,7 +4587,10 @@ app.post("/api/coaching/media/live-sessions/:id/join-token", async (req, res) =>
       role,
       token,
       token_expires_at: new Date(issuedAtMs + ttlSeconds * 1000).toISOString(),
-      provider: "compass_live",
+      provider: sessionUpdate.provider,
+      host_url: sessionUpdate.host_url,
+      join_url: sessionUpdate.join_url,
+      live_url: sessionUpdate.live_url,
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -8890,6 +8954,34 @@ async function emitMuxLifecycleChannelMessage(media: MuxMediaSessionRecord, prov
 
 function canHostLiveSession(role: string): boolean {
   return role === "admin" || role === "super_admin" || role === "coach" || role === "team_leader" || role === "challenge_sponsor";
+}
+
+function resolveLiveProviderMode(): "mock" | "unavailable" {
+  const raw = String(process.env.MUX_LIVE_PROVIDER_MODE ?? process.env.MUX_PROVIDER_MODE ?? "mock").trim().toLowerCase();
+  if (raw === "down" || raw === "unavailable" || raw === "disabled" || raw === "off") return "unavailable";
+  return "mock";
+}
+
+function buildLiveSessionLaunchUrls(input: {
+  sessionId: string;
+  channelId: string;
+  role: "host" | "participant" | "viewer";
+  token?: string;
+}): { host_url: string; join_url: string; live_url: string } {
+  const baseRaw = String(process.env.MUX_LIVE_BASE_URL ?? "https://mock.mux.local/live").trim();
+  const base = baseRaw.endsWith("/") ? baseRaw.slice(0, -1) : baseRaw;
+  const liveUrl = `${base}/${encodeURIComponent(input.sessionId)}`;
+  const hostUrl = `${liveUrl}?channel_id=${encodeURIComponent(input.channelId)}&role=host`;
+  const joinParams = new URLSearchParams({
+    channel_id: input.channelId,
+    role: input.role,
+  });
+  if (input.token) joinParams.set("token", input.token);
+  return {
+    host_url: hostUrl,
+    join_url: `${liveUrl}?${joinParams.toString()}`,
+    live_url: liveUrl,
+  };
 }
 
 function issueLiveSessionJoinToken(input: {

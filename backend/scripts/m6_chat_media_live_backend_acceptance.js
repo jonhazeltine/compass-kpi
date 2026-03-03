@@ -24,11 +24,11 @@ async function request(url, options = {}) {
   return { status: response.status, data };
 }
 
-async function waitForHealth(timeoutMs = 15000) {
+async function waitForHealth(baseUrl = BACKEND_URL, timeoutMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const health = await request(`${BACKEND_URL}/health`);
+      const health = await request(`${baseUrl}/health`);
       if (health.status === 200) return;
     } catch {
       // retry
@@ -114,6 +114,11 @@ async function main() {
 
   const createdAuthUserIds = [];
   let dbConnected = false;
+  const evidence = {
+    start_live: null,
+    join_live: null,
+    provider_unavailable: null,
+  };
 
   try {
     await waitForHealth();
@@ -237,6 +242,16 @@ async function main() {
     assert(createLive.status === 201, `create live session expected 201, got ${createLive.status}`);
     const sessionId = createLive.data?.session?.session_id;
     assert(sessionId, "live session create missing session_id");
+    assert(typeof createLive.data?.host_url === "string" && createLive.data.host_url.length > 0, "create live missing host_url");
+    assert(typeof createLive.data?.live_url === "string" && createLive.data.live_url.length > 0, "create live missing live_url");
+    evidence.start_live = {
+      status: createLive.status,
+      session_id: createLive.data?.session?.session_id ?? null,
+      provider: createLive.data?.provider ?? null,
+      host_url: createLive.data?.host_url ?? null,
+      join_url: createLive.data?.join_url ?? null,
+      live_url: createLive.data?.live_url ?? null,
+    };
 
     const replayLive = await request(`${BACKEND_URL}/api/coaching/media/live-sessions`, {
       method: "POST",
@@ -263,6 +278,16 @@ async function main() {
     });
     assert(memberJoin.status === 200, `member join-token expected 200, got ${memberJoin.status}`);
     assert(memberJoin.data?.token, "member join-token response missing token");
+    assert(typeof memberJoin.data?.join_url === "string" && memberJoin.data.join_url.length > 0, "join-token missing join_url");
+    assert(typeof memberJoin.data?.live_url === "string" && memberJoin.data.live_url.length > 0, "join-token missing live_url");
+    evidence.join_live = {
+      status: memberJoin.status,
+      session_id: memberJoin.data?.session?.session_id ?? null,
+      provider: memberJoin.data?.provider ?? null,
+      join_url: memberJoin.data?.join_url ?? null,
+      live_url: memberJoin.data?.live_url ?? null,
+      token_present: Boolean(memberJoin.data?.token),
+    };
 
     const outsiderJoin = await request(`${BACKEND_URL}/api/coaching/media/live-sessions/${sessionId}/join-token`, {
       method: "POST",
@@ -317,6 +342,49 @@ async function main() {
     assert(endSession.status === 200, `end live session expected 200, got ${endSession.status}`);
     assert(endSession.data?.session?.status === "ended", "live session should be ended after end endpoint");
 
+    const unavailablePort = String(Number(BACKEND_PORT) + 1);
+    const unavailableUrl = `http://127.0.0.1:${unavailablePort}`;
+    const unavailableServer = spawn("node", ["dist/index.js"], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HOST: "127.0.0.1",
+        PORT: unavailablePort,
+        MUX_PROVIDER_MODE: "mock",
+        MUX_LIVE_PROVIDER_MODE: "unavailable",
+        MUX_WEBHOOK_SECRET: webhookSecret,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    unavailableServer.stdout.on("data", (buf) => process.stdout.write(buf));
+    unavailableServer.stderr.on("data", (buf) => process.stderr.write(buf));
+    try {
+      await waitForHealth(unavailableUrl);
+      const unavailableCreate = await request(`${unavailableUrl}/api/coaching/media/live-sessions`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${coachToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          channel_id: channelId,
+          title: "Unavailable live provider test",
+          idempotency_key: `live-unavailable-${runId}`,
+        }),
+      });
+      assert(unavailableCreate.status === 503, `provider unavailable create expected 503, got ${unavailableCreate.status}`);
+      const unavailableCode = unavailableCreate.data?.error?.code || unavailableCreate.data?.code;
+      assert(unavailableCode === "provider_unavailable", `provider unavailable code expected provider_unavailable, got ${String(unavailableCode)}`);
+      evidence.provider_unavailable = {
+        status: unavailableCreate.status,
+        code: unavailableCode,
+        message: unavailableCreate.data?.error?.message || unavailableCreate.data?.message || null,
+      };
+    } finally {
+      unavailableServer.kill("SIGTERM");
+    }
+
+    console.log("M6 live launch evidence:", JSON.stringify(evidence));
     console.log("M6 chat media + live backend acceptance passed");
   } finally {
     if (dbConnected) {
