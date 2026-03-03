@@ -2737,11 +2737,14 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [pipelineCheckinDismissedDay, setPipelineCheckinDismissedDay] = useState<string | null>(null);
   const [pipelineCheckinDismissalLoaded, setPipelineCheckinDismissalLoaded] = useState(false);
   const [inlinePipelineSubmitting, setInlinePipelineSubmitting] = useState(false);
+  const [bottomNavLayoutHeight, setBottomNavLayoutHeight] = useState(0);
   const bottomNavLift = Math.max(8, Math.round(insets.bottom * 0.24));
   const bottomNavPadBottom = Math.max(8, Math.round(insets.bottom * 0.45));
   const contentBottomPad = 132 + Math.max(12, insets.bottom);
-  // Clearance so CommsHub sits above the floating bottom-nav pill (including LOG overshoot)
-  const commsComposerBottomInset = bottomNavLift + bottomNavPadBottom + 96;
+  // Pin CommsHub above the floating bottom-nav pill: measured nav height + lift + LOG overshoot (30) + gap (6)
+  const commsComposerBottomInset = bottomNavLayoutHeight > 0
+    ? bottomNavLift + bottomNavLayoutHeight + 36
+    : bottomNavLift + bottomNavPadBottom + 96; // fallback before first onLayout
   const bottomTabTheme = isDarkMode
     ? {
         activeFg: '#CFE0FF',
@@ -14493,7 +14496,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         </React.Fragment>
       ))}
 
-      <View style={[styles.bottomNav, { paddingBottom: bottomNavPadBottom, bottom: bottomNavLift }]}>
+      <View
+        style={[styles.bottomNav, { paddingBottom: bottomNavPadBottom, bottom: bottomNavLift }]}
+        onLayout={(e) => setBottomNavLayoutHeight(e.nativeEvent.layout.height)}
+      >
         {bottomTabOrder.map((tab) => {
           const TabIcon = bottomTabIconSvgByKey[tab];
           const isActive = activeTab === tab;
