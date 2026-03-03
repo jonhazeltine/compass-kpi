@@ -1280,10 +1280,10 @@ Inline task action mapping (no new endpoint family):
 
 | Phase | Scope | Dependencies |
 |---|---|---|
-| **C0** | Docs lock — update flow/wiring/coaching docs + decisions log entries. Include `personal_task` in category taxonomy. | None |
-| **C1** | Mobile IA shell — Coach tab routing states: marketplace → subscription → hub → goals/tasks. | C0 |
-| **C2** | Marketplace + engagement — Coach list/discovery + engagement state transitions. | C1 |
-| **C3** | Goals/tasks MVP — Unified feed rendering, message-linked assignment cards, profile goals/tasks section. | C1 |
+| **C0** ✅ | Docs lock — update flow/wiring/coaching docs + decisions log entries. Include `personal_task` in category taxonomy. | None |
+| **C1** ✅ | Mobile IA shell — Coach tab routing states: marketplace → subscription → hub → goals/tasks. | C0 |
+| **C2** ✅ | Marketplace + engagement — Coach list/discovery + engagement state transitions. Backend: 3 endpoints. Frontend: coach cards, profile detail, engagement CTA. | C1 |
+| **C3** ✅ | Goals/tasks MVP — Unified feed rendering, message-linked assignment cards, filter bar. Backend: assignments/me endpoint. Frontend: data-fetch + live rendering. | C1 |
 | **C4** | `/coach/*` hardening — Cohort/client operations and upload/journey polish. | C1 |
 | **C5** | Provider activation (post gates) — Stream/Mux runtime enablement and fallback handling. | `DEP-002`, `DEP-004`, `DEP-005` |
 

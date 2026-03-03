@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <g stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- chart bars -->
+    <path d="M18 46V34"/>
+    <path d="M26 46V28"/>
+    <path d="M34 46V32"/>
+    <path d="M42 46V22"/>
+    <!-- trend line -->
+    <path d="M16 36l8-6 8 4 8-10 8-4"/>
+    <!-- baseline -->
+    <path d="M14 46h36"/>
+  </g>
+</svg>

@@ -169,6 +169,8 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-COACH-LANDING-ROLE-SPLIT-HERO-A` | `active` | `M6 coach onboarding + operator landing` | `Team Member`, `Solo User`, `Coach` | `coach tab role split` (`no-coach marketing hero`, `has-coach profile landing`, `coach invite link parity`) | `KPIDashboardScreen` coach tab (`coach_marketplace`, `coach_hub_primary`), coach profile hero + enrolled journeys block, coach invite-link controls | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + Fourth Reason style references + Compass visual system | Build role-aware coach landing: no-coach users see two premium offer heroes + CTA routes to full details; users with coach land directly on coach profile hero + enrolled journeys; coaches get invite-link controls parallel to team-leader invite behavior. |
 | `M6-CHANNELS-DM-PREVIEW-READMODEL-A` | `active` | `M6 messaging runtime reliability` | `Team Leader`, `Team Member`, `Coach`, `Solo User` | `channels list payload parity` (`dm display name`, `last message preview`, `last message timestamp`) | backend `GET /api/channels` payload only | `Claude-1` | `codex/a2-admin-list-usability-pass` (backend worktree required) | N/A (runtime payload hardening) | Add deterministic DM-friendly preview fields to channel list payload so mobile inbox/DM rows can display human names + first message line + real activity time. No endpoint-family expansion. |
 | `M6-COMMS-DM-PRESENTATION-MUX-LIVE-VISIBILITY-A` | `review` | `M6 messaging + media runtime UX hardening` | `Team Leader`, `Team Member`, `Coach` | `dm list polish + media/live visibility` (`dm icon/name/preview parity`, `mux upload/live session entry evidence`) | `KPIDashboardScreen` comms mapping + `CommsHub` thread composer/surface | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + existing Stream/Mux contract paths | Completed: DM rows now map direct channels to DM scope with person-first naming + preview snippet, and channel-thread composer now exposes explicit Mux upload/live-session controls with deterministic status messaging. Validation `cd app && npx tsc --noEmit --pretty false` passed. Runtime screenshot capture produced baseline evidence; multi-state navigation remains limited by local simulator automation constraints. |
+| `M6-COMMS-THREAD-COMPOSER-UNIVERSAL-PIN-CLAUDE-A` | `active` | `M6 messaging runtime stabilization` | `Team Leader`, `Team Member`, `Coach` | `channel_thread composer anchoring` (`universal bottom pin`, `long-thread stability`, `all entry-path parity`) | `CommsHub` `channel_thread` in `All`, `Channels`, and `DMs` entry paths | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + existing Compass bottom-nav behavior | Critical UI bugfix swath: composer/message bar currently drifts or disappears behind nav in long-thread and route-variant states; deliver one deterministic anchor implementation that holds in all thread paths without regression. |
+| `M6-MUX-LIVE-LAUNCH-URL-INTEGRATION-A` | `active` | `M6 media/live runtime enablement` | `Team Leader`, `Team Member`, `Coach` | `live session provider wiring` (`real launch url issuance`, `host/join role-safe links`, `non-stub provider semantics`) | backend live-session endpoints (`POST /api/coaching/media/live-sessions`, `GET /api/coaching/media/live-sessions/:id`, `POST /api/coaching/media/live-sessions/:id/join-token`) + app launch consumption (`KPIDashboardScreen`) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend+mobile worktree required) | manual-spec-driven + existing Mux/Stream contract boundaries | Replace current `compass_live` stub behavior with deterministic launch URL flow so Start/Join opens an actionable live room URL (or deterministic unavailable state) rather than session-only success. |
 
 ## Blocked Assignments
 
@@ -214,7 +216,7 @@ Every worker report should include:
 ### `M6-COACH-PRIMARY-WORKFLOW-TAB-A`
 
 #### Snapshot
-- `Status:` `review`
+- `Status:` `active`
 - `Program status:` `M6 coach runtime/operator flow buildout`
 - `Persona:` `Coach` (primary)
 - `Flow:` `coach primary workflow` (`journeys`, `clients`, `cohorts`, `segments`, `broadcast`)
@@ -6304,3 +6306,133 @@ Make DM list rows messaging-native and expose concrete Mux/live controls so medi
 - `Completion note (2026-03-02, Mobile-1):` Direct channels now render as DM scope rows with person-first naming fallback, first-line message preview when available, and no channel-style `#` marker treatment; thread composer now includes explicit Mux upload and live-session action controls with deterministic success/error status copy.
 - `Validation note (2026-03-02, Mobile-1):` `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false` ✅.
 - `Evidence note (2026-03-02, Mobile-1):` screenshot baseline captured at `/Users/jon/compass-kpi/app/test-results/m6-comms-dm-presentation-mux-live-visibility-a/runtime-current-1.png`; multi-state capture across DM/thread/live denied states remains constrained by local simulator interaction automation permissions in this session.
+
+### `M6-COMMS-THREAD-COMPOSER-UNIVERSAL-PIN-CLAUDE-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 messaging runtime stabilization`
+- `Persona:` `Team Leader`, `Team Member`, `Coach`
+- `Flow:` `channel_thread composer anchoring` (`universal bottom pin`, `long-thread stability`, `all entry-path parity`)
+- `Owner:` `Claude-1`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required)
+- `Current blocker status:` `none`
+
+#### Problem Description (Observed)
+The thread message composer ("Write a message..." bar + action row) is not deterministically pinned above the bottom navigation rail.
+Current failures observed on device/simulator:
+1. Composer sometimes floats too high above nav.
+2. Composer sometimes drops below/behind nav (partially or fully hidden).
+3. Behavior changes between entry paths (`All`, `Channels`, `DMs`) and between short-thread vs long-thread content.
+4. In long threads, message list and composer layering can desync so user cannot reliably access input/send.
+
+This indicates mixed layout strategies are active (container sizing/padding + absolute/footer variants) and need to be replaced with one canonical implementation.
+
+#### Objective
+Ship one universal thread layout model where composer is always visible and pinned directly above the app bottom navigation rail, regardless of thread length or entry path.
+
+#### Scope In
+- `/Users/jon/compass-kpi/app/components/comms/CommsHub.tsx` (primary)
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (only for passing required stable inset/layout context)
+- No other product surfaces
+
+#### Required Outcomes
+1. Composer/input row is always visible in `channel_thread`.
+2. Composer is anchored to the same physical vertical position in:
+   - thread opened from `All`
+   - thread opened from `Channels`
+   - thread opened from `DMs`
+3. Long-thread content scrolls independently behind/above composer, never displacing composer.
+4. No sync/status pop-ins reintroduced in thread body.
+5. Existing Mux/Live controls remain visible in composer region and do not overlap bottom nav.
+
+#### Hard Constraints
+- No endpoint-family changes.
+- No backend/schema/table changes.
+- No redesign of bottom nav visuals.
+- Keep fix limited to thread layout mechanics.
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime screenshot evidence in:
+  - `/Users/jon/compass-kpi/app/test-results/m6-comms-thread-composer-universal-pin-claude-a/`
+- Required screenshot set:
+  1. `All -> thread` with composer pinned above nav
+  2. `Channels -> thread` with composer pinned above nav
+  3. `DMs -> thread` with composer pinned above nav
+  4. long-thread scroll state proving composer remains pinned
+
+#### Report-Back
+- Program status
+- Persona affected
+- Screens changed
+- Files touched
+- Validation performed
+- Screenshot evidence paths
+- Commit hash
+
+### `M6-MUX-LIVE-LAUNCH-URL-INTEGRATION-A`
+
+#### Snapshot
+- `Status:` `review`
+- `Program status:` `M6 media/live runtime enablement`
+- `Persona:` `Team Leader`, `Team Member`, `Coach`
+- `Flow:` `live session provider wiring` (`real launch url issuance`, `host/join role-safe links`, `non-stub provider semantics`)
+- `Owner:` `Mobile-2`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (backend+mobile worktree required)
+- `Current blocker status:` `none`
+- `Completion note (2026-03-02, Mobile-2):` Implemented deterministic launch URL issuance for live session create/join/get responses (`host_url`, `join_url`, `live_url`) with `provider: mux_live`, preserved role/scope gates, and added explicit provider-unavailable `503` envelope path to prevent fake success without launch links.
+- `Validation note (2026-03-02, Mobile-2):` `cd /Users/jon/compass-kpi/backend && npm run -s build`, `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`, and `cd /Users/jon/compass-kpi/backend && npm run -s test:m6-chat-media-live-backend` passed. Evidence bundle: `/Users/jon/compass-kpi/app/test-results/m6-mux-live-launch-url-integration-a/`.
+
+#### Problem Description (Observed)
+Current live session flow is session-record only and returns `provider: "compass_live"` with no room launch URL.
+UI correctly shows:
+- `Live session active ... Room launch URL not provided by backend yet.`
+
+This is not a simulator-only issue. It is a backend provider wiring gap.
+
+#### Objective
+Enable actionable live session launch behavior so `Start` and `Join` result in a usable room URL path (or deterministic provider-unavailable state), aligned with existing role/scope gates.
+
+#### Scope In
+- `/Users/jon/compass-kpi/backend/src/index.ts`
+  - `POST /api/coaching/media/live-sessions`
+  - `GET /api/coaching/media/live-sessions/:id`
+  - `POST /api/coaching/media/live-sessions/:id/join-token`
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx` (consume new URL fields only)
+- Existing endpoint family only; no new family
+
+#### Required Outcomes
+1. Backend returns deterministic launch URL fields for host/join flows (`host_url` and/or `join_url` and canonical `live_url` if needed).
+2. URL issuance respects existing role and channel scope checks.
+3. `GET /live-sessions/:id` returns latest launch fields for refresh consistency.
+4. Keep fallback behavior deterministic when provider unavailable:
+   - explicit 503/provider_unavailable envelope
+   - no fake success-only session state without launch path
+5. App consumes URL fields and opens via existing Linking path.
+
+#### Hard Constraints
+- No new database tables.
+- No new endpoint families.
+- Preserve non-negotiables and KPI authority boundaries.
+- Keep existing authz checks intact (team leader/coach/sponsor/member scope).
+
+#### Validation (Required)
+- `cd /Users/jon/compass-kpi/backend && npm run -s build`
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- Runtime evidence:
+  - `/Users/jon/compass-kpi/app/test-results/m6-mux-live-launch-url-integration-a/`
+- Required evidence set:
+  1. Start live returns actionable URL field(s) in response payload
+  2. Join live returns actionable URL field(s) in response payload
+  3. Provider unavailable path returns deterministic error (no fake success)
+  4. App status/log evidence that Linking open path executed when URL present
+
+#### Report-Back
+- Program status
+- Persona affected
+- Files touched
+- Response payload before/after summary
+- Validation performed
+- Evidence paths
+- Commit hash
