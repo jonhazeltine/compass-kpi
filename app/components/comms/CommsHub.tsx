@@ -235,10 +235,10 @@ function parseThreadMessage(body: string) {
    ================================================================ */
 
 export default function CommsHub(props: CommsHubProps) {
-  const { screen, roleCanBroadcast } = props;
+  const { screen, roleCanBroadcast, composerBottomInset } = props;
 
   return (
-    <View style={st.root}>
+    <View style={[st.root, composerBottomInset ? { paddingBottom: composerBottomInset } : undefined]}>
       {/* ─── Top bar: persona badge + back nav ─── */}
       <CommsTopBar {...props} />
 

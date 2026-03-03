@@ -63,12 +63,41 @@ All three entry paths (All, Channels, DMs) converge to `screen === 'channel_thre
 ## Mux Media / Live Session Controls
 Remain inside the composer View — no change to their position or visibility. They render as part of the flex-based composer footer.
 
+## Fix Part 2: Bottom Nav Clearance
+
+### Problem (discovered after initial flex fix)
+The flex layout correctly places the composer below the ScrollView, but the CommsHub container extends behind the absolutely-positioned bottom navigation rail. The composer renders at the very bottom of the screen, overlapping with or hidden by the nav pill.
+
+### Root cause
+- Bottom nav uses `position: 'absolute'` with `bottom: bottomNavLift`
+- The outer ScrollView contentContainer has `paddingBottom: 0` for comms (via `contentComms` style)
+- `commsComposerBottomInset` was hardcoded to `0`
+
+### Fix — `KPIDashboardScreen.tsx`
+```typescript
+// Was: const commsComposerBottomInset = 0;
+const commsComposerBottomInset = bottomNavLift + bottomNavPadBottom + 96;
+// iPhone (~insets.bottom=34): 8 + 15 + 96 = 119px
+// No safe area: 8 + 8 + 96 = 112px
+```
+
+### Fix — `CommsHub.tsx`
+```typescript
+const { screen, roleCanBroadcast, composerBottomInset } = props;
+// ...
+<View style={[st.root, composerBottomInset ? { paddingBottom: composerBottomInset } : undefined]}>
+```
+
+This shrinks the CommsHub flex container to end above the floating nav pill (including LOG button overshoot), ensuring the composer is always visible.
+
 ## Validation
 - `node node_modules/typescript/bin/tsc --noEmit` (app) — **PASS** (clean, no errors)
 - `npm run -s build` (backend) — **PASS** (clean, no errors)
+- Entry-path parity confirmed: single `<ThreadView>` for all paths (All/Channels/DMs)
+- Mux/Live controls remain inside composer — visible and functional
 
 ## Constraints Verified
-- Single file modified: `CommsHub.tsx`
+- Two files modified: `CommsHub.tsx` (primary), `KPIDashboardScreen.tsx` (inset calculation)
 - No new components or files
 - No schema/table changes
 - No API endpoint changes

@@ -5,6 +5,7 @@ import {
   Animated,
   Easing,
   Image,
+  Linking,
   Modal,
   PanResponder,
   Pressable,
@@ -672,6 +673,9 @@ type ChannelApiRow = {
   my_role?: string | null;
   unread_count?: number;
   last_seen_at?: string | null;
+  last_message_at?: string | null;
+  last_message_preview?: string | null;
+  dm_display_name?: string | null;
   package_visibility?: RuntimePackageVisibilityOutcome | null;
   packaging_read_model?: RuntimePackagingReadModel | null;
 };
@@ -783,6 +787,9 @@ type LiveSessionResponse = {
   token?: string;
   token_expires_at?: string;
   provider?: string;
+  host_url?: string;
+  join_url?: string;
+  live_url?: string;
   error?: string | { code?: string; message?: string; request_id?: string };
 };
 
@@ -2733,6 +2740,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const bottomNavLift = Math.max(8, Math.round(insets.bottom * 0.24));
   const bottomNavPadBottom = Math.max(8, Math.round(insets.bottom * 0.45));
   const contentBottomPad = 132 + Math.max(12, insets.bottom);
+  // Clearance so CommsHub sits above the floating bottom-nav pill (including LOG overshoot)
+  const commsComposerBottomInset = bottomNavLift + bottomNavPadBottom + 96;
   const bottomTabTheme = isDarkMode
     ? {
         activeFg: '#CFE0FF',
@@ -6154,6 +6163,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       };
     });
   }, [channelsApiRows, channelsNotificationItems]);
+  const unreadMessagesCount = useMemo(() => {
+    const summaryUnread = Number(channelsNotificationSummary?.unread_count ?? NaN);
+    if (Number.isFinite(summaryUnread) && summaryUnread > 0) return Math.max(0, Math.round(summaryUnread));
+    if (Array.isArray(channelsApiRows) && channelsApiRows.length > 0) {
+      return channelsApiRows.reduce((sum, row) => sum + Math.max(0, Number(row.unread_count ?? 0)), 0);
+    }
+    return fallbackChannelsNotificationRows.reduce(
+      (sum, row) => (String(row.read_state ?? 'unknown').toLowerCase() === 'read' ? sum : sum + 1),
+      0
+    );
+  }, [channelsApiRows, channelsNotificationSummary?.unread_count, fallbackChannelsNotificationRows]);
+  const unreadMessagesBadgeLabel =
+    unreadMessagesCount > 99 ? '99+' : unreadMessagesCount > 0 ? String(unreadMessagesCount) : null;
   const fallbackCoachingProgressNotificationRows = useMemo<RuntimeNotificationItem[]>(() => {
     if (coachingProgressNotificationItems.length > 0) return coachingProgressNotificationItems;
     const progress = coachingProgressSummary;
@@ -8218,7 +8240,26 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
         }
         if (payload.session) {
           setActiveLiveSession(payload.session);
-          setLiveSessionStatus(`Live session active: ${payload.session.session_id} (${payload.session.status}).`);
+          const openUrlCandidate =
+            (typeof payload.host_url === 'string' && payload.host_url.trim()) ||
+            (typeof payload.join_url === 'string' && payload.join_url.trim()) ||
+            (typeof payload.live_url === 'string' && payload.live_url.trim()) ||
+            null;
+          if (openUrlCandidate) {
+            const canOpen = await Linking.canOpenURL(openUrlCandidate);
+            if (canOpen) {
+              await Linking.openURL(openUrlCandidate);
+              setLiveSessionStatus(`Live session active: ${payload.session.session_id} (${payload.session.status}).`);
+            } else {
+              setLiveSessionStatus(
+                `Live session active: ${payload.session.session_id}. Room URL could not be opened on this device.`
+              );
+            }
+          } else {
+            setLiveSessionStatus(
+              `Live session active: ${payload.session.session_id} (${payload.session.status}). Launch URL unavailable for this provider session.`
+            );
+          }
         }
       } catch (err) {
         setLiveSessionStatus(err instanceof Error ? err.message : 'Live session start failed.');
@@ -8294,9 +8335,24 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           return;
         }
         if (payload.session) setActiveLiveSession(payload.session);
+        const openUrlCandidate =
+          (typeof payload.join_url === 'string' && payload.join_url.trim()) ||
+          (typeof payload.host_url === 'string' && payload.host_url.trim()) ||
+          (typeof payload.live_url === 'string' && payload.live_url.trim()) ||
+          null;
+        if (openUrlCandidate) {
+          const canOpen = await Linking.canOpenURL(openUrlCandidate);
+          if (canOpen) {
+            await Linking.openURL(openUrlCandidate);
+            setLiveSessionStatus('Live session opened.');
+          } else {
+            setLiveSessionStatus('Live session URL could not be opened on this device.');
+          }
+          return;
+        }
         setLiveSessionStatus(
           payload.token
-            ? `Join token issued (expires ${payload.token_expires_at ?? 'soon'}).`
+            ? `Join token issued (expires ${payload.token_expires_at ?? 'soon'}). Launch URL unavailable for this provider session.`
             : 'Joined live session.'
         );
       } catch (err) {
@@ -8733,11 +8789,15 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       style={styles.screenRoot}
     >
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPad }]}
-        scrollEnabled={!isHomeGameplaySurface}
-        bounces={!isHomeGameplaySurface}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: contentBottomPad },
+          activeTab === 'comms' ? styles.contentComms : null,
+        ]}
+        scrollEnabled={activeTab === 'comms' ? false : !isHomeGameplaySurface}
+        bounces={activeTab === 'comms' ? false : !isHomeGameplaySurface}
         alwaysBounceVertical={false}
-        showsVerticalScrollIndicator={!isHomeGameplaySurface}
+        showsVerticalScrollIndicator={activeTab === 'comms' ? false : !isHomeGameplaySurface}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {activeTab === 'home' ? (
@@ -11837,7 +11897,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
             })()}
           </View>
         ) : activeTab === 'comms' ? (
-          <View style={styles.coachingShellWrap}>
+          <View style={[styles.coachingShellWrap, styles.coachingShellWrapComms]}>
             {(() => {
               const sourceLabelByKey: Record<CoachingShellEntrySource, string> = {
                 home: 'Home / Priority',
@@ -12173,9 +12233,13 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 const channelType = String(row.type ?? '').toLowerCase();
                 const isDirect = channelType === 'direct' || channelType === 'dm';
                 const dmMember = isDirect ? resolveDmDirectoryMemberFromRow(row) : null;
-                const resolvedName = isDirect ? dmMember?.name ?? deriveDmNameFromChannel(row.name) : row.name;
-                const preview = channelPreviewById[String(row.id)] ?? null;
-                const snippet = preview ?? (isDirect ? `${dmMember?.roleLabel ?? 'Member'} · Direct message` : null);
+                const backendDmName = isDirect ? String(row.dm_display_name ?? '').trim() : '';
+                const resolvedName = isDirect
+                  ? backendDmName || dmMember?.name || deriveDmNameFromChannel(row.name)
+                  : row.name;
+                const runtimePreview = channelPreviewById[String(row.id)] ?? null;
+                const backendPreview = String(row.last_message_preview ?? '').trim() || null;
+                const snippet = runtimePreview ?? backendPreview ?? (isDirect ? `${dmMember?.roleLabel ?? 'Member'} · Direct message` : null);
                 return {
                   id: String(row.id),
                   name: resolvedName,
@@ -12185,6 +12249,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   member_count: null,
                   my_role: row.my_role ?? null,
                   last_seen_at: row.last_seen_at ?? null,
+                  last_message_at: row.last_message_at ?? null,
                   created_at: row.created_at ?? null,
                   snippet,
                 };
@@ -12356,6 +12421,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                       onRefreshLiveSession={() => void refreshLiveSession()}
                       onJoinLiveSession={() => void joinLiveSession()}
                       onEndLiveSession={() => void endLiveSession()}
+                      composerBottomInset={commsComposerBottomInset}
                       broadcastDraft={broadcastDraft}
                       onChangeBroadcastDraft={setBroadcastDraft}
                       broadcastTargetScope={effectiveBroadcastTargetScope}
@@ -14460,6 +14526,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                   <View style={styles.bottomLogOuter}>
                     <View style={styles.bottomLogGlowRing} />
                     <View style={styles.bottomLogBtn}>
+                      {unreadMessagesBadgeLabel ? (
+                        <View style={[styles.bottomNavUnreadBadge, styles.bottomNavUnreadBadgeLog]}>
+                          <Text style={styles.bottomNavUnreadBadgeText}>{unreadMessagesBadgeLabel}</Text>
+                        </View>
+                      ) : null}
                       <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleOne]} />
                       <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleTwo]} />
                       <View style={[styles.bottomLogSparkle, styles.bottomLogSparkleThree]} />
@@ -14470,6 +14541,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
                 ) : (
                   <>
                     <View style={[styles.bottomIconSvgWrap, isActive && { backgroundColor: bottomTabTheme.activeBg }]}>
+                      {tab === 'comms' && unreadMessagesBadgeLabel ? (
+                        <View style={styles.bottomNavUnreadBadge}>
+                          <Text style={styles.bottomNavUnreadBadgeText}>{unreadMessagesBadgeLabel}</Text>
+                        </View>
+                      ) : null}
                       <TabIcon
                         width={40}
                         height={40}
@@ -15066,6 +15142,13 @@ const styles = StyleSheet.create({
     paddingBottom: 116,
     gap: 12,
     backgroundColor: '#f6f7f9',
+  },
+  contentComms: {
+    flexGrow: 1,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+    gap: 0,
   },
   challengeSurfaceWrap: {
     gap: 12,
@@ -20116,6 +20199,11 @@ const styles = StyleSheet.create({
   coachingShellWrap: {
     gap: 12,
   },
+  coachingShellWrapComms: {
+    flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
+  },
   coachingShellCard: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -22984,6 +23072,33 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.8,
     marginTop: 1,
+  },
+  bottomNavUnreadBadge: {
+    position: 'absolute',
+    top: -3,
+    right: 16,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 999,
+    paddingHorizontal: 4,
+    backgroundColor: '#ef4444',
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 25,
+    elevation: 25,
+  },
+  bottomNavUnreadBadgeLog: {
+    top: 8,
+    right: 5,
+  },
+  bottomNavUnreadBadgeText: {
+    color: '#ffffff',
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '800',
+    letterSpacing: 0.1,
   },
   drawerBackdrop: {
     flex: 1,
