@@ -2547,6 +2547,8 @@ export default function KPIDashboardScreen({
   const [teamIdentityControlsOpen, setTeamIdentityControlsOpen] = useState(false);
   const [teamMembershipMutationBusy, setTeamMembershipMutationBusy] = useState(false);
   const [teamMembershipMutationNotice, setTeamMembershipMutationNotice] = useState<string | null>(null);
+  const [teamInviteCodeBusy, setTeamInviteCodeBusy] = useState(false);
+  const [teamInviteCodeNotice, setTeamInviteCodeNotice] = useState<string | null>(null);
   const [teamLogContext, setTeamLogContext] = useState<TeamLogContext | null>(null);
   const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox_channels');
   const [coachTabScreen, setCoachTabScreen] = useState<CoachTabScreen>('coach_marketplace');
@@ -6042,24 +6044,6 @@ export default function KPIDashboardScreen({
     () => runtimeRoleSignals.some((signal) => signal.includes('sponsor')),
     [runtimeRoleSignals]
   );
-  const hasExplicitTeamRole = useMemo(
-    () =>
-      runtimeRoleSignals.some(
-        (signal) =>
-          signal === 'member' ||
-          signal === 'team_member' ||
-          signal === 'teammember' ||
-          signal === 'leader' ||
-          signal === 'team_leader' ||
-          signal.includes('manager')
-      ),
-    [runtimeRoleSignals]
-  );
-  const isSoloPersona = !isCoachRuntimeOperator && !isChallengeSponsorRuntime && !hasExplicitTeamRole;
-  const bottomTabOrder = useMemo<BottomTab[]>(
-    () => (isSoloPersona ? ['comms', 'challenge', 'home', 'logs', 'coach'] : ['comms', 'team', 'home', 'logs', 'coach']),
-    [isSoloPersona]
-  );
   const currentUserTeamRoleFromRoster = useMemo<'leader' | 'member' | null>(() => {
     const sessionUserId = String(session?.user?.id ?? '').trim();
     if (!sessionUserId) return null;
@@ -6072,6 +6056,33 @@ export default function KPIDashboardScreen({
     if (rawRole.includes('member')) return 'member';
     return null;
   }, [session?.user?.id, teamRosterMembers]);
+  const inferredTeamMembershipFromChallenges = useMemo(
+    () =>
+      challengeListItems.some(
+        (item) => item.joined && (item.challengeModeLabel === 'Team' || Boolean(item.raw?.team_id))
+      ),
+    [challengeListItems]
+  );
+  const hasExplicitTeamRole = useMemo(
+    () =>
+      Boolean(currentUserTeamRoleFromRoster) ||
+      inferredTeamMembershipFromChallenges ||
+      runtimeRoleSignals.some(
+        (signal) =>
+          signal === 'member' ||
+          signal === 'team_member' ||
+          signal === 'teammember' ||
+          signal === 'leader' ||
+          signal === 'team_leader' ||
+          signal.includes('manager')
+      ),
+    [currentUserTeamRoleFromRoster, inferredTeamMembershipFromChallenges, runtimeRoleSignals]
+  );
+  const isSoloPersona = !isCoachRuntimeOperator && !isChallengeSponsorRuntime && !hasExplicitTeamRole;
+  const bottomTabOrder = useMemo<BottomTab[]>(
+    () => (isSoloPersona ? ['comms', 'challenge', 'home', 'logs', 'coach'] : ['comms', 'team', 'home', 'logs', 'coach']),
+    [isSoloPersona]
+  );
   const effectiveTeamPersonaVariant = currentUserTeamRoleFromRoster ?? teamPersonaVariant;
   const isTeamLeaderCreatorParticipant = useMemo(
     () =>
@@ -8697,6 +8708,58 @@ export default function KPIDashboardScreen({
     return null;
   }, [teamRosterTeamId, teamRuntimeCandidateIds]);
 
+  const createTeamInviteCode = useCallback(async () => {
+    const token = session?.access_token;
+    const teamId = resolveCurrentTeamContextId();
+    if (!token) {
+      Alert.alert('Sign in required', 'Sign in is required to create a team invite link.');
+      return;
+    }
+    if (!teamId) {
+      Alert.alert('Team unavailable', 'Team context is unavailable. Refresh and try again.');
+      return;
+    }
+    setTeamInviteCodeBusy(true);
+    setTeamInviteCodeNotice(null);
+    try {
+      const response = await fetch(`${API_URL}/teams/${encodeURIComponent(teamId)}/invite-codes`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        invite_code?: { code?: string | null; expires_at?: string | null } | null;
+      };
+      if (!response.ok) {
+        const fallback = `Create invite code failed (${response.status})`;
+        const message = getApiErrorMessage(payload, fallback);
+        setTeamInviteCodeNotice(message);
+        Alert.alert('Unable to create invite link', message);
+        return;
+      }
+      const code = String(payload.invite_code?.code ?? '').trim();
+      if (!code) {
+        const message = 'Invite code response did not include a code.';
+        setTeamInviteCodeNotice(message);
+        Alert.alert('Invite link unavailable', message);
+        return;
+      }
+      const expiresLabel = fmtShortMonthDayYear(payload.invite_code?.expires_at ?? null);
+      const success = expiresLabel ? `Team invite code: ${code} (expires ${expiresLabel})` : `Team invite code: ${code}`;
+      setTeamInviteCodeNotice(success);
+      Alert.alert('Team invite code created', success);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to create team invite code';
+      setTeamInviteCodeNotice(message);
+      Alert.alert('Unable to create invite link', message);
+    } finally {
+      setTeamInviteCodeBusy(false);
+    }
+  }, [resolveCurrentTeamContextId, session?.access_token]);
+
   const leaveCurrentTeam = useCallback(async () => {
     const token = session?.access_token;
     const teamId = resolveCurrentTeamContextId();
@@ -9897,9 +9960,11 @@ export default function KPIDashboardScreen({
                   >
                     <Text style={styles.challengeExploreStartBtnText}>Start a Challenge</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.inviteCodeEntryBtn} onPress={handleOpenInviteCodeEntry}>
-                    <Text style={styles.inviteCodeEntryBtnText}>Enter Invite Code</Text>
-                  </TouchableOpacity>
+                  {isSoloPersona ? (
+                    <TouchableOpacity style={styles.inviteCodeEntryBtn} onPress={handleOpenInviteCodeEntry}>
+                      <Text style={styles.inviteCodeEntryBtnText}>Enter Invite Code</Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <Text style={styles.challengeExploreLimitText}>
                     Invite cap: {Math.max(0, entitlementNumber('challenge_invite_limit', 3))}
                   </Text>
@@ -9938,12 +10003,14 @@ export default function KPIDashboardScreen({
                         </Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                           <Text style={styles.challengeHeroCount}>{challengeCurrentStateRows.length}</Text>
-                          <TouchableOpacity
-                            style={styles.challengeListCreateBtn}
-                            onPress={handleOpenInviteCodeEntry}
-                          >
-                            <Text style={styles.challengeListCreateBtnText}>Code 🎟</Text>
-                          </TouchableOpacity>
+                          {isSoloPersona ? (
+                            <TouchableOpacity
+                              style={styles.challengeListCreateBtn}
+                              onPress={handleOpenInviteCodeEntry}
+                            >
+                              <Text style={styles.challengeListCreateBtnText}>Code</Text>
+                            </TouchableOpacity>
+                          ) : null}
                           {challengeCreateAllowed ? (
                             <TouchableOpacity
                               style={styles.challengeListCreateBtn}
@@ -9952,7 +10019,7 @@ export default function KPIDashboardScreen({
                                 setChallengeMemberCreateModalVisible(true);
                               }}
                             >
-                              <Text style={styles.challengeListCreateBtnText}>Create ⊕</Text>
+                              <Text style={styles.challengeListCreateBtnText}>Create</Text>
                             </TouchableOpacity>
                           ) : null}
                         </View>
@@ -11195,76 +11262,95 @@ export default function KPIDashboardScreen({
                     >
                       <Text style={styles.teamIdentityCardChatBtnText}>Team Chat</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.teamIdentityCardInviteCodeBtn} onPress={handleOpenInviteCodeEntry}>
-                      <Text style={styles.teamIdentityCardInviteCodeBtnText}>Code</Text>
-                    </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.teamIdentityCardDetailsBtn}
-                      onPress={() => setTeamIdentityControlsOpen((prev) => !prev)}
+                      onPress={() => setTeamIdentityControlsOpen(true)}
                       disabled={teamMembershipMutationBusy}
                     >
-                      <Text style={styles.teamIdentityCardDetailsBtnText}>{teamIdentityControlsOpen ? '▴' : '▾'}</Text>
+                      <Text style={styles.teamIdentityCardDetailsBtnText}>⋯</Text>
                     </TouchableOpacity>
-                    {effectiveTeamPersonaVariant === 'leader' ? (
-                      <TouchableOpacity style={styles.teamIdentityCardInviteBtn} onPress={() => setTeamFlowScreen('invite_member')}>
-                        <Text style={styles.teamIdentityCardInviteBtnText}>⊕</Text>
-                      </TouchableOpacity>
-                    ) : null}
                   </View>
-                  {teamIdentityControlsOpen ? (
-                    <View style={styles.teamIdentityControlsPanel}>
-                      {effectiveTeamPersonaVariant === 'leader' ? (
-                        <>
-                          <TouchableOpacity
-                            style={styles.teamIdentityControlPrimaryBtn}
-                            onPress={() => setTeamFlowScreen('team_challenges')}
-                            disabled={teamMembershipMutationBusy}
-                          >
-                            <Text style={styles.teamIdentityControlPrimaryBtnText}>Set Team Challenge</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.teamIdentityControlSecondaryBtn}
-                            onPress={() => setTeamFlowScreen('kpi_settings')}
-                            disabled={teamMembershipMutationBusy}
-                          >
-                            <Text style={styles.teamIdentityControlSecondaryBtnText}>Set Team KPIs</Text>
-                          </TouchableOpacity>
-                          <Text style={styles.teamIdentityControlHint}>
-                            Use member profile cards below to remove members from this team.
-                          </Text>
-                        </>
-                      ) : (
-                        <>
-                          <TouchableOpacity
-                            style={[styles.teamIdentityControlDangerBtn, teamMembershipMutationBusy && styles.disabled]}
-                            disabled={teamMembershipMutationBusy}
-                            onPress={() =>
-                              Alert.alert(
-                                'Leave team?',
-                                'You will be unenrolled from all team challenges and removed from team contribution metrics. Team custom KPI access may be lost unless you are on a qualifying paid plan.',
-                                [
-                                  { text: 'Cancel', style: 'cancel' },
-                                  { text: 'Leave Team', style: 'destructive', onPress: () => void leaveCurrentTeam() },
-                                ]
-                              )
-                            }
-                          >
-                            <Text style={styles.teamIdentityControlDangerBtnText}>
-                              {teamMembershipMutationBusy ? 'Leaving…' : 'Leave Team'}
+                  <Modal
+                    visible={teamIdentityControlsOpen}
+                    transparent
+                    animationType="slide"
+                    onRequestClose={() => setTeamIdentityControlsOpen(false)}
+                  >
+                    <Pressable style={styles.teamIdentityControlsOverlay} onPress={() => setTeamIdentityControlsOpen(false)}>
+                      <Pressable style={styles.teamIdentityControlsSheet} onPress={() => {}}>
+                        <View style={styles.teamIdentityControlsHandle} />
+                        <Text style={styles.teamIdentityControlsTitle}>Team Controls</Text>
+                        {effectiveTeamPersonaVariant === 'leader' ? (
+                          <>
+                            <TouchableOpacity
+                              style={styles.teamIdentityControlPrimaryBtn}
+                              onPress={() => {
+                                setTeamIdentityControlsOpen(false);
+                                setTeamFlowScreen('team_challenges');
+                              }}
+                              disabled={teamMembershipMutationBusy || teamInviteCodeBusy}
+                            >
+                              <Text style={styles.teamIdentityControlPrimaryBtnText}>Set Team Challenge</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.teamIdentityControlSecondaryBtn}
+                              onPress={() => {
+                                setTeamIdentityControlsOpen(false);
+                                setTeamFlowScreen('kpi_settings');
+                              }}
+                              disabled={teamMembershipMutationBusy || teamInviteCodeBusy}
+                            >
+                              <Text style={styles.teamIdentityControlSecondaryBtnText}>Set Team KPIs</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.teamIdentityControlSecondaryBtn}
+                              onPress={() => void createTeamInviteCode()}
+                              disabled={teamMembershipMutationBusy || teamInviteCodeBusy}
+                            >
+                              <Text style={styles.teamIdentityControlSecondaryBtnText}>
+                                {teamInviteCodeBusy ? 'Creating Invite…' : 'Create Team Invite Link'}
+                              </Text>
+                            </TouchableOpacity>
+                            <Text style={styles.teamIdentityControlHint}>
+                              Invite codes and member management live here to keep the team card clean.
                             </Text>
-                          </TouchableOpacity>
-                          <Text style={styles.teamIdentityControlHint}>
-                            Leaving removes team challenge enrollments and team-only contribution tracking.
-                          </Text>
-                        </>
-                      )}
-                    </View>
-                  ) : null}
+                          </>
+                        ) : (
+                          <>
+                            <TouchableOpacity
+                              style={[styles.teamIdentityControlDangerBtn, teamMembershipMutationBusy && styles.disabled]}
+                              disabled={teamMembershipMutationBusy}
+                              onPress={() =>
+                                Alert.alert(
+                                  'Leave team?',
+                                  'You will be unenrolled from all team challenges and removed from team contribution metrics. Team custom KPI access may be lost unless you are on a qualifying paid plan.',
+                                  [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    { text: 'Leave Team', style: 'destructive', onPress: () => void leaveCurrentTeam() },
+                                  ]
+                                )
+                              }
+                            >
+                              <Text style={styles.teamIdentityControlDangerBtnText}>
+                                {teamMembershipMutationBusy ? 'Leaving…' : 'Leave Team'}
+                              </Text>
+                            </TouchableOpacity>
+                            <Text style={styles.teamIdentityControlHint}>
+                              Leaving removes team challenge enrollments and team-only contribution tracking.
+                            </Text>
+                          </>
+                        )}
+                        {teamInviteCodeNotice ? (
+                          <Text style={styles.teamIdentityCardInlineNotice}>{teamInviteCodeNotice}</Text>
+                        ) : null}
+                        {teamMembershipMutationNotice ? (
+                          <Text style={styles.teamIdentityCardInlineNotice}>{teamMembershipMutationNotice}</Text>
+                        ) : null}
+                      </Pressable>
+                    </Pressable>
+                  </Modal>
                   {teamCommsHandoffError ? (
                     <Text style={styles.teamIdentityCardInlineError}>{teamCommsHandoffError}</Text>
-                  ) : null}
-                  {teamMembershipMutationNotice ? (
-                    <Text style={styles.teamIdentityCardInlineNotice}>{teamMembershipMutationNotice}</Text>
                   ) : null}
                   <Modal
                     visible={teamIdentityEditOpen}
@@ -14062,9 +14148,11 @@ export default function KPIDashboardScreen({
                           <Text style={styles.coachingAiAssistBtnText}>AI Coaching Suggestion Draft</Text>
                         </TouchableOpacity>
                       )}
-                      <TouchableOpacity style={styles.inviteCodeEntryBtn} onPress={handleOpenInviteCodeEntry}>
-                        <Text style={styles.inviteCodeEntryBtnText}>Enter Invite Code</Text>
-                      </TouchableOpacity>
+                      {isSoloPersona ? (
+                        <TouchableOpacity style={styles.inviteCodeEntryBtn} onPress={handleOpenInviteCodeEntry}>
+                          <Text style={styles.inviteCodeEntryBtnText}>Enter Invite Code</Text>
+                        </TouchableOpacity>
+                      ) : null}
                       <View style={styles.coachingJourneySummaryRow}>
                         <View style={styles.coachingJourneySummaryCard}>
                           <Text style={styles.coachingJourneySummaryLabel}>Progress Rows</Text>
@@ -17832,6 +17920,35 @@ const styles = StyleSheet.create({
     color: '#2a3140',
     fontSize: 16,
     fontWeight: '700',
+  },
+  teamIdentityControlsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+    justifyContent: 'flex-end',
+  },
+  teamIdentityControlsSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 34,
+    gap: 10,
+  },
+  teamIdentityControlsHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#d0d5dd',
+    alignSelf: 'center',
+    marginBottom: 6,
+  },
+  teamIdentityControlsTitle: {
+    color: '#2a3140',
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 8,
   },
   teamIdentityControlsPanel: {
     borderRadius: 10,
