@@ -74,7 +74,9 @@ module.exports = ({ config }) => ({
   ...config,
   name: variantProfile.appName,
   slug: 'compass-kpi',
-  plugins: Array.from(new Set([...(config.plugins || []), 'expo-audio', 'expo-secure-store'])),
+  plugins: Array.from(
+    new Set([...(config.plugins || []), 'expo-audio', 'expo-secure-store', 'expo-image-picker'])
+  ),
   ios: {
     ...(config.ios || {}),
     bundleIdentifier: variantProfile.iosBundle,

@@ -524,11 +524,16 @@ The current member app does not use a formal navigation library for these flows.
 - `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
 
 Current nested routing state:
-- bottom tabs: `home`, `challenge`, `newkpi`, `team`, `user`
+- bottom tabs: `comms`, `team|challenge` (persona-routed), `home`, `logs`, `coach`
 - challenge subflow: `list`, `details`, `leaderboard`
 - team subflow: `dashboard`, `invite_member`, `pending_invitations`, `kpi_settings`, `pipeline`, `team_challenges`
+- home shell subflow: `dashboard`, `profile`, `goals`, `settings`, `invite` (avatar menu routed)
 
-Coaching/communication runtime routing is not yet established in the member app shell and should follow the destination naming and boundaries in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
+Coaching/communication runtime routing is established in the member shell and follows the destination naming used in M6 comms/coaching flows (`inbox`, `inbox_channels`, `channel_thread`, `coach_broadcast_compose`, `coaching_journeys*`), with detailed capability boundaries in `/Users/jon/compass-kpi/docs/spec/appendix/COACHING_WIRING_ADDENDUM.md`.
+
+Invite/avatar wiring anchors:
+- `POST /api/profile/avatar/upload-url` -> signed upload URL -> `PATCH /me { avatar_url }`
+- `POST /api/invites/redeem` -> server-side team/coach/challenge join enforcement -> `route_target` consumed by dashboard router
 
 ## Next Diagram Update Trigger
 Update this doc whenever:

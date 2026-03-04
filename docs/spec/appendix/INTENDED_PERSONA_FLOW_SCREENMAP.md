@@ -129,7 +129,10 @@ Exports in repo:
 #### `profile`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
 |---|---|---|---|---|
-| Profile / Profile settings | Leader account/profile settings | `Team Leader / Profile` | `🟡 partial` | Runtime `ProfileSettingsScreen` exists; parity incomplete. |
+| Profile | Leader account/profile edits + avatar management | `Team Leader / Profile` | `🟡 partial` | Runtime `ProfileScreen` is menu-routed from universal avatar menu. |
+| Goals | Leader goal setup/maintenance | `Team Leader / Profile` | `🟡 partial` | Runtime `GoalsScreen` split from legacy combined profile/goals view. |
+| Settings | Leader notification/theme/session settings | `Team Leader / Other Settings and Payment` | `🟡 partial` | Runtime `SettingsScreen` split from legacy profile/settings view. |
+| Invite Code Entry | Redeem team/coach/challenge invite codes | `manual-spec-driven` | `🟡 partial` | Runtime `InviteCodeScreen` uses backend redeem route and returns route-target navigation. |
 
 #### `settings_payment`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
@@ -167,7 +170,10 @@ Exports in repo:
 #### `profile`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
 |---|---|---|---|---|
-| Profile | Member profile/settings | `Team Member / Profile` | `🟡 partial` | Shared runtime profile screen exists. |
+| Profile | Member profile edits + avatar management | `Team Member / Profile` | `🟡 partial` | Runtime `ProfileScreen` is menu-routed from universal avatar menu. |
+| Goals | Member goals setup/maintenance | `Team Member / Profile` | `🟡 partial` | Runtime `GoalsScreen` split from legacy combined profile/goals view. |
+| Settings | Member notification/theme/session settings | `Team Member / Other Settings` | `🟡 partial` | Runtime `SettingsScreen` split from legacy profile/settings view. |
+| Invite Code Entry | Redeem team/coach/challenge invite codes | `manual-spec-driven` | `🟡 partial` | Runtime `InviteCodeScreen` uses backend redeem route and returns route-target navigation. |
 
 #### `settings_payment`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
@@ -205,7 +211,10 @@ Exports in repo:
 #### `profile`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
 |---|---|---|---|---|
-| Profile | Solo profile/settings | `Solo User / Profile` | `🟡 partial` | Runtime `ProfileSettingsScreen` exists. |
+| Profile | Solo profile edits + avatar management | `Solo User / Profile` | `🟡 partial` | Runtime `ProfileScreen` is menu-routed from universal avatar menu. |
+| Goals | Solo goals setup/maintenance | `Solo User / Profile` | `🟡 partial` | Runtime `GoalsScreen` split from legacy combined profile/goals view. |
+| Settings | Solo notification/theme/session settings | `Solo User / Other Settings and Payment` | `🟡 partial` | Runtime `SettingsScreen` split from legacy profile/settings view. |
+| Invite Code Entry | Redeem team/coach/challenge invite codes | `manual-spec-driven` | `🟡 partial` | Runtime `InviteCodeScreen` uses backend redeem route and returns route-target navigation. |
 
 #### `settings_payment`
 | Destination | Intended purpose | Figma source group | Runtime status | Notes |
@@ -356,7 +365,10 @@ Use this to map intended screens to current code constraints.
 ### Member shell
 - `/Users/jon/compass-kpi/app/screens/HomeScreen.tsx`
   - `KPIDashboardScreen`
-  - `ProfileSettingsScreen`
+  - `ProfileScreen`
+  - `GoalsScreen`
+  - `SettingsScreen`
+  - `InviteCodeScreen`
 
 ### KPI Dashboard internal routers
 - `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`

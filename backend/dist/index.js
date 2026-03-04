@@ -616,7 +616,7 @@ app.get("/me", async (req, res) => {
             await ensureUserRow(auth.user.id);
             const { data } = await dataClient
                 .from("users")
-                .select("role,tier,account_status,geo_city,geo_state")
+                .select("role,tier,account_status,geo_city,geo_state,avatar_url")
                 .eq("id", auth.user.id)
                 .maybeSingle();
             if (data) {
@@ -638,6 +638,7 @@ app.get("/me", async (req, res) => {
             account_status: userRow?.account_status ?? null,
             geo_city: userRow?.geo_city ?? null,
             geo_state: userRow?.geo_state ?? null,
+            avatar_url: userRow?.avatar_url ?? null,
             user_metadata: auth.user.user_metadata,
         });
     }
@@ -678,6 +679,9 @@ app.patch("/me", async (req, res) => {
         if (payload.geo_state !== undefined) {
             userPatch.geo_state = payload.geo_state || null;
         }
+        if (payload.avatar_url !== undefined) {
+            userPatch.avatar_url = payload.avatar_url || null;
+        }
         if (Object.keys(userPatch).length > 0) {
             const { error: updateUserRowError } = await dataClient
                 .from("users")
@@ -709,15 +713,78 @@ app.patch("/me", async (req, res) => {
         if (updateAuthError) {
             return handleSupabaseError(res, "Failed to update auth user metadata", updateAuthError);
         }
+        const avatarUrlOut = payload.avatar_url !== undefined
+            ? payload.avatar_url || null
+            : typeof existingMetadata.avatar_url === "string"
+                ? String(existingMetadata.avatar_url)
+                : null;
         return res.json({
             id: auth.user.id,
             email: auth.user.email,
+            avatar_url: avatarUrlOut,
             user_metadata: updatedAuth.user?.user_metadata ?? mergedMetadata,
         });
     }
     catch (err) {
         // eslint-disable-next-line no-console
         console.error("Error in PATCH /me", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.post("/api/profile/avatar/upload-url", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok) {
+            return res.status(auth.status).json({ error: auth.error });
+        }
+        if (!dataClient) {
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        }
+        if (!isRecord(req.body)) {
+            return res.status(400).json({ error: "Body must be a JSON object" });
+        }
+        const fileName = typeof req.body.file_name === "string" ? req.body.file_name.trim() : "";
+        const contentType = typeof req.body.content_type === "string" ? req.body.content_type.trim().toLowerCase() : "";
+        const contentLengthBytes = Number(req.body.content_length_bytes ?? 0);
+        if (!fileName) {
+            return res.status(422).json({ error: "file_name is required" });
+        }
+        const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+        if (!allowedTypes.has(contentType)) {
+            return res.status(422).json({ error: "Unsupported content_type. Allowed: image/jpeg, image/png, image/webp" });
+        }
+        if (!Number.isFinite(contentLengthBytes) || contentLengthBytes <= 0 || contentLengthBytes > 8 * 1024 * 1024) {
+            return res.status(422).json({ error: "content_length_bytes must be > 0 and <= 8MB" });
+        }
+        const avatarBucket = (process.env.PROFILE_AVATAR_BUCKET ?? "avatars").trim() || "avatars";
+        const safeBaseName = fileName.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
+        const extFromName = safeBaseName.includes(".") ? safeBaseName.slice(safeBaseName.lastIndexOf(".")).toLowerCase() : "";
+        const fallbackExt = contentType === "image/png" ? ".png" : contentType === "image/webp" ? ".webp" : ".jpg";
+        const fileExt = [".jpg", ".jpeg", ".png", ".webp"].includes(extFromName) ? extFromName : fallbackExt;
+        const storagePath = `avatars/${auth.user.id}/${Date.now()}-${crypto_1.default.randomUUID()}${fileExt}`;
+        const { data: signedUpload, error: signedUploadError } = await dataClient.storage
+            .from(avatarBucket)
+            .createSignedUploadUrl(storagePath);
+        if (signedUploadError) {
+            return handleSupabaseError(res, "Failed to create signed avatar upload URL", signedUploadError);
+        }
+        if (!signedUpload?.signedUrl) {
+            return res.status(500).json({ error: "Failed to create signed avatar upload URL" });
+        }
+        const publicUrlResult = dataClient.storage.from(avatarBucket).getPublicUrl(storagePath);
+        const fileUrl = publicUrlResult.data?.publicUrl ?? null;
+        if (!fileUrl) {
+            return res.status(500).json({ error: "Unable to resolve avatar file URL" });
+        }
+        return res.status(201).json({
+            upload_url: signedUpload.signedUrl,
+            file_url: fileUrl,
+            expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Error in POST /api/profile/avatar/upload-url", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 });
@@ -5192,6 +5259,417 @@ app.post("/teams/:id/members", async (req, res) => {
         return res.status(500).json({ error: "Internal server error" });
     }
 });
+app.post("/teams/:id/invite-codes", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok) {
+            return res.status(auth.status).json({ error: auth.error });
+        }
+        if (!dataClient) {
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        }
+        const teamId = req.params.id;
+        if (!teamId) {
+            return res.status(422).json({ error: "team id is required" });
+        }
+        const leaderCheck = await checkTeamLeader(teamId, auth.user.id);
+        if (!leaderCheck.ok) {
+            return res.status(leaderCheck.status).json({ error: leaderCheck.error });
+        }
+        if (!leaderCheck.isLeader) {
+            return res.status(403).json({ error: "Only team leaders can create team invite codes" });
+        }
+        const maxUses = resolveInviteMaxUses("team", req.body);
+        const expiresAt = resolveInviteExpiry(req.body);
+        const invite = await issueInviteCode({
+            inviteType: "team",
+            targetId: teamId,
+            createdBy: auth.user.id,
+            maxUses,
+            expiresAtIso: expiresAt,
+        });
+        if (!invite.ok) {
+            return res.status(invite.status).json({ error: invite.error });
+        }
+        return res.status(201).json({
+            invite_code: invite.record,
+            route_target: { tab: "team", screen: "dashboard", target_id: teamId },
+        });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Error in POST /teams/:id/invite-codes", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.post("/api/coaching/invite-codes", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok) {
+            return res.status(auth.status).json({ error: auth.error });
+        }
+        if (!dataClient) {
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        }
+        await ensureUserRow(auth.user.id);
+        const actorIsAdmin = await isPlatformAdmin(auth.user.id);
+        const targetCoachId = isRecord(req.body) && typeof req.body.coach_id === "string" && req.body.coach_id.trim() && actorIsAdmin
+            ? req.body.coach_id.trim()
+            : auth.user.id;
+        const { data: coachRow, error: coachRowError } = await dataClient
+            .from("users")
+            .select("id,is_coach")
+            .eq("id", targetCoachId)
+            .maybeSingle();
+        if (coachRowError) {
+            return handleSupabaseError(res, "Failed to load coach profile for invite code", coachRowError);
+        }
+        if (!coachRow || !Boolean(coachRow.is_coach)) {
+            return res.status(403).json({ error: "Coach invite codes require coach role" });
+        }
+        if (targetCoachId !== auth.user.id && !actorIsAdmin) {
+            return res.status(403).json({ error: "Only admins can create invite codes for another coach" });
+        }
+        const maxUses = resolveInviteMaxUses("coach", req.body);
+        const expiresAt = resolveInviteExpiry(req.body);
+        const invite = await issueInviteCode({
+            inviteType: "coach",
+            targetId: targetCoachId,
+            createdBy: auth.user.id,
+            maxUses,
+            expiresAtIso: expiresAt,
+        });
+        if (!invite.ok) {
+            return res.status(invite.status).json({ error: invite.error });
+        }
+        return res.status(201).json({
+            invite_code: invite.record,
+            route_target: { tab: "coach", screen: "coach_hub_primary", target_id: targetCoachId },
+        });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Error in POST /api/coaching/invite-codes", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.post("/challenges/:id/invite-codes", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok) {
+            return res.status(auth.status).json({ error: auth.error });
+        }
+        if (!dataClient) {
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        }
+        const challengeId = req.params.id;
+        if (!challengeId) {
+            return res.status(422).json({ error: "challenge id is required" });
+        }
+        const { data: challenge, error: challengeError } = await dataClient
+            .from("challenges")
+            .select("id,team_id,created_by")
+            .eq("id", challengeId)
+            .maybeSingle();
+        if (challengeError) {
+            return handleSupabaseError(res, "Failed to load challenge for invite code", challengeError);
+        }
+        if (!challenge) {
+            return res.status(404).json({ error: "Challenge not found" });
+        }
+        const actorIsAdmin = await isPlatformAdmin(auth.user.id);
+        const createdBy = String(challenge.created_by ?? "");
+        const teamId = String(challenge.team_id ?? "");
+        const isCreator = createdBy === auth.user.id;
+        let isScopedTeamLeader = false;
+        if (teamId) {
+            const leaderCheck = await checkTeamLeader(teamId, auth.user.id);
+            if (!leaderCheck.ok) {
+                return res.status(leaderCheck.status).json({ error: leaderCheck.error });
+            }
+            isScopedTeamLeader = leaderCheck.isLeader;
+        }
+        if (!isCreator && !actorIsAdmin && !isScopedTeamLeader) {
+            return res.status(403).json({ error: "Only challenge hosts or scoped team leaders can create challenge invite codes" });
+        }
+        const maxUses = resolveInviteMaxUses("challenge", req.body);
+        const expiresAt = resolveInviteExpiry(req.body);
+        const invite = await issueInviteCode({
+            inviteType: "challenge",
+            targetId: challengeId,
+            createdBy: auth.user.id,
+            maxUses,
+            expiresAtIso: expiresAt,
+        });
+        if (!invite.ok) {
+            return res.status(invite.status).json({ error: invite.error });
+        }
+        return res.status(201).json({
+            invite_code: invite.record,
+            route_target: { tab: "challenge", screen: "details", target_id: challengeId },
+        });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Error in POST /challenges/:id/invite-codes", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.post("/api/invites/redeem", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok) {
+            return res.status(auth.status).json({ error: auth.error });
+        }
+        if (!dataClient) {
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        }
+        if (!isRecord(req.body) || typeof req.body.code !== "string" || !req.body.code.trim()) {
+            return res.status(422).json({ error: "code is required" });
+        }
+        const normalizedCode = normalizeInviteCodeInput(req.body.code);
+        const { data: inviteRow, error: inviteError } = await dataClient
+            .from("invite_codes")
+            .select("id,code,invite_type,target_id,max_uses,uses_count,expires_at,is_active")
+            .eq("code", normalizedCode)
+            .maybeSingle();
+        if (inviteError) {
+            return handleSupabaseError(res, "Failed to lookup invite code", inviteError);
+        }
+        if (!inviteRow) {
+            return res.status(404).json({ error: "Invite code not found" });
+        }
+        if (!Boolean(inviteRow.is_active)) {
+            return res.status(410).json({ error: "Invite code is inactive" });
+        }
+        const expiresAtIso = String(inviteRow.expires_at ?? "");
+        if (expiresAtIso && new Date(expiresAtIso).getTime() < Date.now()) {
+            return res.status(410).json({ error: "Invite code has expired" });
+        }
+        const inviteId = String(inviteRow.id ?? "");
+        const inviteType = String(inviteRow.invite_type ?? "");
+        const targetId = String(inviteRow.target_id ?? "");
+        if (!inviteId || !targetId || !["team", "coach", "challenge"].includes(inviteType)) {
+            return res.status(422).json({ error: "Invite code payload is invalid" });
+        }
+        const { data: existingRedemption, error: existingRedemptionError } = await dataClient
+            .from("invite_code_redemptions")
+            .select("id")
+            .eq("invite_code_id", inviteId)
+            .eq("redeemed_by", auth.user.id)
+            .maybeSingle();
+        if (existingRedemptionError) {
+            return handleSupabaseError(res, "Failed to evaluate existing invite redemption", existingRedemptionError);
+        }
+        const alreadyRedeemedByCaller = Boolean(existingRedemption);
+        const maxUses = Math.max(1, toNumberOrZero(inviteRow.max_uses));
+        const usesCount = Math.max(0, toNumberOrZero(inviteRow.uses_count));
+        if (!alreadyRedeemedByCaller && usesCount >= maxUses) {
+            return res.status(410).json({ error: "Invite code has reached its use limit" });
+        }
+        let routeTarget;
+        let alreadyJoined = false;
+        if (inviteType === "team") {
+            const { data: teamRow, error: teamError } = await dataClient
+                .from("teams")
+                .select("id")
+                .eq("id", targetId)
+                .maybeSingle();
+            if (teamError)
+                return handleSupabaseError(res, "Failed to load team for invite redeem", teamError);
+            if (!teamRow)
+                return res.status(404).json({ error: "Team target not found for invite code" });
+            const { data: membershipRow, error: membershipLookupError } = await dataClient
+                .from("team_memberships")
+                .select("id")
+                .eq("team_id", targetId)
+                .eq("user_id", auth.user.id)
+                .maybeSingle();
+            if (membershipLookupError) {
+                return handleSupabaseError(res, "Failed to evaluate team membership for invite redeem", membershipLookupError);
+            }
+            alreadyJoined = Boolean(membershipRow);
+            if (!alreadyJoined) {
+                const { error: membershipInsertError } = await dataClient
+                    .from("team_memberships")
+                    .upsert({
+                    team_id: targetId,
+                    user_id: auth.user.id,
+                    role: "member",
+                }, { onConflict: "team_id,user_id" });
+                if (membershipInsertError) {
+                    return handleSupabaseError(res, "Failed to join team from invite code", membershipInsertError);
+                }
+            }
+            routeTarget = { tab: "team", screen: "dashboard", target_id: targetId };
+        }
+        else if (inviteType === "coach") {
+            await ensureUserRow(auth.user.id);
+            const { data: coachRow, error: coachError } = await dataClient
+                .from("users")
+                .select("id,is_coach")
+                .eq("id", targetId)
+                .maybeSingle();
+            if (coachError)
+                return handleSupabaseError(res, "Failed to load coach for invite redeem", coachError);
+            if (!coachRow || !Boolean(coachRow.is_coach)) {
+                return res.status(404).json({ error: "Coach target not found for invite code" });
+            }
+            const { data: existingEngagement, error: engagementLookupError } = await dataClient
+                .from("coaching_engagements")
+                .select("id,status")
+                .eq("coach_id", targetId)
+                .eq("client_id", auth.user.id)
+                .in("status", ["pending", "active"])
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (engagementLookupError) {
+                return handleSupabaseError(res, "Failed to evaluate coaching engagement for invite redeem", engagementLookupError);
+            }
+            alreadyJoined = Boolean(existingEngagement);
+            if (!alreadyJoined) {
+                const { error: engagementInsertError } = await dataClient
+                    .from("coaching_engagements")
+                    .insert({
+                    coach_id: targetId,
+                    client_id: auth.user.id,
+                    status: "active",
+                    entitlement_state: "allowed",
+                    plan_tier_label: "Compass Coaching",
+                    status_reason: "Invite code redeemed",
+                    next_step_cta: "Open your coach hub",
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                });
+                if (engagementInsertError) {
+                    return handleSupabaseError(res, "Failed to activate coaching engagement from invite code", engagementInsertError);
+                }
+            }
+            routeTarget = { tab: "coach", screen: "coach_hub_primary", target_id: targetId };
+        }
+        else {
+            const { data: challenge, error: challengeError } = await dataClient
+                .from("challenges")
+                .select("id,mode,team_id,is_active,start_at,end_at,late_join_includes_history")
+                .eq("id", targetId)
+                .maybeSingle();
+            if (challengeError) {
+                return handleSupabaseError(res, "Failed to load challenge for invite redeem", challengeError);
+            }
+            if (!challenge || !Boolean(challenge.is_active)) {
+                return res.status(404).json({ error: "Challenge target not found for invite code" });
+            }
+            const nowIso = new Date().toISOString();
+            const endAtIso = String(challenge.end_at ?? "");
+            if (endAtIso && endAtIso < nowIso) {
+                return res.status(410).json({ error: "Challenge invite target has ended" });
+            }
+            const { data: userTierRow, error: userTierError } = await dataClient
+                .from("users")
+                .select("tier")
+                .eq("id", auth.user.id)
+                .single();
+            if (userTierError) {
+                return handleSupabaseError(res, "Failed to evaluate challenge participation policy", userTierError);
+            }
+            const userTier = normalizeTier(userTierRow.tier ?? "free");
+            const userEntitlements = await loadTierEntitlements(userTier);
+            const activeParticipationLimit = Math.max(1, toEntitlementNumber(userEntitlements, "active_challenge_participation_limit", 1));
+            const { data: activeParticipationRows, error: activeParticipationError } = await dataClient
+                .from("challenge_participants")
+                .select("challenge_id,challenges!inner(id,is_active,end_at)")
+                .eq("user_id", auth.user.id)
+                .eq("challenges.is_active", true)
+                .gte("challenges.end_at", nowIso);
+            if (activeParticipationError) {
+                return handleSupabaseError(res, "Failed to evaluate active challenge participation limit", activeParticipationError);
+            }
+            const activeChallengeIds = new Set((activeParticipationRows ?? [])
+                .map((row) => String(row.challenge_id ?? ""))
+                .filter(Boolean));
+            if (!activeChallengeIds.has(targetId) && activeChallengeIds.size >= activeParticipationLimit) {
+                return res.status(403).json({ error: "User already has an active challenge; only one active participation is allowed" });
+            }
+            if (String(challenge.mode ?? "") === "team") {
+                const challengeTeamId = String(challenge.team_id ?? "");
+                if (!challengeTeamId) {
+                    return res.status(422).json({ error: "Team challenge target is misconfigured" });
+                }
+                const memberCheck = await checkTeamMembership(challengeTeamId, auth.user.id);
+                if (!memberCheck.ok)
+                    return res.status(memberCheck.status).json({ error: memberCheck.error });
+                if (!memberCheck.member) {
+                    return res.status(403).json({ error: "User must be a team member to join this challenge" });
+                }
+            }
+            const { data: existingParticipant, error: existingParticipantError } = await dataClient
+                .from("challenge_participants")
+                .select("id")
+                .eq("challenge_id", targetId)
+                .eq("user_id", auth.user.id)
+                .maybeSingle();
+            if (existingParticipantError) {
+                return handleSupabaseError(res, "Failed to evaluate challenge enrollment for invite redeem", existingParticipantError);
+            }
+            alreadyJoined = Boolean(existingParticipant);
+            if (!alreadyJoined) {
+                const includePriorLogs = Boolean(challenge.late_join_includes_history);
+                const startAtIso = String(challenge.start_at ?? nowIso);
+                const effectiveStartAt = includePriorLogs ? startAtIso : nowIso;
+                const challengeTeamId = String(challenge.team_id ?? "");
+                const { error: participantError } = await dataClient
+                    .from("challenge_participants")
+                    .upsert({
+                    challenge_id: targetId,
+                    user_id: auth.user.id,
+                    team_id: challengeTeamId || null,
+                    joined_at: nowIso,
+                    effective_start_at: effectiveStartAt,
+                    sponsored_challenge_id: null,
+                }, { onConflict: "challenge_id,user_id" });
+                if (participantError) {
+                    return handleSupabaseError(res, "Failed to join challenge from invite code", participantError);
+                }
+            }
+            routeTarget = { tab: "challenge", screen: "details", target_id: targetId };
+        }
+        if (!alreadyRedeemedByCaller) {
+            const { error: redemptionError } = await dataClient
+                .from("invite_code_redemptions")
+                .insert({
+                invite_code_id: inviteId,
+                redeemed_by: auth.user.id,
+                redeemed_at: new Date().toISOString(),
+            });
+            if (redemptionError) {
+                return handleSupabaseError(res, "Failed to store invite redemption record", redemptionError);
+            }
+            const { error: usageUpdateError } = await dataClient
+                .from("invite_codes")
+                .update({
+                uses_count: usesCount + 1,
+                updated_at: new Date().toISOString(),
+            })
+                .eq("id", inviteId);
+            if (usageUpdateError) {
+                return handleSupabaseError(res, "Failed to update invite code usage count", usageUpdateError);
+            }
+        }
+        return res.json({
+            success: true,
+            invite_type: inviteType,
+            target_id: targetId,
+            route_target: routeTarget,
+            already_joined: alreadyJoined || alreadyRedeemedByCaller,
+        });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Error in POST /api/invites/redeem", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
 app.post("/challenges", async (req, res) => {
     try {
         const auth = await authenticateRequest(req.headers.authorization);
@@ -7194,6 +7672,27 @@ function validateMeProfileUpdatePayload(body) {
         }
         payload.full_name = candidate.full_name.trim();
     }
+    if (candidate.avatar_url !== undefined) {
+        if (candidate.avatar_url === null || candidate.avatar_url === "") {
+            payload.avatar_url = "";
+        }
+        else if (typeof candidate.avatar_url !== "string") {
+            return { ok: false, status: 422, error: "avatar_url must be a string when provided" };
+        }
+        else {
+            const normalized = candidate.avatar_url.trim();
+            if (normalized && !/^https?:\/\//i.test(normalized)) {
+                return { ok: false, status: 422, error: "avatar_url must be an absolute http(s) URL" };
+            }
+            payload.avatar_url = normalized;
+        }
+    }
+    if (candidate.avatar_preset_id !== undefined) {
+        if (typeof candidate.avatar_preset_id !== "string" || !candidate.avatar_preset_id.trim()) {
+            return { ok: false, status: 422, error: "avatar_preset_id must be a non-empty string when provided" };
+        }
+        payload.avatar_preset_id = candidate.avatar_preset_id.trim();
+    }
     const parseNumberField = (field) => {
         const raw = candidate[String(field)];
         if (raw === undefined)
@@ -7294,6 +7793,31 @@ function validateMeProfileUpdatePayload(body) {
     catch (e) {
         const msg = e instanceof Error ? e.message : "Invalid profile update payload";
         return { ok: false, status: 422, error: msg };
+    }
+    const parseOptionalBooleanField = (field) => {
+        const raw = candidate[field];
+        if (raw === undefined)
+            return;
+        if (typeof raw !== "boolean") {
+            throw new Error(`${field} must be a boolean when provided`);
+        }
+        payload[field] = raw;
+    };
+    try {
+        parseOptionalBooleanField("settings_push_enabled");
+        parseOptionalBooleanField("settings_email_digest");
+    }
+    catch (e) {
+        const msg = e instanceof Error ? e.message : "Invalid profile update payload";
+        return { ok: false, status: 422, error: msg };
+    }
+    if (candidate.settings_theme !== undefined) {
+        if (candidate.settings_theme !== "system" &&
+            candidate.settings_theme !== "light" &&
+            candidate.settings_theme !== "dark") {
+            return { ok: false, status: 422, error: "settings_theme must be one of: system, light, dark" };
+        }
+        payload.settings_theme = candidate.settings_theme;
     }
     if (Object.keys(payload).length === 0) {
         return { ok: false, status: 422, error: "At least one profile field is required" };
@@ -9203,6 +9727,91 @@ async function writeKpiLogForUser(userId, payload) {
             },
         },
     };
+}
+function normalizeInviteCodeInput(rawCode) {
+    return rawCode.trim().toUpperCase();
+}
+function randomInviteChunk(length) {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const bytes = crypto_1.default.randomBytes(length);
+    let out = "";
+    for (let i = 0; i < length; i += 1) {
+        out += chars[bytes[i] % chars.length];
+    }
+    return out;
+}
+function buildInviteCode(prefix) {
+    return `${prefix}-${randomInviteChunk(4)}-${randomInviteChunk(4)}`;
+}
+function resolveInviteMaxUses(inviteType, rawBody) {
+    const body = isRecord(rawBody) ? rawBody : {};
+    const supplied = Number(body.max_uses ?? NaN);
+    const fallback = inviteType === "team" ? 25 : inviteType === "coach" ? 50 : 100;
+    if (!Number.isFinite(supplied) || supplied <= 0)
+        return fallback;
+    return Math.min(500, Math.floor(supplied));
+}
+function resolveInviteExpiry(rawBody) {
+    const body = isRecord(rawBody) ? rawBody : {};
+    if (typeof body.expires_at === "string" && body.expires_at.trim()) {
+        const parsedMs = new Date(body.expires_at.trim()).getTime();
+        if (Number.isFinite(parsedMs) && parsedMs > Date.now()) {
+            return new Date(parsedMs).toISOString();
+        }
+    }
+    if (Number.isFinite(Number(body.expires_in_days))) {
+        const days = Math.max(1, Math.min(90, Math.floor(Number(body.expires_in_days))));
+        return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    }
+    return new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+}
+async function issueInviteCode(args) {
+    if (!dataClient)
+        return { ok: false, status: 500, error: "Supabase data client not configured" };
+    const codePrefix = args.inviteType === "team" ? "TEAM" : args.inviteType === "coach" ? "COACH" : "CHAL";
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+        const code = buildInviteCode(codePrefix);
+        const { data, error } = await dataClient
+            .from("invite_codes")
+            .insert({
+            code,
+            invite_type: args.inviteType,
+            target_id: args.targetId,
+            created_by: args.createdBy,
+            max_uses: args.maxUses,
+            uses_count: 0,
+            expires_at: args.expiresAtIso,
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+        })
+            .select("id,code,invite_type,target_id,max_uses,uses_count,expires_at,is_active,created_at")
+            .single();
+        if (!error && data) {
+            return {
+                ok: true,
+                record: {
+                    id: String(data.id ?? ""),
+                    code: String(data.code ?? code),
+                    invite_type: String(data.invite_type ?? args.inviteType),
+                    target_id: String(data.target_id ?? args.targetId),
+                    max_uses: Math.max(1, toNumberOrZero(data.max_uses)),
+                    uses_count: Math.max(0, toNumberOrZero(data.uses_count)),
+                    expires_at: String(data.expires_at ?? args.expiresAtIso),
+                    is_active: Boolean(data.is_active),
+                    created_at: String(data.created_at ?? new Date().toISOString()),
+                },
+            };
+        }
+        if (!error || error.code !== "23505") {
+            return {
+                ok: false,
+                status: 500,
+                error: "Failed to create invite code",
+            };
+        }
+    }
+    return { ok: false, status: 500, error: "Failed to generate unique invite code" };
 }
 function normalizeTier(value) {
     const t = String(value ?? "free").trim().toLowerCase();

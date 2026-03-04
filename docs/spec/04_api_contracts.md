@@ -18,9 +18,20 @@
   - Purpose: service health check.
 - `GET /me`
   - Purpose: validate auth and return current user context.
+  - Additive response fields (M6 avatar/invite split flow):
+    - `avatar_url`
+    - `effective_plan`
+    - `entitlements`
+    - `seat_context`
 - `PATCH /me` (implemented baseline)
   - Purpose: update current user profile/goals metadata and persist calculation-critical financial inputs to `users` table.
   - On first complete onboarding payload, backend seeds one-time weekly historical projection logs and onboarding pipeline anchors.
+  - Additive accepted fields (M6):
+    - `avatar_url`
+    - `avatar_preset_id`
+    - `settings_push_enabled`
+    - `settings_email_digest`
+    - `settings_theme` (`system | light | dark`)
 - `POST /kpi-logs` (implemented baseline)
   - Purpose: ingest KPI log events (including offline sync batches in future).
 - `DELETE /kpi-logs/{id}` (implemented baseline)
@@ -44,6 +55,12 @@
   - Purpose: return team details and membership for authorized members.
 - `POST /teams/{id}/members` (implemented baseline)
   - Purpose: leader-managed team membership updates.
+- `POST /teams/{id}/invite-codes` (implemented — M6)
+  - Purpose: create team-scoped invite code for join flow.
+  - Role/scope: team leader of the target team (or platform admin override).
+- `POST /challenges/{id}/invite-codes` (implemented — M6)
+  - Purpose: create challenge-scoped invite code for enrollment flow.
+  - Role/scope: challenge host/controller according to plan entitlement policy.
 - `GET /api/channels` (implemented baseline)
   - Purpose: list channels for current user with unread summary.
 - `POST /api/channels` (implemented baseline)
@@ -88,12 +105,21 @@
   - Purpose: list available coaches with specialties, engagement availability, and profile metadata for marketplace discovery.
 - `POST /api/coaching/engagements` (implemented — C2)
   - Purpose: create engagement request between client and coach. Returns engagement state and entitlement context.
+- `POST /api/coaching/invite-codes` (implemented — M6)
+  - Purpose: create coach-engagement invite code for coach->client join flow.
+  - Role/scope: coach/admin only.
 - `GET /api/coaching/engagements/me` (implemented — C2)
   - Purpose: return caller's active engagement(s), state, and entitlement fields (`entitlement_state`, `plan_tier_label`, `status_reason`, `next_step_cta`).
 - `GET /api/coaching/assignments/me` (implemented — C3)
   - Purpose: return merged goals/tasks feed for caller, categorized by unified taxonomy (`personal_goal`, `team_leader_goal`, `coach_goal`, `personal_task`, `coach_task`). Sources from existing goals system + message-linked assignments. No new tables.
 - `POST /api/ai/suggestions` (implemented baseline)
   - Purpose: create approval-gated AI suggestion (advisory only).
+- `POST /api/profile/avatar/upload-url` (implemented — M6)
+  - Purpose: return signed upload URL + resolved file URL for avatar images.
+  - Validation: content type whitelist (`image/jpeg|image/png|image/webp`), max 8MB.
+- `POST /api/invites/redeem` (implemented — M6)
+  - Purpose: redeem `team|coach|challenge` invite code with idempotent membership/engagement/enrollment behavior.
+  - Success envelope includes `invite_type`, `target_id`, and `route_target` for deterministic client routing.
 - `GET /api/ai/suggestions` (implemented baseline)
   - Purpose: list AI suggestions (admin: all, non-admin: own/targeted only).
 - `POST /api/ai/suggestions/{id}/approve` (implemented baseline)

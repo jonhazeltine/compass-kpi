@@ -2445,8 +2445,16 @@ const bottomTabDisplayLabel: Record<BottomTab, string> = {
   coach: 'Coach',
 };
 
+type MenuRouteTarget = {
+  tab?: 'team' | 'coach' | 'challenge';
+  screen?: string;
+  target_id?: string;
+} | null;
+
 type Props = {
-  onOpenProfile?: () => void;
+  onOpenUserMenu?: () => void;
+  menuRouteTarget?: MenuRouteTarget;
+  onMenuRouteTargetConsumed?: () => void;
 };
 
 const isLightColor = (hex: string): boolean => {
@@ -2457,7 +2465,7 @@ const isLightColor = (hex: string): boolean => {
   return (r * 299 + g * 587 + b * 114) / 1000 > 155;
 };
 
-export default function KPIDashboardScreen({ onOpenProfile }: Props) {
+export default function KPIDashboardScreen({ onOpenUserMenu, menuRouteTarget, onMenuRouteTargetConsumed }: Props) {
   const { session } = useAuth();
   const { tier: entitlementTier, effectivePlan, can: entitlementCan, limit: entitlementLimitFromContext } = useEntitlements();
   const insets = useSafeAreaInsets();
@@ -5324,8 +5332,8 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   };
 
   const handleOpenProfileFromAvatar = () => {
-    if (onOpenProfile) {
-      onOpenProfile();
+    if (onOpenUserMenu) {
+      onOpenUserMenu();
       return;
     }
     Alert.alert('Profile unavailable', 'Profile and settings routing is not available in this build context.');
@@ -6206,6 +6214,36 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
       setChallengeFlowScreen('list');
     }
   }, [activeTab, challengeFlowScreen, challengeListItems, isSoloPersona]);
+  useEffect(() => {
+    if (!menuRouteTarget) return;
+    if (menuRouteTarget.tab === 'team') {
+      setActiveTab('team');
+      setViewMode('log');
+      setTeamFlowScreen('dashboard');
+    } else if (menuRouteTarget.tab === 'coach') {
+      setActiveTab('coach');
+      setViewMode('log');
+      if (menuRouteTarget.screen === 'inbox_channels') {
+        setCoachingShellScreen('inbox_channels');
+      } else if (coachEngagementStatus === 'active') {
+        setCoachTabScreen('coach_hub_primary');
+      } else {
+        setCoachTabScreen('coach_marketplace');
+      }
+    } else if (menuRouteTarget.tab === 'challenge') {
+      setActiveTab('challenge');
+      setViewMode('log');
+      if (menuRouteTarget.target_id) {
+        setChallengeSelectedId(menuRouteTarget.target_id);
+        setChallengeFlowScreen('details');
+      } else {
+        setChallengeFlowScreen('list');
+      }
+    }
+    if (onMenuRouteTargetConsumed) {
+      onMenuRouteTargetConsumed();
+    }
+  }, [menuRouteTarget, coachEngagementStatus, onMenuRouteTargetConsumed]);
   const challengeIsCompleted = challengeSelected?.bucket === 'completed';
   const challengeHasApiBackedDetail = isApiBackedChallenge(challengeSelected);
   const challengeIsPlaceholderOnly = !challengeHasApiBackedDetail;
@@ -8877,6 +8915,12 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
     teamLogActualPercent != null && teamLogGoalValue != null && teamLogGoalValue > 0
       ? Math.max(0, Math.min(1, teamLogActualPercent / teamLogGoalValue))
       : null;
+  const showUniversalAvatarTrigger =
+    activeTab !== 'home' &&
+    !(
+      activeTab === 'comms' &&
+      (coachingShellScreen === 'channel_thread' || coachingShellScreen === 'coach_broadcast_compose')
+    );
   return (
     <View
       ref={(node) => {
@@ -12577,6 +12621,19 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           </>
         )}
       </ScrollView>
+
+      {showUniversalAvatarTrigger ? (
+        <View style={[styles.avatarGlobalWrap, { top: Math.max(8, insets.top + 4) }]}>
+          <TouchableOpacity
+            style={styles.avatarBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Open profile and settings"
+            onPress={handleOpenProfileFromAvatar}
+          >
+            <Text style={styles.avatarText}>{profileInitials}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {activeTab === 'comms' ? (
         <View style={[styles.coachingShellWrap, styles.coachingShellWrapComms]}>
@@ -22591,6 +22648,11 @@ const styles = StyleSheet.create({
     borderColor: '#c0d4ff',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarGlobalWrap: {
+    position: 'absolute',
+    right: 22,
+    zIndex: 24,
   },
   avatarText: {
     color: '#1f5fe2',

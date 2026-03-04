@@ -634,6 +634,21 @@
 - Given basic/pro/team/coach user attempts custom KPI create
 - Then create succeeds and KPI is owner-scoped (`created_by = caller`)
 
+### E14) Avatar Menu + Split Profile/Goals/Settings Routing
+- Given an authenticated user on any top-level tab (`comms`, `team/challenge`, `home`, `logs`, `coach`)
+- When user taps the top-right avatar trigger
+- Then avatar menu opens with deterministic actions: `Profile`, `Goals`, `Settings`, `Enter Invite Code`, `Sign out`
+- And selecting each action routes to the corresponding split screen without mutating KPI source-of-truth fields
+
+### E15) Avatar Upload + Invite Redemption Runtime
+- Given authenticated user selects avatar upload with supported media type and size <= 8MB
+- When client requests `POST /api/profile/avatar/upload-url`, uploads file, then `PATCH /me { avatar_url }`
+- Then profile avatar persists and `GET /me` returns updated `avatar_url`
+- Given a valid team/coach/challenge invite code
+- When user redeems through `POST /api/invites/redeem`
+- Then server applies idempotent join behavior and returns deterministic `route_target`
+- And invalid/expired/limit-reached codes return deterministic 4xx errors with no side effects
+
 ## Regression Checklist
 
 - Auth routes still enforce bearer token requirements.
