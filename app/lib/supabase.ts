@@ -22,6 +22,26 @@ const sanitizeSecureStoreKeyPart = (value: string): string => {
 };
 const secureStoreKeyFor = (key: string): string => `${secureStoreKeyPrefix}${sanitizeSecureStoreKeyPart(key)}`;
 
+// Patch SecureStore globally so any internal callers also get valid iOS-safe keys.
+const secureStoreAny = SecureStore as any;
+if (!secureStoreAny.__compassKeyPatchApplied) {
+  const originalGetItemAsync = secureStoreAny.getItemAsync?.bind(SecureStore);
+  const originalSetItemAsync = secureStoreAny.setItemAsync?.bind(SecureStore);
+  const originalDeleteItemAsync = secureStoreAny.deleteItemAsync?.bind(SecureStore);
+  const sanitizeDirectKey = (key: string): string => sanitizeSecureStoreKeyPart(String(key ?? ''));
+  if (typeof originalGetItemAsync === 'function') {
+    secureStoreAny.getItemAsync = (key: string, options?: any) => originalGetItemAsync(sanitizeDirectKey(key), options);
+  }
+  if (typeof originalSetItemAsync === 'function') {
+    secureStoreAny.setItemAsync = (key: string, value: string, options?: any) =>
+      originalSetItemAsync(sanitizeDirectKey(key), value, options);
+  }
+  if (typeof originalDeleteItemAsync === 'function') {
+    secureStoreAny.deleteItemAsync = (key: string, options?: any) => originalDeleteItemAsync(sanitizeDirectKey(key), options);
+  }
+  secureStoreAny.__compassKeyPatchApplied = true;
+}
+
 const secureStoreAdapter = {
   getItem: async (key: string): Promise<string | null> => {
     const safeKey = secureStoreKeyFor(key);
