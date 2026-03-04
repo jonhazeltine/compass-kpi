@@ -2453,6 +2453,7 @@ type MenuRouteTarget = {
 
 type Props = {
   onOpenUserMenu?: () => void;
+  onOpenInviteCode?: () => void;
   menuRouteTarget?: MenuRouteTarget;
   onMenuRouteTargetConsumed?: () => void;
 };
@@ -2465,7 +2466,12 @@ const isLightColor = (hex: string): boolean => {
   return (r * 299 + g * 587 + b * 114) / 1000 > 155;
 };
 
-export default function KPIDashboardScreen({ onOpenUserMenu, menuRouteTarget, onMenuRouteTargetConsumed }: Props) {
+export default function KPIDashboardScreen({
+  onOpenUserMenu,
+  onOpenInviteCode,
+  menuRouteTarget,
+  onMenuRouteTargetConsumed,
+}: Props) {
   const { session } = useAuth();
   const { tier: entitlementTier, effectivePlan, can: entitlementCan, limit: entitlementLimitFromContext } = useEntitlements();
   const insets = useSafeAreaInsets();
@@ -5337,6 +5343,14 @@ export default function KPIDashboardScreen({ onOpenUserMenu, menuRouteTarget, on
       return;
     }
     Alert.alert('Profile unavailable', 'Profile and settings routing is not available in this build context.');
+  };
+
+  const handleOpenInviteCodeEntry = () => {
+    if (onOpenInviteCode) {
+      onOpenInviteCode();
+      return;
+    }
+    Alert.alert('Invite unavailable', 'Invite code routing is not available in this build context.');
   };
 
   // Boost states remain inactive until dedicated boost metrics/policies are wired.
@@ -8915,12 +8929,10 @@ export default function KPIDashboardScreen({ onOpenUserMenu, menuRouteTarget, on
     teamLogActualPercent != null && teamLogGoalValue != null && teamLogGoalValue > 0
       ? Math.max(0, Math.min(1, teamLogActualPercent / teamLogGoalValue))
       : null;
-  const showUniversalAvatarTrigger =
-    activeTab !== 'home' &&
-    !(
-      activeTab === 'comms' &&
-      (coachingShellScreen === 'channel_thread' || coachingShellScreen === 'coach_broadcast_compose')
-    );
+  const showUniversalAvatarTrigger = !(
+    activeTab === 'comms' &&
+    (coachingShellScreen === 'channel_thread' || coachingShellScreen === 'coach_broadcast_compose')
+  );
   return (
     <View
       ref={(node) => {
@@ -8947,14 +8959,6 @@ export default function KPIDashboardScreen({ onOpenUserMenu, menuRouteTarget, on
               <Text style={styles.hello}>Hi, {greetingFirstName}</Text>
               <Text style={styles.welcomeBack}>Welcome back</Text>
             </View>
-            <TouchableOpacity
-              style={styles.avatarBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Open profile and settings"
-              onPress={handleOpenProfileFromAvatar}
-            >
-              <Text style={styles.avatarText}>{profileInitials}</Text>
-            </TouchableOpacity>
           </View>
         ) : null}
         {activeTab === 'coach' || activeTab === 'challenge' ? (
@@ -9804,6 +9808,9 @@ export default function KPIDashboardScreen({ onOpenUserMenu, menuRouteTarget, on
                   >
                     <Text style={styles.challengeExploreStartBtnText}>Start a Challenge</Text>
                   </TouchableOpacity>
+                  <TouchableOpacity style={styles.inviteCodeEntryBtn} onPress={handleOpenInviteCodeEntry}>
+                    <Text style={styles.inviteCodeEntryBtnText}>Enter Invite Code</Text>
+                  </TouchableOpacity>
                   <Text style={styles.challengeExploreLimitText}>
                     Invite cap: {Math.max(0, entitlementNumber('challenge_invite_limit', 3))}
                   </Text>
@@ -9842,6 +9849,12 @@ export default function KPIDashboardScreen({ onOpenUserMenu, menuRouteTarget, on
                         </Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                           <Text style={styles.challengeHeroCount}>{challengeCurrentStateRows.length}</Text>
+                          <TouchableOpacity
+                            style={styles.challengeListCreateBtn}
+                            onPress={handleOpenInviteCodeEntry}
+                          >
+                            <Text style={styles.challengeListCreateBtnText}>Code 🎟</Text>
+                          </TouchableOpacity>
                           {challengeCreateAllowed ? (
                             <TouchableOpacity
                               style={styles.challengeListCreateBtn}
@@ -11080,6 +11093,9 @@ export default function KPIDashboardScreen({ onOpenUserMenu, menuRouteTarget, on
                       onPress={() => openTeamCommsHandoff(teamPersonaVariant === 'leader' ? 'team_leader_dashboard' : 'team_member_dashboard')}
                     >
                       <Text style={styles.teamIdentityCardChatBtnText}>💬  Team Chat</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.teamIdentityCardInviteCodeBtn} onPress={handleOpenInviteCodeEntry}>
+                      <Text style={styles.teamIdentityCardInviteCodeBtnText}>🎟</Text>
                     </TouchableOpacity>
                     {teamPersonaVariant === 'leader' ? (
                       <TouchableOpacity style={styles.teamIdentityCardInviteBtn} onPress={() => setTeamFlowScreen('invite_member')}>
@@ -12622,19 +12638,6 @@ export default function KPIDashboardScreen({ onOpenUserMenu, menuRouteTarget, on
         )}
       </ScrollView>
 
-      {showUniversalAvatarTrigger ? (
-        <View style={[styles.avatarGlobalWrap, { top: Math.max(8, insets.top + 4) }]}>
-          <TouchableOpacity
-            style={styles.avatarBtn}
-            accessibilityRole="button"
-            accessibilityLabel="Open profile and settings"
-            onPress={handleOpenProfileFromAvatar}
-          >
-            <Text style={styles.avatarText}>{profileInitials}</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
       {activeTab === 'comms' ? (
         <View style={[styles.coachingShellWrap, styles.coachingShellWrapComms]}>
           {(() => {
@@ -13866,6 +13869,9 @@ export default function KPIDashboardScreen({ onOpenUserMenu, menuRouteTarget, on
                           <Text style={styles.coachingAiAssistBtnText}>AI Coaching Suggestion Draft</Text>
                         </TouchableOpacity>
                       )}
+                      <TouchableOpacity style={styles.inviteCodeEntryBtn} onPress={handleOpenInviteCodeEntry}>
+                        <Text style={styles.inviteCodeEntryBtnText}>Enter Invite Code</Text>
+                      </TouchableOpacity>
                       <View style={styles.coachingJourneySummaryRow}>
                         <View style={styles.coachingJourneySummaryCard}>
                           <Text style={styles.coachingJourneySummaryLabel}>Progress Rows</Text>
@@ -14704,7 +14710,20 @@ export default function KPIDashboardScreen({ onOpenUserMenu, menuRouteTarget, on
             </View>
           </Animated.View>
         </React.Fragment>
-      ))}
+      ))} 
+
+      {showUniversalAvatarTrigger ? (
+        <View style={[styles.avatarGlobalWrap, { top: Math.max(8, insets.top + 4) }]}>
+          <TouchableOpacity
+            style={styles.avatarBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Open profile and settings"
+            onPress={handleOpenProfileFromAvatar}
+          >
+            <Text style={styles.avatarText}>{profileInitials}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <View
         style={[styles.bottomNav, { paddingBottom: bottomNavPadBottom, bottom: bottomNavLift }]}
@@ -17587,6 +17606,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.06)',
+  },
+  teamIdentityCardInviteCodeBtn: {
+    width: 38,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  teamIdentityCardInviteCodeBtnText: {
+    color: '#2a3140',
+    fontSize: 15,
+    fontWeight: '700',
   },
   teamIdentityCardInviteBtnText: {
     color: '#2a3140',
@@ -22651,8 +22684,9 @@ const styles = StyleSheet.create({
   },
   avatarGlobalWrap: {
     position: 'absolute',
-    right: 22,
-    zIndex: 24,
+    right: 16,
+    zIndex: 1600,
+    elevation: 20,
   },
   avatarText: {
     color: '#1f5fe2',
@@ -24791,6 +24825,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: '#fff',
+  },
+  inviteCodeEntryBtn: {
+    marginTop: 8,
+    borderRadius: 12,
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: '#b8c9eb',
+    backgroundColor: '#f5f9ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  inviteCodeEntryBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#355ca8',
   },
   challengeExploreLimitText: {
     marginTop: 8,

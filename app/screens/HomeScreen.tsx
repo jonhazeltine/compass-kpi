@@ -41,6 +41,7 @@ export default function HomeScreen() {
         {activeRoute === 'dashboard' ? (
           <KPIDashboardScreen
             onOpenUserMenu={() => setMenuVisible(true)}
+            onOpenInviteCode={() => routeTo('invite')}
             menuRouteTarget={dashboardRouteTarget}
             onMenuRouteTargetConsumed={() => setDashboardRouteTarget(null)}
           />
