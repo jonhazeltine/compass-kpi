@@ -452,6 +452,11 @@ type CreateUserDraft = {
 };
 
 type KnownUserEmailMap = Record<string, string>;
+type BulkUserStatusUpdateResult = {
+  updatedCount: number;
+  failedCount: number;
+  failedIds: string[];
+};
 
 function emptyUserDraft(): UserFormDraft {
   return { role: 'agent', tier: 'free', accountStatus: 'active' };
@@ -1674,6 +1679,8 @@ function AdminUsersPanel({
   calibrationSnapshot,
   calibrationEvents,
   calibrationActionLoading,
+  onBulkStatusUpdate,
+  bulkStatusUpdateLoading,
 }: {
   rows: AdminUserRow[];
   loading: boolean;
@@ -1720,6 +1727,8 @@ function AdminUsersPanel({
   calibrationSnapshot: AdminUserCalibrationSnapshot | null;
   calibrationEvents: AdminUserCalibrationEvent[];
   calibrationActionLoading: boolean;
+  onBulkStatusUpdate: (userIds: string[], status: 'active' | 'deactivated') => Promise<BulkUserStatusUpdateResult>;
+  bulkStatusUpdateLoading: boolean;
 }) {
   type UserSortKey = 'user' | 'role' | 'tier' | 'status' | 'last_active' | 'user_id';
   const [showAllCalibrationRows, setShowAllCalibrationRows] = useState(false);
@@ -1729,6 +1738,8 @@ function AdminUsersPanel({
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [quickActionsMenuOpen, setQuickActionsMenuOpen] = useState(false);
   const [calibrationMenuOpen, setCalibrationMenuOpen] = useState(false);
+  const [bulkActionsMenuOpen, setBulkActionsMenuOpen] = useState(false);
+  const [bulkActionNotice, setBulkActionNotice] = useState<string | null>(null);
 
   const pushUserActivity = (tone: 'success' | 'error' | 'info', text: string) => {
     setUserActivityFeed((prev) => {
@@ -1835,6 +1846,8 @@ function AdminUsersPanel({
   const diagnostics = calibrationSnapshot?.diagnostics ?? null;
   const calibrationRows = calibrationSnapshot?.rows ?? [];
   const selectedVisibleRows = sortedFilteredRows.slice(0, rowLimit);
+  const selectedVisibleRowIds = selectedVisibleRows.map((row) => row.id);
+  const hasVisibleRowsForBulk = selectedVisibleRowIds.length > 0;
   const selectedUserEmail = selectedUser ? selectedUser.email ?? knownUserEmailsById[selectedUser.id] ?? null : null;
   const hasPendingUserChanges = Boolean(
     selectedUser &&
@@ -1886,6 +1899,24 @@ function AdminUsersPanel({
   };
   const userSortLabel = (key: UserSortKey, label: string) =>
     `${label}${sortKey === key ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''}`;
+  const runVisibleBulkStatusUpdate = async (nextStatus: 'active' | 'deactivated') => {
+    if (!selectedVisibleRowIds.length) {
+      setBulkActionNotice('No visible rows to update. Adjust filters or row window first.');
+      return;
+    }
+    const confirmed = await confirmDangerAction(
+      `Apply status "${nextStatus}" to ${selectedVisibleRowIds.length} visible user row(s)?`
+    );
+    if (!confirmed) return;
+    const result = await onBulkStatusUpdate(selectedVisibleRowIds, nextStatus);
+    if (result.failedCount > 0) {
+      setBulkActionNotice(
+        `Applied "${nextStatus}" to ${result.updatedCount} row(s); ${result.failedCount} failed (${result.failedIds.slice(0, 4).join(', ')}${result.failedCount > 4 ? ', ...' : ''}).`
+      );
+      return;
+    }
+    setBulkActionNotice(`Applied "${nextStatus}" to ${result.updatedCount} visible row(s).`);
+  };
 
   useEffect(() => {
     onResetRowLimit();
@@ -2190,11 +2221,58 @@ function AdminUsersPanel({
         <View style={[styles.tableWrap, { flex: 1, minWidth: 320 }]}>
           <View style={[styles.formHeaderRow, { paddingHorizontal: 12, paddingTop: 10 }]}>
             <Text style={styles.formTitle}>User List</Text>
-            <TouchableOpacity style={styles.smallGhostButton} onPress={onRefreshUsers}>
-              <Text style={styles.smallGhostButtonText}>Refresh</Text>
-            </TouchableOpacity>
+            <View style={styles.formActionsRow}>
+              <TouchableOpacity style={styles.smallGhostButton} onPress={onRefreshUsers}>
+                <Text style={styles.smallGhostButtonText}>Refresh</Text>
+              </TouchableOpacity>
+              <View style={styles.menuWrap}>
+                <TouchableOpacity
+                  style={styles.smallGhostButton}
+                  onPress={() => setBulkActionsMenuOpen((prev) => !prev)}
+                  disabled={bulkStatusUpdateLoading}
+                >
+                  <Text style={styles.smallGhostButtonText}>
+                    {bulkStatusUpdateLoading
+                      ? 'Applying...'
+                      : bulkActionsMenuOpen
+                        ? 'Hide Bulk Actions'
+                        : 'Bulk Actions'}
+                  </Text>
+                </TouchableOpacity>
+                {bulkActionsMenuOpen ? (
+                  <View style={styles.menuList}>
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        void runVisibleBulkStatusUpdate('active');
+                        setBulkActionsMenuOpen(false);
+                      }}
+                      disabled={!hasVisibleRowsForBulk || bulkStatusUpdateLoading}
+                    >
+                      <Text style={styles.menuItemText}>Set visible rows to active</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        void runVisibleBulkStatusUpdate('deactivated');
+                        setBulkActionsMenuOpen(false);
+                      }}
+                      disabled={!hasVisibleRowsForBulk || bulkStatusUpdateLoading}
+                    >
+                      <Text style={styles.menuItemText}>Set visible rows to deactivated</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+              </View>
+            </View>
           </View>
           <Text style={[styles.metaRow, { paddingHorizontal: 12 }]}>Click a user row to open access/tier controls and calibration details.</Text>
+          <Text style={[styles.fieldHelpText, { paddingHorizontal: 12 }]}>
+            Bulk actions apply to the current visible row window ({selectedVisibleRows.length} rows), so filters and Show more control the exact batch.
+          </Text>
+          {bulkActionNotice ? (
+            <Text style={[styles.metaRow, styles.successText, { paddingHorizontal: 12 }]}>{bulkActionNotice}</Text>
+          ) : null}
           {testUsersOnly ? (
             <Text style={[styles.fieldHelpText, { paddingHorizontal: 12, paddingBottom: 2 }]}>
               Test-user mode uses email/name heuristics and recent activity to prioritize QA accounts.
@@ -3608,6 +3686,9 @@ function AdminReportsPanel({
           ) : null}
         </View>
       </View>
+      <Text style={styles.fieldHelpText}>
+        Select an endpoint row first, then use More Actions for selected-endpoint recheck and copy operations.
+      </Text>
       <View style={styles.reportsOpsSummaryCard}>
         <View style={styles.formHeaderRow}>
           <Text style={styles.formTitle}>Operator Probe Summary</Text>
@@ -4545,6 +4626,58 @@ export default function AdminShellScreen() {
     }
   };
 
+  const handleBulkUserStatusUpdate = async (
+    userIds: string[],
+    status: 'active' | 'deactivated'
+  ): Promise<BulkUserStatusUpdateResult> => {
+    if (!session?.access_token || !userIds.length) {
+      return { updatedCount: 0, failedCount: 0, failedIds: [] };
+    }
+    setUserSaving(true);
+    setUserSaveError(null);
+    setUserSuccessMessage(null);
+    const failedIds: string[] = [];
+    let updatedCount = 0;
+    const uniqueIds = Array.from(new Set(userIds));
+    try {
+      for (const userId of uniqueIds) {
+        try {
+          const updated = await updateAdminUserStatus(session.access_token, userId, status);
+          updatedCount += 1;
+          setUserRows((prev) =>
+            sortRowsByUpdatedDesc(
+              prev.map((row) =>
+                row.id === userId ? { ...row, ...updated, updated_at: new Date().toISOString() } : row
+              )
+            )
+          );
+          setSelectedUser((prev) =>
+            prev?.id === userId ? { ...prev, ...updated, updated_at: new Date().toISOString() } : prev
+          );
+          setUserDraft((prev) =>
+            prev.id === userId ? { ...prev, accountStatus: updated.account_status } : prev
+          );
+        } catch {
+          failedIds.push(userId);
+        }
+      }
+      if (updatedCount > 0) {
+        setUserSuccessMessage(
+          `Bulk status update complete: ${updatedCount} user${updatedCount === 1 ? '' : 's'} set to ${status}`
+        );
+      }
+      if (failedIds.length > 0) {
+        setUserSaveError(
+          `Bulk status update failed for ${failedIds.length} user${failedIds.length === 1 ? '' : 's'} (${failedIds.slice(0, 5).join(', ')}${failedIds.length > 5 ? ', ...' : ''})`
+        );
+      }
+      await refreshUsers();
+      return { updatedCount, failedCount: failedIds.length, failedIds };
+    } finally {
+      setUserSaving(false);
+    }
+  };
+
   const handleCreateUser = async () => {
     if (!session?.access_token) return;
     const email = createUserDraft.email.trim().toLowerCase();
@@ -5080,6 +5213,8 @@ export default function AdminShellScreen() {
                     calibrationSnapshot={calibrationSnapshot}
                     calibrationEvents={calibrationEvents}
                     calibrationActionLoading={calibrationActionLoading}
+                    onBulkStatusUpdate={handleBulkUserStatusUpdate}
+                    bulkStatusUpdateLoading={userSaving}
                   />
                 ) : activeRoute.key === 'authz' ? (
                   <AdminAuthzPanel
