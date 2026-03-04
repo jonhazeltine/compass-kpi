@@ -308,6 +308,20 @@ type TeamDetailResponse = {
   members?: TeamApiMemberSummary[] | null;
   error?: string;
 };
+type TeamMembershipMutationResponse = {
+  left?: boolean;
+  removed?: boolean;
+  error?: string;
+  cleanup?: {
+    challenge_participants_removed?: number;
+    channel_memberships_removed?: number;
+  } | null;
+  warning?: {
+    challenge_enrollment_removed?: boolean;
+    team_contribution_metrics_removed?: boolean;
+    custom_kpi_visibility_note?: string;
+  } | null;
+};
 type CoachingShellScreen =
   | 'inbox'
   | 'inbox_channels'
@@ -2530,6 +2544,9 @@ export default function KPIDashboardScreen({
   const [teamIdentityDraftAvatar, setTeamIdentityDraftAvatar] = useState('🛡️');
   const [teamIdentityDraftBackground, setTeamIdentityDraftBackground] = useState('#dff0da');
   const [teamIdentityAvatarCategory, setTeamIdentityAvatarCategory] = useState<'power' | 'animals' | 'nature' | 'sports' | 'symbols'>('power');
+  const [teamIdentityControlsOpen, setTeamIdentityControlsOpen] = useState(false);
+  const [teamMembershipMutationBusy, setTeamMembershipMutationBusy] = useState(false);
+  const [teamMembershipMutationNotice, setTeamMembershipMutationNotice] = useState<string | null>(null);
   const [teamLogContext, setTeamLogContext] = useState<TeamLogContext | null>(null);
   const [coachingShellScreen, setCoachingShellScreen] = useState<CoachingShellScreen>('inbox_channels');
   const [coachTabScreen, setCoachTabScreen] = useState<CoachTabScreen>('coach_marketplace');
@@ -8709,6 +8726,117 @@ export default function KPIDashboardScreen({
     [session?.access_token, teamRosterMembers, teamRuntimeCandidateIds]
   );
 
+  const resolveCurrentTeamContextId = useCallback((): string | null => {
+    const preferred = String(teamRosterTeamId ?? '').trim();
+    if (preferred && UUID_LIKE_RE.test(preferred)) return preferred;
+    for (const candidate of teamRuntimeCandidateIds) {
+      const normalized = String(candidate ?? '').trim();
+      if (normalized && UUID_LIKE_RE.test(normalized)) return normalized;
+    }
+    return null;
+  }, [teamRosterTeamId, teamRuntimeCandidateIds]);
+
+  const leaveCurrentTeam = useCallback(async () => {
+    const token = session?.access_token;
+    const teamId = resolveCurrentTeamContextId();
+    if (!token) {
+      Alert.alert('Sign in required', 'Sign in is required to leave your team.');
+      return;
+    }
+    if (!teamId) {
+      Alert.alert('Team unavailable', 'Team context is unavailable. Refresh and try again.');
+      return;
+    }
+    setTeamMembershipMutationBusy(true);
+    setTeamMembershipMutationNotice(null);
+    try {
+      const response = await fetch(`${API_URL}/teams/${encodeURIComponent(teamId)}/leave`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const payload = (await response.json().catch(() => ({}))) as TeamMembershipMutationResponse;
+      if (!response.ok) {
+        const fallback = `Leave team failed (${response.status})`;
+        const message = mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback));
+        setTeamMembershipMutationNotice(message);
+        Alert.alert('Unable to leave team', message);
+        return;
+      }
+      const challengeRowsRemoved = Math.max(0, Number(payload.cleanup?.challenge_participants_removed ?? 0));
+      const channelRowsRemoved = Math.max(0, Number(payload.cleanup?.channel_memberships_removed ?? 0));
+      const note = payload.warning?.custom_kpi_visibility_note ?? 'Team-only KPI access may be lost based on your plan.';
+      const successText = `You left the team. Removed ${challengeRowsRemoved} team challenge enrollment(s) and ${channelRowsRemoved} team channel membership(s). ${note}`;
+      setTeamMembershipMutationNotice(successText);
+      setTeamIdentityControlsOpen(false);
+      setTeamProfileMemberId(null);
+      await Promise.all([fetchDashboard(), fetchTeamRoster()]);
+      setActiveTab('challenge');
+      setChallengeFlowScreen('explore');
+      Alert.alert('Left team', successText);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to leave team';
+      setTeamMembershipMutationNotice(message);
+      Alert.alert('Unable to leave team', message);
+    } finally {
+      setTeamMembershipMutationBusy(false);
+    }
+  }, [fetchDashboard, fetchTeamRoster, resolveCurrentTeamContextId, session?.access_token]);
+
+  const removeTeamMember = useCallback(
+    async (targetUserId: string, targetName: string) => {
+      const token = session?.access_token;
+      const teamId = resolveCurrentTeamContextId();
+      if (!token) {
+        Alert.alert('Sign in required', 'Sign in is required to remove team members.');
+        return;
+      }
+      if (!teamId) {
+        Alert.alert('Team unavailable', 'Team context is unavailable. Refresh and try again.');
+        return;
+      }
+      if (!targetUserId || !UUID_LIKE_RE.test(targetUserId)) {
+        Alert.alert('Member unavailable', `No valid account id was found for ${targetName}. Refresh team roster and retry.`);
+        return;
+      }
+      setTeamMembershipMutationBusy(true);
+      setTeamMembershipMutationNotice(null);
+      try {
+        const response = await fetch(
+          `${API_URL}/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(targetUserId)}`,
+          {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        const payload = (await response.json().catch(() => ({}))) as TeamMembershipMutationResponse;
+        if (!response.ok) {
+          const fallback = `Remove member failed (${response.status})`;
+          const message = mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback));
+          setTeamMembershipMutationNotice(message);
+          Alert.alert('Unable to remove member', message);
+          return;
+        }
+        const challengeRowsRemoved = Math.max(0, Number(payload.cleanup?.challenge_participants_removed ?? 0));
+        const channelRowsRemoved = Math.max(0, Number(payload.cleanup?.channel_memberships_removed ?? 0));
+        const successText = `${targetName} removed from team. Cleared ${challengeRowsRemoved} team challenge enrollment(s) and ${channelRowsRemoved} channel membership(s).`;
+        setTeamMembershipMutationNotice(successText);
+        setTeamProfileMemberId(null);
+        await Promise.all([fetchDashboard(), fetchTeamRoster()]);
+        Alert.alert('Member removed', successText);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to remove team member';
+        setTeamMembershipMutationNotice(message);
+        Alert.alert('Unable to remove member', message);
+      } finally {
+        setTeamMembershipMutationBusy(false);
+      }
+    },
+    [fetchDashboard, fetchTeamRoster, resolveCurrentTeamContextId, session?.access_token]
+  );
+
   useEffect(() => {
     if (activeTab !== 'comms') return;
     if (
@@ -10798,6 +10926,8 @@ export default function KPIDashboardScreen({
                 (item) => item.challengeModeLabel === 'Team' || Boolean(item.raw?.team_id)
               );
               const teamChallengeRowsForSurface = (teamChallengeRows.length > 0 ? teamChallengeRows : challengeListItems).slice(0, 8);
+              const teamActiveChallengeCount = teamChallengeRowsForSurface.filter((item) => item.bucket !== 'completed').length;
+              const teamMemberCount = Math.max(1, teamMembers.length);
               const teamChallengeActiveRows = teamChallengeRowsForSurface.filter(
                 (item) => item.bucket === 'active' || item.bucket === 'upcoming'
               );
@@ -11084,7 +11214,9 @@ export default function KPIDashboardScreen({
                     </View>
                     <View style={styles.teamIdentityCopy}>
                       <Text style={styles.teamIdentityName}>{teamIdentityName}</Text>
-                      <Text style={styles.teamIdentitySub}>3 Members | 2 Ongoing challenges</Text>
+                      <Text style={styles.teamIdentitySub}>
+                        {teamMemberCount} Member{teamMemberCount === 1 ? '' : 's'} | {teamActiveChallengeCount} Ongoing challenge{teamActiveChallengeCount === 1 ? '' : 's'}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.teamIdentityCardActions}>
@@ -11097,14 +11229,73 @@ export default function KPIDashboardScreen({
                     <TouchableOpacity style={styles.teamIdentityCardInviteCodeBtn} onPress={handleOpenInviteCodeEntry}>
                       <Text style={styles.teamIdentityCardInviteCodeBtnText}>🎟</Text>
                     </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.teamIdentityCardDetailsBtn}
+                      onPress={() => setTeamIdentityControlsOpen((prev) => !prev)}
+                      disabled={teamMembershipMutationBusy}
+                    >
+                      <Text style={styles.teamIdentityCardDetailsBtnText}>{teamIdentityControlsOpen ? '▴' : '▾'}</Text>
+                    </TouchableOpacity>
                     {teamPersonaVariant === 'leader' ? (
                       <TouchableOpacity style={styles.teamIdentityCardInviteBtn} onPress={() => setTeamFlowScreen('invite_member')}>
                         <Text style={styles.teamIdentityCardInviteBtnText}>⊕</Text>
                       </TouchableOpacity>
                     ) : null}
                   </View>
+                  {teamIdentityControlsOpen ? (
+                    <View style={styles.teamIdentityControlsPanel}>
+                      {teamPersonaVariant === 'leader' ? (
+                        <>
+                          <TouchableOpacity
+                            style={styles.teamIdentityControlPrimaryBtn}
+                            onPress={() => setTeamFlowScreen('team_challenges')}
+                            disabled={teamMembershipMutationBusy}
+                          >
+                            <Text style={styles.teamIdentityControlPrimaryBtnText}>Set Team Challenge</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.teamIdentityControlSecondaryBtn}
+                            onPress={() => setTeamFlowScreen('kpi_settings')}
+                            disabled={teamMembershipMutationBusy}
+                          >
+                            <Text style={styles.teamIdentityControlSecondaryBtnText}>Set Team KPIs</Text>
+                          </TouchableOpacity>
+                          <Text style={styles.teamIdentityControlHint}>
+                            Use member profile cards below to remove members from this team.
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <TouchableOpacity
+                            style={[styles.teamIdentityControlDangerBtn, teamMembershipMutationBusy && styles.disabled]}
+                            disabled={teamMembershipMutationBusy}
+                            onPress={() =>
+                              Alert.alert(
+                                'Leave team?',
+                                'You will be unenrolled from all team challenges and removed from team contribution metrics. Team custom KPI access may be lost unless you are on a qualifying paid plan.',
+                                [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  { text: 'Leave Team', style: 'destructive', onPress: () => void leaveCurrentTeam() },
+                                ]
+                              )
+                            }
+                          >
+                            <Text style={styles.teamIdentityControlDangerBtnText}>
+                              {teamMembershipMutationBusy ? 'Leaving…' : 'Leave Team'}
+                            </Text>
+                          </TouchableOpacity>
+                          <Text style={styles.teamIdentityControlHint}>
+                            Leaving removes team challenge enrollments and team-only contribution tracking.
+                          </Text>
+                        </>
+                      )}
+                    </View>
+                  ) : null}
                   {teamCommsHandoffError ? (
                     <Text style={styles.teamIdentityCardInlineError}>{teamCommsHandoffError}</Text>
+                  ) : null}
+                  {teamMembershipMutationNotice ? (
+                    <Text style={styles.teamIdentityCardInlineNotice}>{teamMembershipMutationNotice}</Text>
                   ) : null}
                   <Modal
                     visible={teamIdentityEditOpen}
@@ -12069,6 +12260,34 @@ export default function KPIDashboardScreen({
                             >
                               <Text style={styles.teamProfileDrawerDmBtnText}>💬  Message</Text>
                             </TouchableOpacity>
+                            {teamPersonaVariant === 'leader' && selectedTeamProfile.userId && selectedTeamProfile.userId !== String(session?.user?.id ?? '') ? (
+                              <TouchableOpacity
+                                style={[styles.teamProfileDrawerRemoveBtn, teamMembershipMutationBusy && styles.disabled]}
+                                disabled={teamMembershipMutationBusy}
+                                onPress={() =>
+                                  Alert.alert(
+                                    `Remove ${selectedTeamProfile.name}?`,
+                                    `${selectedTeamProfile.name} will be removed from the team, unenrolled from team challenges, and removed from team contribution metrics.`,
+                                    [
+                                      { text: 'Cancel', style: 'cancel' },
+                                      {
+                                        text: 'Remove',
+                                        style: 'destructive',
+                                        onPress: () =>
+                                          void removeTeamMember(
+                                            String(selectedTeamProfile.userId),
+                                            selectedTeamProfile.name
+                                          ),
+                                      },
+                                    ]
+                                  )
+                                }
+                              >
+                                <Text style={styles.teamProfileDrawerRemoveBtnText}>
+                                  {teamMembershipMutationBusy ? 'Removing…' : 'Remove Member'}
+                                </Text>
+                              </TouchableOpacity>
+                            ) : null}
 
                             <ScrollView style={styles.teamProfileDrawerScrollArea} showsVerticalScrollIndicator={false}>
                               <Text style={styles.teamProfileDrawerSectionLabel}>Coaching Goals</Text>
@@ -17621,16 +17840,86 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  teamIdentityCardDetailsBtn: {
+    width: 38,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  teamIdentityCardDetailsBtnText: {
+    color: '#2a3140',
+    fontSize: 15,
+    fontWeight: '800',
+  },
   teamIdentityCardInviteBtnText: {
     color: '#2a3140',
     fontSize: 16,
     fontWeight: '700',
+  },
+  teamIdentityControlsPanel: {
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    padding: 10,
+    gap: 8,
+  },
+  teamIdentityControlPrimaryBtn: {
+    borderRadius: 10,
+    backgroundColor: '#2f67da',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  teamIdentityControlPrimaryBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  teamIdentityControlSecondaryBtn: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#a8bce4',
+    backgroundColor: '#f3f7ff',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  teamIdentityControlSecondaryBtnText: {
+    color: '#35568f',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  teamIdentityControlDangerBtn: {
+    borderRadius: 10,
+    backgroundColor: '#c43a33',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  teamIdentityControlDangerBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  teamIdentityControlHint: {
+    color: '#5a677d',
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '600',
   },
   teamIdentityCardInlineError: {
     marginTop: 6,
     fontSize: 11,
     color: '#b3261e',
     fontWeight: '600',
+  },
+  teamIdentityCardInlineNotice: {
+    marginTop: 6,
+    fontSize: 11,
+    color: '#35568f',
+    fontWeight: '600',
+    lineHeight: 15,
   },
   teamIdentityEditOverlay: {
     flex: 1,
@@ -19112,6 +19401,20 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '700',
+  },
+  teamProfileDrawerRemoveBtn: {
+    backgroundColor: '#fef2f2',
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#f4c7c7',
+  },
+  teamProfileDrawerRemoveBtnText: {
+    color: '#b42318',
+    fontSize: 14,
+    fontWeight: '800',
   },
   teamProfileDrawerScrollArea: {
     maxHeight: 240,

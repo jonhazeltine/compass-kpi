@@ -649,6 +649,23 @@
 - Then server applies idempotent join behavior and returns deterministic `route_target`
 - And invalid/expired/limit-reached codes return deterministic 4xx errors with no side effects
 
+### E16) Team Membership Leave/Remove Runtime Cleanup
+- Given an authenticated `team_member` in team `{id}`
+- When caller posts `POST /teams/{id}/leave`
+- Then caller team membership is removed
+- And caller is unenrolled from team-scoped challenges
+- And caller is removed from team/challenge channel memberships in that team context
+- And response includes deterministic cleanup counts + warning metadata for lost team-scoped access
+- Given an authenticated `team_leader`
+- When leader posts `POST /teams/{id}/leave`
+- Then API returns `403` and no membership mutation occurs
+- Given an authenticated team leader and target member-role user in the same team
+- When leader calls `DELETE /teams/{id}/members/{userId}`
+- Then target membership is removed
+- And target team-scoped challenge/channel cleanup is applied
+- And leader self-remove through this route is rejected (`422`)
+- And leader-role target removal through this route is rejected (`403`)
+
 ## Regression Checklist
 
 - Auth routes still enforce bearer token requirements.

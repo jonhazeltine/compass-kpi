@@ -6337,6 +6337,240 @@ app.post("/teams/:id/invite-codes", async (req, res) => {
   }
 });
 
+type TeamMembershipCleanupSummary = {
+  challenge_participants_removed: number;
+  channel_memberships_removed: number;
+};
+
+async function removeUserFromTeamScopedRuntime(
+  teamId: string,
+  userId: string
+): Promise<
+  | { ok: true; summary: TeamMembershipCleanupSummary }
+  | { ok: false; status: number; error: string }
+> {
+  if (!dataClient) {
+    return { ok: false, status: 500, error: "Supabase data client not configured" };
+  }
+  const summary: TeamMembershipCleanupSummary = {
+    challenge_participants_removed: 0,
+    channel_memberships_removed: 0,
+  };
+
+  const { data: teamChallenges, error: teamChallengesError } = await dataClient
+    .from("challenges")
+    .select("id")
+    .eq("team_id", teamId);
+  if (teamChallengesError) {
+    return { ok: false, status: 500, error: "Failed to load team challenges for membership cleanup" };
+  }
+  const challengeIds = (teamChallenges ?? [])
+    .map((row) => String((row as { id?: unknown }).id ?? ""))
+    .filter(Boolean);
+
+  if (challengeIds.length > 0) {
+    const { data: participantRows, error: participantRowsError } = await dataClient
+      .from("challenge_participants")
+      .select("id")
+      .eq("user_id", userId)
+      .in("challenge_id", challengeIds);
+    if (participantRowsError) {
+      return { ok: false, status: 500, error: "Failed to load team challenge participation rows for membership cleanup" };
+    }
+    if ((participantRows ?? []).length > 0) {
+      const { error: participantDeleteError } = await dataClient
+        .from("challenge_participants")
+        .delete()
+        .eq("user_id", userId)
+        .in("challenge_id", challengeIds);
+      if (participantDeleteError) {
+        return { ok: false, status: 500, error: "Failed to remove team challenge participation rows during membership cleanup" };
+      }
+      summary.challenge_participants_removed = participantRows?.length ?? 0;
+    }
+  }
+
+  const channelIdSet = new Set<string>();
+  const { data: directTeamChannels, error: directTeamChannelsError } = await dataClient
+    .from("channels")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("is_active", true);
+  if (directTeamChannelsError) {
+    return { ok: false, status: 500, error: "Failed to load team channels for membership cleanup" };
+  }
+  for (const row of directTeamChannels ?? []) {
+    const channelId = String((row as { id?: unknown }).id ?? "");
+    if (channelId) channelIdSet.add(channelId);
+  }
+
+  if (challengeIds.length > 0) {
+    const { data: challengeChannels, error: challengeChannelsError } = await dataClient
+      .from("channels")
+      .select("id")
+      .eq("type", "challenge")
+      .in("context_id", challengeIds)
+      .eq("is_active", true);
+    if (challengeChannelsError) {
+      return { ok: false, status: 500, error: "Failed to load challenge channels for membership cleanup" };
+    }
+    for (const row of challengeChannels ?? []) {
+      const channelId = String((row as { id?: unknown }).id ?? "");
+      if (channelId) channelIdSet.add(channelId);
+    }
+  }
+
+  const channelIds = Array.from(channelIdSet);
+  if (channelIds.length > 0) {
+    const { data: membershipRows, error: membershipRowsError } = await dataClient
+      .from("channel_memberships")
+      .select("id")
+      .eq("user_id", userId)
+      .in("channel_id", channelIds);
+    if (membershipRowsError) {
+      return { ok: false, status: 500, error: "Failed to load channel membership rows for cleanup" };
+    }
+    if ((membershipRows ?? []).length > 0) {
+      const { error: membershipDeleteError } = await dataClient
+        .from("channel_memberships")
+        .delete()
+        .eq("user_id", userId)
+        .in("channel_id", channelIds);
+      if (membershipDeleteError) {
+        return { ok: false, status: 500, error: "Failed to remove channel memberships during team membership cleanup" };
+      }
+      summary.channel_memberships_removed = membershipRows?.length ?? 0;
+    }
+  }
+
+  return { ok: true, summary };
+}
+
+app.post("/teams/:id/leave", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+    if (!dataClient) {
+      return res.status(500).json({ error: "Supabase data client not configured" });
+    }
+    const teamId = String(req.params.id ?? "").trim();
+    if (!teamId) {
+      return res.status(422).json({ error: "team id is required" });
+    }
+
+    const membershipCheck = await checkTeamMembership(teamId, auth.user.id);
+    if (!membershipCheck.ok) {
+      return res.status(membershipCheck.status).json({ error: membershipCheck.error });
+    }
+    if (!membershipCheck.member) {
+      return res.status(404).json({ error: "Team membership not found" });
+    }
+    if (membershipCheck.role === "team_leader") {
+      return res.status(403).json({ error: "Team leaders cannot leave directly. Transfer ownership or remove the team first." });
+    }
+
+    const { error: removeMembershipError } = await dataClient
+      .from("team_memberships")
+      .delete()
+      .eq("team_id", teamId)
+      .eq("user_id", auth.user.id);
+    if (removeMembershipError) {
+      return handleSupabaseError(res, "Failed to leave team", removeMembershipError);
+    }
+
+    const cleanup = await removeUserFromTeamScopedRuntime(teamId, auth.user.id);
+    if (!cleanup.ok) {
+      return res.status(cleanup.status).json({ error: cleanup.error });
+    }
+
+    return res.json({
+      left: true,
+      team_id: teamId,
+      user_id: auth.user.id,
+      cleanup: cleanup.summary,
+      warning: {
+        challenge_enrollment_removed: true,
+        team_contribution_metrics_removed: true,
+        custom_kpi_visibility_note: "Team custom KPI access is removed when leaving the team unless you have a qualifying paid plan.",
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /teams/:id/leave", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.delete("/teams/:id/members/:userId", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+    if (!dataClient) {
+      return res.status(500).json({ error: "Supabase data client not configured" });
+    }
+    const teamId = String(req.params.id ?? "").trim();
+    const targetUserId = String(req.params.userId ?? "").trim();
+    if (!teamId) {
+      return res.status(422).json({ error: "team id is required" });
+    }
+    if (!targetUserId || !isUuidLike(targetUserId)) {
+      return res.status(422).json({ error: "valid target user id is required" });
+    }
+
+    const leaderCheck = await checkTeamLeader(teamId, auth.user.id);
+    if (!leaderCheck.ok) {
+      return res.status(leaderCheck.status).json({ error: leaderCheck.error });
+    }
+    if (!leaderCheck.isLeader) {
+      return res.status(403).json({ error: "Only team leaders can remove members" });
+    }
+    if (targetUserId === auth.user.id) {
+      return res.status(422).json({ error: "Team leaders cannot remove themselves with this route" });
+    }
+
+    const targetMembership = await checkTeamMembership(teamId, targetUserId);
+    if (!targetMembership.ok) {
+      return res.status(targetMembership.status).json({ error: targetMembership.error });
+    }
+    if (!targetMembership.member) {
+      return res.status(404).json({ error: "Target user is not a member of this team" });
+    }
+    if (targetMembership.role === "team_leader") {
+      return res.status(403).json({ error: "Team leaders can only remove member-role users" });
+    }
+
+    const { error: removeMembershipError } = await dataClient
+      .from("team_memberships")
+      .delete()
+      .eq("team_id", teamId)
+      .eq("user_id", targetUserId);
+    if (removeMembershipError) {
+      return handleSupabaseError(res, "Failed to remove team member", removeMembershipError);
+    }
+
+    const cleanup = await removeUserFromTeamScopedRuntime(teamId, targetUserId);
+    if (!cleanup.ok) {
+      return res.status(cleanup.status).json({ error: cleanup.error });
+    }
+
+    return res.json({
+      removed: true,
+      team_id: teamId,
+      removed_user_id: targetUserId,
+      removed_by: auth.user.id,
+      cleanup: cleanup.summary,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in DELETE /teams/:id/members/:userId", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.post("/api/coaching/invite-codes", async (req, res) => {
   try {
     const auth = await authenticateRequest(req.headers.authorization);

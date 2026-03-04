@@ -55,6 +55,17 @@
   - Purpose: return team details and membership for authorized members.
 - `POST /teams/{id}/members` (implemented baseline)
   - Purpose: leader-managed team membership updates.
+- `POST /teams/{id}/leave` (implemented — M6)
+  - Purpose: allow a non-leader member to leave team membership.
+  - Side effects: removes caller from team-scoped challenge participation and channel memberships for that team context.
+  - Guardrail: `team_leader` callers receive `403`; leadership transfer/remove-team flow remains required.
+- `DELETE /teams/{id}/members/{userId}` (implemented — M6)
+  - Purpose: leader-managed member removal from team.
+  - Side effects: removes target from team-scoped challenge participation and team/challenge channel memberships for that team context.
+  - Guardrails:
+    - leader-only action (`403` for non-leader callers)
+    - cannot remove self through this route (`422`)
+    - cannot remove `team_leader` target via this member-removal route (`403`)
 - `POST /teams/{id}/invite-codes` (implemented — M6)
   - Purpose: create team-scoped invite code for join flow.
   - Role/scope: team leader of the target team (or platform admin override).
@@ -462,6 +473,25 @@ These notes are additive contract guidance only. They do not introduce a new end
     - `avatar_url` (nullable)
 - `POST /teams/{id}/members`
   - Enforces leader-only member management.
+- `POST /teams/{id}/leave`
+  - Supports self-leave for `team_member` callers in the target team.
+  - Returns deterministic cleanup summary:
+    - `cleanup.challenge_participants_removed`
+    - `cleanup.channel_memberships_removed`
+  - Returns warning metadata for user-facing loss messaging:
+    - team challenge enrollment removal
+    - team contribution metrics removal
+    - team-scoped custom KPI visibility note (plan dependent)
+  - Denies `team_leader` self-leave through this route (`403`).
+- `DELETE /teams/{id}/members/{userId}`
+  - Supports leader-managed removal of member-role users.
+  - Returns deterministic cleanup summary:
+    - `cleanup.challenge_participants_removed`
+    - `cleanup.channel_memberships_removed`
+  - Guardrails:
+    - caller must be leader in target team
+    - self-remove denied (`422`)
+    - removing leader-role target denied (`403`)
 - `POST /challenge-participants`
   - Supports self-join and leader-enrollment of other users for team challenges.
   - Applies explicit late-join policy via `include_prior_logs` override or challenge default.
