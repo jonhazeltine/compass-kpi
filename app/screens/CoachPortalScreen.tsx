@@ -30,6 +30,7 @@ type SaveState = 'idle' | 'pending' | 'saved' | 'error';
 type ChannelSegment = 'all' | 'top_producers' | 'new_agents' | 'sponsor_leads';
 type PeoplePanelTab = 'cohorts' | 'channels';
 type ChannelType = 'team' | 'challenge' | 'sponsor' | 'cohort' | 'direct';
+type ContentScope = 'my' | 'team' | 'all_allowed';
 
 type CoachSurface = {
   key: CoachWorkspaceMode;
@@ -50,6 +51,7 @@ type LibraryCollection = {
   id: string;
   name: string;
   assetIds: string[];
+  ownershipScope?: 'mine' | 'team' | 'global';
 };
 
 type JourneyTask = {
@@ -88,6 +90,24 @@ type ChannelApiRow = {
   created_at?: string;
   member_count?: number;
   last_message_at?: string | null;
+  ownership_scope?: 'mine' | 'team' | 'global';
+};
+
+type LibraryAssetsPayload = {
+  assets?: Array<{
+    id: string;
+    title?: string;
+    category?: string;
+    scope?: string;
+    duration?: string;
+    ownership_scope?: 'mine' | 'team' | 'global';
+  }>;
+  collections?: Array<{
+    id: string;
+    name?: string;
+    ownership_scope?: 'mine' | 'team' | 'global';
+    asset_ids?: string[];
+  }>;
 };
 
 type JourneySummaryApiRow = {
@@ -95,6 +115,8 @@ type JourneySummaryApiRow = {
   title: string;
   description?: string | null;
   team_id?: string | null;
+  ownership_scope?: 'mine' | 'team' | 'global';
+  created_by?: string | null;
 };
 
 type JourneyDetailApiRow = {
@@ -218,12 +240,14 @@ async function sendCoachJson<T>(
   path: string,
   accessToken: string,
   method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
+  options?: { elevatedEdit?: boolean }
 ): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${accessToken}`,
+      ...(options?.elevatedEdit ? { 'x-coach-elevated-edit': 'true' } : {}),
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -249,6 +273,8 @@ export default function CoachPortalScreen() {
   const [activeKey, setActiveKey] = useState<CoachRouteKey>(
     () => getCoachRouteKeyFromPath(typeof window !== 'undefined' ? window.location.pathname : undefined) ?? 'coachingLibrary'
   );
+  const [contentScope, setContentScope] = useState<ContentScope>('all_allowed');
+  const [superAdminElevatedEdit, setSuperAdminElevatedEdit] = useState(false);
   const [notFoundPath, setNotFoundPath] = useState<string | null>(null);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
 
@@ -316,14 +342,20 @@ export default function CoachPortalScreen() {
     [effectiveRoles]
   );
 
+  const hasSuperAdminRole = effectiveRoles.includes('super_admin');
   const coachCanCompose =
-    effectiveRoles.includes('coach') || effectiveRoles.includes('platform_admin') || effectiveRoles.includes('super_admin');
+    effectiveRoles.includes('coach') ||
+    effectiveRoles.includes('platform_admin') ||
+    (hasSuperAdminRole && superAdminElevatedEdit);
   const teamLeaderCanCompose = effectiveRoles.includes('team_leader') && !coachCanCompose;
   const sponsorOnly = effectiveRoles.includes('challenge_sponsor') && !coachCanCompose && !teamLeaderCanCompose;
   const canComposeDraft = coachCanCompose || teamLeaderCanCompose;
+  const scopeLabel = contentScope === 'my' ? 'My' : contentScope === 'team' ? 'Team' : 'All allowed';
   const composeDeniedReason = sponsorOnly
     ? 'Sponsor access is scoped for visibility only.'
-    : 'Current role cannot edit journey drafts on this route.';
+    : hasSuperAdminRole && !superAdminElevatedEdit
+      ? 'Super admin is view-only by default. Enable Elevated Edit to author changes.'
+      : 'Current role cannot edit journey drafts on this route.';
 
   const activeWorkspace = getWorkspaceModeForRoute(activeKey);
   const activeSurface = COACH_WORKSPACES[activeWorkspace];
@@ -484,17 +516,22 @@ export default function CoachPortalScreen() {
     setPortalLoading(true);
     setPortalLoadError(null);
     try {
-      const [channelsPayload, cohortsPayload, coachesPayload, journeysPayload] = await Promise.all([
-        fetchCoachJson<{ channels?: ChannelApiRow[] }>('/api/coaching/channels', session.access_token),
+      const scopedQuery = `?scope=${contentScope}`;
+      const [channelsPayload, cohortsPayload, coachesPayload, journeysPayload, libraryPayload] = await Promise.all([
+        fetchCoachJson<{ channels?: ChannelApiRow[] }>(`/api/coaching/channels${scopedQuery}`, session.access_token),
         fetchCoachJson<{
           cohorts?: Array<{ id: string; name: string; member_user_ids?: string[]; leaders_count?: number; members_count?: number }>;
-        }>('/api/coaching/cohorts', session.access_token),
+        }>(`/api/coaching/cohorts${scopedQuery}`, session.access_token),
         fetchCoachJson<{ coaches?: Array<{ id: string; name: string; specialties?: string[] }> }>(
           '/api/coaching/coaches',
           session.access_token
         ),
         fetchCoachJson<{ journeys?: JourneySummaryApiRow[] }>(
-          '/api/coaching/journeys',
+          `/api/coaching/journeys${scopedQuery}`,
+          session.access_token
+        ),
+        fetchCoachJson<LibraryAssetsPayload>(
+          `/api/coaching/library/assets${scopedQuery}`,
           session.access_token
         ),
       ]);
@@ -513,7 +550,7 @@ export default function CoachPortalScreen() {
         return {
           id: row.id,
           c1: row.name || 'Untitled channel',
-          c2: `${type} scope`,
+          c2: `${type} scope${row.ownership_scope ? ` • ${row.ownership_scope}` : ''}`,
           c3: String(row.member_count ?? 0),
           c4: row.last_message_at ? new Date(row.last_message_at).toLocaleDateString() : 'recent',
           segment: seg,
@@ -528,7 +565,7 @@ export default function CoachPortalScreen() {
           id: row.id,
           name: row.name || 'Untitled cohort',
           owner: row.leaders_count && row.leaders_count > 0 ? 'Team leader' : 'Coach owner',
-          program: 'Team cohort',
+          program: `Team cohort • ${contentScope === 'all_allowed' ? 'all allowed' : contentScope}`,
           memberIds: row.member_user_ids ?? [],
         }));
       setCohorts(cohortRows);
@@ -555,7 +592,7 @@ export default function CoachPortalScreen() {
         journeys.map(async (journey) => {
           const detail = await fetchCoachJson<JourneyDetailApiRow>(
             `/api/coaching/journeys/${journey.id}`,
-            session.access_token as string
+            session.access_token
           );
           const lessons: JourneyLesson[] = (detail.milestones ?? [])
             .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
@@ -574,14 +611,27 @@ export default function CoachPortalScreen() {
           return {
             id: journey.id,
             name: journey.title,
-            audience: journey.description?.trim() || 'Team scoped',
+            audience: `${journey.ownership_scope === 'mine' ? 'Mine' : journey.ownership_scope === 'team' ? 'Team' : 'Global'} • ${journey.description?.trim() || 'Team scoped'}`,
             lessons,
           } satisfies JourneyDraft;
         })
       );
       setJourneys(journeyDetails);
-      setAssets([]);
-      setCollections([]);
+      const libraryAssets = (libraryPayload.assets ?? []).map((asset) => ({
+        id: asset.id,
+        title: asset.title || `Asset ${asset.id.slice(0, 8)}`,
+        category: asset.category || 'Resource',
+        scope: asset.scope || (asset.ownership_scope === 'mine' ? 'Mine' : asset.ownership_scope === 'team' ? 'Team' : 'Global'),
+        duration: asset.duration || '-',
+      }));
+      const libraryCollections = (libraryPayload.collections ?? []).map((collection) => ({
+        id: collection.id,
+        name: collection.name || 'Collection',
+        assetIds: collection.asset_ids ?? [],
+        ownershipScope: collection.ownership_scope,
+      }));
+      setAssets(libraryAssets);
+      setCollections(libraryCollections);
       if (journeyDetails.length > 0) {
         setSelectedJourneyId((prev) => prev && journeyDetails.some((j) => j.id === prev) ? prev : journeyDetails[0].id);
         setSelectedLessonId(journeyDetails[0].lessons[0]?.id ?? null);
@@ -589,11 +639,23 @@ export default function CoachPortalScreen() {
         setSelectedJourneyId(null);
         setSelectedLessonId(null);
       }
-      setSelectedCollectionId('');
-      setExpandedCollectionIds([]);
+      if (libraryCollections.length > 0) {
+        setSelectedCollectionId((prev) =>
+          prev && libraryCollections.some((collection) => collection.id === prev)
+            ? prev
+            : libraryCollections[0].id
+        );
+        setExpandedCollectionIds((prev) => {
+          const valid = prev.filter((id) => libraryCollections.some((collection) => collection.id === id));
+          return valid.length ? valid : [libraryCollections[0].id];
+        });
+      } else {
+        setSelectedCollectionId('');
+        setExpandedCollectionIds([]);
+      }
 
       setSaveState('idle');
-      setSaveMessage('Connected to backend coaching endpoints.');
+      setSaveMessage(`Connected to backend coaching endpoints (${scopeLabel} scope).`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load coach portal data';
       setPortalLoadError(message);
@@ -619,10 +681,23 @@ export default function CoachPortalScreen() {
     }
   };
 
+  const sendCoachMutation = async <T,>(
+    path: string,
+    method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+    body?: Record<string, unknown>
+  ): Promise<T> => {
+    if (!session?.access_token) {
+      throw new Error('Missing access token');
+    }
+    return sendCoachJson<T>(path, session.access_token, method, body, {
+      elevatedEdit: superAdminElevatedEdit,
+    });
+  };
+
   useEffect(() => {
     void refreshPortalData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.access_token]);
+  }, [contentScope, session?.access_token]);
 
   /* ─── Navigation (unchanged) ─── */
 
@@ -885,9 +960,8 @@ export default function CoachPortalScreen() {
       const insertAt = Math.max(0, Math.min(targetIndex, targetLesson.tasks.length));
       const assetTitle = assetsById.get(payload.assetId)?.title ?? 'New Task';
       await runMutation('Adding task...', 'Task added', async () => {
-        await sendCoachJson<{ task: { id: string } }>(
+        await sendCoachMutation<{ task: { id: string } }>(
           `/api/coaching/journeys/${selectedJourney.id}/lessons/${targetLessonId}/tasks`,
-          session.access_token as string,
           'POST',
           {
             title: assetTitle,
@@ -912,16 +986,14 @@ export default function CoachPortalScreen() {
         const fromIndex = targetLesson.tasks.findIndex((task) => task.id === payload.taskId);
         if (fromIndex < 0) return;
         const reorderedTaskIds = moveItem(targetLesson.tasks, fromIndex, insertAt).map((task) => task.id);
-        await sendCoachJson(
+        await sendCoachMutation(
           `/api/coaching/journeys/${selectedJourney.id}/lessons/${targetLessonId}/tasks/reorder`,
-          session.access_token as string,
           'POST',
           { task_ids: reorderedTaskIds }
         );
       } else {
-        const created = await sendCoachJson<{ task: { id: string } }>(
+        const created = await sendCoachMutation<{ task: { id: string } }>(
           `/api/coaching/journeys/${selectedJourney.id}/lessons/${targetLessonId}/tasks`,
-          session.access_token as string,
           'POST',
           {
             title: movingTask.title,
@@ -929,25 +1001,22 @@ export default function CoachPortalScreen() {
             sort_order: insertAt,
           }
         );
-        await sendCoachJson(
+        await sendCoachMutation(
           `/api/coaching/journeys/${selectedJourney.id}/lessons/${payload.sourceLessonId}/tasks/${payload.taskId}`,
-          session.access_token as string,
           'DELETE'
         );
         const sourceTaskIds = sourceLesson.tasks.filter((task) => task.id !== payload.taskId).map((task) => task.id);
         if (sourceTaskIds.length > 0) {
-          await sendCoachJson(
+          await sendCoachMutation(
             `/api/coaching/journeys/${selectedJourney.id}/lessons/${payload.sourceLessonId}/tasks/reorder`,
-            session.access_token as string,
             'POST',
             { task_ids: sourceTaskIds }
           );
         }
         const targetTaskIds = targetLesson.tasks.map((task) => task.id);
         targetTaskIds.splice(insertAt, 0, created.task.id);
-        await sendCoachJson(
+        await sendCoachMutation(
           `/api/coaching/journeys/${selectedJourney.id}/lessons/${targetLessonId}/tasks/reorder`,
-          session.access_token as string,
           'POST',
           { task_ids: targetTaskIds }
         );
@@ -1016,9 +1085,8 @@ export default function CoachPortalScreen() {
       )
     );
     void runMutation('Saving lesson order...', 'Lesson order updated', async () => {
-      await sendCoachJson(
+      await sendCoachMutation(
         `/api/coaching/journeys/${selectedJourney.id}/lessons/reorder`,
-        session.access_token as string,
         'POST',
         { lesson_ids: reorderedLessonIds }
       );
@@ -1045,9 +1113,8 @@ export default function CoachPortalScreen() {
       )
     );
     void runMutation('Saving lesson order...', 'Lesson order updated', async () => {
-      await sendCoachJson(
+      await sendCoachMutation(
         `/api/coaching/journeys/${selectedJourney.id}/lessons/reorder`,
-        session.access_token as string,
         'POST',
         { lesson_ids: reorderedLessonIds }
       );
@@ -1093,9 +1160,8 @@ export default function CoachPortalScreen() {
     if (!cohort) return;
     const memberUserIds = Array.from(new Set([...(cohort.memberIds ?? []), ...personIds]));
     await runMutation('Updating cohort members...', 'Cohort updated', async () => {
-      await sendCoachJson(
+      await sendCoachMutation(
         `/api/coaching/cohorts/${cohortId}/members`,
-        session.access_token as string,
         'PUT',
         { member_user_ids: memberUserIds }
       );
@@ -1144,9 +1210,8 @@ export default function CoachPortalScreen() {
       )
     );
     await runMutation('Saving task order...', 'Task order updated', async () => {
-      await sendCoachJson(
+      await sendCoachMutation(
         `/api/coaching/journeys/${selectedJourney.id}/lessons/${lessonId}/tasks/reorder`,
-        session.access_token as string,
         'POST',
         { task_ids: reorderedTaskIds }
       );
@@ -1159,9 +1224,8 @@ export default function CoachPortalScreen() {
   const removeTask = async (lessonId: string, taskId: string) => {
     if (!canComposeDraft || !selectedJourney || !session?.access_token) return;
     await runMutation('Removing task...', 'Task removed', async () => {
-      await sendCoachJson(
+      await sendCoachMutation(
         `/api/coaching/journeys/${selectedJourney.id}/lessons/${lessonId}/tasks/${taskId}`,
-        session.access_token as string,
         'DELETE'
       );
       await refreshPortalData();
@@ -1174,9 +1238,8 @@ export default function CoachPortalScreen() {
     if (!canComposeDraft || !selectedJourney || !session?.access_token) return;
     const nextCount = selectedJourney.lessons.length + 1;
     await runMutation('Adding lesson...', 'Lesson added', async () => {
-      const created = await sendCoachJson<{ lesson: { id: string } }>(
+      const created = await sendCoachMutation<{ lesson: { id: string } }>(
         `/api/coaching/journeys/${selectedJourney.id}/lessons`,
-        session.access_token as string,
         'POST',
         { title: `Lesson ${nextCount}`, sort_order: selectedJourney.lessons.length }
       );
@@ -1192,9 +1255,8 @@ export default function CoachPortalScreen() {
     const lesson = selectedJourney.lessons.find((l) => l.id === lessonId);
     if (!lesson) return;
     await runMutation('Adding task...', 'Task added', async () => {
-      await sendCoachJson(
+      await sendCoachMutation(
         `/api/coaching/journeys/${selectedJourney.id}/lessons/${lesson.id}/tasks`,
-        session.access_token as string,
         'POST',
         { title: `Task ${lesson.tasks.length + 1}`, sort_order: lesson.tasks.length }
       );
@@ -1221,9 +1283,8 @@ export default function CoachPortalScreen() {
     );
     setEditingLessonId(null);
     await runMutation('Renaming lesson...', 'Lesson renamed', async () => {
-      await sendCoachJson(
+      await sendCoachMutation(
         `/api/coaching/journeys/${selectedJourney.id}/lessons/${lessonId}`,
-        session.access_token as string,
         'PATCH',
         { title: trimmed }
       );
@@ -1258,9 +1319,8 @@ export default function CoachPortalScreen() {
     );
     setEditingTaskKey(null);
     await runMutation('Renaming task...', 'Task renamed', async () => {
-      await sendCoachJson(
+      await sendCoachMutation(
         `/api/coaching/journeys/${selectedJourney.id}/lessons/${lessonId}/tasks/${taskId}`,
-        session.access_token as string,
         'PATCH',
         { title: trimmed }
       );
@@ -1275,9 +1335,8 @@ export default function CoachPortalScreen() {
     const name = newJourneyName.trim();
     if (!name) { setSaveState('error'); setSaveMessage('Enter a journey name first.'); return; }
     await runMutation('Creating journey...', 'Journey created', async () => {
-      const created = await sendCoachJson<{ journey: { id: string } }>(
+      const created = await sendCoachMutation<{ journey: { id: string } }>(
         '/api/coaching/journeys',
-        session.access_token as string,
         'POST',
         { title: name }
       );
@@ -1291,9 +1350,8 @@ export default function CoachPortalScreen() {
   const deleteJourney = async (journeyId: string) => {
     if (!canComposeDraft || !session?.access_token) return;
     await runMutation('Deleting journey...', 'Journey deleted', async () => {
-      await sendCoachJson(
+      await sendCoachMutation(
         `/api/coaching/journeys/${journeyId}`,
-        session.access_token as string,
         'DELETE'
       );
       if (selectedJourneyId === journeyId) {
@@ -1309,9 +1367,8 @@ export default function CoachPortalScreen() {
   const deleteLesson = async (lessonId: string) => {
     if (!canComposeDraft || !selectedJourney || !session?.access_token) return;
     await runMutation('Deleting lesson...', 'Lesson deleted', async () => {
-      await sendCoachJson(
+      await sendCoachMutation(
         `/api/coaching/journeys/${selectedJourney.id}/lessons/${lessonId}`,
-        session.access_token as string,
         'DELETE'
       );
       await refreshPortalData();
@@ -1346,9 +1403,8 @@ export default function CoachPortalScreen() {
     const failed: string[] = [];
     for (const journey of matches) {
       try {
-        await sendCoachJson(
+        await sendCoachMutation(
           `/api/coaching/journeys/${journey.id}`,
-          session.access_token as string,
           'DELETE'
         );
       } catch {
@@ -1427,6 +1483,34 @@ export default function CoachPortalScreen() {
               );
             })}
           </View>
+          <View style={s.scopeTabs}>
+            {([
+              ['my', 'My'],
+              ['team', 'Team'],
+              ['all_allowed', 'All'],
+            ] as const).map(([scopeValue, label]) => {
+              const selected = contentScope === scopeValue;
+              return (
+                <Pressable
+                  key={scopeValue}
+                  style={[s.scopeTab, selected && s.scopeTabActive]}
+                  onPress={() => setContentScope(scopeValue)}
+                >
+                  <Text style={[s.scopeTabText, selected && s.scopeTabTextActive]}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {hasSuperAdminRole ? (
+            <Pressable
+              style={[s.elevatedEditPill, superAdminElevatedEdit && s.elevatedEditPillActive]}
+              onPress={() => setSuperAdminElevatedEdit((prev) => !prev)}
+            >
+              <Text style={[s.elevatedEditPillText, superAdminElevatedEdit && s.elevatedEditPillTextActive]}>
+                {superAdminElevatedEdit ? 'Elevated Edit On' : 'View-Only Mode'}
+              </Text>
+            </Pressable>
+          ) : null}
           {/* Account */}
           <View style={s.accountWrap}>
             <Pressable style={[s.avatarBtn, accountMenuOpen && s.avatarBtnOpen]} onPress={() => setAccountMenuOpen((p) => !p)}>
@@ -1451,6 +1535,12 @@ export default function CoachPortalScreen() {
           <Text style={s.runtimeBannerText}>Loading coach workspace data...</Text>
         </View>
       ) : null}
+      <View style={s.scopeBanner}>
+        <Text style={s.scopeBannerText}>
+          Scope: {scopeLabel} • {canComposeDraft ? 'Authoring enabled' : 'Read-only'}
+          {hasSuperAdminRole && !superAdminElevatedEdit ? ' (enable Elevated Edit for writes)' : ''}
+        </Text>
+      </View>
       {portalLoadError ? (
         <View style={s.runtimeBannerError}>
           <Text style={s.runtimeBannerErrorText}>{portalLoadError}</Text>
@@ -2137,6 +2227,53 @@ const s = StyleSheet.create({
     borderRadius: 10,
     padding: 3,
   },
+  scopeTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#EEF2FF',
+    borderRadius: 10,
+    padding: 3,
+  },
+  scopeTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  scopeTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  scopeTabText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  scopeTabTextActive: {
+    color: '#1D4ED8',
+  },
+  elevatedEditPill: {
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  elevatedEditPillActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#DBEAFE',
+  },
+  elevatedEditPillText: {
+    color: '#1E3A8A',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  elevatedEditPillTextActive: {
+    color: '#1D4ED8',
+  },
   modeTab: {
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -2218,6 +2355,18 @@ const s = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#DC2626',
+  },
+  scopeBanner: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  scopeBannerText: {
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: '600',
   },
 
   /* ── Main Layout ── */

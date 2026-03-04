@@ -284,6 +284,22 @@
 - Then team-scoped journey data is filtered or denied (`403` on direct access)
 - And only team members/admins can update `POST /api/coaching/lessons/{id}/progress`
 
+### 17A) Coaching Multi-Role Capability Union + Scope Toggle
+- Given a caller with additive role set `coach + team_leader` (`roles[]`) and primary `role=team_leader`
+- When the caller requests `GET /api/coaching/journeys` with `scope=my|team|all_allowed`
+- Then `access_context.effective_roles[]` includes both roles
+- And list filtering respects requested scope while preserving unioned capabilities for authoring
+- And team-leader-only callers remain team-scoped for writes (no implicit global coach powers)
+
+### 17B) Super Admin Global View + Guarded Authoring
+- Given a caller with role `super_admin`
+- When the caller performs coaching reads (`GET /api/coaching/journeys`, `GET /api/coaching/library/assets`)
+- Then read access is global (`can_global_view=true`)
+- When the caller attempts coaching writes without `x-coach-elevated-edit: true`
+- Then API returns deterministic `403 scope_denied`
+- When the same write is retried with `x-coach-elevated-edit: true`
+- Then write succeeds within existing `/api/coaching/*` endpoint family
+
 ### 18) AI Cross-User Targeting Hardening
 - Given a non-admin user
 - When user posts `POST /api/ai/suggestions` targeting another user outside leader scope

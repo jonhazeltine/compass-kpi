@@ -23,6 +23,7 @@
     "test:algorithms": "npm run build && node scripts/algorithm_acceptance.js",
     "test:coaching-endpoint-hardening": "npm run build && node scripts/coaching_endpoint_hardening_acceptance.js",
     "test:checkpoint-h-coaching-authoring": "npm run build && node scripts/coaching_authoring_runtime_contract_acceptance.js",
+    "test:coaching-multi-role-scope": "npm run build && node scripts/coaching_multi_role_scope_acceptance.js",
     "test:w13-stream-wave-a": "npm run build && node scripts/w13_stream_wave_a_acceptance.js",
     "test:w13-stream-comms-role-policy": "npm run build && node scripts/w13_stream_comms_role_policy_acceptance.js",
     "test:m6-comms-recipient-scope-hardening": "npm run build && node scripts/m6_comms_recipient_scope_runtime_hardening_acceptance.js",

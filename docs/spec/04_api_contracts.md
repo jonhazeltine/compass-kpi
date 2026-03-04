@@ -53,6 +53,9 @@
   - Purpose: create team and seed leader membership.
 - `GET /teams/{id}` (implemented baseline)
   - Purpose: return team details and membership for authorized members.
+- `PATCH /teams/{id}` (implemented baseline)
+  - Purpose: leader-managed team identity updates.
+  - Additive fields: `identity_avatar`, `identity_background` (team-wide shared card presentation).
 - `POST /teams/{id}/members` (implemented baseline)
   - Purpose: leader-managed team membership updates.
 - `POST /teams/{id}/leave` (implemented — M6)
@@ -465,12 +468,21 @@ These notes are additive contract guidance only. They do not introduce a new end
   - Creates a team and auto-creates creator membership with `team_leader` role.
 - `GET /teams/{id}`
   - Returns team detail for authorized team members only.
+  - `team` payload includes shared team identity fields used by Team card rendering:
+    - `identity_avatar` (string)
+    - `identity_background` (hex string)
   - `members[]` response rows include roster-safe profile summary fields for DM handoff wiring:
     - `user_id` (UUID, canonical member id for direct-channel targeting)
     - `role`
     - `full_name`
     - `email` (nullable; present only when available in `public.users`)
     - `avatar_url` (nullable)
+- `PATCH /teams/{id}`
+  - Enforces leader-only update.
+  - Accepts `name` plus optional additive identity fields:
+    - `identity_avatar`
+    - `identity_background` (hex string, e.g. `#DFF0DA`)
+  - Returns updated team row including identity fields so clients can immediately reflect canonical shared team card identity.
 - `POST /teams/{id}/members`
   - Enforces leader-only member management.
 - `POST /teams/{id}/leave`
@@ -586,8 +598,18 @@ These notes are additive contract guidance only. They do not introduce a new end
     - top-level `notification_summary_read_model` (channel-unread-derived badge/count summary only; scoped limitations documented in response notes)
 - `GET /api/coaching/journeys`
   - Returns active journeys enriched with milestone/lesson totals plus user completion percent.
+  - Optional query: `scope=my|team|all_allowed` (default `all_allowed`).
+  - Additive access context response:
+    - `access_context.role`
+    - `access_context.effective_roles[]`
+    - `access_context.can_author_journeys`
+    - `access_context.can_manage_cohorts`
+    - `access_context.can_manage_channels`
+    - `access_context.can_global_view`
+    - `requested_scope`
   - Additive response fields (package read-model shaping baseline):
     - `journeys[].packaging_read_model`
+    - `journeys[].ownership_scope` (`mine|team|global`)
   - Additive response fields (W6 notification read-model shaping baseline):
     - top-level `notification_items[]` (coaching assignment/progress next-action rows inferred from journey visibility + completion aggregates)
     - top-level `notification_summary_read_model`
@@ -605,6 +627,31 @@ These notes are additive contract guidance only. They do not introduce a new end
     - `team`: team leader or platform admin
     - `journey`: requires `scope_id`
     - `global`: platform admin only
+- Super-admin guardrail for coach-surface writes (additive):
+  - Applicable to journey/lesson/task/cohort write paths in `/api/coaching/*`.
+  - Super admin remains read-only by default.
+  - Elevated edit must be explicit per request with header: `x-coach-elevated-edit: true`.
+  - Reads are unaffected.
+- `GET /api/coaching/cohorts`
+  - Optional query: `scope=my|team|all_allowed` (default `all_allowed`).
+  - Additive response fields:
+    - `requested_scope`
+    - `access_context` capability payload
+    - `cohorts[].ownership_scope` (`mine|team|global`)
+- `GET /api/coaching/channels`
+  - Optional query: `scope=my|team|all_allowed` (default `all_allowed`).
+  - Additive response fields:
+    - `requested_scope`
+    - `access_context` capability payload
+    - `channels[].ownership_scope` (`mine|team|global`)
+- `GET /api/coaching/library/assets` (implemented additive read model)
+  - Purpose: coach portal library source for assets + collections with ownership/scope metadata.
+  - Optional query: `scope=my|team|all_allowed` (default `all_allowed`).
+  - Response:
+    - `assets[]` with `owner_user_id`, `owner_label`, `team_id`, `visibility_scope`, `ownership_scope`, `source_journey_id`, `source_journey_title`
+    - `collections[]` with `asset_ids[]` + `ownership_scope`
+    - `requested_scope`
+    - `access_context` capability payload
 - `GET /api/coaching/coaches` (implemented — C2)
   - Returns array of coach profiles with: `id`, `name`, `avatar_url`, `specialties[]`, `bio`, `engagement_availability` (`available | waitlist | unavailable`).
   - Filters: `specialty`, `availability`.
@@ -667,12 +714,14 @@ These notes are additive contract guidance only. They do not introduce a new end
   - Delete route performs safe deactivation (`is_active=false`).
 - `GET /admin/users`, `PUT /admin/users/{id}/role`, `PUT /admin/users/{id}/tier`, `PUT /admin/users/{id}/status`
   - Platform-admin-only access with auditable write path.
+  - `PUT /admin/users/{id}/role` supports additive `roles[]` alongside primary `role` for compatibility migration (`role` + `roles[]` both written to auth metadata).
 - `POST /admin/users`
   - Platform-admin-only create path for admin test/user setup within existing `/admin/users` family.
   - Request payload (JSON):
     - `email` (required, normalized to lowercase)
     - `password` (required, minimum 8 chars; temporary password supported for local/admin setup)
-    - `role` (required; one of `agent|team_leader|admin|super_admin`)
+    - `role` (required primary role; one of `agent|team_leader|coach|challenge_sponsor|admin|super_admin`)
+    - `roles` (optional additive multi-role list; same enum as `role`)
     - `tier` (required; one of `free|basic|teams|enterprise`)
     - `account_status` (optional; defaults to `active`, or `deactivated`)
   - Behavior:
