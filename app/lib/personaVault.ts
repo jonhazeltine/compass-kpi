@@ -9,9 +9,13 @@ export type PersonaTokenPair = {
   refresh_token: string;
 };
 
-const PERSONA_SESSION_KEY_PREFIX = 'persona_session:';
+const PERSONA_SESSION_KEY_PREFIX = 'persona_session_';
+const sanitizePersonaKey = (value: string): string => {
+  const sanitized = value.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '_');
+  return sanitized.length > 0 ? sanitized : 'default';
+};
 const personaSessionStorageKey = (personaKey: PersonaKey) =>
-  `${PERSONA_SESSION_KEY_PREFIX}${personaKey.trim().toLowerCase()}`;
+  `${PERSONA_SESSION_KEY_PREFIX}${sanitizePersonaKey(personaKey)}`;
 
 const DEV_PERSONA_DEFAULTS: PersonaKey[] = ['solo', 'member', 'leader', 'coach', 'sponsor', 'admin'];
 

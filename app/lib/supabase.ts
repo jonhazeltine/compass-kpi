@@ -13,15 +13,20 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-const secureStoreKeyPrefix = 'compass_kpi_auth_v1:';
+const secureStoreKeyPrefix = 'compass_kpi_auth_v1_';
+const sanitizeSecureStoreKeyPart = (value: string): string => {
+  const sanitized = value.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return sanitized.length > 0 ? sanitized : 'default';
+};
+const secureStoreKeyFor = (key: string): string => `${secureStoreKeyPrefix}${sanitizeSecureStoreKeyPart(key)}`;
 
 const secureStoreAdapter = {
-  getItem: async (key: string): Promise<string | null> => SecureStore.getItemAsync(`${secureStoreKeyPrefix}${key}`),
+  getItem: async (key: string): Promise<string | null> => SecureStore.getItemAsync(secureStoreKeyFor(key)),
   setItem: async (key: string, value: string): Promise<void> => {
-    await SecureStore.setItemAsync(`${secureStoreKeyPrefix}${key}`, value);
+    await SecureStore.setItemAsync(secureStoreKeyFor(key), value);
   },
   removeItem: async (key: string): Promise<void> => {
-    await SecureStore.deleteItemAsync(`${secureStoreKeyPrefix}${key}`);
+    await SecureStore.deleteItemAsync(secureStoreKeyFor(key));
   },
 };
 
