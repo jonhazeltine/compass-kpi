@@ -18991,6 +18991,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginBottom: 10,
+    paddingRight: 56,
   },
   teamChallengeTopTab: {
     flex: 1,
@@ -24129,6 +24130,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 16,
     paddingBottom: 8,
+    paddingRight: 72,
   },
   cwfNavBtn: {
     flexDirection: 'row' as const,
