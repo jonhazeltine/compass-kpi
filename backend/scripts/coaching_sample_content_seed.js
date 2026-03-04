@@ -59,13 +59,13 @@ async function waitForHealth(timeoutMs = 10000) {
   throw new Error("backend health check timed out");
 }
 
-async function createAuthUser(email, password) {
+async function createAuthUser(email, password, metadata = {}) {
   const out = await authAdminRequest("/auth/v1/admin/users", {
     method: "POST",
     headers: {
       "content-type": "application/json",
     },
-    body: JSON.stringify({ email, password, email_confirm: true }),
+    body: JSON.stringify({ email, password, email_confirm: true, user_metadata: metadata }),
   });
   assert(out.status < 300, `create auth user failed (${email}): ${out.status}`);
   return out.data.id;
@@ -85,13 +85,13 @@ async function getAuthUserByEmail(email) {
   return null;
 }
 
-async function ensureAuthUser(email, password) {
+async function ensureAuthUser(email, password, metadata = {}) {
   const existing = await getAuthUserByEmail(email);
-  if (!existing) return createAuthUser(email, password);
+  if (!existing) return createAuthUser(email, password, metadata);
   const update = await authAdminRequest(`/auth/v1/admin/users/${existing.id}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ password, email_confirm: true }),
+    body: JSON.stringify({ password, email_confirm: true, user_metadata: metadata }),
   });
   assert(update.status < 300, `update auth user password failed (${email}): ${update.status}`);
   return existing.id;
@@ -179,12 +179,49 @@ async function main() {
   const skipReset = args.has("--skip-reset");
   const seedTag = process.env.COACHING_SAMPLE_SEED_TAG || DEFAULT_SEED_TAG;
 
-  const emails = {
-    coach: `${seedTag}.coach@example.com`,
-    leader: `${seedTag}.coachleader@example.com`,
-    member: `${seedTag}.coachmember@example.com`,
-    solo: `${seedTag}.coachsolo@example.com`,
-    sponsor: `${seedTag}.challengesponsor@example.com`,
+  const identities = {
+    coach: {
+      email: `${seedTag}.coach.jon@example.com`,
+      fullName: "Coach Jon",
+      role: "coach",
+      tier: "enterprise",
+      isCoach: true,
+    },
+    leader: {
+      email: `${seedTag}.leader.sarah@example.com`,
+      fullName: "Leader Sarah",
+      role: "team_leader",
+      tier: "teams",
+      isCoach: false,
+    },
+    member: {
+      email: `${seedTag}.member.alex@example.com`,
+      fullName: "Member Alex",
+      role: "agent",
+      tier: "free",
+      isCoach: false,
+    },
+    solo: {
+      email: `${seedTag}.solo.sam@example.com`,
+      fullName: "Solo Sam",
+      role: "agent",
+      tier: "teams",
+      isCoach: false,
+    },
+    sponsor: {
+      email: `${seedTag}.sponsor.taylor@example.com`,
+      fullName: "Sponsor Taylor",
+      role: "challenge_sponsor",
+      tier: "enterprise",
+      isCoach: false,
+    },
+    admin: {
+      email: `${seedTag}.admin.jon@example.com`,
+      fullName: "Admin Jon",
+      role: "admin",
+      tier: "enterprise",
+      isCoach: false,
+    },
   };
 
   const ids = {
@@ -193,6 +230,7 @@ async function main() {
     memberUserId: null,
     soloUserId: null,
     sponsorUserId: null,
+    adminUserId: null,
     teamId: null,
     challengeId: null,
     sponsorId: null,
@@ -276,38 +314,92 @@ async function main() {
       return;
     }
 
-    ids.coachUserId = await ensureAuthUser(emails.coach, PASSWORD);
-    ids.leaderUserId = await ensureAuthUser(emails.leader, PASSWORD);
-    ids.memberUserId = await ensureAuthUser(emails.member, PASSWORD);
-    ids.soloUserId = await ensureAuthUser(emails.solo, PASSWORD);
-    ids.sponsorUserId = await ensureAuthUser(emails.sponsor, PASSWORD);
+    ids.coachUserId = await ensureAuthUser(
+      identities.coach.email,
+      PASSWORD,
+      toAuthMetadata(identities.coach.fullName, identities.coach.role)
+    );
+    ids.leaderUserId = await ensureAuthUser(
+      identities.leader.email,
+      PASSWORD,
+      toAuthMetadata(identities.leader.fullName, identities.leader.role)
+    );
+    ids.memberUserId = await ensureAuthUser(
+      identities.member.email,
+      PASSWORD,
+      toAuthMetadata(identities.member.fullName, identities.member.role)
+    );
+    ids.soloUserId = await ensureAuthUser(
+      identities.solo.email,
+      PASSWORD,
+      toAuthMetadata(identities.solo.fullName, identities.solo.role)
+    );
+    ids.sponsorUserId = await ensureAuthUser(
+      identities.sponsor.email,
+      PASSWORD,
+      toAuthMetadata(identities.sponsor.fullName, identities.sponsor.role)
+    );
+    ids.adminUserId = await ensureAuthUser(
+      identities.admin.email,
+      PASSWORD,
+      toAuthMetadata(identities.admin.fullName, identities.admin.role)
+    );
 
     const tokens = {
-      coach: await signIn(emails.coach, PASSWORD),
-      leader: await signIn(emails.leader, PASSWORD),
-      member: await signIn(emails.member, PASSWORD),
-      solo: await signIn(emails.solo, PASSWORD),
-      sponsor: await signIn(emails.sponsor, PASSWORD),
+      coach: await signIn(identities.coach.email, PASSWORD),
+      leader: await signIn(identities.leader.email, PASSWORD),
+      member: await signIn(identities.member.email, PASSWORD),
+      solo: await signIn(identities.solo.email, PASSWORD),
+      sponsor: await signIn(identities.sponsor.email, PASSWORD),
     };
 
     await db.query(
-      `insert into public.users (id, role)
-       values ($1,'admin'), ($2,'team_leader'), ($3,'agent'), ($4,'agent'), ($5,'agent')
-       on conflict (id) do update set role = excluded.role`,
-      [ids.coachUserId, ids.leaderUserId, ids.memberUserId, ids.soloUserId, ids.sponsorUserId]
-    );
-    await db.query(
-      `update public.users
-       set tier = case
-         when id = $1 then 'enterprise'
-         when id = $2 then 'teams'
-         when id = $3 then 'free'
-         when id = $4 then 'teams'
-         when id = $5 then 'enterprise'
-         else tier
-       end
-       where id in ($1, $2, $3, $4, $5)`,
-      [ids.coachUserId, ids.leaderUserId, ids.memberUserId, ids.soloUserId, ids.sponsorUserId]
+      `insert into public.users (id, role, tier, full_name, is_coach)
+       values
+         ($1, $7,  $13, $19, $25),
+         ($2, $8,  $14, $20, $26),
+         ($3, $9,  $15, $21, $27),
+         ($4, $10, $16, $22, $28),
+         ($5, $11, $17, $23, $29),
+         ($6, $12, $18, $24, $30)
+       on conflict (id) do update
+       set
+         role = excluded.role,
+         tier = excluded.tier,
+         full_name = excluded.full_name,
+         is_coach = excluded.is_coach`,
+      [
+        ids.coachUserId,
+        ids.leaderUserId,
+        ids.memberUserId,
+        ids.soloUserId,
+        ids.sponsorUserId,
+        ids.adminUserId,
+        identities.coach.role,
+        identities.leader.role,
+        identities.member.role,
+        identities.solo.role,
+        identities.sponsor.role,
+        identities.admin.role,
+        identities.coach.tier,
+        identities.leader.tier,
+        identities.member.tier,
+        identities.solo.tier,
+        identities.sponsor.tier,
+        identities.admin.tier,
+        identities.coach.fullName,
+        identities.leader.fullName,
+        identities.member.fullName,
+        identities.solo.fullName,
+        identities.sponsor.fullName,
+        identities.admin.fullName,
+        identities.coach.isCoach,
+        identities.leader.isCoach,
+        identities.member.isCoach,
+        identities.solo.isCoach,
+        identities.sponsor.isCoach,
+        identities.admin.isCoach,
+      ]
     );
 
     const teamOut = await request(`${BACKEND_URL}/teams`, {
@@ -350,10 +442,10 @@ async function main() {
        values ($1, $2, $3, $4, true)
        returning id, title`,
       [
-        `${LABEL_PREFIX}: Prospecting Reset (${seedTag})`,
-        "Seeded team coaching journey with mixed lesson progress states for runtime UI review.",
+        `Prospecting Fundamentals`,
+        "Build a consistent outreach pipeline with structured call blocks and follow-up cadences.",
         ids.teamId,
-        ids.leaderUserId,
+        ids.coachUserId,
       ]
     );
     const teamJourney = { id: teamJourneyInsert.rows[0].id, title: teamJourneyInsert.rows[0].title };
@@ -428,8 +520,8 @@ async function main() {
        values ($1, $2, $3, $4, true)
        returning id, title`,
       [
-        `${LABEL_PREFIX}: Coach Intervention Cadence (${seedTag})`,
-        "Coach-owned team journey with milestone-level interventions and mixed completion states.",
+        `Leadership Development`,
+        "Weekly team review cadence with accountability and structured learnings capture.",
         ids.teamId,
         ids.coachUserId,
       ]
@@ -483,8 +575,8 @@ async function main() {
        values ($1, $2, null, $3, true)
        returning id, title`,
       [
-        `${LABEL_PREFIX}: Solo Momentum Builder (${seedTag})`,
-        "Seeded solo coaching journey for non-team scoped visibility checks.",
+        `Client Relationship Building`,
+        "Daily review rituals and client engagement practices for sustained momentum.",
         ids.coachUserId,
       ]
     );
@@ -517,8 +609,8 @@ async function main() {
        values ($1, $2, null, $3, true)
        returning id, title`,
       [
-        `${LABEL_PREFIX}: Sponsor Activation Brief (${seedTag})`,
-        "Global journey visible to sponsor persona for scoped coaching guidance realism.",
+        `Sponsor Onboarding Guide`,
+        "Structured orientation for challenge sponsors with commitment reviews and welcome communications.",
         ids.coachUserId,
       ]
     );
@@ -1063,11 +1155,12 @@ async function main() {
       deterministic_seed: true,
       reset_before_seed: !skipReset,
       users: {
-        coach: { email: emails.coach, id: ids.coachUserId },
-        leader: { email: emails.leader, id: ids.leaderUserId },
-        member: { email: emails.member, id: ids.memberUserId },
-        solo: { email: emails.solo, id: ids.soloUserId },
-        challenge_sponsor: { email: emails.sponsor, id: ids.sponsorUserId },
+        coach: { email: identities.coach.email, id: ids.coachUserId },
+        leader: { email: identities.leader.email, id: ids.leaderUserId },
+        member: { email: identities.member.email, id: ids.memberUserId },
+        solo: { email: identities.solo.email, id: ids.soloUserId },
+        challenge_sponsor: { email: identities.sponsor.email, id: ids.sponsorUserId },
+        admin: { email: identities.admin.email, id: ids.adminUserId },
       },
       team: { id: ids.teamId },
       challenge: { id: ids.challengeId },
@@ -1129,3 +1222,13 @@ main().catch((err) => {
   console.error(err.message);
   process.exit(1);
 });
+  const toAuthMetadata = (fullName, role) => {
+    const trimmed = String(fullName || "").trim();
+    const firstName = trimmed.split(/\s+/).filter(Boolean)[0] || "";
+    return {
+      full_name: trimmed,
+      name: trimmed,
+      first_name: firstName,
+      persona: String(role || "").trim().toLowerCase(),
+    };
+  };

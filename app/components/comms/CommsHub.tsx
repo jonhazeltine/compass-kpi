@@ -265,7 +265,6 @@ export default function CommsHub(props: CommsHubProps) {
 
 function CommsTopBar(props: CommsHubProps) {
   const {
-    personaVariant,
     screen,
     onBack,
     selectedChannelName,
@@ -275,7 +274,6 @@ function CommsTopBar(props: CommsHubProps) {
     onPressHeaderAvatar,
   } = props;
   const showBack = screen === 'channel_thread' || screen === 'coach_broadcast_compose';
-  const personaLabel = personaVariant.replace('_', ' ');
   const showHeaderAvatar = screen === 'channel_thread';
   const resolvedAvatarLabel = String(headerAvatarLabel ?? '?').slice(0, 2);
   const resolvedAvatarTone =
@@ -316,9 +314,6 @@ function CommsTopBar(props: CommsHubProps) {
         </View>
       ) : null}
       <View style={{ flex: 1 }} />
-      <View style={st.personaBadge}>
-        <Text style={st.personaBadgeText}>{personaLabel}</Text>
-      </View>
     </View>
   );
 }

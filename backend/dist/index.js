@@ -2442,14 +2442,43 @@ app.get("/api/coaching/journeys", async (req, res) => {
         const access = accessResult.context;
         const { data: journeys, error: journeysError } = await dataClient
             .from("journeys")
-            .select("id,title,description,team_id,is_active,created_at")
+            .select("id,title,description,team_id,created_by,is_active,created_at")
             .eq("is_active", true)
             .order("created_at", { ascending: false });
         if (journeysError) {
             return errorEnvelopeResponse(res, 500, "journey_fetch_failed", "Failed to fetch coaching journeys", req.headers["x-request-id"]);
         }
+        /* Fetch journey IDs the user is enrolled in (via journey_enrollments) */
+        const enrolledJourneyIds = new Set();
+        {
+            const { data: enrollRows } = await dataClient
+                .from("journey_enrollments")
+                .select("journey_id")
+                .eq("user_id", auth.user.id)
+                .eq("status", "active");
+            for (const row of enrollRows ?? []) {
+                const jid = String(row.journey_id ?? "");
+                if (jid)
+                    enrolledJourneyIds.add(jid);
+            }
+        }
         const visibleJourneys = (journeys ?? []).filter((j) => {
+            const jId = String(j.id ?? "");
             const teamId = String(j.team_id ?? "") || null;
+            const createdBy = String(j.created_by ?? "");
+            // Enrolled journeys are always visible
+            if (enrolledJourneyIds.has(jId))
+                return true;
+            // Coach-specific filtering: only own journeys + team journeys they belong to
+            if (access.role === "coach" && !access.platformAdmin) {
+                if (createdBy === auth.user.id)
+                    return true;
+                if (teamId && access.leaderTeamIds.has(teamId))
+                    return true;
+                if (teamId && access.memberTeamIds.has(teamId))
+                    return true;
+                return false;
+            }
             return canReadJourneyByTeam(access, teamId);
         });
         const journeyIds = visibleJourneys.map((j) => String(j.id));
@@ -5214,6 +5243,50 @@ app.get("/teams/:id", async (req, res) => {
         return res.status(500).json({ error: "Internal server error" });
     }
 });
+app.patch("/teams/:id", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok) {
+            return res.status(auth.status).json({ error: auth.error });
+        }
+        if (!dataClient) {
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        }
+        const teamId = req.params.id;
+        if (!teamId) {
+            return res.status(422).json({ error: "team id is required" });
+        }
+        const payloadCheck = validateTeamUpdatePayload(req.body);
+        if (!payloadCheck.ok) {
+            return res.status(payloadCheck.status).json({ error: payloadCheck.error });
+        }
+        const leaderCheck = await checkTeamLeader(teamId, auth.user.id);
+        if (!leaderCheck.ok) {
+            return res.status(leaderCheck.status).json({ error: leaderCheck.error });
+        }
+        if (!leaderCheck.isLeader) {
+            return res.status(403).json({ error: "Only team leaders can update team settings" });
+        }
+        const { data: team, error: updateError } = await dataClient
+            .from("teams")
+            .update({
+            name: payloadCheck.payload.name,
+            updated_at: new Date().toISOString(),
+        })
+            .eq("id", teamId)
+            .select("id,name,created_by,created_at,updated_at")
+            .single();
+        if (updateError) {
+            return handleSupabaseError(res, "Failed to update team", updateError);
+        }
+        return res.json({ team });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Error in PATCH /teams/:id", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
 app.post("/teams/:id/members", async (req, res) => {
     try {
         const auth = await authenticateRequest(req.headers.authorization);
@@ -5562,6 +5635,66 @@ app.post("/api/coaching/invite-codes", async (req, res) => {
         return res.status(500).json({ error: "Internal server error" });
     }
 });
+app.post("/api/coaching/journeys/:id/invite-code", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok)
+            return res.status(auth.status).json({ error: auth.error });
+        if (!dataClient)
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        const journeyId = req.params.id;
+        if (!journeyId)
+            return res.status(422).json({ error: "journey id is required" });
+        const { data: journey, error: journeyError } = await dataClient
+            .from("journeys")
+            .select("id,title,created_by")
+            .eq("id", journeyId)
+            .maybeSingle();
+        if (journeyError)
+            return handleSupabaseError(res, "Failed to load journey for invite code", journeyError);
+        if (!journey)
+            return res.status(404).json({ error: "Journey not found" });
+        const createdBy = String(journey.created_by ?? "");
+        if (createdBy !== auth.user.id) {
+            const actorIsAdmin = await isPlatformAdmin(auth.user.id);
+            if (!actorIsAdmin)
+                return res.status(403).json({ error: "Only the journey creator can generate invite codes" });
+        }
+        // Check for existing active invite code for this journey
+        const { data: existing } = await dataClient
+            .from("invite_codes")
+            .select("id,code,invite_type,target_id,max_uses,uses_count,expires_at,is_active,created_at")
+            .eq("invite_type", "journey")
+            .eq("target_id", journeyId)
+            .eq("is_active", true)
+            .gt("expires_at", new Date().toISOString())
+            .order("created_at", { ascending: false })
+            .limit(1);
+        if (existing && existing.length > 0) {
+            return res.json({ invite_code: existing[0], reused: true });
+        }
+        const maxUses = resolveInviteMaxUses("journey", req.body);
+        const expiresAt = resolveInviteExpiry(req.body);
+        const invite = await issueInviteCode({
+            inviteType: "journey",
+            targetId: journeyId,
+            createdBy: auth.user.id,
+            maxUses,
+            expiresAtIso: expiresAt,
+        });
+        if (!invite.ok)
+            return res.status(invite.status).json({ error: invite.error });
+        return res.status(201).json({
+            invite_code: invite.record,
+            reused: false,
+        });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Error in POST /api/coaching/journeys/:id/invite-code", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
 app.post("/challenges/:id/invite-codes", async (req, res) => {
     try {
         const auth = await authenticateRequest(req.headers.authorization);
@@ -5658,7 +5791,7 @@ app.post("/api/invites/redeem", async (req, res) => {
         const inviteId = String(inviteRow.id ?? "");
         const inviteType = String(inviteRow.invite_type ?? "");
         const targetId = String(inviteRow.target_id ?? "");
-        if (!inviteId || !targetId || !["team", "coach", "challenge"].includes(inviteType)) {
+        if (!inviteId || !targetId || !["team", "coach", "challenge", "journey"].includes(inviteType)) {
             return res.status(422).json({ error: "Invite code payload is invalid" });
         }
         const { data: existingRedemption, error: existingRedemptionError } = await dataClient
@@ -5756,6 +5889,82 @@ app.post("/api/invites/redeem", async (req, res) => {
                 }
             }
             routeTarget = { tab: "coach", screen: "coach_hub_primary", target_id: targetId };
+        }
+        else if (inviteType === "journey") {
+            /* ── Journey invite: enroll user into the journey AND the coach's world ── */
+            await ensureUserRow(auth.user.id);
+            const { data: journeyRow, error: journeyError } = await dataClient
+                .from("journeys")
+                .select("id,created_by,is_active")
+                .eq("id", targetId)
+                .maybeSingle();
+            if (journeyError)
+                return handleSupabaseError(res, "Failed to load journey for invite redeem", journeyError);
+            if (!journeyRow || !Boolean(journeyRow.is_active)) {
+                return res.status(404).json({ error: "Journey target not found for invite code" });
+            }
+            const journeyCoachId = String(journeyRow.created_by ?? "");
+            /* Step 1: ensure coaching_engagement with the journey's coach */
+            if (journeyCoachId && journeyCoachId !== auth.user.id) {
+                const { data: existingEngagement, error: engLookupErr } = await dataClient
+                    .from("coaching_engagements")
+                    .select("id,status")
+                    .eq("coach_id", journeyCoachId)
+                    .eq("client_id", auth.user.id)
+                    .in("status", ["pending", "active"])
+                    .order("created_at", { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (engLookupErr) {
+                    return handleSupabaseError(res, "Failed to evaluate coaching engagement for journey invite", engLookupErr);
+                }
+                if (!existingEngagement) {
+                    const { error: engInsertErr } = await dataClient
+                        .from("coaching_engagements")
+                        .insert({
+                        coach_id: journeyCoachId,
+                        client_id: auth.user.id,
+                        status: "active",
+                        entitlement_state: "allowed",
+                        plan_tier_label: "Compass Coaching",
+                        status_reason: "Journey invite code redeemed",
+                        next_step_cta: "Open your coach hub",
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                    });
+                    if (engInsertErr) {
+                        return handleSupabaseError(res, "Failed to activate coaching engagement from journey invite", engInsertErr);
+                    }
+                }
+            }
+            /* Step 2: enroll into the journey */
+            const { data: existingEnrollment, error: enrollLookupErr } = await dataClient
+                .from("journey_enrollments")
+                .select("id")
+                .eq("journey_id", targetId)
+                .eq("user_id", auth.user.id)
+                .maybeSingle();
+            if (enrollLookupErr) {
+                return handleSupabaseError(res, "Failed to evaluate journey enrollment for invite redeem", enrollLookupErr);
+            }
+            alreadyJoined = Boolean(existingEnrollment);
+            if (!alreadyJoined) {
+                const { error: enrollInsertErr } = await dataClient
+                    .from("journey_enrollments")
+                    .upsert({
+                    journey_id: targetId,
+                    user_id: auth.user.id,
+                    enrolled_by: journeyCoachId || null,
+                    enrolled_via: "invite",
+                    status: "active",
+                    enrolled_at: new Date().toISOString(),
+                    created_at: new Date().toISOString(),
+                }, { onConflict: "journey_id,user_id" });
+                if (enrollInsertErr) {
+                    return handleSupabaseError(res, "Failed to enroll user into journey from invite code", enrollInsertErr);
+                }
+            }
+            routeTarget = { tab: "coach", screen: "coaching_journey_detail", target_id: targetId };
         }
         else {
             const { data: challenge, error: challengeError } = await dataClient
@@ -7759,6 +7968,23 @@ function validateTeamCreatePayload(body) {
     const name = candidate.name.trim();
     if (!name) {
         return { ok: false, status: 422, error: "name must not be empty" };
+    }
+    return { ok: true, payload: { name } };
+}
+function validateTeamUpdatePayload(body) {
+    if (!body || typeof body !== "object") {
+        return { ok: false, status: 400, error: "Body must be a JSON object" };
+    }
+    const candidate = body;
+    if (!candidate.name || typeof candidate.name !== "string") {
+        return { ok: false, status: 422, error: "name is required" };
+    }
+    const name = candidate.name.trim();
+    if (!name) {
+        return { ok: false, status: 422, error: "name must not be empty" };
+    }
+    if (name.length > 80) {
+        return { ok: false, status: 422, error: "name must be 80 characters or fewer" };
     }
     return { ok: true, payload: { name } };
 }
@@ -9955,7 +10181,7 @@ function buildInviteCode(prefix) {
 function resolveInviteMaxUses(inviteType, rawBody) {
     const body = isRecord(rawBody) ? rawBody : {};
     const supplied = Number(body.max_uses ?? NaN);
-    const fallback = inviteType === "team" ? 25 : inviteType === "coach" ? 50 : 100;
+    const fallback = inviteType === "team" ? 25 : inviteType === "coach" ? 50 : inviteType === "journey" ? 50 : 100;
     if (!Number.isFinite(supplied) || supplied <= 0)
         return fallback;
     return Math.min(500, Math.floor(supplied));
@@ -9977,7 +10203,7 @@ function resolveInviteExpiry(rawBody) {
 async function issueInviteCode(args) {
     if (!dataClient)
         return { ok: false, status: 500, error: "Supabase data client not configured" };
-    const codePrefix = args.inviteType === "team" ? "TEAM" : args.inviteType === "coach" ? "COACH" : "CHAL";
+    const codePrefix = args.inviteType === "team" ? "TEAM" : args.inviteType === "coach" ? "COACH" : args.inviteType === "journey" ? "JRNY" : "CHAL";
     for (let attempt = 0; attempt < 6; attempt += 1) {
         const code = buildInviteCode(codePrefix);
         const { data, error } = await dataClient

@@ -1421,7 +1421,7 @@ export default function CoachPortalScreen() {
               return (
                 <Pressable key={mode} style={[s.modeTab, selected && s.modeTabActive]} onPress={() => navigateWorkspace(mode)}>
                   <Text style={[s.modeTabText, selected && s.modeTabTextActive]}>
-                    {mode === 'journeys' ? '📚' : '👥'} {COACH_WORKSPACES[mode].label}
+                    {COACH_WORKSPACES[mode].label}
                   </Text>
                 </Pressable>
               );
@@ -1481,7 +1481,7 @@ export default function CoachPortalScreen() {
                 return (
                   <View style={s.selectedAssetBanner}>
                     <Text style={s.selectedAssetBannerText} numberOfLines={1}>
-                      📎 {selAsset?.title ?? 'Asset'} selected — click a lesson to place it
+                      {selAsset?.title ?? 'Asset'} selected — click a lesson to place it
                     </Text>
                     <Pressable onPress={() => { setDragPayload(null); setDraggingAssetId(null); }}>
                       <Text style={s.selectedAssetBannerClose}>✕</Text>
@@ -1711,7 +1711,7 @@ export default function CoachPortalScreen() {
                           {...({ onPointerDown: (e: any) => { e.stopPropagation(); selectedJourney && onGrabPointerDown(e, { type: 'journey_lesson', sourceJourneyId: selectedJourney.id, lessonId: lesson.id }, lesson.title); } } as any)}
                         >⠿</Text>
                         <View style={s.stepNumber}><Text style={s.stepNumberText}>{lsIndex + 1}</Text></View>
-                        <View style={s.kindBadgeLesson}><Text style={s.kindBadgeLessonText}>📘 Lesson</Text></View>
+                        <View style={s.kindBadgeLesson}><Text style={s.kindBadgeLessonText}>Lesson</Text></View>
                         {editingLessonId === lesson.id && canComposeDraft ? (
                           <TextInput
                             style={[s.milestoneTitle, s.inlineEditInput]}

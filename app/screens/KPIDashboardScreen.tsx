@@ -623,6 +623,7 @@ type CoachingJourneyListItem = {
   title: string;
   description?: string | null;
   team_id?: string | null;
+  created_by?: string | null;
   is_active?: boolean | null;
   created_at?: string | null;
   milestones_count?: number;
@@ -2538,12 +2539,15 @@ export default function KPIDashboardScreen({
   const [teamRosterName, setTeamRosterName] = useState<string | null>(null);
   const [teamRosterError, setTeamRosterError] = useState<string | null>(null);
   const [teamRosterTeamId, setTeamRosterTeamId] = useState<string | null>(null);
+  const lastTeamRosterFetchAtRef = useRef<number>(0);
   const [teamIdentityAvatar, setTeamIdentityAvatar] = useState('🛡️');
   const [teamIdentityBackground, setTeamIdentityBackground] = useState('#dff0da');
   const [teamIdentityEditOpen, setTeamIdentityEditOpen] = useState(false);
+  const [teamIdentityDraftName, setTeamIdentityDraftName] = useState('');
   const [teamIdentityDraftAvatar, setTeamIdentityDraftAvatar] = useState('🛡️');
   const [teamIdentityDraftBackground, setTeamIdentityDraftBackground] = useState('#dff0da');
   const [teamIdentityAvatarCategory, setTeamIdentityAvatarCategory] = useState<'power' | 'animals' | 'nature' | 'sports' | 'symbols'>('power');
+  const [teamIdentitySaveBusy, setTeamIdentitySaveBusy] = useState(false);
   const [teamIdentityControlsOpen, setTeamIdentityControlsOpen] = useState(false);
   const [teamMembershipMutationBusy, setTeamMembershipMutationBusy] = useState(false);
   const [teamMembershipMutationNotice, setTeamMembershipMutationNotice] = useState<string | null>(null);
@@ -2572,6 +2576,9 @@ export default function KPIDashboardScreen({
   const [coachWorkflowAssignTargetCohortId, setCoachWorkflowAssignTargetCohortId] = useState<string | null>(null);
   const [coachWorkflowAssignTargetUserId, setCoachWorkflowAssignTargetUserId] = useState<string | null>(null);
   const [coachInviteLinkCopied, setCoachInviteLinkCopied] = useState(false);
+  const [journeyInviteCodes, setJourneyInviteCodes] = useState<Record<string, string>>({});
+  const [journeyInviteLoading, setJourneyInviteLoading] = useState<string | null>(null);
+  const [journeyInviteCopiedId, setJourneyInviteCopiedId] = useState<string | null>(null);
   const coachSegmentPresets: CoachSegmentPreset[] = useMemo(() => [
     { id: 'seg-kpi', label: 'KPI Completion', rule: 'kpi_completion', status: 'preview', description: 'Members meeting KPI completion thresholds' },
     { id: 'seg-gci', label: 'GCI Direction', rule: 'gci_direction', status: 'preview', description: 'Members trending up/down in GCI performance' },
@@ -6142,12 +6149,23 @@ export default function KPIDashboardScreen({
       if (!candidate || !UUID_LIKE_RE.test(candidate)) return;
       if (!orderedIds.includes(candidate)) orderedIds.push(candidate);
     };
-    (Array.isArray(channelsApiRows) ? channelsApiRows : [])
-      .filter((row) => String(row.type ?? '').toLowerCase() === 'team')
+    // Keep the current resolved team context sticky first to avoid accidental candidate drift.
+    pushCandidate(teamRosterTeamId);
+    pushCandidate(sessionUserMeta.team_id);
+    pushCandidate(sessionAppMeta.team_id);
+    const allChannelRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
+    allChannelRows
+      .filter((row) => String(row.type ?? '').toLowerCase() === 'team' && row.is_active !== false)
       .forEach((row) => pushCandidate(row.team_id));
+    allChannelRows
+      .filter((row) => String(row.type ?? '').toLowerCase() === 'team' && row.is_active === false)
+      .forEach((row) => pushCandidate(row.team_id));
+    challengeListItems
+      .filter((item) => item.joined)
+      .forEach((item) => pushCandidate(item.raw?.team_id ?? null));
     challengeListItems.forEach((item) => pushCandidate(item.raw?.team_id ?? null));
     return orderedIds;
-  }, [challengeListItems, channelsApiRows]);
+  }, [challengeListItems, channelsApiRows, sessionAppMeta.team_id, sessionUserMeta.team_id, teamRosterTeamId]);
   const teamRuntimeId = useMemo(() => {
     return teamRuntimeCandidateIds[0] ?? null;
   }, [teamRuntimeCandidateIds]);
@@ -7179,6 +7197,7 @@ export default function KPIDashboardScreen({
 
   const fetchTeamRoster = useCallback(async () => {
     const token = session?.access_token;
+    lastTeamRosterFetchAtRef.current = Date.now();
     if (!token || teamRuntimeCandidateIds.length === 0) {
       setTeamRosterMembers([]);
       setTeamRosterName(null);
@@ -7203,9 +7222,10 @@ export default function KPIDashboardScreen({
           (member): member is TeamApiMemberSummary =>
             typeof member?.user_id === 'string' && String(member.user_id).trim().length > 0
         );
+        const resolvedTeamId = String(body.team?.id ?? candidateTeamId).trim();
         setTeamRosterMembers(members);
         setTeamRosterName(body.team?.name ? String(body.team.name) : null);
-        setTeamRosterTeamId(candidateTeamId);
+        setTeamRosterTeamId(resolvedTeamId || candidateTeamId);
         setTeamRosterError(null);
         return;
       }
@@ -7466,6 +7486,32 @@ export default function KPIDashboardScreen({
       setCoachingJourneysLoading(false);
     }
   }, [session?.access_token]);
+
+  /* ── Fetch / generate journey invite code ── */
+  const fetchJourneyInviteCode = useCallback(async (journeyId: string) => {
+    if (journeyInviteCodes[journeyId]) return journeyInviteCodes[journeyId];
+    const token = session?.access_token;
+    if (!token) return null;
+    setJourneyInviteLoading(journeyId);
+    try {
+      const response = await fetch(`${API_URL}/api/coaching/journeys/${journeyId}/invite-code`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) return null;
+      const body = await response.json() as { invite_code?: { code?: string } | string };
+      const raw = body.invite_code;
+      const code = typeof raw === 'string' ? raw : String((raw as { code?: string })?.code ?? '');
+      if (code) {
+        setJourneyInviteCodes((prev) => ({ ...prev, [journeyId]: code }));
+      }
+      return code;
+    } catch {
+      return null;
+    } finally {
+      setJourneyInviteLoading(null);
+    }
+  }, [session?.access_token, journeyInviteCodes]);
 
   /* ── Fetch coach cohorts for workflow surface ── */
   const fetchCoachCohorts = useCallback(async () => {
@@ -8674,9 +8720,10 @@ export default function KPIDashboardScreen({
               typeof row?.user_id === 'string' && String(row.user_id).trim().length > 0
           );
           if (fetchedMembers.length > 0) {
+            const resolvedTeamId = String(body.team?.id ?? candidateTeamId).trim();
             setTeamRosterMembers(fetchedMembers);
             setTeamRosterName(body.team?.name ? String(body.team.name) : null);
-            setTeamRosterTeamId(candidateTeamId);
+            setTeamRosterTeamId(resolvedTeamId || candidateTeamId);
             setTeamRosterError(null);
           }
 
@@ -8943,9 +8990,19 @@ export default function KPIDashboardScreen({
     if (teamRuntimeCandidateIds.length === 0) return;
     const rosterTeamStillCandidate =
       !!teamRosterTeamId && teamRuntimeCandidateIds.includes(String(teamRosterTeamId));
-    if (rosterTeamStillCandidate && (teamRosterMembers.length > 0 || teamRosterError)) return;
+    const staleMs = Date.now() - lastTeamRosterFetchAtRef.current;
+    if (rosterTeamStillCandidate && (teamRosterMembers.length > 0 || teamRosterError) && staleMs < 15000) return;
     void fetchTeamRoster();
   }, [activeTab, fetchTeamRoster, teamRosterError, teamRosterMembers.length, teamRosterTeamId, teamRuntimeCandidateIds]);
+
+  useEffect(() => {
+    if (activeTab !== 'team' && activeTab !== 'comms') return;
+    if (teamRuntimeCandidateIds.length === 0) return;
+    const interval = setInterval(() => {
+      void fetchTeamRoster();
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [activeTab, fetchTeamRoster, teamRuntimeCandidateIds.length]);
 
   useEffect(() => {
     if (activeTab !== 'comms') return;
@@ -9133,7 +9190,7 @@ export default function KPIDashboardScreen({
                 <View style={{ backgroundColor: '#ffffff', borderRadius: 14, marginHorizontal: 16, marginTop: 16, padding: 20, borderWidth: 1, borderColor: '#e0e7ff', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
                   <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 12 }}>
                     <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: '#eef2ff', alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 12 }}>
-                      <Text style={{ fontSize: 20 }}>💬</Text>
+                      <Text style={{ fontSize: 16, fontWeight: '700' as const, color: '#4338ca' }}>DM</Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 17, fontWeight: '700' as const, color: '#1e1b4b' }}>Real Human DM Coaching</Text>
@@ -9241,15 +9298,13 @@ export default function KPIDashboardScreen({
                 <View style={{ marginHorizontal: 16, marginTop: 20 }}>
                   <Text style={{ fontSize: 16, fontWeight: '700' as const, color: '#1e1b4b', marginBottom: 12 }}>What You Get</Text>
                   {[
-                    { icon: '📱', title: 'Direct Message Access', desc: 'Unlimited async DM access to your personal coach — get answers when you need them.' },
-                    { icon: '📊', title: 'Weekly KPI Review', desc: 'Your coach reviews your dashboard metrics weekly and provides targeted guidance.' },
-                    { icon: '📋', title: 'Custom Action Plans', desc: 'Receive tailored action plans based on your specific goals and current performance.' },
-                    { icon: '🤝', title: 'Accountability Partner', desc: 'Regular check-ins to keep you on track and celebrate your wins.' },
+                    { title: 'Direct Message Access', desc: 'Unlimited async DM access to your personal coach — get answers when you need them.' },
+                    { title: 'Weekly KPI Review', desc: 'Your coach reviews your dashboard metrics weekly and provides targeted guidance.' },
+                    { title: 'Custom Action Plans', desc: 'Receive tailored action plans based on your specific goals and current performance.' },
+                    { title: 'Accountability Partner', desc: 'Regular check-ins to keep you on track and celebrate your wins.' },
                   ].map((item) => (
                     <View key={item.title} style={{ flexDirection: 'row' as const, marginBottom: 14, alignItems: 'flex-start' as const }}>
-                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#eef2ff', alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 12 }}>
-                        <Text style={{ fontSize: 16 }}>{item.icon}</Text>
-                      </View>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#4338ca', marginRight: 12, marginTop: 7 }} />
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#1e1b4b', marginBottom: 2 }}>{item.title}</Text>
                         <Text style={{ fontSize: 12.5, color: '#64748b', lineHeight: 18 }}>{item.desc}</Text>
@@ -9327,15 +9382,13 @@ export default function KPIDashboardScreen({
                 <View style={{ marginHorizontal: 16, marginTop: 20 }}>
                   <Text style={{ fontSize: 16, fontWeight: '700' as const, color: '#1e1b4b', marginBottom: 12 }}>Your Journey Includes</Text>
                   {[
-                    { icon: '🧭', title: 'Purpose Discovery', desc: 'Guided exercises to uncover what truly drives you beyond conventional success metrics.' },
-                    { icon: '🗺️', title: 'Curated Coaching Journeys', desc: 'Multi-week structured journeys with lessons, reflections, and milestones.' },
-                    { icon: '🌱', title: 'Life Design Framework', desc: 'Build a holistic plan that integrates your professional goals with personal fulfillment.' },
-                    { icon: '💡', title: 'Insight & Reflection', desc: 'Regular prompts and guided reflections to deepen your self-awareness and clarity.' },
+                    { title: 'Purpose Discovery', desc: 'Guided exercises to uncover what truly drives you beyond conventional success metrics.' },
+                    { title: 'Curated Coaching Journeys', desc: 'Multi-week structured journeys with lessons, reflections, and milestones.' },
+                    { title: 'Life Design Framework', desc: 'Build a holistic plan that integrates your professional goals with personal fulfillment.' },
+                    { title: 'Insight & Reflection', desc: 'Regular prompts and guided reflections to deepen your self-awareness and clarity.' },
                   ].map((item) => (
                     <View key={item.title} style={{ flexDirection: 'row' as const, marginBottom: 14, alignItems: 'flex-start' as const }}>
-                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#fdf2f8', alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 12 }}>
-                        <Text style={{ fontSize: 16 }}>{item.icon}</Text>
-                      </View>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#be185d', marginRight: 12, marginTop: 7 }} />
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#1e1b4b', marginBottom: 2 }}>{item.title}</Text>
                         <Text style={{ fontSize: 12.5, color: '#64748b', lineHeight: 18 }}>{item.desc}</Text>
@@ -9418,17 +9471,16 @@ export default function KPIDashboardScreen({
                 {/* Section nav */}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cwfNavScroll} contentContainerStyle={styles.cwfNavRow}>
                   {([
-                    { key: 'journeys' as const, icon: '📘', label: 'Journeys' },
-                    { key: 'clients' as const, icon: '👥', label: 'People' },
-                    { key: 'cohorts' as const, icon: '🏷', label: 'Cohorts' },
-                    { key: 'segments' as const, icon: '🎯', label: 'Segments' },
+                    { key: 'journeys' as const, label: 'Journeys' },
+                    { key: 'clients' as const, label: 'People' },
+                    { key: 'cohorts' as const, label: 'Cohorts' },
+                    { key: 'segments' as const, label: 'Segments' },
                   ]).map((sec) => (
                     <TouchableOpacity
                       key={sec.key}
                       style={[styles.cwfNavBtn, coachWorkflowSection === sec.key && styles.cwfNavBtnActive]}
                       onPress={() => setCoachWorkflowSection(sec.key)}
                     >
-                      <Text style={styles.cwfNavIcon}>{sec.icon}</Text>
                       <Text style={[styles.cwfNavLabel, coachWorkflowSection === sec.key && styles.cwfNavLabelActive]}>{sec.label}</Text>
                     </TouchableOpacity>
                   ))}
@@ -9489,7 +9541,7 @@ export default function KPIDashboardScreen({
                                   });
                                 }}
                               >
-                                <Text style={styles.cwfActionChipBroadcastText}>📣 Broadcast</Text>
+                                <Text style={styles.cwfActionChipBroadcastText}>Broadcast</Text>
                               </TouchableOpacity>
                             </View>
 
@@ -9633,7 +9685,7 @@ export default function KPIDashboardScreen({
                                 });
                               }}
                             >
-                              <Text style={styles.cwfActionChipBroadcastText}>📣 Broadcast</Text>
+                              <Text style={styles.cwfActionChipBroadcastText}>Broadcast</Text>
                             </TouchableOpacity>
                           </View>
                           {cohort.my_membership_role && (
@@ -9673,7 +9725,7 @@ export default function KPIDashboardScreen({
                               });
                             }}
                           >
-                            <Text style={styles.cwfActionChipText}>{seg.status === 'live' ? '📣 Broadcast to Segment' : 'Not Available Yet'}</Text>
+                            <Text style={styles.cwfActionChipText}>{seg.status === 'live' ? 'Broadcast to Segment' : 'Not Available Yet'}</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -9734,7 +9786,7 @@ export default function KPIDashboardScreen({
                   <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 14 }}>
                     <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: '#4338ca', alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 14 }}>
                       <Text style={{ fontSize: 18, fontWeight: '700' as const, color: '#ffffff' }}>
-                        {coachActiveEngagement?.coach?.name ? coachActiveEngagement.coach.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() : '🎯'}
+                        {coachActiveEngagement?.coach?.name ? coachActiveEngagement.coach.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() : 'C'}
                       </Text>
                     </View>
                     <View style={{ flex: 1 }}>
@@ -9774,17 +9826,16 @@ export default function KPIDashboardScreen({
                 {/* Quick Actions Grid */}
                 <View style={{ flexDirection: 'row' as const, flexWrap: 'wrap' as const, marginHorizontal: 12, marginTop: 12, gap: 8 }}>
                   {[
-                    { icon: '💬', label: 'Messages', screen: 'coach_direct_comms' as CoachTabScreen },
-                    { icon: '📹', label: 'Video Session', screen: 'coach_video_session' as CoachTabScreen },
-                    { icon: '🎯', label: 'Goals & Tasks', screen: 'coach_goals_tasks' as CoachTabScreen },
-                    { icon: '📚', label: 'Content', screen: 'coach_content_library' as CoachTabScreen },
+                    { label: 'Messages', screen: 'coach_direct_comms' as CoachTabScreen },
+                    { label: 'Video Session', screen: 'coach_video_session' as CoachTabScreen },
+                    { label: 'Goals & Tasks', screen: 'coach_goals_tasks' as CoachTabScreen },
+                    { label: 'Content', screen: 'coach_content_library' as CoachTabScreen },
                   ].map((action) => (
                     <TouchableOpacity
                       key={action.label}
                       onPress={() => setCoachTabScreen(action.screen)}
-                      style={{ width: '47%' as any, backgroundColor: '#ffffff', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', flexDirection: 'row' as const, alignItems: 'center' as const }}
+                      style={{ width: '47%' as any, backgroundColor: '#ffffff', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', alignItems: 'center' as const, justifyContent: 'center' as const }}
                     >
-                      <Text style={{ fontSize: 18, marginRight: 8 }}>{action.icon}</Text>
                       <Text style={{ fontSize: 13, fontWeight: '600' as const, color: '#334155' }}>{action.label}</Text>
                     </TouchableOpacity>
                   ))}
@@ -9800,7 +9851,7 @@ export default function KPIDashboardScreen({
                     </View>
                   ) : !coachingJourneys || coachingJourneys.length === 0 ? (
                     <View style={{ backgroundColor: '#f8fafc', borderRadius: 12, padding: 20, alignItems: 'center' as const }}>
-                      <Text style={{ fontSize: 32, marginBottom: 8 }}>📘</Text>
+                      <Text style={{ fontSize: 16, fontWeight: '700' as const, color: '#94a3b8', marginBottom: 8 }}>No Journeys</Text>
                       <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#334155', marginBottom: 4 }}>No journeys yet</Text>
                       <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center' as const }}>Your coach will assign journeys to guide your growth.</Text>
                     </View>
@@ -9863,7 +9914,7 @@ export default function KPIDashboardScreen({
                       <View key={assignment.id} style={styles.coachGoalCard}>
                         <View style={styles.coachGoalCardHeader}>
                           <Text style={styles.coachGoalCardType}>
-                            {assignment.type === 'personal_goal' ? '🎯' : assignment.type === 'team_leader_goal' ? '👥' : assignment.type === 'coach_goal' ? '🏅' : assignment.type === 'personal_task' ? '✅' : '📋'}
+                            {assignment.type === 'personal_goal' ? 'Goal' : assignment.type === 'team_leader_goal' ? 'Team' : assignment.type === 'coach_goal' ? 'Coach' : assignment.type === 'personal_task' ? 'Task' : 'Item'}
                           </Text>
                           <Text style={styles.coachGoalCardTitle}>{assignment.title}</Text>
                         </View>
@@ -10986,11 +11037,12 @@ export default function KPIDashboardScreen({
               };
               const teamPrimaryChallenge =
                 challengeListItems.find((item) => item.challengeModeLabel === 'Team') ?? challengeListItems[0] ?? null;
-              const teamIdentityName = teamRosterName ?? 'The Elite Group';
+              const teamIdentityName = teamRosterName ?? 'Team';
               const openTeamCommsHandoff = (source: CoachingShellEntrySource) => {
                 setTeamCommsHandoffError(null);
                 const allChannelRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
                 const currentTeamContextIdRaw =
+                  resolveCurrentTeamContextId() ??
                   teamPrimaryChallenge?.raw?.team_id ??
                   teamChallengeRowsForSurface.find((item) => item.raw?.team_id)?.raw?.team_id ??
                   null;
@@ -11219,17 +11271,55 @@ export default function KPIDashboardScreen({
               const currentCategoryEmojis = teamAvatarCategories[teamIdentityAvatarCategory]?.emojis ?? teamAvatarCategories.power.emojis;
 
               const openTeamIdentityEditor = () => {
+                setTeamIdentityDraftName(teamIdentityName);
                 setTeamIdentityDraftAvatar(teamIdentityAvatar);
                 setTeamIdentityDraftBackground(teamIdentityBackground);
                 setTeamIdentityAvatarCategory('power');
                 setTeamIdentityEditOpen(true);
               };
-              const saveTeamIdentityEdits = () => {
+              const saveTeamIdentityEdits = async () => {
+                const token = session?.access_token;
+                const teamId = resolveCurrentTeamContextId();
+                const normalizedName = teamIdentityDraftName.trim();
+                if (!normalizedName) {
+                  Alert.alert('Team name required', 'Enter a team name before saving.');
+                  return;
+                }
+                if (!token || !teamId) {
+                  Alert.alert('Unable to save', 'Team context is unavailable. Refresh and try again.');
+                  return;
+                }
+                setTeamIdentitySaveBusy(true);
                 setTeamIdentityAvatar(teamIdentityDraftAvatar);
                 setTeamIdentityBackground(teamIdentityDraftBackground);
-                setTeamIdentityEditOpen(false);
+                try {
+                  const response = await fetch(`${API_URL}/teams/${encodeURIComponent(teamId)}`, {
+                    method: 'PATCH',
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ name: normalizedName }),
+                  });
+                  const payload = (await response.json().catch(() => ({}))) as { error?: string; team?: { name?: string | null } };
+                  if (!response.ok) {
+                    const fallback = `Team update failed (${response.status})`;
+                    const message = getApiErrorMessage(payload, fallback);
+                    Alert.alert('Unable to save team identity', message);
+                    return;
+                  }
+                  const savedName = String(payload.team?.name ?? normalizedName).trim();
+                  setTeamRosterName(savedName || normalizedName);
+                  setTeamIdentityEditOpen(false);
+                } catch (err) {
+                  const message = err instanceof Error ? err.message : 'Failed to save team identity';
+                  Alert.alert('Unable to save team identity', message);
+                } finally {
+                  setTeamIdentitySaveBusy(false);
+                }
               };
               const cancelTeamIdentityEdits = () => {
+                if (teamIdentitySaveBusy) return;
                 setTeamIdentityEditOpen(false);
               };
 
@@ -11296,7 +11386,9 @@ export default function KPIDashboardScreen({
                               style={styles.teamIdentityControlSecondaryBtn}
                               onPress={() => {
                                 setTeamIdentityControlsOpen(false);
-                                setTeamFlowScreen('kpi_settings');
+                                setTeamFlowScreen('dashboard');
+                                setTeamFocusEditorFilter('PC');
+                                setTeamFocusEditorOpen(true);
                               }}
                               disabled={teamMembershipMutationBusy || teamInviteCodeBusy}
                             >
@@ -11367,10 +11459,19 @@ export default function KPIDashboardScreen({
                           <View style={styles.teamIdentityEditPreviewCircle}>
                             <Text style={styles.teamIdentityEditPreviewGlyph}>{teamIdentityDraftAvatar}</Text>
                           </View>
-                          <Text style={styles.teamIdentityEditPreviewName}>{teamIdentityName}</Text>
+                          <Text style={styles.teamIdentityEditPreviewName}>{teamIdentityDraftName.trim() || teamIdentityName}</Text>
                         </View>
 
                         <ScrollView style={styles.teamIdentityEditScrollArea} showsVerticalScrollIndicator={false}>
+                          <Text style={styles.teamIdentityEditSectionLabel}>Team Name</Text>
+                          <TextInput
+                            value={teamIdentityDraftName}
+                            onChangeText={setTeamIdentityDraftName}
+                            editable={!teamIdentitySaveBusy}
+                            placeholder="Enter team name"
+                            placeholderTextColor="#8290a9"
+                            style={styles.teamIdentityEditNameInput}
+                          />
                           <Text style={styles.teamIdentityEditSectionLabel}>Choose Avatar</Text>
                           <View style={styles.teamIdentityEditCategoryRow}>
                             {Object.entries(teamAvatarCategories).map(([catKey, cat]) => {
@@ -11433,11 +11534,21 @@ export default function KPIDashboardScreen({
                         </ScrollView>
 
                         <View style={styles.teamIdentityEditActions}>
-                          <TouchableOpacity style={styles.teamIdentityEditCancelBtn} onPress={cancelTeamIdentityEdits}>
+                          <TouchableOpacity
+                            style={[styles.teamIdentityEditCancelBtn, teamIdentitySaveBusy && styles.disabled]}
+                            onPress={cancelTeamIdentityEdits}
+                            disabled={teamIdentitySaveBusy}
+                          >
                             <Text style={styles.teamIdentityEditCancelBtnText}>Cancel</Text>
                           </TouchableOpacity>
-                          <TouchableOpacity style={styles.teamIdentityEditSaveBtn} onPress={saveTeamIdentityEdits}>
-                            <Text style={styles.teamIdentityEditSaveBtnText}>Save</Text>
+                          <TouchableOpacity
+                            style={[styles.teamIdentityEditSaveBtn, teamIdentitySaveBusy && styles.disabled]}
+                            onPress={() => void saveTeamIdentityEdits()}
+                            disabled={teamIdentitySaveBusy}
+                          >
+                            <Text style={styles.teamIdentityEditSaveBtnText}>
+                              {teamIdentitySaveBusy ? 'Saving…' : 'Save'}
+                            </Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -13077,11 +13188,15 @@ export default function KPIDashboardScreen({
             const selectedChannelResolvedName = selectedChannelRow?.name ?? selectedChannelName ?? null;
             const selectedChannelType = String(selectedChannelRow?.type ?? '').toLowerCase();
             const selectedChannelScope = normalizeChannelTypeToScope(selectedChannelRow?.type) ?? 'community';
-            const selectedChannelDisplayName =
-              selectedChannelScope === 'team' && coachingShellContext.threadHeaderDisplayName
-                ? coachingShellContext.threadHeaderDisplayName
-                : selectedChannelResolvedName;
             const selectedDmDirectoryMember = resolveDmDirectoryMemberFromRow(selectedChannelRow);
+            const selectedChannelDisplayName =
+              selectedDmDirectoryMember != null
+                ? selectedDmDirectoryMember.name
+                : selectedChannelScope === 'team' && coachingShellContext.threadHeaderDisplayName
+                  ? coachingShellContext.threadHeaderDisplayName
+                  : selectedChannelType === 'direct' || selectedChannelType === 'dm'
+                    ? deriveDmNameFromChannel(selectedChannelResolvedName ?? '')
+                    : selectedChannelResolvedName;
             const headerAvatarKind: 'dm' | 'team' | 'channel' =
               selectedDmDirectoryMember != null ? 'dm' : selectedChannelScope === 'team' ? 'team' : 'channel';
             const headerAvatarLabel =
@@ -13362,15 +13477,23 @@ export default function KPIDashboardScreen({
                       broadcastAudienceLabel: null,
                       broadcastRoleAllowed: false,
                     })}
-                    onBack={() => openCoachingShell('inbox_channels', {
-                      source: 'user_tab',
-                      preferredChannelScope: null,
-                      preferredChannelLabel: null,
-                      threadTitle: null,
-                      threadSub: null,
-                      broadcastAudienceLabel: null,
-                      broadcastRoleAllowed: false,
-                    })}
+                    onBack={() => {
+                      const source = coachingShellContext.source;
+                      if (source === 'team_leader_dashboard' || source === 'team_member_dashboard') {
+                        setActiveTab('team');
+                        setTeamFlowScreen('dashboard');
+                        return;
+                      }
+                      openCoachingShell('inbox_channels', {
+                        source: 'user_tab',
+                        preferredChannelScope: null,
+                        preferredChannelLabel: null,
+                        threadTitle: null,
+                        threadSub: null,
+                        broadcastAudienceLabel: null,
+                        broadcastRoleAllowed: false,
+                      });
+                    }}
                     headerAvatarLabel={headerAvatarLabel}
                     headerAvatarTone={headerAvatarTone}
                     headerAvatarKind={headerAvatarKind}
@@ -14239,6 +14362,43 @@ export default function KPIDashboardScreen({
                                   <Text style={styles.coachingJourneyRowMeta}>
                                     {Number(journey.milestones_count ?? 0)} milestones • {lessonsCompleted}/{lessonsTotal} lessons completed
                                   </Text>
+                                  {isCoachRuntimeOperator && String(journey.created_by ?? '') === String(session?.user?.id ?? '') ? (
+                                    <TouchableOpacity
+                                      style={{
+                                        marginTop: 8,
+                                        flexDirection: 'row' as const,
+                                        alignItems: 'center' as const,
+                                        alignSelf: 'flex-start' as const,
+                                        backgroundColor: journeyInviteCopiedId === String(journey.id) ? '#dcfce7' : '#eef2ff',
+                                        borderRadius: 6,
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 5,
+                                      }}
+                                      onPress={async () => {
+                                        const jid = String(journey.id);
+                                        const existingCode = journeyInviteCodes[jid];
+                                        const code = existingCode || await fetchJourneyInviteCode(jid);
+                                        if (code) {
+                                          const link = `compass.app/journey/${code}`;
+                                          setJourneyInviteCopiedId(jid);
+                                          setTimeout(() => setJourneyInviteCopiedId(null), 2200);
+                                          void Alert.alert('Journey Invite Link', link, [{ text: 'OK' }]);
+                                        }
+                                      }}
+                                    >
+                                      <Text style={{
+                                        fontSize: 11,
+                                        fontWeight: '600' as const,
+                                        color: journeyInviteCopiedId === String(journey.id) ? '#16a34a' : '#4338ca',
+                                      }}>
+                                        {journeyInviteLoading === String(journey.id)
+                                          ? 'Loading…'
+                                          : journeyInviteCopiedId === String(journey.id)
+                                            ? 'Link Ready'
+                                            : 'Share Invite'}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  ) : null}
                                 </View>
                                 <View style={styles.coachingJourneyRowMetricWrap}>
                                   <Text style={styles.coachingJourneyRowMetric}>{pct}%</Text>
@@ -14363,7 +14523,7 @@ export default function KPIDashboardScreen({
                                         });
                                       }}
                                     >
-                                      <Text style={styles.cwfJourneyMembersBroadcastText}>📣 Broadcast</Text>
+                                      <Text style={styles.cwfJourneyMembersBroadcastText}>Broadcast</Text>
                                     </TouchableOpacity>
                                   )}
                                 </View>
@@ -14432,7 +14592,7 @@ export default function KPIDashboardScreen({
                                 onPress={() => setJbShowAssetLibrary((prev) => !prev)}
                               >
                                 <Text style={[styles.jbActionBtnText, styles.jbActionBtnSecondaryText]}>
-                                  {jbShowAssetLibrary ? '✕ Close Library' : '📚 Asset Library'}
+                                  {jbShowAssetLibrary ? 'Close Library' : 'Asset Library'}
                                 </Text>
                               </TouchableOpacity>
                             </View>
@@ -14626,7 +14786,7 @@ export default function KPIDashboardScreen({
                                             )}
                                             {assetInfo && (
                                               <View style={styles.jbTaskAssetBadge}>
-                                                <Text style={styles.jbTaskAssetBadgeText} numberOfLines={1}>📎 {assetInfo.title}</Text>
+                                                <Text style={styles.jbTaskAssetBadgeText} numberOfLines={1}>{assetInfo.title}</Text>
                                               </View>
                                             )}
                                           </View>
@@ -18079,6 +18239,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 8,
+  },
+  teamIdentityEditNameInput: {
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#cdd7e5',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    color: '#1e2430',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 12,
   },
   teamIdentityEditCategoryRow: {
     flexDirection: 'row',

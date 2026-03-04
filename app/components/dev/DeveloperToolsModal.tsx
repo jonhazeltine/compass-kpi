@@ -103,8 +103,9 @@ export default function DeveloperToolsModal({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+      <View style={styles.backdrop}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
+        <View style={styles.sheet}>
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.title}>Developer Tools</Text>
@@ -116,7 +117,12 @@ export default function DeveloperToolsModal({ visible, onClose }: Props) {
           </View>
           <Text style={styles.statusText}>{actionStatus}</Text>
           <Text style={styles.metaText}>Current user: {session?.user?.email ?? 'none'}</Text>
-          <ScrollView style={styles.scroller} contentContainerStyle={styles.scrollerInner}>
+          <ScrollView
+            style={styles.scroller}
+            contentContainerStyle={styles.scrollerInner}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+          >
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Persona Sessions</Text>
               {personaKeys.map((personaKey) => (
@@ -204,8 +210,8 @@ export default function DeveloperToolsModal({ visible, onClose }: Props) {
               </View>
             ) : null}
           </ScrollView>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
