@@ -14713,7 +14713,7 @@ export default function KPIDashboardScreen({
       ))} 
 
       {showUniversalAvatarTrigger ? (
-        <View style={[styles.avatarGlobalWrap, { top: Math.max(8, insets.top + 4) }]}>
+        <View style={styles.avatarGlobalWrap}>
           <TouchableOpacity
             style={styles.avatarBtn}
             accessibilityRole="button"
@@ -22684,6 +22684,7 @@ const styles = StyleSheet.create({
   },
   avatarGlobalWrap: {
     position: 'absolute',
+    top: 8,
     right: 16,
     zIndex: 1600,
     elevation: 20,
