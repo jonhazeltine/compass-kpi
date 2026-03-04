@@ -6060,19 +6060,6 @@ export default function KPIDashboardScreen({
     () => (isSoloPersona ? ['comms', 'challenge', 'home', 'logs', 'coach'] : ['comms', 'team', 'home', 'logs', 'coach']),
     [isSoloPersona]
   );
-  const isTeamLeaderCreatorParticipant = useMemo(
-    () => teamPersonaVariant === 'leader' || runtimeRoleSignals.some((signal) => signal.includes('lead') || signal.includes('manager')),
-    [runtimeRoleSignals, teamPersonaVariant]
-  );
-  const challengeCreateAllowed = entitlementFlag('can_start_challenges', true);
-  const challengeMemberListItems = useMemo(
-    () =>
-      challengeListItems.filter((item) =>
-        challengeMemberListTab === 'all' ? true : item.bucket === 'completed'
-      ),
-    [challengeListItems, challengeMemberListTab]
-  );
-  const challengeListItemsForPersona = teamPersonaVariant === 'member' ? challengeMemberListItems : challengeFilteredListItems;
   const currentUserTeamRoleFromRoster = useMemo<'leader' | 'member' | null>(() => {
     const sessionUserId = String(session?.user?.id ?? '').trim();
     if (!sessionUserId) return null;
@@ -6086,6 +6073,22 @@ export default function KPIDashboardScreen({
     return null;
   }, [session?.user?.id, teamRosterMembers]);
   const effectiveTeamPersonaVariant = currentUserTeamRoleFromRoster ?? teamPersonaVariant;
+  const isTeamLeaderCreatorParticipant = useMemo(
+    () =>
+      effectiveTeamPersonaVariant === 'leader' ||
+      runtimeRoleSignals.some((signal) => signal.includes('lead') || signal.includes('manager')),
+    [effectiveTeamPersonaVariant, runtimeRoleSignals]
+  );
+  const challengeCreateAllowed = entitlementFlag('can_start_challenges', true);
+  const challengeMemberListItems = useMemo(
+    () =>
+      challengeListItems.filter((item) =>
+        challengeMemberListTab === 'all' ? true : item.bucket === 'completed'
+      ),
+    [challengeListItems, challengeMemberListTab]
+  );
+  const challengeListItemsForPersona =
+    effectiveTeamPersonaVariant === 'member' ? challengeMemberListItems : challengeFilteredListItems;
   const challengeStateRows = useMemo(
     () => ({
       active: challengeListItemsForPersona.filter((item) => item.bucket === 'active'),
@@ -6137,96 +6140,41 @@ export default function KPIDashboardScreen({
   const teamRuntimeId = useMemo(() => {
     return teamRuntimeCandidateIds[0] ?? null;
   }, [teamRuntimeCandidateIds]);
-  const fallbackTeamMemberDirectory = useMemo<TeamDirectoryMember[]>(
-    () => [
-      {
-        id: 'member-sarah-johnson',
-        userId: null,
-        name: 'Sarah Johnson',
-        metric: '98%',
-        sub: '8 KPIs logged',
-        roleLabel: 'Team Lead',
-        avatarTone: '#e8dfcc',
-        email: 'sarah@company.com',
-        phone: '(616) 555-0139',
-        coachingGoals: ['Lead weekly role-play session', 'Coach 2 listing scripts this week'],
-        kpiGoals: ['PC: 12 appointments', 'GP: 8 nurture touches', 'VP: 5 follow-up reviews'],
-        cohorts: ['Q1 Acceleration Cohort'],
-        journeys: ['Listing Mastery Sprint'],
-        onboardingKpiGoals: { PC: 82, GP: 78, VP: 74 },
-        profileKpiGoals: { PC: 88, GP: 84, VP: 80 },
-      },
-      {
-        id: 'member-alex-rodriguez',
-        userId: null,
-        name: 'Alex Rodriguez',
-        metric: '92%',
-        sub: '8 KPIs logged',
-        roleLabel: 'Member',
-        avatarTone: '#f1cb66',
-        email: 'alex@company.com',
-        phone: '(616) 555-0144',
-        coachingGoals: ['Finish objection handling lesson', 'Post 3 accountability updates'],
-        kpiGoals: ['PC: 9 appointments', 'GP: 12 prospecting calls', 'VP: 4 open house follow-ups'],
-        cohorts: ['Q1 Acceleration Cohort'],
-        journeys: ['Prospecting Fundamentals'],
-        onboardingKpiGoals: { PC: 76, GP: 74 },
-        profileKpiGoals: { PC: 83, GP: 81, VP: 78 },
-      },
-      {
-        id: 'member-james-mateo',
-        userId: null,
-        name: 'James Mateo',
-        metric: '90%',
-        sub: 'sarah@company.com',
-        roleLabel: 'Team Lead',
-        avatarTone: '#dfc2a4',
-        email: 'james@company.com',
-        phone: '(616) 555-0191',
-        coachingGoals: ['Run pipeline checkpoint', 'Complete sponsor channel recap'],
-        kpiGoals: ['PC: 7 closings', 'GP: 10 nurture touches', 'VP: 6 reactivation outreaches'],
-        cohorts: ['Listing Ops Cohort'],
-        journeys: ['Pipeline Confidence Builder'],
-        onboardingKpiGoals: { PC: 74, VP: 70 },
-        profileKpiGoals: { PC: 81, GP: 79, VP: 76 },
-      },
-    ],
-    []
-  );
   const teamMemberDirectory = useMemo<TeamDirectoryMember[]>(() => {
-    if (!Array.isArray(teamRosterMembers) || teamRosterMembers.length === 0) {
-      return fallbackTeamMemberDirectory;
-    }
-    const seedByName = new Map(
-      fallbackTeamMemberDirectory.map((row) => [
-        String(row.name).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(),
-        row,
-      ] as const)
-    );
+    if (!Array.isArray(teamRosterMembers) || teamRosterMembers.length === 0) return [];
     const sortedRosterRows = [...teamRosterMembers].sort((a, b) => {
       const aIsLeader = String(a.role ?? '').toLowerCase().includes('lead');
       const bIsLeader = String(b.role ?? '').toLowerCase().includes('lead');
       if (aIsLeader !== bIsLeader) return aIsLeader ? -1 : 1;
       return String(a.full_name ?? '').localeCompare(String(b.full_name ?? ''));
     });
+    const avatarTones = ['#e8dfcc', '#f1cb66', '#dfc2a4', '#d3e2f8', '#cde8d7', '#e9d6f0'] as const;
     return sortedRosterRows.map((member, idx) => {
       const userId = String(member.user_id ?? '').trim();
       const name = String(member.full_name ?? '').trim() || `Team Member ${idx + 1}`;
       const roleRaw = String(member.role ?? '').toLowerCase();
       const roleLabel = roleRaw.includes('lead') ? 'Team Lead' : 'Member';
-      const seed = seedByName.get(name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()) ?? fallbackTeamMemberDirectory[idx % fallbackTeamMemberDirectory.length];
+      const displayEmail = member.email ? String(member.email) : 'Email unavailable';
+      const dialSuffix = String((1000 + idx * 17) % 9000).padStart(4, '0');
       return {
-        ...seed,
-        id: userId || seed.id,
+        id: userId || `team-member-${idx + 1}`,
         userId: userId || null,
         name,
         roleLabel,
-        avatarTone: seed.avatarTone,
-        email: member.email ? String(member.email) : seed.email,
-        sub: seed.sub,
+        metric: '0%',
+        sub: displayEmail,
+        avatarTone: avatarTones[idx % avatarTones.length],
+        email: displayEmail,
+        phone: `(000) 000-${dialSuffix}`,
+        coachingGoals: [],
+        kpiGoals: [],
+        cohorts: [],
+        journeys: [],
+        onboardingKpiGoals: {},
+        profileKpiGoals: {},
       };
     });
-  }, [fallbackTeamMemberDirectory, teamRosterMembers]);
+  }, [teamRosterMembers]);
   const challengeSelected =
     challengeListItems.find((item) => item.id === challengeSelectedId) ?? challengeListItems[0];
   const challengeScopedKpis = useMemo(
@@ -6803,7 +6751,7 @@ export default function KPIDashboardScreen({
   ]);
   const challengeListUsingPlaceholderRows = !Array.isArray(challengeApiRows) || challengeApiRows.length === 0;
   const challengeDetailsSurfaceLabel =
-    teamPersonaVariant === 'member'
+    effectiveTeamPersonaVariant === 'member'
       ? challengeIsCompleted
         ? 'Challenge Results'
         : 'Challenge Details'
@@ -6838,7 +6786,7 @@ export default function KPIDashboardScreen({
           ? 'Join now to be ready when this challenge starts.'
         : 'Join to track progress and appear on the leaderboard.';
   const challengeMemberResultsRequiresUpgrade =
-    teamPersonaVariant === 'member' && challengeIsCompleted && !challengeSelected?.joined;
+    effectiveTeamPersonaVariant === 'member' && challengeIsCompleted && !challengeSelected?.joined;
   const openCoachingShell = useCallback((screen: CoachingShellScreen, contextPatch?: Partial<CoachingShellContext>) => {
     const resolvedScreen: CoachingShellScreen = screen === 'inbox' ? 'inbox_channels' : screen;
     setCoachingShellScreen(resolvedScreen);
@@ -10056,7 +10004,7 @@ export default function KPIDashboardScreen({
                       ? renderKnownLimitedDataChip('preview rows only')
                       : null}
 
-                  {teamPersonaVariant !== 'member' ? (
+                  {effectiveTeamPersonaVariant !== 'member' ? (
                   <View style={styles.challengeListFilterRow}>
                     {([
                       { key: 'all', label: 'All' },
@@ -10078,7 +10026,7 @@ export default function KPIDashboardScreen({
                     })}
                   </View>
                   ) : null}
-                  {teamPersonaVariant !== 'member' && challengeListFilter === 'sponsored' && !challengeHasSponsorSignal
+                  {effectiveTeamPersonaVariant !== 'member' && challengeListFilter === 'sponsored' && !challengeHasSponsorSignal
                     ? renderKnownLimitedDataChip('sponsor flag coverage')
                     : null}
 
@@ -10897,44 +10845,48 @@ export default function KPIDashboardScreen({
             {(() => {
               const teamRouteMeta: Record<Exclude<TeamFlowScreen, 'dashboard'>, { title: string; figmaNode: string }> = {
                 invite_member: { title: 'Invite Member', figmaNode: '173-4448' },
-                pending_invitations: { title: teamPersonaVariant === 'member' ? 'Pending Invites' : 'Pending Invitations', figmaNode: '173-4612' },
-                kpi_settings: { title: teamPersonaVariant === 'member' ? 'Team KPI Setting' : 'Team KPI Settings', figmaNode: '173-4531' },
+                pending_invitations: {
+                  title: effectiveTeamPersonaVariant === 'member' ? 'Pending Invites' : 'Pending Invitations',
+                  figmaNode: '173-4612',
+                },
+                kpi_settings: {
+                  title: effectiveTeamPersonaVariant === 'member' ? 'Team KPI Setting' : 'Team KPI Settings',
+                  figmaNode: '173-4531',
+                },
                 pipeline: { title: 'Pipeline', figmaNode: '168-16300' },
                 team_challenges: {
-                  title: teamPersonaVariant === 'member' ? 'Team Challenges' : 'Single Person Challenges',
-                  figmaNode: teamPersonaVariant === 'member' ? '389-21273' : '173-4905',
+                  title: effectiveTeamPersonaVariant === 'member' ? 'Team Challenges' : 'Single Person Challenges',
+                  figmaNode: effectiveTeamPersonaVariant === 'member' ? '389-21273' : '173-4905',
                 },
               };
 
               const teamMembers = teamMemberDirectory;
 
-              const teamInviteHistory = [
-                { name: 'Sarah Johnson', status: 'Pending', statusTone: 'pending', action: 'send' },
-                { name: 'Philip Antony', status: 'Joined', statusTone: 'joined', action: 'check' },
-                { name: 'James Matew', status: 'Declined', statusTone: 'declined', action: 'send' },
-              ] as const;
-              const teamPendingRows = [
-                { name: 'Sarah Johnson', email: 'sarah@company.com', sentAt: 'Sent on Oct 30, 2025', status: 'Pending' },
-                { name: 'Philip Antony', email: 'philip@company.com', sentAt: 'Sent on Oct 30, 2025', status: 'Expired' },
-              ] as const;
+              const teamInviteHistory: Array<{
+                name: string;
+                status: string;
+                statusTone: 'pending' | 'joined' | 'declined';
+                action: 'send' | 'check';
+              }> = [];
+              const teamPendingRows: Array<{
+                name: string;
+                email: string;
+                sentAt: string;
+                status: 'Pending' | 'Expired';
+              }> = [];
               const teamKpiSettingRows: Array<{
                 title: string;
                 sub: string;
                 enabled: boolean;
                 tone: 'mint' | 'sand' | 'lavender' | 'rose' | 'locked';
                 badge?: string;
-              }> = [
-                { title: 'Sphere Calls', sub: 'Daily outreach calls', enabled: true, tone: 'mint' },
-                { title: 'Appointments', sub: 'Client meetings scheduled', enabled: true, tone: 'sand' },
-                { title: 'Closing', sub: 'Completed transactions', enabled: true, tone: 'lavender' },
-                { title: 'Listing Taken', sub: 'New property listings', enabled: false, tone: 'rose' },
-                { title: 'Advanced Analytics', sub: 'Detailed performance', enabled: false, tone: 'locked', badge: 'Pro' },
-              ];
-              const teamPipelineRows = [
-                { name: 'Sarah Johnson', pending: 4, current: 3 },
-                { name: 'Philip Antony', pending: 4, current: 2 },
-                { name: 'James Matew', pending: 6, current: 1 },
-              ] as const;
+              }> = teamSurfaceKpis.slice(0, 8).map((kpi) => ({
+                title: kpi.name,
+                sub: `${kpi.type} focus KPI`,
+                enabled: teamFocusSelectedKpiIds.includes(String(kpi.id)),
+                tone: kpi.type === 'PC' ? 'mint' : kpi.type === 'GP' ? 'sand' : 'lavender',
+              }));
+              const teamPipelineRows: Array<{ name: string; pending: number; current: number }> = [];
               const teamChallengeRows = challengeListItems.filter(
                 (item) => item.challengeModeLabel === 'Team' || Boolean(item.raw?.team_id)
               );
@@ -11148,7 +11100,7 @@ export default function KPIDashboardScreen({
                   });
                 }
               };
-              const teamLeaderEscrowDeals = teamPipelineRows.reduce((sum, row) => sum + Math.max(0, Number(row.pending ?? 0)), 0);
+              const teamLeaderEscrowDeals = Math.max(0, Number(pipelineAnchorCounts.listings ?? 0) + Number(pipelineAnchorCounts.buyers ?? 0));
               const teamLeaderProjectedRevenue = Math.round(Math.max(0, Number(cardMetrics.projectedNext90 ?? 0)));
               const teamLeaderStatusCounts = teamLeaderRows.reduce(
                 (acc, row) => {
@@ -11241,10 +11193,10 @@ export default function KPIDashboardScreen({
                         )
                       }
                     >
-                      <Text style={styles.teamIdentityCardChatBtnText}>💬  Team Chat</Text>
+                      <Text style={styles.teamIdentityCardChatBtnText}>Team Chat</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.teamIdentityCardInviteCodeBtn} onPress={handleOpenInviteCodeEntry}>
-                      <Text style={styles.teamIdentityCardInviteCodeBtnText}>🎟</Text>
+                      <Text style={styles.teamIdentityCardInviteCodeBtnText}>Code</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.teamIdentityCardDetailsBtn}
@@ -11439,7 +11391,7 @@ export default function KPIDashboardScreen({
                           hideTypePill: true,
                           compactIcons: true,
                           trailingControl:
-                            teamPersonaVariant === 'leader' ? (
+                            effectiveTeamPersonaVariant === 'leader' ? (
                               <TouchableOpacity
                                 style={styles.teamFocusHeaderEditBtn}
                                 onPress={() => setTeamFocusEditorOpen((prev) => !prev)}
@@ -11944,7 +11896,7 @@ export default function KPIDashboardScreen({
 
               return (
                 <>
-                  {teamPersonaVariant === 'member' ? (
+                  {effectiveTeamPersonaVariant === 'member' ? (
                     <View style={styles.teamMemberDashboardWrap}>
                       {teamIdentityCard}
 
@@ -12271,11 +12223,11 @@ export default function KPIDashboardScreen({
                               onPress={() => {
                                 void openTeamDirectThread(
                                   selectedTeamProfile,
-                                  teamPersonaVariant === 'leader' ? 'team_leader_dashboard' : 'team_member_dashboard'
+                                  effectiveTeamPersonaVariant === 'leader' ? 'team_leader_dashboard' : 'team_member_dashboard'
                                 );
                               }}
                             >
-                              <Text style={styles.teamProfileDrawerDmBtnText}>💬  Message</Text>
+                              <Text style={styles.teamProfileDrawerDmBtnText}>Message</Text>
                             </TouchableOpacity>
                             {effectiveTeamPersonaVariant === 'leader' &&
                             selectedTeamProfile.userId &&
@@ -12889,12 +12841,13 @@ export default function KPIDashboardScreen({
             };
             const preferredChannelScope = coachingShellContext.preferredChannelScope;
             const sourceLabel = sourceLabelByKey[coachingShellContext.source];
-            const roleCanOpenBroadcast = isCoachRuntimeOperator || (teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime);
+            const roleCanOpenBroadcast =
+              isCoachRuntimeOperator || (effectiveTeamPersonaVariant === 'leader' && !isChallengeSponsorRuntime);
             const commsPersonaVariant: 'coach' | 'team_leader' | 'sponsor' | 'member' | 'solo' = isCoachRuntimeOperator
               ? 'coach'
               : isChallengeSponsorRuntime
                 ? 'sponsor'
-                : teamPersonaVariant === 'leader'
+                : effectiveTeamPersonaVariant === 'leader'
                   ? 'team_leader'
                   : runtimeRoleSignals.some((signal) => signal.includes('solo'))
                     ? 'solo'
@@ -12989,7 +12942,7 @@ export default function KPIDashboardScreen({
             const scopeFilteredDmRows = dmApiRows.filter(searchMatch);
             const broadcastTargetOptions: Array<'team' | 'cohort' | 'channel' | 'segment'> = isCoachRuntimeOperator
               ? ['team', 'cohort', 'channel', 'segment']
-              : teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime
+              : effectiveTeamPersonaVariant === 'leader' && !isChallengeSponsorRuntime
                 ? ['team', 'cohort', 'channel']
                 : [];
             const effectiveBroadcastTargetScope = broadcastTargetOptions.includes(broadcastTargetScope)
@@ -13398,7 +13351,9 @@ export default function KPIDashboardScreen({
                     mediaUploadStatus={mediaUploadStatus}
                     liveSessionBusy={liveSessionBusy}
                     liveSessionStatus={liveSessionStatus}
-                    canHostLiveSession={isCoachRuntimeOperator || (teamPersonaVariant === 'leader' && !isChallengeSponsorRuntime)}
+                    canHostLiveSession={
+                      isCoachRuntimeOperator || (effectiveTeamPersonaVariant === 'leader' && !isChallengeSponsorRuntime)
+                    }
                     onStartLiveSession={() => void startLiveSession(selectedChannelResolvedId)}
                     onRefreshLiveSession={() => void refreshLiveSession()}
                     onJoinLiveSession={() => void joinLiveSession()}
