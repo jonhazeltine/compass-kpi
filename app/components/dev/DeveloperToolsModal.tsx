@@ -220,8 +220,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    minHeight: '65%',
-    maxHeight: '92%',
+    height: '88%',
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 24,
@@ -267,6 +266,7 @@ const styles = StyleSheet.create({
   },
   scroller: {
     marginTop: 10,
+    flex: 1,
   },
   scrollerInner: {
     gap: 14,
