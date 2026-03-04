@@ -2435,11 +2435,15 @@ app.get("/api/coaching/journeys", async (req, res) => {
             return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
         if (!dataClient)
             return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok) {
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         }
         const access = accessResult.context;
+        const scope = parseCoachingScope(req.query.scope);
         const { data: journeys, error: journeysError } = await dataClient
             .from("journeys")
             .select("id,title,description,team_id,created_by,is_active,created_at")
@@ -2467,24 +2471,31 @@ app.get("/api/coaching/journeys", async (req, res) => {
             const teamId = String(j.team_id ?? "") || null;
             const createdBy = String(j.created_by ?? "");
             // Enrolled journeys are always visible
-            if (enrolledJourneyIds.has(jId))
-                return true;
-            // Coach-specific filtering: only own journeys + team journeys they belong to
-            if (access.role === "coach" && !access.platformAdmin) {
-                if (createdBy === auth.user.id)
-                    return true;
-                if (teamId && access.leaderTeamIds.has(teamId))
-                    return true;
-                if (teamId && access.memberTeamIds.has(teamId))
-                    return true;
+            const isEnrolled = enrolledJourneyIds.has(jId);
+            const isMine = createdBy === auth.user.id || isEnrolled;
+            const inTeamScope = Boolean(teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId)));
+            const canRead = canReadJourneyByTeam(access, teamId) || isMine;
+            if (!canRead)
                 return false;
-            }
-            return canReadJourneyByTeam(access, teamId);
+            if (scope === "my")
+                return isMine;
+            if (scope === "team")
+                return inTeamScope;
+            return true;
         });
         const journeyIds = visibleJourneys.map((j) => String(j.id));
         if (journeyIds.length === 0) {
             return res.json({
                 journeys: [],
+                requested_scope: scope,
+                access_context: {
+                    role: access.role,
+                    effective_roles: access.effectiveRoles,
+                    can_author_journeys: access.canAuthorGlobal || access.leaderTeamIds.size > 0,
+                    can_manage_cohorts: access.canManageCohorts,
+                    can_manage_channels: access.canManageChannels,
+                    can_global_view: access.canGlobalView,
+                },
                 notification_items: [],
                 notification_summary_read_model: buildNotificationSummaryReadModel({
                     items: [],
@@ -2554,8 +2565,17 @@ app.get("/api/coaching/journeys", async (req, res) => {
             const journeyId = String(j.id);
             const lessonsTotal = lessonCountByJourney.get(journeyId) ?? 0;
             const lessonsCompleted = completedLessonsByJourney.get(journeyId) ?? 0;
+            const teamId = String(j.team_id ?? "") || null;
+            const createdBy = String(j.created_by ?? "");
+            const ownership_scope = createdBy === auth.user.id
+                ? "mine"
+                : teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId))
+                    ? "team"
+                    : "global";
             return {
                 ...j,
+                ownership_scope,
+                requested_scope: scope,
                 milestones_count: milestoneCountByJourney.get(journeyId) ?? 0,
                 lessons_total: lessonsTotal,
                 lessons_completed: lessonsCompleted,
@@ -2566,6 +2586,15 @@ app.get("/api/coaching/journeys", async (req, res) => {
         const journeyNotificationItems = buildNotificationItemsForCoachingJourneys(journeyRows);
         return res.json({
             journeys: journeyRows,
+            requested_scope: scope,
+            access_context: {
+                role: access.role,
+                effective_roles: access.effectiveRoles,
+                can_author_journeys: access.canAuthorGlobal || access.leaderTeamIds.size > 0,
+                can_manage_cohorts: access.canManageCohorts,
+                can_manage_channels: access.canManageChannels,
+                can_global_view: access.canGlobalView,
+            },
             notification_items: journeyNotificationItems,
             notification_summary_read_model: buildNotificationSummaryReadModel({
                 items: journeyNotificationItems,
@@ -2590,7 +2619,10 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
             return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
         if (!dataClient)
             return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok) {
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         }
@@ -2686,7 +2718,10 @@ app.post("/api/coaching/journeys", async (req, res) => {
             return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
         }
         const payload = payloadCheck.payload;
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok) {
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         }
@@ -2743,7 +2778,10 @@ app.patch("/api/coaching/journeys/:id", async (req, res) => {
         if (journeyError || !journey) {
             return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
         }
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok) {
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         }
@@ -2800,7 +2838,10 @@ app.delete("/api/coaching/journeys/:id", async (req, res) => {
         if (journeyError || !journey) {
             return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
         }
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok) {
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         }
@@ -2844,7 +2885,10 @@ app.post("/api/coaching/journeys/:id/lessons", async (req, res) => {
             .maybeSingle();
         if (journeyError || !journey)
             return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok)
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         const teamId = String(journey.team_id ?? "") || null;
@@ -2915,7 +2959,10 @@ app.patch("/api/coaching/journeys/:id/lessons/:lessonId", async (req, res) => {
             .maybeSingle();
         if (journeyError || !journey)
             return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok)
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         const teamId = String(journey.team_id ?? "") || null;
@@ -2961,7 +3008,10 @@ app.delete("/api/coaching/journeys/:id/lessons/:lessonId", async (req, res) => {
             .maybeSingle();
         if (journeyError || !journey)
             return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok)
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         const teamId = String(journey.team_id ?? "") || null;
@@ -3003,7 +3053,10 @@ app.post("/api/coaching/journeys/:id/lessons/reorder", async (req, res) => {
             .maybeSingle();
         if (journeyError || !journey)
             return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok)
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         const teamId = String(journey.team_id ?? "") || null;
@@ -3068,7 +3121,10 @@ app.post("/api/coaching/journeys/:id/lessons/:lessonId/tasks", async (req, res) 
             .maybeSingle();
         if (journeyError || !journey)
             return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok)
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         const teamId = String(journey.team_id ?? "") || null;
@@ -3134,7 +3190,10 @@ app.patch("/api/coaching/journeys/:id/lessons/:lessonId/tasks/:taskId", async (r
             .maybeSingle();
         if (journeyError || !journey)
             return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok)
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         const teamId = String(journey.team_id ?? "") || null;
@@ -3191,7 +3250,10 @@ app.delete("/api/coaching/journeys/:id/lessons/:lessonId/tasks/:taskId", async (
             .maybeSingle();
         if (journeyError || !journey)
             return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok)
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         const teamId = String(journey.team_id ?? "") || null;
@@ -3234,7 +3296,10 @@ app.post("/api/coaching/journeys/:id/lessons/:lessonId/tasks/reorder", async (re
             .maybeSingle();
         if (journeyError || !journey)
             return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok)
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         const teamId = String(journey.team_id ?? "") || null;
@@ -3278,18 +3343,55 @@ app.get("/api/coaching/cohorts", async (req, res) => {
             return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
         if (!dataClient)
             return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok)
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         const access = accessResult.context;
+        const scope = parseCoachingScope(req.query.scope);
         let query = dataClient
             .from("teams")
             .select("id,name,created_by,created_at,updated_at")
             .order("created_at", { ascending: false });
-        if (!access.canAuthorGlobal) {
+        if (scope === "my") {
+            query = query.eq("created_by", auth.user.id);
+        }
+        else if (scope === "team") {
             const scopedTeamIds = Array.from(new Set([...access.leaderTeamIds, ...access.memberTeamIds]));
-            if (scopedTeamIds.length === 0)
-                return res.json({ cohorts: [] });
+            if (scopedTeamIds.length === 0) {
+                return res.json({
+                    cohorts: [],
+                    requested_scope: scope,
+                    access_context: {
+                        role: access.role,
+                        effective_roles: access.effectiveRoles,
+                        can_author_journeys: access.canAuthorGlobal || access.leaderTeamIds.size > 0,
+                        can_manage_cohorts: access.canManageCohorts,
+                        can_manage_channels: access.canManageChannels,
+                        can_global_view: access.canGlobalView,
+                    },
+                });
+            }
+            query = query.in("id", scopedTeamIds);
+        }
+        else if (!access.canGlobalView) {
+            const scopedTeamIds = Array.from(new Set([...access.leaderTeamIds, ...access.memberTeamIds]));
+            if (scopedTeamIds.length === 0) {
+                return res.json({
+                    cohorts: [],
+                    requested_scope: scope,
+                    access_context: {
+                        role: access.role,
+                        effective_roles: access.effectiveRoles,
+                        can_author_journeys: access.canAuthorGlobal || access.leaderTeamIds.size > 0,
+                        can_manage_cohorts: access.canManageCohorts,
+                        can_manage_channels: access.canManageChannels,
+                        can_global_view: access.canGlobalView,
+                    },
+                });
+            }
             query = query.in("id", scopedTeamIds);
         }
         const { data: teams, error: teamsError } = await query;
@@ -3320,15 +3422,34 @@ app.get("/api/coaching/cohorts", async (req, res) => {
             const teamId = String(team.id ?? "");
             const members = membersByTeam.get(teamId) ?? [];
             const myMembership = members.find((row) => row.user_id === auth.user.id);
+            const createdBy = String(team.created_by ?? "");
+            const ownership_scope = createdBy === auth.user.id
+                ? "mine"
+                : access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId)
+                    ? "team"
+                    : "global";
             return {
                 ...team,
+                ownership_scope,
+                requested_scope: scope,
                 members_count: members.length,
                 leaders_count: members.filter((row) => row.role === "team_leader").length,
                 member_user_ids: members.map((row) => row.user_id),
                 my_membership_role: myMembership?.role ?? null,
             };
         });
-        return res.json({ cohorts });
+        return res.json({
+            cohorts,
+            requested_scope: scope,
+            access_context: {
+                role: access.role,
+                effective_roles: access.effectiveRoles,
+                can_author_journeys: access.canAuthorGlobal || access.leaderTeamIds.size > 0,
+                can_manage_cohorts: access.canManageCohorts,
+                can_manage_channels: access.canManageChannels,
+                can_global_view: access.canGlobalView,
+            },
+        });
     }
     catch (err) {
         // eslint-disable-next-line no-console
@@ -3349,7 +3470,10 @@ app.put("/api/coaching/cohorts/:id/members", async (req, res) => {
         const payloadCheck = validateCoachingCohortMembershipUpdatePayload(req.body);
         if (!payloadCheck.ok)
             return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok)
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         if (!canWriteJourneyByTeam(accessResult.context, cohortId)) {
@@ -3421,10 +3545,14 @@ app.get("/api/coaching/channels", async (req, res) => {
             return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
         if (!dataClient)
             return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
-        const accessResult = await getCoachingAccessContext(auth.user.id);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
         if (!accessResult.ok)
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         const access = accessResult.context;
+        const scope = parseCoachingScope(req.query.scope);
         const { data: membershipRows, error: membershipError } = await dataClient
             .from("channel_memberships")
             .select("channel_id,user_id,role")
@@ -3438,7 +3566,7 @@ app.get("/api/coaching/channels", async (req, res) => {
             .select("id,type,name,team_id,context_id,is_active,created_at")
             .eq("is_active", true)
             .order("created_at", { ascending: false });
-        if (!access.canAuthorGlobal) {
+        if (!access.canGlobalView || scope === "team") {
             const scopedTeamIds = Array.from(new Set([...access.leaderTeamIds, ...access.memberTeamIds]));
             if (scopedTeamIds.length > 0) {
                 channelsQuery = channelsQuery.or(`team_id.in.(${scopedTeamIds.join(",")}),id.in.(${Array.from(directMemberChannelIds).join(",") || "00000000-0000-0000-0000-000000000000"})`);
@@ -3447,7 +3575,18 @@ app.get("/api/coaching/channels", async (req, res) => {
                 channelsQuery = channelsQuery.in("id", Array.from(directMemberChannelIds));
             }
             else {
-                return res.json({ channels: [] });
+                return res.json({
+                    channels: [],
+                    requested_scope: scope,
+                    access_context: {
+                        role: access.role,
+                        effective_roles: access.effectiveRoles,
+                        can_author_journeys: access.canAuthorGlobal || access.leaderTeamIds.size > 0,
+                        can_manage_cohorts: access.canManageCohorts,
+                        can_manage_channels: access.canManageChannels,
+                        can_global_view: access.canGlobalView,
+                    },
+                });
             }
         }
         const { data: channels, error: channelsError } = await channelsQuery;
@@ -3485,30 +3624,211 @@ app.get("/api/coaching/channels", async (req, res) => {
         }
         const scopedChannels = (channels ?? [])
             .filter((channel) => {
-            if (access.canAuthorGlobal)
-                return true;
             const channelId = String(channel.id ?? "");
             const teamId = String(channel.team_id ?? "");
-            if (directMemberChannelIds.has(channelId))
-                return true;
-            if (teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId)))
-                return true;
-            return false;
+            const isMine = directMemberChannelIds.has(channelId);
+            const inTeamScope = Boolean(teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId)));
+            const canSee = access.canGlobalView || isMine || inTeamScope;
+            if (!canSee)
+                return false;
+            if (scope === "my")
+                return isMine;
+            if (scope === "team")
+                return inTeamScope;
+            return true;
         })
             .map((channel) => {
             const channelId = String(channel.id ?? "");
+            const teamId = String(channel.team_id ?? "");
+            const ownership_scope = directMemberChannelIds.has(channelId)
+                ? "mine"
+                : teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId))
+                    ? "team"
+                    : "global";
             return {
                 ...channel,
+                ownership_scope,
+                requested_scope: scope,
                 member_count: memberCounts.get(channelId) ?? 0,
                 last_message_at: lastMessageAt.get(channelId) ?? null,
-                can_author: access.canAuthorGlobal || access.leaderTeamIds.has(String(channel.team_id ?? "")),
+                can_author: access.canManageChannels &&
+                    (access.canAuthorGlobal || access.leaderTeamIds.has(teamId)),
             };
         });
-        return res.json({ channels: scopedChannels });
+        return res.json({
+            channels: scopedChannels,
+            requested_scope: scope,
+            access_context: {
+                role: access.role,
+                effective_roles: access.effectiveRoles,
+                can_author_journeys: access.canAuthorGlobal || access.leaderTeamIds.size > 0,
+                can_manage_cohorts: access.canManageCohorts,
+                can_manage_channels: access.canManageChannels,
+                can_global_view: access.canGlobalView,
+            },
+        });
     }
     catch (err) {
         // eslint-disable-next-line no-console
         console.error("Error in GET /api/coaching/channels", err);
+        return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+    }
+});
+app.get("/api/coaching/library/assets", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok)
+            return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+        if (!dataClient)
+            return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
+        if (!accessResult.ok)
+            return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+        const access = accessResult.context;
+        const scope = parseCoachingScope(req.query.scope);
+        const { data: assetRowsRaw, error: assetError } = await dataClient
+            .from("coaching_media_assets")
+            .select("media_id,owner_user_id,journey_id,filename,content_type,created_at,updated_at,processing_status")
+            .not("processing_status", "eq", "deleted")
+            .order("created_at", { ascending: false })
+            .limit(500);
+        if (assetError && !isRecoverableAssignmentSourceGap(assetError)) {
+            return errorEnvelopeResponse(res, 500, "asset_fetch_failed", "Failed to fetch library assets", req.headers["x-request-id"]);
+        }
+        const assetRows = isRecoverableAssignmentSourceGap(assetError) ? [] : assetRowsRaw ?? [];
+        const journeyIds = Array.from(new Set((assetRows ?? [])
+            .map((row) => String(row.journey_id ?? ""))
+            .filter(Boolean)));
+        const ownerIds = Array.from(new Set((assetRows ?? [])
+            .map((row) => String(row.owner_user_id ?? ""))
+            .filter(Boolean)));
+        let journeyById = new Map();
+        if (journeyIds.length > 0) {
+            const { data: journeys, error: journeyError } = await dataClient
+                .from("journeys")
+                .select("id,team_id,title")
+                .in("id", journeyIds);
+            if (journeyError) {
+                return errorEnvelopeResponse(res, 500, "asset_fetch_failed", "Failed to resolve asset journey scope", req.headers["x-request-id"]);
+            }
+            journeyById = new Map((journeys ?? []).map((row) => [
+                String(row.id ?? ""),
+                {
+                    team_id: typeof row.team_id === "string" ? String(row.team_id) : null,
+                    title: typeof row.title === "string" ? String(row.title) : null,
+                },
+            ]));
+        }
+        let ownerNameById = new Map();
+        if (ownerIds.length > 0) {
+            let ownerRows = [];
+            let ownerError = null;
+            const fullNameLookup = await dataClient
+                .from("users")
+                .select("id,full_name")
+                .in("id", ownerIds);
+            if (fullNameLookup.error) {
+                const fallbackLookup = await dataClient
+                    .from("users")
+                    .select("id")
+                    .in("id", ownerIds);
+                ownerError = fallbackLookup.error;
+                ownerRows = fallbackLookup.data ?? [];
+            }
+            else {
+                ownerRows = fullNameLookup.data ?? [];
+            }
+            if (ownerError) {
+                return errorEnvelopeResponse(res, 500, "asset_fetch_failed", "Failed to resolve asset ownership", req.headers["x-request-id"]);
+            }
+            ownerNameById = new Map(ownerRows.map((row) => [
+                String(row.id ?? ""),
+                String(row.full_name ?? "").trim(),
+            ]));
+        }
+        const visibleAssets = (assetRows ?? [])
+            .map((row) => {
+            const mediaId = String(row.media_id ?? "");
+            const ownerUserId = String(row.owner_user_id ?? "");
+            const journeyId = String(row.journey_id ?? "");
+            const journeyScope = journeyById.get(journeyId);
+            const teamId = journeyScope?.team_id ?? null;
+            const isMine = ownerUserId === auth.user.id;
+            const inTeamScope = Boolean(teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId)));
+            const canSee = access.canGlobalView || isMine || inTeamScope;
+            if (!canSee)
+                return null;
+            if (scope === "my" && !isMine)
+                return null;
+            if (scope === "team" && !inTeamScope)
+                return null;
+            const filename = String(row.filename ?? "").trim();
+            const contentType = String(row.content_type ?? "").toLowerCase();
+            const category = contentType.startsWith("video/") ? "Video" : contentType.includes("pdf") ? "Guide" : "Resource";
+            const ownership_scope = isMine ? "mine" : inTeamScope ? "team" : "global";
+            return {
+                id: mediaId,
+                title: filename || `Asset ${mediaId.slice(0, 8)}`,
+                category,
+                scope: teamId ? "Team" : "Global",
+                duration: "-",
+                owner_user_id: ownerUserId,
+                owner_label: ownerNameById.get(ownerUserId) || ownerUserId.slice(0, 8),
+                ownership_scope,
+                team_id: teamId,
+                visibility_scope: teamId ? "team" : "global",
+                requested_scope: scope,
+                source_journey_id: journeyId || null,
+                source_journey_title: journeyScope?.title ?? null,
+                processing_status: String(row.processing_status ?? "unknown"),
+                created_at: String(row.created_at ?? ""),
+                updated_at: String(row.updated_at ?? ""),
+            };
+        })
+            .filter((row) => row !== null);
+        const myAssetIds = visibleAssets.filter((asset) => asset.ownership_scope === "mine").map((asset) => asset.id);
+        const teamAssetIds = visibleAssets.filter((asset) => asset.ownership_scope === "team").map((asset) => asset.id);
+        const globalAssetIds = visibleAssets.filter((asset) => asset.ownership_scope === "global").map((asset) => asset.id);
+        const collections = [
+            {
+                id: "collection:mine",
+                name: "My Assets",
+                ownership_scope: "mine",
+                asset_ids: myAssetIds,
+            },
+            {
+                id: "collection:team",
+                name: "Team Assets",
+                ownership_scope: "team",
+                asset_ids: teamAssetIds,
+            },
+            {
+                id: "collection:global",
+                name: "Global Assets",
+                ownership_scope: "global",
+                asset_ids: globalAssetIds,
+            },
+        ].filter((collection) => collection.asset_ids.length > 0);
+        return res.json({
+            assets: visibleAssets,
+            collections,
+            requested_scope: scope,
+            access_context: {
+                role: access.role,
+                effective_roles: access.effectiveRoles,
+                can_author_journeys: access.canAuthorGlobal || access.leaderTeamIds.size > 0,
+                can_manage_cohorts: access.canManageCohorts,
+                can_manage_channels: access.canManageChannels,
+                can_global_view: access.canGlobalView,
+            },
+        });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Error in GET /api/coaching/library/assets", err);
         return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
     }
 });
@@ -5180,7 +5500,7 @@ app.get("/teams/:id", async (req, res) => {
         }
         const { data: team, error: teamError } = await dataClient
             .from("teams")
-            .select("id,name,created_by,created_at,updated_at")
+            .select("id,name,identity_avatar,identity_background,created_by,created_at,updated_at")
             .eq("id", teamId)
             .single();
         if (teamError) {
@@ -5267,14 +5587,21 @@ app.patch("/teams/:id", async (req, res) => {
         if (!leaderCheck.isLeader) {
             return res.status(403).json({ error: "Only team leaders can update team settings" });
         }
-        const { data: team, error: updateError } = await dataClient
-            .from("teams")
-            .update({
+        const updatePayload = {
             name: payloadCheck.payload.name,
             updated_at: new Date().toISOString(),
-        })
+        };
+        if (payloadCheck.payload.identity_avatar) {
+            updatePayload.identity_avatar = payloadCheck.payload.identity_avatar;
+        }
+        if (payloadCheck.payload.identity_background) {
+            updatePayload.identity_background = payloadCheck.payload.identity_background;
+        }
+        const { data: team, error: updateError } = await dataClient
+            .from("teams")
+            .update(updatePayload)
             .eq("id", teamId)
-            .select("id,name,created_by,created_at,updated_at")
+            .select("id,name,identity_avatar,identity_background,created_by,created_at,updated_at")
             .single();
         if (updateError) {
             return handleSupabaseError(res, "Failed to update team", updateError);
@@ -6102,6 +6429,8 @@ app.post("/challenges", async (req, res) => {
             return res.status(payloadCheck.status).json({ error: payloadCheck.error });
         }
         const payload = payloadCheck.payload;
+        const payloadChallengeKind = payload.challenge_kind ?? (payload.mode === "team" ? "team" : "mini");
+        const kpiGoals = payload.kpi_goals ?? [];
         await ensureUserRow(auth.user.id);
         const { data: userRow, error: userError } = await dataClient
             .from("users")
@@ -6121,6 +6450,26 @@ app.post("/challenges", async (req, res) => {
         if (inviteLimit >= 0 && requestedInviteCount > inviteLimit) {
             return res.status(403).json({ error: `Invite limit exceeded for your plan (max ${inviteLimit})` });
         }
+        if (payloadChallengeKind === "mini" && requestedInviteCount > 3) {
+            return res.status(422).json({ error: "Mini challenge invite cap is 3 participants" });
+        }
+        if (payloadChallengeKind === "team" && requestedInviteCount > 0) {
+            return res.status(422).json({ error: "Team challenges do not accept invite_user_ids; use team membership scope" });
+        }
+        const requestedKpiIds = kpiGoals.map((goal) => goal.kpi_id);
+        const { data: existingKpis, error: kpiLookupError } = await dataClient
+            .from("kpis")
+            .select("id")
+            .in("id", requestedKpiIds)
+            .eq("is_active", true);
+        if (kpiLookupError) {
+            return handleSupabaseError(res, "Failed to validate challenge KPI goals", kpiLookupError);
+        }
+        const existingKpiIdSet = new Set((existingKpis ?? []).map((row) => String(row.id ?? "")));
+        const missingKpiId = requestedKpiIds.find((id) => !existingKpiIdSet.has(id));
+        if (missingKpiId) {
+            return res.status(422).json({ error: `kpi_goals contains unknown or inactive KPI id: ${missingKpiId}` });
+        }
         const nowIso = new Date().toISOString();
         if (payload.mode === "team") {
             if (!payload.team_id) {
@@ -6135,6 +6484,62 @@ app.post("/challenges", async (req, res) => {
             }
             if (!toEntitlementBool(entitlements, "can_host_team_challenges", false)) {
                 return res.status(403).json({ error: "Your plan cannot host team challenges" });
+            }
+            const payloadStartIso = payload.start_at ?? nowIso;
+            const payloadEndIso = payload.end_at;
+            const payloadStartMs = new Date(payloadStartIso).getTime();
+            const payloadEndMs = new Date(payloadEndIso).getTime();
+            const nowMs = new Date(nowIso).getTime();
+            const { data: teamScheduledRows, error: teamScheduledError } = await dataClient
+                .from("challenges")
+                .select("id,start_at,end_at")
+                .eq("mode", "team")
+                .eq("team_id", payload.team_id)
+                .eq("is_active", true)
+                .gte("end_at", nowIso)
+                .order("start_at", { ascending: true })
+                .limit(20);
+            if (teamScheduledError) {
+                return handleSupabaseError(res, "Failed to enforce team challenge schedule limits", teamScheduledError);
+            }
+            const scheduledRows = (teamScheduledRows ?? []);
+            const activeNowCount = scheduledRows.filter((row) => {
+                const startMs = new Date(String(row.start_at ?? "")).getTime();
+                const endMs = new Date(String(row.end_at ?? "")).getTime();
+                if (!Number.isFinite(startMs) || !Number.isFinite(endMs))
+                    return false;
+                return startMs <= nowMs && endMs >= nowMs;
+            }).length;
+            const upcomingCount = scheduledRows.filter((row) => {
+                const startMs = new Date(String(row.start_at ?? "")).getTime();
+                if (!Number.isFinite(startMs))
+                    return false;
+                return startMs > nowMs;
+            }).length;
+            const payloadIsActiveNow = Number.isFinite(payloadStartMs) && Number.isFinite(payloadEndMs)
+                ? payloadStartMs <= nowMs && payloadEndMs >= nowMs
+                : false;
+            const payloadIsUpcoming = Number.isFinite(payloadStartMs) ? payloadStartMs > nowMs : false;
+            if (payloadIsActiveNow && activeNowCount >= 1) {
+                return res.status(409).json({ error: "Team already has an active challenge. Only one active challenge is allowed per team." });
+            }
+            if (payloadIsUpcoming && upcomingCount >= 1) {
+                return res.status(409).json({ error: "Team already has an upcoming challenge. Only one upcoming challenge is allowed per team." });
+            }
+            const { data: overlappingRows, error: overlapError } = await dataClient
+                .from("challenges")
+                .select("id,start_at,end_at")
+                .eq("mode", "team")
+                .eq("team_id", payload.team_id)
+                .eq("is_active", true)
+                .lte("start_at", payloadEndIso)
+                .gte("end_at", payloadStartIso)
+                .limit(20);
+            if (overlapError) {
+                return handleSupabaseError(res, "Failed to enforce team challenge overlap limits", overlapError);
+            }
+            if ((overlappingRows ?? []).length > 0) {
+                return res.status(409).json({ error: "Team challenge dates overlap an existing challenge. Team challenges cannot overlap." });
             }
         }
         else {
@@ -6178,6 +6583,7 @@ app.post("/challenges", async (req, res) => {
             .insert({
             template_id: payload.template_id ?? null,
             team_id: payload.mode === "team" ? payload.team_id ?? null : null,
+            challenge_kind: payloadChallengeKind,
             name: payload.name,
             description: payload.description ?? null,
             mode: payload.mode,
@@ -6187,7 +6593,7 @@ app.post("/challenges", async (req, res) => {
             late_join_includes_history: Boolean(payload.late_join_includes_history),
             created_by: auth.user.id,
         })
-            .select("id,name,description,mode,team_id,start_at,end_at,late_join_includes_history,is_active,created_by,created_at")
+            .select("id,name,description,mode,challenge_kind,team_id,start_at,end_at,late_join_includes_history,is_active,created_by,created_at")
             .single();
         if (challengeError) {
             return handleSupabaseError(res, "Failed to create challenge", challengeError);
@@ -6195,6 +6601,21 @@ app.post("/challenges", async (req, res) => {
         const challengeId = String(challenge.id ?? "");
         if (!challengeId) {
             return res.status(500).json({ error: "Challenge id missing from create response" });
+        }
+        const challengeKpiRows = kpiGoals.map((goal, index) => ({
+            challenge_id: challengeId,
+            kpi_id: goal.kpi_id,
+            goal_target: goal.goal_target ?? null,
+            goal_scope: goal.goal_scope,
+            display_order: goal.display_order ?? index,
+        }));
+        if (challengeKpiRows.length > 0) {
+            const { error: challengeKpiInsertError } = await dataClient
+                .from("challenge_kpis")
+                .upsert(challengeKpiRows, { onConflict: "challenge_id,kpi_id" });
+            if (challengeKpiInsertError) {
+                return handleSupabaseError(res, "Failed to persist challenge KPI goals", challengeKpiInsertError);
+            }
         }
         await dataClient
             .from("challenge_participants")
@@ -6208,6 +6629,12 @@ app.post("/challenges", async (req, res) => {
         }, { onConflict: "challenge_id,user_id" });
         return res.status(201).json({
             challenge,
+            challenge_kind: payloadChallengeKind,
+            kpi_goal_summary: {
+                total_kpis: challengeKpiRows.length,
+                team_goal_count: challengeKpiRows.filter((row) => row.goal_scope === "team").length,
+                individual_goal_count: challengeKpiRows.filter((row) => row.goal_scope === "individual").length,
+            },
             invite_policy: {
                 invite_limit: inviteLimit,
                 requested_invites: requestedInviteCount,
@@ -6230,18 +6657,155 @@ app.get("/challenges", async (req, res) => {
             return res.status(500).json({ error: "Supabase data client not configured" });
         }
         const nowIso = new Date().toISOString();
+        const nowMs = new Date(nowIso).getTime();
         const { data: challenges, error: challengesError } = await dataClient
             .from("challenges")
-            .select("id,name,description,mode,team_id,start_at,end_at,late_join_includes_history,is_active,created_at")
+            .select("id,name,description,mode,challenge_kind,team_id,start_at,end_at,late_join_includes_history,is_active,created_at")
             .eq("is_active", true)
-            .gte("end_at", nowIso)
             .order("start_at", { ascending: true })
-            .limit(200);
+            .limit(500);
         if (challengesError) {
             return handleSupabaseError(res, "Failed to fetch challenges", challengesError);
         }
-        const challengeList = challenges ?? [];
+        const platformAdmin = await isPlatformAdmin(auth.user.id);
+        const { data: teamMembershipRows, error: teamMembershipError } = await dataClient
+            .from("team_memberships")
+            .select("team_id")
+            .eq("user_id", auth.user.id);
+        if (teamMembershipError) {
+            return handleSupabaseError(res, "Failed to fetch team memberships for challenge visibility", teamMembershipError);
+        }
+        const myTeamIds = new Set((teamMembershipRows ?? [])
+            .map((row) => String(row.team_id ?? "").trim())
+            .filter(Boolean));
+        const rawChallengeList = (challenges ?? []);
+        const toIsoMs = (raw) => {
+            const ms = new Date(String(raw ?? "")).getTime();
+            return Number.isFinite(ms) ? ms : null;
+        };
+        const isTeamChallenge = (row) => String(row.mode ?? "").toLowerCase() === "team" && String(row.team_id ?? "").trim().length > 0;
+        const pickSingleTeamSlot = (rows, slot) => {
+            const decorated = rows
+                .map((row) => {
+                const startMs = toIsoMs(row.start_at);
+                const endMs = toIsoMs(row.end_at);
+                if (startMs == null || endMs == null)
+                    return null;
+                return { row, startMs, endMs };
+            })
+                .filter((v) => Boolean(v));
+            if (slot === "completed") {
+                return (decorated
+                    .filter((entry) => entry.endMs < nowMs)
+                    .sort((a, b) => b.endMs - a.endMs)[0]?.row ?? null);
+            }
+            if (slot === "active") {
+                return (decorated
+                    .filter((entry) => entry.startMs <= nowMs && entry.endMs >= nowMs)
+                    .sort((a, b) => a.startMs - b.startMs)[0]?.row ?? null);
+            }
+            return (decorated
+                .filter((entry) => entry.startMs > nowMs)
+                .sort((a, b) => a.startMs - b.startMs)[0]?.row ?? null);
+        };
+        const teamRowsByTeamId = new Map();
+        const nonTeamRows = rawChallengeList.filter((row) => {
+            if (isTeamChallenge(row)) {
+                const teamId = String(row.team_id ?? "").trim();
+                if (!platformAdmin && !myTeamIds.has(teamId)) {
+                    return false;
+                }
+                const list = teamRowsByTeamId.get(teamId) ?? [];
+                list.push(row);
+                teamRowsByTeamId.set(teamId, list);
+                return false;
+            }
+            const endMs = toIsoMs(row.end_at);
+            return endMs != null && endMs >= nowMs;
+        });
+        const teamWindowRows = [];
+        for (const rows of teamRowsByTeamId.values()) {
+            const keepCompleted = pickSingleTeamSlot(rows, "completed");
+            const keepActive = pickSingleTeamSlot(rows, "active");
+            const keepUpcomingCandidate = pickSingleTeamSlot(rows, "upcoming");
+            const activeEndMs = keepActive ? toIsoMs(keepActive.end_at) : null;
+            const upcomingStartMs = keepUpcomingCandidate ? toIsoMs(keepUpcomingCandidate.start_at) : null;
+            const keepUpcoming = keepUpcomingCandidate &&
+                (activeEndMs == null || upcomingStartMs == null || upcomingStartMs > activeEndMs)
+                ? keepUpcomingCandidate
+                : null;
+            const dedupe = new Set();
+            [keepCompleted, keepActive, keepUpcoming].forEach((row) => {
+                if (!row)
+                    return;
+                const id = String(row.id ?? "");
+                if (!id || dedupe.has(id))
+                    return;
+                dedupe.add(id);
+                teamWindowRows.push(row);
+            });
+        }
+        const challengeList = [...nonTeamRows, ...teamWindowRows].sort((a, b) => {
+            const aStart = toIsoMs(a.start_at) ?? 0;
+            const bStart = toIsoMs(b.start_at) ?? 0;
+            return aStart - bStart;
+        });
         const challengeIds = challengeList.map((c) => String(c.id));
+        const challengeTeamIds = Array.from(new Set(challengeList
+            .map((row) => String(row.team_id ?? "").trim())
+            .filter(Boolean)));
+        let teamIdentityById = new Map();
+        if (challengeTeamIds.length > 0) {
+            const { data: teams, error: teamsError } = await dataClient
+                .from("teams")
+                .select("id,name,identity_avatar,identity_background")
+                .in("id", challengeTeamIds);
+            if (teamsError) {
+                return handleSupabaseError(res, "Failed to fetch challenge team identity summaries", teamsError);
+            }
+            teamIdentityById = new Map((teams ?? []).map((row) => [
+                String(row.id ?? ""),
+                {
+                    id: String(row.id ?? ""),
+                    name: String(row.name ?? "Team"),
+                    identity_avatar: typeof row.identity_avatar === "string"
+                        ? String(row.identity_avatar)
+                        : null,
+                    identity_background: typeof row.identity_background === "string"
+                        ? String(row.identity_background)
+                        : null,
+                },
+            ]));
+        }
+        let kpiGoalSummaryByChallengeId = new Map();
+        if (challengeIds.length > 0) {
+            const { data: challengeGoalRows, error: challengeGoalRowsError } = await dataClient
+                .from("challenge_kpis")
+                .select("challenge_id,goal_scope")
+                .in("challenge_id", challengeIds);
+            if (challengeGoalRowsError) {
+                return handleSupabaseError(res, "Failed to fetch challenge KPI goal summaries", challengeGoalRowsError);
+            }
+            kpiGoalSummaryByChallengeId = new Map();
+            for (const row of challengeGoalRows ?? []) {
+                const challengeId = String(row.challenge_id ?? "");
+                if (!challengeId)
+                    continue;
+                const bucket = kpiGoalSummaryByChallengeId.get(challengeId) ?? {
+                    total_kpis: 0,
+                    team_goal_count: 0,
+                    individual_goal_count: 0,
+                };
+                bucket.total_kpis += 1;
+                if (String(row.goal_scope ?? "").toLowerCase() === "individual") {
+                    bucket.individual_goal_count += 1;
+                }
+                else {
+                    bucket.team_goal_count += 1;
+                }
+                kpiGoalSummaryByChallengeId.set(challengeId, bucket);
+            }
+        }
         let participationByChallenge = new Map();
         if (challengeIds.length > 0) {
             const { data: myParticipations, error: myParticipationError } = await dataClient
@@ -6272,8 +6836,23 @@ app.get("/challenges", async (req, res) => {
                 };
             }
             const leaderboard = await buildChallengeLeaderboard(String(challenge.id), 5);
+            const teamId = String(challenge.team_id ?? "").trim();
+            const challengeMode = String(challenge.mode ?? "").toLowerCase();
+            const challengeKindRaw = String(challenge.challenge_kind ?? "").toLowerCase();
+            const normalizedChallengeKind = challengeKindRaw === "team" || challengeKindRaw === "mini" || challengeKindRaw === "sponsored"
+                ? challengeKindRaw
+                : challengeMode === "team"
+                    ? "team"
+                    : "mini";
             enriched.push({
                 ...challenge,
+                challenge_kind: normalizedChallengeKind,
+                team_identity: teamId ? teamIdentityById.get(teamId) ?? null : null,
+                kpi_goal_summary: kpiGoalSummaryByChallengeId.get(challengeId) ?? {
+                    total_kpis: 0,
+                    team_goal_count: 0,
+                    individual_goal_count: 0,
+                },
                 my_participation: refreshedParticipation,
                 leaderboard_top: leaderboard,
             });
@@ -6283,6 +6862,74 @@ app.get("/challenges", async (req, res) => {
     catch (err) {
         // eslint-disable-next-line no-console
         console.error("Error in /challenges", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.get("/challenge-templates", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok) {
+            return res.status(auth.status).json({ error: auth.error });
+        }
+        if (!dataClient) {
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        }
+        const { data, error } = await dataClient
+            .from("challenge_templates")
+            .select("id,name,description,suggested_duration_days,template_payload,is_active,created_at,updated_at")
+            .eq("is_active", true)
+            .order("created_at", { ascending: true });
+        if (error) {
+            return handleSupabaseError(res, "Failed to fetch challenge templates", error);
+        }
+        const templates = (data ?? []).map((row) => {
+            const payload = isRecord(row.template_payload)
+                ? row.template_payload
+                : {};
+            const kpiDefaults = Array.isArray(payload.kpi_defaults)
+                ? payload.kpi_defaults
+                    .map((entry, idx) => {
+                    if (!isRecord(entry))
+                        return null;
+                    const kpiId = typeof entry.kpi_id === "string" ? entry.kpi_id.trim() : "";
+                    if (!kpiId)
+                        return null;
+                    const goalScopeRaw = typeof entry.goal_scope_default === "string" ? entry.goal_scope_default.trim().toLowerCase() : "";
+                    const goalScopeDefault = goalScopeRaw === "individual" ? "individual" : "team";
+                    const suggestedTargetRaw = entry.suggested_target;
+                    const suggestedTarget = typeof suggestedTargetRaw === "number" && Number.isFinite(suggestedTargetRaw)
+                        ? Number(suggestedTargetRaw.toFixed(2))
+                        : null;
+                    const displayOrderRaw = entry.display_order;
+                    const displayOrder = typeof displayOrderRaw === "number" && Number.isInteger(displayOrderRaw) && displayOrderRaw >= 0
+                        ? displayOrderRaw
+                        : idx;
+                    return {
+                        kpi_id: kpiId,
+                        label: typeof entry.label === "string" && entry.label.trim().length > 0 ? entry.label.trim() : `KPI ${idx + 1}`,
+                        goal_scope_default: goalScopeDefault,
+                        suggested_target: suggestedTarget,
+                        display_order: displayOrder,
+                    };
+                })
+                    .filter((entry) => Boolean(entry))
+                    .sort((a, b) => a.display_order - b.display_order)
+                : [];
+            return {
+                id: String(row.id ?? ""),
+                title: String(row.name ?? "Challenge Template"),
+                description: typeof row.description === "string"
+                    ? String(row.description)
+                    : "",
+                suggested_duration_days: Number(row.suggested_duration_days ?? 30) || 30,
+                kpi_defaults: kpiDefaults,
+            };
+        });
+        return res.json({ templates });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Error in GET /challenge-templates", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 });
@@ -6697,7 +7344,7 @@ app.get("/admin/challenge-templates", async (req, res) => {
             return res.status(403).json({ error: "Admin access required" });
         const { data, error } = await dataClient
             .from("challenge_templates")
-            .select("id,name,description,is_active,created_at,updated_at")
+            .select("id,name,description,suggested_duration_days,template_payload,is_active,created_at,updated_at")
             .order("created_at", { ascending: true });
         if (error)
             return handleSupabaseError(res, "Failed to fetch challenge templates", error);
@@ -6724,7 +7371,7 @@ app.post("/admin/challenge-templates", async (req, res) => {
         const { data, error } = await dataClient
             .from("challenge_templates")
             .insert(payloadCheck.payload)
-            .select("id,name,description,is_active,created_at,updated_at")
+            .select("id,name,description,suggested_duration_days,template_payload,is_active,created_at,updated_at")
             .single();
         if (error)
             return handleSupabaseError(res, "Failed to create challenge template", error);
@@ -6756,7 +7403,7 @@ app.put("/admin/challenge-templates/:id", async (req, res) => {
             .from("challenge_templates")
             .update({ ...payloadCheck.payload, updated_at: new Date().toISOString() })
             .eq("id", templateId)
-            .select("id,name,description,is_active,created_at,updated_at")
+            .select("id,name,description,suggested_duration_days,template_payload,is_active,created_at,updated_at")
             .single();
         if (error)
             return handleSupabaseError(res, "Failed to update challenge template", error);
@@ -6857,16 +7504,23 @@ app.post("/admin/users", async (req, res) => {
         const email = String(body.email ?? "").trim().toLowerCase();
         const password = String(body.password ?? "");
         const role = String(body.role ?? "agent");
+        const normalizedRoles = Array.isArray(body.roles)
+            ? Array.from(new Set(body.roles
+                .map((value) => String(value ?? "").trim())
+                .filter(Boolean)))
+            : [role];
+        const primaryRole = normalizedRoles.includes(role) ? role : normalizedRoles[0] ?? role;
         const tier = String(body.tier ?? "free");
         const accountStatus = String(body.account_status ?? "active");
+        const allowedRoles = ["agent", "team_leader", "coach", "challenge_sponsor", "admin", "super_admin"];
         if (!email || !email.includes("@")) {
             return res.status(422).json({ error: "email is required" });
         }
         if (!password || password.length < 8) {
             return res.status(422).json({ error: "password is required and must be at least 8 characters" });
         }
-        if (!["agent", "team_leader", "admin", "super_admin"].includes(role)) {
-            return res.status(422).json({ error: "role must be one of: agent, team_leader, admin, super_admin" });
+        if (!allowedRoles.includes(primaryRole) || normalizedRoles.some((value) => !allowedRoles.includes(value))) {
+            return res.status(422).json({ error: "role(s) must be within: agent, team_leader, coach, challenge_sponsor, admin, super_admin" });
         }
         if (!["free", "basic", "teams", "enterprise"].includes(tier)) {
             return res.status(422).json({ error: "tier must be one of: free, basic, teams, enterprise" });
@@ -6879,11 +7533,12 @@ app.post("/admin/users", async (req, res) => {
             password,
             email_confirm: true,
             user_metadata: {
-                role,
+                role: primaryRole,
+                roles: normalizedRoles,
             },
             app_metadata: {
-                role,
-                roles: [role],
+                role: primaryRole,
+                roles: normalizedRoles,
             },
         });
         if (authCreate.error)
@@ -6897,7 +7552,7 @@ app.post("/admin/users", async (req, res) => {
             .from("users")
             .upsert({
             id: createdUserId,
-            role,
+            role: primaryRole,
             tier,
             account_status: accountStatus,
             updated_at: nowIso,
@@ -6908,7 +7563,8 @@ app.post("/admin/users", async (req, res) => {
             return handleSupabaseError(res, "Failed to create user row", userRowError);
         await logAdminActivity(auth.user.id, "users", createdUserId, "create_user", {
             email,
-            role,
+            role: primaryRole,
+            roles: normalizedRoles,
             tier,
             account_status: accountStatus,
         });
@@ -6936,19 +7592,40 @@ app.put("/admin/users/:id/role", async (req, res) => {
         if (!userId)
             return res.status(422).json({ error: "user id is required" });
         const body = req.body;
-        const role = String(body.role ?? "");
-        if (!["agent", "team_leader", "admin", "super_admin"].includes(role)) {
-            return res.status(422).json({ error: "role must be one of: agent, team_leader, admin, super_admin" });
+        const role = String(body.role ?? "").trim();
+        const bodyRoles = req.body.roles;
+        const normalizedRoles = Array.isArray(bodyRoles)
+            ? Array.from(new Set(bodyRoles
+                .map((value) => String(value ?? "").trim())
+                .filter(Boolean)))
+            : [];
+        const effectiveRoles = normalizedRoles.length > 0 ? normalizedRoles : role ? [role] : [];
+        const primaryRole = role || effectiveRoles[0] || "";
+        const allowedRoles = ["agent", "team_leader", "coach", "challenge_sponsor", "admin", "super_admin"];
+        if (!primaryRole || !allowedRoles.includes(primaryRole) || effectiveRoles.some((value) => !allowedRoles.includes(value))) {
+            return res.status(422).json({ error: "role(s) must be within: agent, team_leader, coach, challenge_sponsor, admin, super_admin" });
         }
         const { data, error } = await dataClient
             .from("users")
-            .update({ role, updated_at: new Date().toISOString() })
+            .update({ role: primaryRole, updated_at: new Date().toISOString() })
             .eq("id", userId)
             .select("id,role,tier,account_status")
             .single();
         if (error)
             return handleSupabaseError(res, "Failed to update user role", error);
-        await logAdminActivity(auth.user.id, "users", userId, "update_role", { role });
+        const authUpdate = await dataClient.auth.admin.updateUserById(userId, {
+            user_metadata: {
+                role: primaryRole,
+                roles: effectiveRoles,
+            },
+            app_metadata: {
+                role: primaryRole,
+                roles: effectiveRoles,
+            },
+        });
+        if (authUpdate.error)
+            return handleSupabaseError(res, "Failed to sync auth role metadata", authUpdate.error);
+        await logAdminActivity(auth.user.id, "users", userId, "update_role", { role: primaryRole, roles: effectiveRoles });
         return res.json({ user: data });
     }
     catch (err) {
@@ -7658,6 +8335,7 @@ async function authenticateRequest(authorizationHeader) {
             id: data.user.id,
             email: data.user.email,
             user_metadata: data.user.user_metadata,
+            app_metadata: data.user.app_metadata,
         },
     };
 }
@@ -7986,7 +8664,29 @@ function validateTeamUpdatePayload(body) {
     if (name.length > 80) {
         return { ok: false, status: 422, error: "name must be 80 characters or fewer" };
     }
-    return { ok: true, payload: { name } };
+    const identityAvatarRaw = typeof candidate.identity_avatar === "string" ? candidate.identity_avatar.trim() : "";
+    const identityBackgroundRaw = typeof candidate.identity_background === "string" ? candidate.identity_background.trim() : "";
+    if (candidate.identity_avatar !== undefined) {
+        if (!identityAvatarRaw) {
+            return { ok: false, status: 422, error: "identity_avatar must not be empty" };
+        }
+        if (identityAvatarRaw.length > 8) {
+            return { ok: false, status: 422, error: "identity_avatar must be 8 characters or fewer" };
+        }
+    }
+    if (candidate.identity_background !== undefined) {
+        if (!/^#[0-9a-fA-F]{6}$/.test(identityBackgroundRaw)) {
+            return { ok: false, status: 422, error: "identity_background must be a hex color like #AABBCC" };
+        }
+    }
+    return {
+        ok: true,
+        payload: {
+            name,
+            identity_avatar: identityAvatarRaw || undefined,
+            identity_background: identityBackgroundRaw || undefined,
+        },
+    };
 }
 function validateTeamMemberAddPayload(body) {
     if (!body || typeof body !== "object") {
@@ -8016,6 +8716,22 @@ function validateChallengeCreatePayload(body) {
     const mode = body.mode === "team" ? "team" : body.mode === "solo" ? "solo" : null;
     if (!mode)
         return { ok: false, status: 422, error: "mode must be one of: solo, team" };
+    const challengeKindRaw = typeof body.challenge_kind === "string" ? body.challenge_kind.trim().toLowerCase() : "";
+    const challengeKind = challengeKindRaw === "team" || challengeKindRaw === "mini" || challengeKindRaw === "sponsored"
+        ? challengeKindRaw
+        : null;
+    if (body.challenge_kind !== undefined && !challengeKind) {
+        return { ok: false, status: 422, error: "challenge_kind must be one of: team, mini, sponsored when provided" };
+    }
+    if (challengeKind === "team" && mode !== "team") {
+        return { ok: false, status: 422, error: "challenge_kind=team requires mode=team" };
+    }
+    if (challengeKind === "mini" && mode !== "solo") {
+        return { ok: false, status: 422, error: "challenge_kind=mini requires mode=solo" };
+    }
+    if (challengeKind === "sponsored") {
+        return { ok: false, status: 422, error: "challenge_kind=sponsored is not supported on create payload" };
+    }
     const endAtRaw = typeof body.end_at === "string" ? body.end_at.trim() : "";
     if (!endAtRaw)
         return { ok: false, status: 422, error: "end_at is required" };
@@ -8038,6 +8754,54 @@ function validateChallengeCreatePayload(body) {
     if (body.template_id !== undefined && typeof body.template_id !== "string") {
         return { ok: false, status: 422, error: "template_id must be a string when provided" };
     }
+    const rawKpiGoals = body.kpi_goals;
+    if (!Array.isArray(rawKpiGoals) || rawKpiGoals.length === 0) {
+        return { ok: false, status: 422, error: "kpi_goals must include at least one KPI goal" };
+    }
+    const kpiGoals = [];
+    const dedupeKpiIds = new Set();
+    for (let index = 0; index < rawKpiGoals.length; index += 1) {
+        const rawGoal = rawKpiGoals[index];
+        if (!isRecord(rawGoal)) {
+            return { ok: false, status: 422, error: "Each kpi_goals item must be an object" };
+        }
+        const kpiId = typeof rawGoal.kpi_id === "string" ? rawGoal.kpi_id.trim() : "";
+        if (!kpiId) {
+            return { ok: false, status: 422, error: "kpi_goals[].kpi_id is required" };
+        }
+        if (dedupeKpiIds.has(kpiId)) {
+            return { ok: false, status: 422, error: "kpi_goals contains duplicate kpi_id values" };
+        }
+        dedupeKpiIds.add(kpiId);
+        const goalScopeRaw = typeof rawGoal.goal_scope === "string" ? rawGoal.goal_scope.trim().toLowerCase() : "";
+        if (goalScopeRaw !== "team" && goalScopeRaw !== "individual") {
+            return { ok: false, status: 422, error: "kpi_goals[].goal_scope must be one of: team, individual" };
+        }
+        const goalTargetRaw = rawGoal.goal_target;
+        let goalTarget;
+        if (goalTargetRaw === undefined || goalTargetRaw === null || goalTargetRaw === "") {
+            goalTarget = null;
+        }
+        else if (typeof goalTargetRaw === "number" && Number.isFinite(goalTargetRaw)) {
+            goalTarget = Number(goalTargetRaw.toFixed(2));
+            if (goalTarget < 0) {
+                return { ok: false, status: 422, error: "kpi_goals[].goal_target must be >= 0 when provided" };
+            }
+        }
+        else {
+            return { ok: false, status: 422, error: "kpi_goals[].goal_target must be numeric when provided" };
+        }
+        const displayOrderRaw = rawGoal.display_order;
+        const displayOrder = typeof displayOrderRaw === "number" && Number.isInteger(displayOrderRaw) && displayOrderRaw >= 0
+            ? displayOrderRaw
+            : index;
+        kpiGoals.push({
+            kpi_id: kpiId,
+            goal_scope: goalScopeRaw,
+            goal_target: goalTarget,
+            display_order: displayOrder,
+        });
+    }
     if (body.late_join_includes_history !== undefined && typeof body.late_join_includes_history !== "boolean") {
         return { ok: false, status: 422, error: "late_join_includes_history must be boolean when provided" };
     }
@@ -8057,10 +8821,12 @@ function validateChallengeCreatePayload(body) {
             name,
             description: typeof body.description === "string" ? body.description.trim() : undefined,
             mode,
+            challenge_kind: challengeKind ?? (mode === "team" ? "team" : "mini"),
             team_id: typeof body.team_id === "string" ? body.team_id.trim() : undefined,
             start_at: startAt.toISOString(),
             end_at: endAt.toISOString(),
             template_id: typeof body.template_id === "string" ? body.template_id.trim() : undefined,
+            kpi_goals: kpiGoals.sort((a, b) => a.display_order - b.display_order),
             late_join_includes_history: Boolean(body.late_join_includes_history),
             invite_user_ids: Array.from(new Set(inviteUserIds)),
         },
@@ -9011,6 +9777,20 @@ function validateAdminChallengeTemplatePayload(body, requireName) {
         }
         payload.description = candidate.description;
     }
+    if (candidate.suggested_duration_days !== undefined) {
+        if (typeof candidate.suggested_duration_days !== "number" ||
+            !Number.isInteger(candidate.suggested_duration_days) ||
+            candidate.suggested_duration_days <= 0) {
+            return { ok: false, status: 422, error: "suggested_duration_days must be a positive integer when provided" };
+        }
+        payload.suggested_duration_days = candidate.suggested_duration_days;
+    }
+    if (candidate.template_payload !== undefined) {
+        if (!isRecord(candidate.template_payload)) {
+            return { ok: false, status: 422, error: "template_payload must be an object when provided" };
+        }
+        payload.template_payload = candidate.template_payload;
+    }
     if (candidate.is_active !== undefined) {
         if (typeof candidate.is_active !== "boolean") {
             return { ok: false, status: 422, error: "is_active must be boolean when provided" };
@@ -9208,11 +9988,16 @@ function validateLiveSessionJoinTokenPayload(body) {
     return { ok: true, payload: { role: role } };
 }
 async function canAccessMuxMediaForRole(userId, action, context) {
-    const roleResult = await getUserRoleForScope(userId);
+    const roleResult = await getUserRoleScopeForActor(userId);
     if (!roleResult.ok)
         return roleResult;
-    const role = roleResult.role;
-    const allowRole = role === "admin" || role === "super_admin" || role === "coach" || role === "team_leader" || role === "challenge_sponsor";
+    const role = roleResult.primaryRole;
+    const roles = new Set(roleResult.effectiveRoles);
+    const allowRole = roles.has("admin") ||
+        roles.has("super_admin") ||
+        roles.has("coach") ||
+        roles.has("team_leader") ||
+        roles.has("challenge_sponsor");
     if (allowRole) {
         return { ok: true, allowed: true, role };
     }
@@ -9224,7 +10009,63 @@ async function canAccessMuxMediaForRole(userId, action, context) {
     }
     return { ok: true, allowed: false, role };
 }
-async function getUserRoleForScope(userId) {
+const ROLE_PRIORITY_ORDER = [
+    "super_admin",
+    "admin",
+    "coach",
+    "team_leader",
+    "challenge_sponsor",
+    "agent",
+    "member",
+];
+function normalizeRoleValue(value) {
+    const normalized = String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_");
+    if (normalized === "platform_admin")
+        return "admin";
+    if (ROLE_PRIORITY_ORDER.includes(normalized)) {
+        return normalized;
+    }
+    return null;
+}
+function parseRoleListFromMetadata(metadata) {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata))
+        return [];
+    const record = metadata;
+    const candidates = [
+        record.role,
+        ...(Array.isArray(record.roles) ? record.roles : []),
+    ];
+    const normalized = candidates
+        .map((value) => normalizeRoleValue(value))
+        .filter((value) => value !== null);
+    return Array.from(new Set(normalized));
+}
+function pickPrimaryRole(effectiveRoles) {
+    for (const role of ROLE_PRIORITY_ORDER) {
+        if (effectiveRoles.includes(role))
+            return role;
+    }
+    return "agent";
+}
+function parseCoachingScope(raw) {
+    const normalized = String(raw ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_");
+    if (normalized === "my")
+        return "my";
+    if (normalized === "team")
+        return "team";
+    return "all_allowed";
+}
+function parseSuperAdminElevatedEdit(raw) {
+    const normalized = String(raw ?? "").trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+async function getUserRoleScopeForActor(userId, authUser) {
     if (!dataClient) {
         return { ok: false, status: 500, error: "Supabase data client not configured" };
     }
@@ -9236,7 +10077,37 @@ async function getUserRoleForScope(userId) {
     if (error) {
         return { ok: false, status: 500, error: "Failed to evaluate caller role for media scope" };
     }
-    return { ok: true, role: String(data?.role ?? "agent") };
+    const dbRole = normalizeRoleValue(data?.role) ?? "agent";
+    const roleCandidates = new Set([dbRole]);
+    const fromAuthUser = [
+        ...parseRoleListFromMetadata(authUser?.app_metadata),
+        ...parseRoleListFromMetadata(authUser?.user_metadata),
+    ];
+    for (const role of fromAuthUser)
+        roleCandidates.add(role);
+    if (authClient?.auth?.admin?.getUserById) {
+        try {
+            const adminLookup = await authClient.auth.admin.getUserById(userId);
+            const authRoles = [
+                ...parseRoleListFromMetadata(adminLookup.data?.user?.app_metadata),
+                ...parseRoleListFromMetadata(adminLookup.data?.user?.user_metadata),
+            ];
+            for (const role of authRoles)
+                roleCandidates.add(role);
+        }
+        catch {
+            // Non-fatal: keep DB role fallback when admin lookup is unavailable.
+        }
+    }
+    const effectiveRoles = Array.from(roleCandidates);
+    const primaryRole = pickPrimaryRole(effectiveRoles);
+    return { ok: true, primaryRole, effectiveRoles };
+}
+async function getUserRoleForScope(userId) {
+    const roleScope = await getUserRoleScopeForActor(userId);
+    if (!roleScope.ok)
+        return roleScope;
+    return { ok: true, role: roleScope.primaryRole };
 }
 function inferViewerContextFromRole(role) {
     if (role === "coach")
@@ -10678,12 +11549,14 @@ async function isPlatformAdmin(userId) {
     const role = String(data.role ?? "");
     return role === "admin" || role === "super_admin";
 }
-async function getCoachingAccessContext(userId) {
-    const roleResult = await getUserRoleForScope(userId);
+async function getCoachingAccessContext(userId, options = {}) {
+    const roleResult = await getUserRoleScopeForActor(userId, options.authUser);
     if (!roleResult.ok)
         return roleResult;
-    const role = roleResult.role;
-    const platformAdmin = role === "admin" || role === "super_admin";
+    const role = roleResult.primaryRole;
+    const effectiveRoles = roleResult.effectiveRoles;
+    const roleSet = new Set(effectiveRoles);
+    const platformAdmin = roleSet.has("admin") || roleSet.has("super_admin");
     if (!dataClient) {
         return { ok: false, status: 500, error: "Supabase data client not configured" };
     }
@@ -10705,15 +11578,26 @@ async function getCoachingAccessContext(userId) {
             leaderTeamIds.add(teamId);
         }
     }
-    const coachRole = role === "coach";
-    const canAuthorGlobal = platformAdmin || coachRole;
-    const sponsorReadOnly = role === "challenge_sponsor";
+    const coachRole = roleSet.has("coach");
+    const superAdminRole = roleSet.has("super_admin");
+    const teamLeaderRole = roleSet.has("team_leader");
+    const sponsorReadOnly = roleSet.has("challenge_sponsor") && !coachRole && !teamLeaderRole && !platformAdmin;
+    const elevated = Boolean(options.superAdminElevatedEdit);
+    const canGlobalView = platformAdmin || coachRole;
+    const canAuthorGlobal = (platformAdmin && (!superAdminRole || elevated)) || coachRole;
+    const canManageCohorts = canAuthorGlobal || teamLeaderRole;
+    const canManageChannels = canAuthorGlobal || teamLeaderRole;
     return {
         ok: true,
         context: {
             role,
+            effectiveRoles,
             platformAdmin,
             canAuthorGlobal,
+            canManageCohorts,
+            canManageChannels,
+            canGlobalView,
+            superAdminElevatedEdit: elevated,
             sponsorReadOnly,
             leaderTeamIds,
             memberTeamIds,
@@ -10722,8 +11606,8 @@ async function getCoachingAccessContext(userId) {
 }
 function canReadJourneyByTeam(access, teamId) {
     if (!teamId)
-        return access.platformAdmin || access.role === "coach";
-    if (access.canAuthorGlobal)
+        return access.canGlobalView;
+    if (access.canGlobalView)
         return true;
     if (access.leaderTeamIds.has(teamId))
         return true;

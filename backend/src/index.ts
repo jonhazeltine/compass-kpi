@@ -128,12 +128,21 @@ type ChallengeCreatePayload = {
   name: string;
   description?: string;
   mode: "solo" | "team";
+  challenge_kind?: "team" | "mini" | "sponsored";
   team_id?: string;
   start_at?: string;
   end_at: string;
   template_id?: string;
+  kpi_goals?: ChallengeCreateKpiGoalPayload[];
   late_join_includes_history?: boolean;
   invite_user_ids?: string[];
+};
+
+type ChallengeCreateKpiGoalPayload = {
+  kpi_id: string;
+  goal_scope: "team" | "individual";
+  goal_target?: number | null;
+  display_order: number;
 };
 
 type ChannelType = "team" | "challenge" | "sponsor" | "cohort" | "direct";
@@ -275,6 +284,8 @@ type AdminKpiPayload = {
 type AdminChallengeTemplatePayload = {
   name: string;
   description?: string;
+  suggested_duration_days?: number;
+  template_payload?: Record<string, unknown>;
   is_active?: boolean;
 };
 
@@ -7539,6 +7550,8 @@ app.post("/challenges", async (req, res) => {
       return res.status(payloadCheck.status).json({ error: payloadCheck.error });
     }
     const payload = payloadCheck.payload;
+    const payloadChallengeKind = payload.challenge_kind ?? (payload.mode === "team" ? "team" : "mini");
+    const kpiGoals = payload.kpi_goals ?? [];
 
     await ensureUserRow(auth.user.id);
     const { data: userRow, error: userError } = await dataClient
@@ -7560,6 +7573,27 @@ app.post("/challenges", async (req, res) => {
     if (inviteLimit >= 0 && requestedInviteCount > inviteLimit) {
       return res.status(403).json({ error: `Invite limit exceeded for your plan (max ${inviteLimit})` });
     }
+    if (payloadChallengeKind === "mini" && requestedInviteCount > 3) {
+      return res.status(422).json({ error: "Mini challenge invite cap is 3 participants" });
+    }
+    if (payloadChallengeKind === "team" && requestedInviteCount > 0) {
+      return res.status(422).json({ error: "Team challenges do not accept invite_user_ids; use team membership scope" });
+    }
+
+    const requestedKpiIds = kpiGoals.map((goal) => goal.kpi_id);
+    const { data: existingKpis, error: kpiLookupError } = await dataClient
+      .from("kpis")
+      .select("id")
+      .in("id", requestedKpiIds)
+      .eq("is_active", true);
+    if (kpiLookupError) {
+      return handleSupabaseError(res, "Failed to validate challenge KPI goals", kpiLookupError);
+    }
+    const existingKpiIdSet = new Set((existingKpis ?? []).map((row) => String((row as { id?: unknown }).id ?? "")));
+    const missingKpiId = requestedKpiIds.find((id) => !existingKpiIdSet.has(id));
+    if (missingKpiId) {
+      return res.status(422).json({ error: `kpi_goals contains unknown or inactive KPI id: ${missingKpiId}` });
+    }
 
     const nowIso = new Date().toISOString();
     if (payload.mode === "team") {
@@ -7575,6 +7609,66 @@ app.post("/challenges", async (req, res) => {
       }
       if (!toEntitlementBool(entitlements, "can_host_team_challenges", false)) {
         return res.status(403).json({ error: "Your plan cannot host team challenges" });
+      }
+
+      const payloadStartIso = payload.start_at ?? nowIso;
+      const payloadEndIso = payload.end_at;
+      const payloadStartMs = new Date(payloadStartIso).getTime();
+      const payloadEndMs = new Date(payloadEndIso).getTime();
+      const nowMs = new Date(nowIso).getTime();
+
+      const { data: teamScheduledRows, error: teamScheduledError } = await dataClient
+        .from("challenges")
+        .select("id,start_at,end_at")
+        .eq("mode", "team")
+        .eq("team_id", payload.team_id)
+        .eq("is_active", true)
+        .gte("end_at", nowIso)
+        .order("start_at", { ascending: true })
+        .limit(20);
+      if (teamScheduledError) {
+        return handleSupabaseError(res, "Failed to enforce team challenge schedule limits", teamScheduledError);
+      }
+
+      const scheduledRows = (teamScheduledRows ?? []) as Array<{ start_at?: unknown; end_at?: unknown }>;
+      const activeNowCount = scheduledRows.filter((row) => {
+        const startMs = new Date(String(row.start_at ?? "")).getTime();
+        const endMs = new Date(String(row.end_at ?? "")).getTime();
+        if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return false;
+        return startMs <= nowMs && endMs >= nowMs;
+      }).length;
+      const upcomingCount = scheduledRows.filter((row) => {
+        const startMs = new Date(String(row.start_at ?? "")).getTime();
+        if (!Number.isFinite(startMs)) return false;
+        return startMs > nowMs;
+      }).length;
+
+      const payloadIsActiveNow = Number.isFinite(payloadStartMs) && Number.isFinite(payloadEndMs)
+        ? payloadStartMs <= nowMs && payloadEndMs >= nowMs
+        : false;
+      const payloadIsUpcoming = Number.isFinite(payloadStartMs) ? payloadStartMs > nowMs : false;
+
+      if (payloadIsActiveNow && activeNowCount >= 1) {
+        return res.status(409).json({ error: "Team already has an active challenge. Only one active challenge is allowed per team." });
+      }
+      if (payloadIsUpcoming && upcomingCount >= 1) {
+        return res.status(409).json({ error: "Team already has an upcoming challenge. Only one upcoming challenge is allowed per team." });
+      }
+
+      const { data: overlappingRows, error: overlapError } = await dataClient
+        .from("challenges")
+        .select("id,start_at,end_at")
+        .eq("mode", "team")
+        .eq("team_id", payload.team_id)
+        .eq("is_active", true)
+        .lte("start_at", payloadEndIso)
+        .gte("end_at", payloadStartIso)
+        .limit(20);
+      if (overlapError) {
+        return handleSupabaseError(res, "Failed to enforce team challenge overlap limits", overlapError);
+      }
+      if ((overlappingRows ?? []).length > 0) {
+        return res.status(409).json({ error: "Team challenge dates overlap an existing challenge. Team challenges cannot overlap." });
       }
     } else {
       // Team leaders can host one active private cross-team challenge on Team plan.
@@ -7618,6 +7712,7 @@ app.post("/challenges", async (req, res) => {
       .insert({
         template_id: payload.template_id ?? null,
         team_id: payload.mode === "team" ? payload.team_id ?? null : null,
+        challenge_kind: payloadChallengeKind,
         name: payload.name,
         description: payload.description ?? null,
         mode: payload.mode,
@@ -7627,7 +7722,7 @@ app.post("/challenges", async (req, res) => {
         late_join_includes_history: Boolean(payload.late_join_includes_history),
         created_by: auth.user.id,
       })
-      .select("id,name,description,mode,team_id,start_at,end_at,late_join_includes_history,is_active,created_by,created_at")
+      .select("id,name,description,mode,challenge_kind,team_id,start_at,end_at,late_join_includes_history,is_active,created_by,created_at")
       .single();
     if (challengeError) {
       return handleSupabaseError(res, "Failed to create challenge", challengeError);
@@ -7636,6 +7731,22 @@ app.post("/challenges", async (req, res) => {
     const challengeId = String((challenge as { id?: unknown }).id ?? "");
     if (!challengeId) {
       return res.status(500).json({ error: "Challenge id missing from create response" });
+    }
+
+    const challengeKpiRows = kpiGoals.map((goal, index) => ({
+      challenge_id: challengeId,
+      kpi_id: goal.kpi_id,
+      goal_target: goal.goal_target ?? null,
+      goal_scope: goal.goal_scope,
+      display_order: goal.display_order ?? index,
+    }));
+    if (challengeKpiRows.length > 0) {
+      const { error: challengeKpiInsertError } = await dataClient
+        .from("challenge_kpis")
+        .upsert(challengeKpiRows, { onConflict: "challenge_id,kpi_id" });
+      if (challengeKpiInsertError) {
+        return handleSupabaseError(res, "Failed to persist challenge KPI goals", challengeKpiInsertError);
+      }
     }
 
     await dataClient
@@ -7654,6 +7765,12 @@ app.post("/challenges", async (req, res) => {
 
     return res.status(201).json({
       challenge,
+      challenge_kind: payloadChallengeKind,
+      kpi_goal_summary: {
+        total_kpis: challengeKpiRows.length,
+        team_goal_count: challengeKpiRows.filter((row) => row.goal_scope === "team").length,
+        individual_goal_count: challengeKpiRows.filter((row) => row.goal_scope === "individual").length,
+      },
       invite_policy: {
         invite_limit: inviteLimit,
         requested_invites: requestedInviteCount,
@@ -7677,20 +7794,187 @@ app.get("/challenges", async (req, res) => {
     }
 
     const nowIso = new Date().toISOString();
+    const nowMs = new Date(nowIso).getTime();
     const { data: challenges, error: challengesError } = await dataClient
       .from("challenges")
-      .select("id,name,description,mode,team_id,start_at,end_at,late_join_includes_history,is_active,created_at")
+      .select("id,name,description,mode,challenge_kind,team_id,start_at,end_at,late_join_includes_history,is_active,created_at")
       .eq("is_active", true)
-      .gte("end_at", nowIso)
       .order("start_at", { ascending: true })
-      .limit(200);
+      .limit(500);
 
     if (challengesError) {
       return handleSupabaseError(res, "Failed to fetch challenges", challengesError);
     }
 
-    const challengeList = challenges ?? [];
+    const platformAdmin = await isPlatformAdmin(auth.user.id);
+    const { data: teamMembershipRows, error: teamMembershipError } = await dataClient
+      .from("team_memberships")
+      .select("team_id")
+      .eq("user_id", auth.user.id);
+    if (teamMembershipError) {
+      return handleSupabaseError(res, "Failed to fetch team memberships for challenge visibility", teamMembershipError);
+    }
+    const myTeamIds = new Set(
+      (teamMembershipRows ?? [])
+        .map((row) => String((row as { team_id?: unknown }).team_id ?? "").trim())
+        .filter(Boolean)
+    );
+
+    const rawChallengeList = (challenges ?? []) as Array<{
+      id?: unknown;
+      mode?: unknown;
+      challenge_kind?: unknown;
+      team_id?: unknown;
+      start_at?: unknown;
+      end_at?: unknown;
+    }>;
+    const toIsoMs = (raw: unknown) => {
+      const ms = new Date(String(raw ?? "")).getTime();
+      return Number.isFinite(ms) ? ms : null;
+    };
+    const isTeamChallenge = (row: { mode?: unknown; team_id?: unknown }) =>
+      String(row.mode ?? "").toLowerCase() === "team" && String(row.team_id ?? "").trim().length > 0;
+    const pickSingleTeamSlot = (
+      rows: typeof rawChallengeList,
+      slot: "completed" | "active" | "upcoming"
+    ) => {
+      const decorated = rows
+        .map((row) => {
+          const startMs = toIsoMs(row.start_at);
+          const endMs = toIsoMs(row.end_at);
+          if (startMs == null || endMs == null) return null;
+          return { row, startMs, endMs };
+        })
+        .filter((v): v is { row: (typeof rawChallengeList)[number]; startMs: number; endMs: number } => Boolean(v));
+      if (slot === "completed") {
+        return (
+          decorated
+            .filter((entry) => entry.endMs < nowMs)
+            .sort((a, b) => b.endMs - a.endMs)[0]?.row ?? null
+        );
+      }
+      if (slot === "active") {
+        return (
+          decorated
+            .filter((entry) => entry.startMs <= nowMs && entry.endMs >= nowMs)
+            .sort((a, b) => a.startMs - b.startMs)[0]?.row ?? null
+        );
+      }
+      return (
+        decorated
+          .filter((entry) => entry.startMs > nowMs)
+          .sort((a, b) => a.startMs - b.startMs)[0]?.row ?? null
+      );
+    };
+
+    const teamRowsByTeamId = new Map<string, typeof rawChallengeList>();
+    const nonTeamRows = rawChallengeList.filter((row) => {
+      if (isTeamChallenge(row)) {
+        const teamId = String(row.team_id ?? "").trim();
+        if (!platformAdmin && !myTeamIds.has(teamId)) {
+          return false;
+        }
+        const list = teamRowsByTeamId.get(teamId) ?? [];
+        list.push(row);
+        teamRowsByTeamId.set(teamId, list);
+        return false;
+      }
+      const endMs = toIsoMs(row.end_at);
+      return endMs != null && endMs >= nowMs;
+    });
+
+    const teamWindowRows: typeof rawChallengeList = [];
+    for (const rows of teamRowsByTeamId.values()) {
+      const keepCompleted = pickSingleTeamSlot(rows, "completed");
+      const keepActive = pickSingleTeamSlot(rows, "active");
+      const keepUpcomingCandidate = pickSingleTeamSlot(rows, "upcoming");
+      const activeEndMs = keepActive ? toIsoMs(keepActive.end_at) : null;
+      const upcomingStartMs = keepUpcomingCandidate ? toIsoMs(keepUpcomingCandidate.start_at) : null;
+      const keepUpcoming =
+        keepUpcomingCandidate &&
+        (activeEndMs == null || upcomingStartMs == null || upcomingStartMs > activeEndMs)
+          ? keepUpcomingCandidate
+          : null;
+
+      const dedupe = new Set<string>();
+      [keepCompleted, keepActive, keepUpcoming].forEach((row) => {
+        if (!row) return;
+        const id = String(row.id ?? "");
+        if (!id || dedupe.has(id)) return;
+        dedupe.add(id);
+        teamWindowRows.push(row);
+      });
+    }
+
+    const challengeList = [...nonTeamRows, ...teamWindowRows].sort((a, b) => {
+      const aStart = toIsoMs(a.start_at) ?? 0;
+      const bStart = toIsoMs(b.start_at) ?? 0;
+      return aStart - bStart;
+    });
     const challengeIds = challengeList.map((c) => String(c.id));
+    const challengeTeamIds = Array.from(
+      new Set(
+        challengeList
+          .map((row) => String(row.team_id ?? "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    let teamIdentityById = new Map<string, { id: string; name: string; identity_avatar: string | null; identity_background: string | null }>();
+    if (challengeTeamIds.length > 0) {
+      const { data: teams, error: teamsError } = await dataClient
+        .from("teams")
+        .select("id,name,identity_avatar,identity_background")
+        .in("id", challengeTeamIds);
+      if (teamsError) {
+        return handleSupabaseError(res, "Failed to fetch challenge team identity summaries", teamsError);
+      }
+      teamIdentityById = new Map(
+        (teams ?? []).map((row) => [
+          String((row as { id?: unknown }).id ?? ""),
+          {
+            id: String((row as { id?: unknown }).id ?? ""),
+            name: String((row as { name?: unknown }).name ?? "Team"),
+            identity_avatar:
+              typeof (row as { identity_avatar?: unknown }).identity_avatar === "string"
+                ? String((row as { identity_avatar?: unknown }).identity_avatar)
+                : null,
+            identity_background:
+              typeof (row as { identity_background?: unknown }).identity_background === "string"
+                ? String((row as { identity_background?: unknown }).identity_background)
+                : null,
+          },
+        ])
+      );
+    }
+
+    let kpiGoalSummaryByChallengeId = new Map<string, { total_kpis: number; team_goal_count: number; individual_goal_count: number }>();
+    if (challengeIds.length > 0) {
+      const { data: challengeGoalRows, error: challengeGoalRowsError } = await dataClient
+        .from("challenge_kpis")
+        .select("challenge_id,goal_scope")
+        .in("challenge_id", challengeIds);
+      if (challengeGoalRowsError) {
+        return handleSupabaseError(res, "Failed to fetch challenge KPI goal summaries", challengeGoalRowsError);
+      }
+      kpiGoalSummaryByChallengeId = new Map();
+      for (const row of challengeGoalRows ?? []) {
+        const challengeId = String((row as { challenge_id?: unknown }).challenge_id ?? "");
+        if (!challengeId) continue;
+        const bucket = kpiGoalSummaryByChallengeId.get(challengeId) ?? {
+          total_kpis: 0,
+          team_goal_count: 0,
+          individual_goal_count: 0,
+        };
+        bucket.total_kpis += 1;
+        if (String((row as { goal_scope?: unknown }).goal_scope ?? "").toLowerCase() === "individual") {
+          bucket.individual_goal_count += 1;
+        } else {
+          bucket.team_goal_count += 1;
+        }
+        kpiGoalSummaryByChallengeId.set(challengeId, bucket);
+      }
+    }
 
     let participationByChallenge = new Map<string, unknown>();
     if (challengeIds.length > 0) {
@@ -7731,8 +8015,24 @@ app.get("/challenges", async (req, res) => {
       }
 
       const leaderboard = await buildChallengeLeaderboard(String(challenge.id), 5);
+      const teamId = String(challenge.team_id ?? "").trim();
+      const challengeMode = String(challenge.mode ?? "").toLowerCase();
+      const challengeKindRaw = String((challenge as { challenge_kind?: unknown }).challenge_kind ?? "").toLowerCase();
+      const normalizedChallengeKind =
+        challengeKindRaw === "team" || challengeKindRaw === "mini" || challengeKindRaw === "sponsored"
+          ? challengeKindRaw
+          : challengeMode === "team"
+            ? "team"
+            : "mini";
       enriched.push({
         ...challenge,
+        challenge_kind: normalizedChallengeKind,
+        team_identity: teamId ? teamIdentityById.get(teamId) ?? null : null,
+        kpi_goal_summary: kpiGoalSummaryByChallengeId.get(challengeId) ?? {
+          total_kpis: 0,
+          team_goal_count: 0,
+          individual_goal_count: 0,
+        },
         my_participation: refreshedParticipation,
         leaderboard_top: leaderboard,
       });
@@ -7742,6 +8042,84 @@ app.get("/challenges", async (req, res) => {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in /challenges", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/challenge-templates", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+    if (!dataClient) {
+      return res.status(500).json({ error: "Supabase data client not configured" });
+    }
+
+    const { data, error } = await dataClient
+      .from("challenge_templates")
+      .select("id,name,description,suggested_duration_days,template_payload,is_active,created_at,updated_at")
+      .eq("is_active", true)
+      .order("created_at", { ascending: true });
+    if (error) {
+      return handleSupabaseError(res, "Failed to fetch challenge templates", error);
+    }
+
+    const templates = (data ?? []).map((row) => {
+      const payload = isRecord((row as { template_payload?: unknown }).template_payload)
+        ? ((row as { template_payload: Record<string, unknown> }).template_payload as Record<string, unknown>)
+        : {};
+      const kpiDefaults = Array.isArray(payload.kpi_defaults)
+        ? payload.kpi_defaults
+            .map((entry, idx) => {
+              if (!isRecord(entry)) return null;
+              const kpiId = typeof entry.kpi_id === "string" ? entry.kpi_id.trim() : "";
+              if (!kpiId) return null;
+              const goalScopeRaw = typeof entry.goal_scope_default === "string" ? entry.goal_scope_default.trim().toLowerCase() : "";
+              const goalScopeDefault = goalScopeRaw === "individual" ? "individual" : "team";
+              const suggestedTargetRaw = entry.suggested_target;
+              const suggestedTarget =
+                typeof suggestedTargetRaw === "number" && Number.isFinite(suggestedTargetRaw)
+                  ? Number(suggestedTargetRaw.toFixed(2))
+                  : null;
+              const displayOrderRaw = entry.display_order;
+              const displayOrder =
+                typeof displayOrderRaw === "number" && Number.isInteger(displayOrderRaw) && displayOrderRaw >= 0
+                  ? displayOrderRaw
+                  : idx;
+              return {
+                kpi_id: kpiId,
+                label: typeof entry.label === "string" && entry.label.trim().length > 0 ? entry.label.trim() : `KPI ${idx + 1}`,
+                goal_scope_default: goalScopeDefault,
+                suggested_target: suggestedTarget,
+                display_order: displayOrder,
+              };
+            })
+            .filter((entry): entry is {
+              kpi_id: string;
+              label: string;
+              goal_scope_default: "team" | "individual";
+              suggested_target: number | null;
+              display_order: number;
+            } => Boolean(entry))
+            .sort((a, b) => a.display_order - b.display_order)
+        : [];
+
+      return {
+        id: String((row as { id?: unknown }).id ?? ""),
+        title: String((row as { name?: unknown }).name ?? "Challenge Template"),
+        description: typeof (row as { description?: unknown }).description === "string"
+          ? String((row as { description?: unknown }).description)
+          : "",
+        suggested_duration_days: Number((row as { suggested_duration_days?: unknown }).suggested_duration_days ?? 30) || 30,
+        kpi_defaults: kpiDefaults,
+      };
+    });
+
+    return res.json({ templates });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /challenge-templates", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -8142,7 +8520,7 @@ app.get("/admin/challenge-templates", async (req, res) => {
 
     const { data, error } = await dataClient
       .from("challenge_templates")
-      .select("id,name,description,is_active,created_at,updated_at")
+      .select("id,name,description,suggested_duration_days,template_payload,is_active,created_at,updated_at")
       .order("created_at", { ascending: true });
     if (error) return handleSupabaseError(res, "Failed to fetch challenge templates", error);
     return res.json({ challenge_templates: data ?? [] });
@@ -8166,7 +8544,7 @@ app.post("/admin/challenge-templates", async (req, res) => {
     const { data, error } = await dataClient
       .from("challenge_templates")
       .insert(payloadCheck.payload)
-      .select("id,name,description,is_active,created_at,updated_at")
+      .select("id,name,description,suggested_duration_days,template_payload,is_active,created_at,updated_at")
       .single();
     if (error) return handleSupabaseError(res, "Failed to create challenge template", error);
 
@@ -8195,7 +8573,7 @@ app.put("/admin/challenge-templates/:id", async (req, res) => {
       .from("challenge_templates")
       .update({ ...payloadCheck.payload, updated_at: new Date().toISOString() })
       .eq("id", templateId)
-      .select("id,name,description,is_active,created_at,updated_at")
+      .select("id,name,description,suggested_duration_days,template_payload,is_active,created_at,updated_at")
       .single();
     if (error) return handleSupabaseError(res, "Failed to update challenge template", error);
 
@@ -9612,6 +9990,23 @@ function validateChallengeCreatePayload(body: unknown):
   if (!name) return { ok: false, status: 422, error: "name is required" };
   const mode = body.mode === "team" ? "team" : body.mode === "solo" ? "solo" : null;
   if (!mode) return { ok: false, status: 422, error: "mode must be one of: solo, team" };
+  const challengeKindRaw = typeof body.challenge_kind === "string" ? body.challenge_kind.trim().toLowerCase() : "";
+  const challengeKind =
+    challengeKindRaw === "team" || challengeKindRaw === "mini" || challengeKindRaw === "sponsored"
+      ? challengeKindRaw
+      : null;
+  if (body.challenge_kind !== undefined && !challengeKind) {
+    return { ok: false, status: 422, error: "challenge_kind must be one of: team, mini, sponsored when provided" };
+  }
+  if (challengeKind === "team" && mode !== "team") {
+    return { ok: false, status: 422, error: "challenge_kind=team requires mode=team" };
+  }
+  if (challengeKind === "mini" && mode !== "solo") {
+    return { ok: false, status: 422, error: "challenge_kind=mini requires mode=solo" };
+  }
+  if (challengeKind === "sponsored") {
+    return { ok: false, status: 422, error: "challenge_kind=sponsored is not supported on create payload" };
+  }
   const endAtRaw = typeof body.end_at === "string" ? body.end_at.trim() : "";
   if (!endAtRaw) return { ok: false, status: 422, error: "end_at is required" };
   const endAt = new Date(endAtRaw);
@@ -9630,6 +10025,53 @@ function validateChallengeCreatePayload(body: unknown):
   }
   if (body.template_id !== undefined && typeof body.template_id !== "string") {
     return { ok: false, status: 422, error: "template_id must be a string when provided" };
+  }
+  const rawKpiGoals = body.kpi_goals;
+  if (!Array.isArray(rawKpiGoals) || rawKpiGoals.length === 0) {
+    return { ok: false, status: 422, error: "kpi_goals must include at least one KPI goal" };
+  }
+  const kpiGoals: ChallengeCreateKpiGoalPayload[] = [];
+  const dedupeKpiIds = new Set<string>();
+  for (let index = 0; index < rawKpiGoals.length; index += 1) {
+    const rawGoal = rawKpiGoals[index];
+    if (!isRecord(rawGoal)) {
+      return { ok: false, status: 422, error: "Each kpi_goals item must be an object" };
+    }
+    const kpiId = typeof rawGoal.kpi_id === "string" ? rawGoal.kpi_id.trim() : "";
+    if (!kpiId) {
+      return { ok: false, status: 422, error: "kpi_goals[].kpi_id is required" };
+    }
+    if (dedupeKpiIds.has(kpiId)) {
+      return { ok: false, status: 422, error: "kpi_goals contains duplicate kpi_id values" };
+    }
+    dedupeKpiIds.add(kpiId);
+    const goalScopeRaw = typeof rawGoal.goal_scope === "string" ? rawGoal.goal_scope.trim().toLowerCase() : "";
+    if (goalScopeRaw !== "team" && goalScopeRaw !== "individual") {
+      return { ok: false, status: 422, error: "kpi_goals[].goal_scope must be one of: team, individual" };
+    }
+    const goalTargetRaw = rawGoal.goal_target;
+    let goalTarget: number | null | undefined;
+    if (goalTargetRaw === undefined || goalTargetRaw === null || goalTargetRaw === "") {
+      goalTarget = null;
+    } else if (typeof goalTargetRaw === "number" && Number.isFinite(goalTargetRaw)) {
+      goalTarget = Number(goalTargetRaw.toFixed(2));
+      if (goalTarget < 0) {
+        return { ok: false, status: 422, error: "kpi_goals[].goal_target must be >= 0 when provided" };
+      }
+    } else {
+      return { ok: false, status: 422, error: "kpi_goals[].goal_target must be numeric when provided" };
+    }
+    const displayOrderRaw = rawGoal.display_order;
+    const displayOrder =
+      typeof displayOrderRaw === "number" && Number.isInteger(displayOrderRaw) && displayOrderRaw >= 0
+        ? displayOrderRaw
+        : index;
+    kpiGoals.push({
+      kpi_id: kpiId,
+      goal_scope: goalScopeRaw,
+      goal_target: goalTarget,
+      display_order: displayOrder,
+    });
   }
   if (body.late_join_includes_history !== undefined && typeof body.late_join_includes_history !== "boolean") {
     return { ok: false, status: 422, error: "late_join_includes_history must be boolean when provided" };
@@ -9651,10 +10093,12 @@ function validateChallengeCreatePayload(body: unknown):
       name,
       description: typeof body.description === "string" ? body.description.trim() : undefined,
       mode,
+      challenge_kind: challengeKind ?? (mode === "team" ? "team" : "mini"),
       team_id: typeof body.team_id === "string" ? body.team_id.trim() : undefined,
       start_at: startAt.toISOString(),
       end_at: endAt.toISOString(),
       template_id: typeof body.template_id === "string" ? body.template_id.trim() : undefined,
+      kpi_goals: kpiGoals.sort((a, b) => a.display_order - b.display_order),
       late_join_includes_history: Boolean(body.late_join_includes_history),
       invite_user_ids: Array.from(new Set(inviteUserIds)),
     },
@@ -10759,6 +11203,22 @@ function validateAdminChallengeTemplatePayload(
       return { ok: false, status: 422, error: "description must be a string when provided" };
     }
     payload.description = candidate.description;
+  }
+  if (candidate.suggested_duration_days !== undefined) {
+    if (
+      typeof candidate.suggested_duration_days !== "number" ||
+      !Number.isInteger(candidate.suggested_duration_days) ||
+      candidate.suggested_duration_days <= 0
+    ) {
+      return { ok: false, status: 422, error: "suggested_duration_days must be a positive integer when provided" };
+    }
+    payload.suggested_duration_days = candidate.suggested_duration_days;
+  }
+  if (candidate.template_payload !== undefined) {
+    if (!isRecord(candidate.template_payload)) {
+      return { ok: false, status: 422, error: "template_payload must be an object when provided" };
+    }
+    payload.template_payload = candidate.template_payload;
   }
   if (candidate.is_active !== undefined) {
     if (typeof candidate.is_active !== "boolean") {

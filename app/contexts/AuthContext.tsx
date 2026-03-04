@@ -42,16 +42,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    let isMounted = true;
+    void (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (isMounted) setSession(session);
+      } catch (error) {
+        console.warn('[AuthContext] getSession failed, continuing unauthenticated startup.', error);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    })();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isMounted) return;
+      setSession(nextSession);
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -86,8 +98,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loading]);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+    if (!data.session) throw new Error('Sign in succeeded but no active session was returned.');
+    if (data.session) {
+      setSession(data.session);
+      setLoading(false);
+    }
   };
 
   const signUp = async (email: string, password: string, metadata?: Record<string, unknown>) => {

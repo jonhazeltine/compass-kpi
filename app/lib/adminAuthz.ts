@@ -22,7 +22,8 @@ export type AdminRouteKey =
   | 'coachingJourneys'
   | 'coachingCohorts'
   | 'coachingChannels'
-  | 'coachingAudit';
+  | 'coachingAudit'
+  | 'projectionLab';
 
 export type AdminRouteDefinition = {
   key: AdminRouteKey;
@@ -187,6 +188,13 @@ export const ADMIN_ROUTES: AdminRouteDefinition[] = [
     path: '/admin/coaching/audit',
     requiredRoles: ['platform_admin', 'super_admin'],
     description: 'W7 exception-only AI troubleshooting queue; super-admin primary with limited platform-admin visibility.',
+  },
+  {
+    key: 'projectionLab',
+    label: 'Projection Lab',
+    path: '/admin/projection-lab',
+    requiredRoles: ['platform_admin', 'super_admin'],
+    description: 'A3 admin-only projection simulation harness for testing algorithm behavior with synthetic data, regression detection, and calibration sandbox.',
   },
 ];
 

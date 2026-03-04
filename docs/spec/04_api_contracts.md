@@ -44,6 +44,17 @@
   - Purpose: compute and persist confidence snapshot from recency/accuracy/anchor inputs (display layer only).
 - `GET /challenges` (implemented baseline)
   - Purpose: list available/active challenges.
+  - Additive challenge-control fields:
+    - `challenge_kind` (`team | mini | sponsored`)
+    - `team_identity` (`{ id, name, identity_avatar, identity_background }`) for team challenges
+    - `kpi_goal_summary` (`{ total_kpis, team_goal_count, individual_goal_count }`)
+  - Visibility guardrail:
+    - team challenges are filtered to teams the caller belongs to (unless platform admin).
+- `GET /challenge-templates` (implemented — M6 challenge wizard runtime)
+  - Purpose: runtime-safe template catalog for challenge setup wizard.
+  - Response shape:
+    - `templates[]` with `id`, `title`, `description`, `suggested_duration_days`, `kpi_defaults[]`.
+    - `kpi_defaults[]` includes `kpi_id`, `label`, `goal_scope_default`, `suggested_target`, `display_order`.
 - `POST /challenge-participants` (implemented baseline)
   - Purpose: join challenge.
   - Modification: support optional `sponsored_challenge_id`.
@@ -712,6 +723,9 @@ These notes are additive contract guidance only. They do not introduce a new end
 - `GET /admin/challenge-templates`, `POST /admin/challenge-templates`, `PUT /admin/challenge-templates/{id}`, `DELETE /admin/challenge-templates/{id}`
   - Platform-admin-only access.
   - Delete route performs safe deactivation (`is_active=false`).
+  - Additive template fields:
+    - `suggested_duration_days` (positive integer)
+    - `template_payload` (json object for runtime template/KPI defaults)
 - `GET /admin/users`, `PUT /admin/users/{id}/role`, `PUT /admin/users/{id}/tier`, `PUT /admin/users/{id}/status`
   - Platform-admin-only access with auditable write path.
   - `PUT /admin/users/{id}/role` supports additive `roles[]` alongside primary `role` for compatibility migration (`role` + `roles[]` both written to auth metadata).
@@ -766,6 +780,16 @@ These notes are additive contract guidance only. They do not introduce a new end
 - `POST /challenges` (new in existing challenge family):
   - creates challenge with host-plan and role enforcement.
   - host policy: free/basic/pro can host private challenges (invite caps enforced); team-leader team-host constraints; coach private-host constraints.
+  - additive request fields:
+    - `challenge_kind` (`team | mini`; `sponsored` rejected on create path)
+    - `kpi_goals[]` (`kpi_id`, `goal_scope`, `goal_target`, `display_order`)
+  - additive validation:
+    - team challenge: requires `team_id`, rejects date overlap, max one active and one upcoming slot.
+    - mini challenge: invite cap `<= 3`.
+    - no duplicate `kpi_goals[].kpi_id`; at least one KPI goal required.
+  - additive response fields:
+    - `challenge_kind`
+    - `kpi_goal_summary`
 - `POST /challenge-participants` (existing, hardened):
   - enforces active participation limit (`1` active challenge at a time).
   - enforces enrollment/invite limits using entitlement policy.

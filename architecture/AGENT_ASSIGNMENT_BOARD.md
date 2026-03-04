@@ -171,6 +171,8 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-COMMS-DM-PRESENTATION-MUX-LIVE-VISIBILITY-A` | `review` | `M6 messaging + media runtime UX hardening` | `Team Leader`, `Team Member`, `Coach` | `dm list polish + media/live visibility` (`dm icon/name/preview parity`, `mux upload/live session entry evidence`) | `KPIDashboardScreen` comms mapping + `CommsHub` thread composer/surface | `Mobile-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + existing Stream/Mux contract paths | Completed: DM rows now map direct channels to DM scope with person-first naming + preview snippet, and channel-thread composer now exposes explicit Mux upload/live-session controls with deterministic status messaging. Validation `cd app && npx tsc --noEmit --pretty false` passed. Runtime screenshot capture produced baseline evidence; multi-state navigation remains limited by local simulator automation constraints. |
 | `M6-COMMS-THREAD-COMPOSER-UNIVERSAL-PIN-CLAUDE-A` | `active` | `M6 messaging runtime stabilization` | `Team Leader`, `Team Member`, `Coach` | `channel_thread composer anchoring` (`universal bottom pin`, `long-thread stability`, `all entry-path parity`) | `CommsHub` `channel_thread` in `All`, `Channels`, and `DMs` entry paths | `Claude-1` | `codex/a2-admin-list-usability-pass` (dedicated mobile worktree required) | manual-spec-driven + existing Compass bottom-nav behavior | Critical UI bugfix swath: composer/message bar currently drifts or disappears behind nav in long-thread and route-variant states; deliver one deterministic anchor implementation that holds in all thread paths without regression. |
 | `M6-MUX-LIVE-LAUNCH-URL-INTEGRATION-A` | `active` | `M6 media/live runtime enablement` | `Team Leader`, `Team Member`, `Coach` | `live session provider wiring` (`real launch url issuance`, `host/join role-safe links`, `non-stub provider semantics`) | backend live-session endpoints (`POST /api/coaching/media/live-sessions`, `GET /api/coaching/media/live-sessions/:id`, `POST /api/coaching/media/live-sessions/:id/join-token`) + app launch consumption (`KPIDashboardScreen`) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend+mobile worktree required) | manual-spec-driven + existing Mux/Stream contract boundaries | Replace current `compass_live` stub behavior with deterministic launch URL flow so Start/Join opens an actionable live room URL (or deterministic unavailable state) rather than session-only success. |
+| `OWNER-A3-ADMIN-LANE-UNINTERRUPTED-A` | `active` | `A3 owner direct lane (long-running, collision-safe)` | `Admin operator` | `admin users/reports UX hardening` (`list clarity`, `filters`, `sorting`, `bulk-safe affordances`, `empty/error states`, `navigation consistency`) | `AdminShellScreen` admin users/reports surfaces only (`/admin/users`, `/admin/reports`) | `Owner + delegated agent` | `codex/a2-admin-list-usability-pass` (owner lane; no shared-file overlap) | N/A (admin web lane, no Figma parity requirement) | Reserved owner lane for uninterrupted swaths. Hard boundary: no edits to `KPIDashboardScreen`, `CommsHub`, `CoachPortalScreen`, backend `/api/channels*`, backend `/api/coaching/media*`, migrations, or invite redemption contracts. Escalate to controller when boundary is reached. |
+| `OWNER-M5-TEAM-MESSAGING-VALIDATION-LANE-A` | `active` | `M5/M6 owner direct lane (team + messaging validation)` | `Team Leader`, `Team Member`, `Coach`, `Solo User`, `Challenge Sponsor` | `team + messaging runtime validation` (`team rename propagation`, `chat back-nav continuity`, `invite issue/redeem journey`) | runtime validation only across Team + Comms flows; evidence + acceptance docs + board notes | `Owner + delegated agent` | `codex/a2-admin-list-usability-pass` (owner lane; QA/docs evidence swath) | manual-spec-driven + acceptance harness authority | Reserved owner lane for uninterrupted Team/Messaging validation and bug isolation without colliding with active coding lanes. Hard boundary: no edits to `KPIDashboardScreen`, `CommsHub`, `CoachPortalScreen`, or `backend/src/index.ts`; evidence/docs only unless controller unlocks a bugfix sub-lane. |
 | `M6-CHALLENGE-FIRST-BUILDOUT-A` | `committed+pushed` | `M6 challenge-first + pricing/entitlements direct migration` | `Solo User`, `Team Member`, `Team Leader`, `Coach`, `Sponsor` | `challenge-first nav + monetization guardrails` | `KPIDashboardScreen`, entitlement/paywall context/components, backend tier/billing/geo/custom-kpi/challenge policy routes | `Controller` | `codex/a2-admin-list-usability-pass` | owner-approved M6 direct migration plan | Controller swath landed and pushed: migrations `021-024`, `/me` entitlements, billing/webhook routes, sponsored geo filters, custom KPI APIs, and solo challenge-first tab routing are in branch with follow-on runtime refinements tracked separately. |
 | `M6-AVATAR-DROPDOWN-PROFILE-GOALS-SETTINGS-INVITES-A` | `committed+pushed` | `M6 account-surface routing + invite wiring` | `Team Member`, `Team Leader`, `Coach`, `Solo User`, `Sponsor`, `Admin operator` | `avatar menu + split account screens + invite redemption` | `HomeScreen`, `KPIDashboardScreen`, `ProfileScreen`, `GoalsScreen`, `SettingsScreen`, `InviteCodeScreen`; backend `/me`, avatar upload, invite-code issue/redeem routes | `Controller` | `codex/a2-admin-list-usability-pass` | owner-approved M6 plan (fully wired) | Implemented in one swath and pushed (`141221d` + follow-on fixes): universal top-right avatar menu routing across top-level tabs, split profile/goals/settings/invite screens, signed avatar upload endpoint, invite code schema + issue/redeem routes, plus role-aware team-card control refinements. |
 | `M6-DEVTOOLS-PERSONA-SWITCHER-WAVES-ABC` | `committed+pushed` | `M6 dev enablement (persona switching + side-by-side variants)` | `Solo User`, `Team Member`, `Team Leader`, `Coach`, `Sponsor`, `Admin operator` | `dev tools + auth/runtime bootstrap` | `KPIDashboardScreen` (`LOG` 3s long-press trigger), `DeveloperToolsModal`, `AuthContext`, `lib/supabase`, `lib/personaVault`, `lib/devRuntime`, `app.config.js`, `eas.json` | `Controller` | `codex/a2-admin-list-usability-pass` | owner directive: execute 3 waves back-to-back without pause | Completed in one swath: SecureStore-backed Supabase auth persistence, persona vault sign-in/cache/switch with no signOut, user-scoped runtime reset hooks, hidden dev menu on 3s long-press LOG CTA, whoami+RLS probe surface, and per-persona EAS variant profiles (`DEFAULT_PERSONA_KEY`, `APP_VARIANT`) for side-by-side installs. |
@@ -6439,3 +6441,116 @@ Enable actionable live session launch behavior so `Start` and `Join` result in a
 - Validation performed
 - Evidence paths
 - Commit hash
+
+### `OWNER-A3-ADMIN-LANE-UNINTERRUPTED-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `A3 owner direct lane (long-running, collision-safe)`
+- `Persona:` `Admin operator`
+- `Flow:` `admin users/reports UX hardening`
+- `Owner:` `Owner + delegated agent`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (same branch; lane-isolated scope)
+- `Current blocker status:` `none`
+
+#### Objective
+Allow owner+agent pairs to run uninterrupted, meandering, long-horizon implementation swaths inside a wide but collision-safe A3 lane without pausing for micro-approvals.
+
+#### Scope In (Allowed Surface)
+- `/Users/jon/compass-kpi/app/screens/AdminShellScreen.tsx`
+- admin-only helper components used exclusively by AdminShell users/reports routes
+- docs updates directly tied to this lane (`/docs/spec/05_acceptance_tests.md` A3 scenario clarifications, board status/evidence notes)
+
+#### Scope Out (Hard Collision Guards)
+- No edits to:
+  - `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
+  - `/Users/jon/compass-kpi/app/components/comms/CommsHub.tsx`
+  - `/Users/jon/compass-kpi/app/screens/CoachPortalScreen.tsx`
+  - `/Users/jon/compass-kpi/backend/src/index.ts`
+  - `/Users/jon/compass-kpi/backend/sql/*`
+  - `/Users/jon/compass-kpi/architecture/CURRENT_SPRINT.md` (unless controller directs)
+- No route-family expansion and no schema/migration work.
+- No changes to invite redemption/contracts (`/api/invites/redeem`, `team|coach|challenge|journey` semantics).
+
+#### One-Time Agent Instruction (Carry for Entire Lane)
+`You are operating inside OWNER-A3-ADMIN-LANE-UNINTERRUPTED-A. You may continue indefinitely within Admin users/reports UX scope without checkpoint pauses. Treat boundary files/API families as hard-stop rails. If requested work touches any boundary rail, stop immediately, do not edit, and return: "Boundary reached — controller update required" with exact file/endpoint that caused the collision.`
+
+#### Escalation Triggers (Must Stop and Return to Controller)
+1. Need to touch any scope-out file/path above.
+2. Need backend/API/schema changes to complete a UX request.
+3. Request drifts outside A3 sprint scope.
+4. Another assignment claims `AdminShellScreen.tsx` as active owner.
+
+#### Validation Minimum (Each Commit)
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- manual route smoke on `/admin/users` and `/admin/reports`
+
+#### Report-Back Format
+- Program status
+- Persona affected
+- Screens changed
+- Files touched
+- Validation performed
+- Commit hash
+- Boundary status (`clear` or `boundary reached`)
+
+### `OWNER-M5-TEAM-MESSAGING-VALIDATION-LANE-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M5/M6 owner direct lane (team + messaging validation)`
+- `Persona:` `Team Leader`, `Team Member`, `Coach`, `Solo User`, `Challenge Sponsor`
+- `Flow:` `team + messaging runtime validation`
+- `Owner:` `Owner + delegated agent`
+- `Branch/worktree:` `codex/a2-admin-list-usability-pass` (same branch; validation lane)
+- `Current blocker status:` `none`
+
+#### Objective
+Allow owner+agent pairs to run uninterrupted Team/Messaging validation swaths (long runtime sessions, meandering checks, repeated reruns) while avoiding collisions with active coding assignments.
+
+#### Scope In (Allowed Surface)
+- Runtime QA + evidence capture only for:
+  - team rename propagation across leader/member sessions
+  - team chat back-navigation continuity
+  - invite issue/redeem flows (`team`, `coach`, `challenge`, `journey`)
+- Evidence artifacts under:
+  - `/Users/jon/compass-kpi/app/test-results/owner-m5-team-messaging-validation-lane-a/`
+  - `/Users/jon/compass-kpi/screenshots/owner-m5-team-messaging-validation-lane-a/`
+- Docs updates tied to acceptance evidence only:
+  - `/Users/jon/compass-kpi/docs/spec/05_acceptance_tests.md`
+  - `/Users/jon/compass-kpi/architecture/AGENT_ASSIGNMENT_BOARD.md`
+
+#### Scope Out (Hard Collision Guards)
+- No edits to:
+  - `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
+  - `/Users/jon/compass-kpi/app/components/comms/CommsHub.tsx`
+  - `/Users/jon/compass-kpi/app/screens/CoachPortalScreen.tsx`
+  - `/Users/jon/compass-kpi/backend/src/index.ts`
+  - `/Users/jon/compass-kpi/backend/sql/*`
+- No endpoint/schema changes and no UI runtime code edits in this lane.
+
+#### One-Time Agent Instruction (Carry for Entire Lane)
+`You are operating inside OWNER-M5-TEAM-MESSAGING-VALIDATION-LANE-A. Continue indefinitely within runtime validation + evidence/docs scope for Team and Messaging. Treat protected runtime/backend files as hard-stop rails. If work requires touching any protected file or API behavior, stop and return: "Boundary reached — controller update required" with exact file/endpoint and failing scenario id.`
+
+#### Escalation Triggers (Must Stop and Return to Controller)
+1. A defect requires code edits in protected files.
+2. A scenario failure indicates backend contract behavior mismatch.
+3. Work drifts outside Team/Messaging validation scope.
+4. Another assignment needs to claim evidence/doc files concurrently.
+
+#### Validation Minimum (Each Evidence Pass)
+- Capture persona matrix evidence for each scenario:
+  - leader
+  - member
+  - coach
+  - sponsor/solo where applicable
+- Record pass/fail + exact repro steps + timestamp.
+- Keep one running matrix file in evidence folder.
+
+#### Report-Back Format
+- Program status
+- Persona affected
+- Scenarios executed (pass/fail)
+- Evidence paths
+- Docs updated
+- Boundary status (`clear` or `boundary reached`)

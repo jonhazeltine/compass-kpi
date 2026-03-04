@@ -287,7 +287,6 @@ export default function CoachPortalScreen() {
   const [journeys, setJourneys] = useState<JourneyDraft[]>([]);
   const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
   const [newJourneyName, setNewJourneyName] = useState('');
-  const [journeySelectorOpen, setJourneySelectorOpen] = useState(false);
   const [journeyQuery, setJourneyQuery] = useState('');
   const [seedPurgeConfirmOpen, setSeedPurgeConfirmOpen] = useState(false);
   const [seedPurgePending, setSeedPurgePending] = useState(false);
@@ -303,6 +302,7 @@ export default function CoachPortalScreen() {
   const [checkedPeopleIds, setCheckedPeopleIds] = useState<string[]>([]);
   const [channelSegment, setChannelSegment] = useState<ChannelSegment>('all');
   const [peoplePanelTab, setPeoplePanelTab] = useState<PeoplePanelTab>('cohorts');
+  const [cohortQuery, setCohortQuery] = useState('');
   const [cohortPeople, setCohortPeople] = useState<CohortPerson[]>(EMPTY_PEOPLE);
   const [channelRows, setChannelRows] = useState<
     Array<{ id: string; c1: string; c2: string; c3: string; c4: string; segment: ChannelSegment; type: ChannelType; context_id: string | null }>
@@ -407,6 +407,12 @@ export default function CoachPortalScreen() {
     if (!query) return journeys;
     return journeys.filter((journey) => journey.name.toLowerCase().includes(query));
   }, [journeys, journeyQuery]);
+  const filteredCohorts = useMemo(() => {
+    const visibleCohorts = cohorts.filter((cohort) => !cohort.name.toLowerCase().startsWith('checkpoint'));
+    const query = cohortQuery.trim().toLowerCase();
+    if (!query) return visibleCohorts;
+    return visibleCohorts.filter((cohort) => cohort.name.toLowerCase().includes(query));
+  }, [cohorts, cohortQuery]);
   const seedPlaceholderJourneys = useMemo(
     () => journeys.filter((journey) => isSeedPlaceholderJourney(journey.name)),
     [journeys]
@@ -567,7 +573,8 @@ export default function CoachPortalScreen() {
           owner: row.leaders_count && row.leaders_count > 0 ? 'Team leader' : 'Coach owner',
           program: `Team cohort • ${contentScope === 'all_allowed' ? 'all allowed' : contentScope}`,
           memberIds: row.member_user_ids ?? [],
-        }));
+        }))
+        .filter((row) => !row.name.toLowerCase().startsWith('checkpoint'));
       setCohorts(cohortRows);
 
       const knownCohortMembers = Array.from(
@@ -1520,6 +1527,19 @@ export default function CoachPortalScreen() {
               <View style={s.accountDrop}>
                 <Text style={s.accountDropLabel}>{accountLabel}</Text>
                 <Text style={s.accountDropRole}>{backendRole ?? 'Role from session'}</Text>
+                {hasSuperAdminRole ? (
+                  <TouchableOpacity
+                    style={s.accountDropSwitch}
+                    onPress={() => {
+                      setAccountMenuOpen(false);
+                      if (typeof window === 'undefined') return;
+                      if (window.location.pathname === '/admin/users') return;
+                      window.history.pushState({}, '', '/admin/users');
+                    }}
+                  >
+                    <Text style={s.accountDropSwitchText}>Switch to Admin Panel</Text>
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity style={s.accountDropSignOut} onPress={() => { setAccountMenuOpen(false); void signOut(); }}>
                   <Text style={s.accountDropSignOutText}>Sign Out</Text>
                 </TouchableOpacity>
@@ -1668,12 +1688,6 @@ export default function CoachPortalScreen() {
                     </View>
                   )}
                   <View style={s.journeySelectorActions}>
-                    <Pressable
-                      style={s.journeySelectorBtn}
-                      onPress={() => setJourneySelectorOpen((prev) => !prev)}
-                    >
-                      <Text style={s.journeySelectorBtnText}>{journeySelectorOpen ? 'Close selector' : 'Open selector'}</Text>
-                    </Pressable>
                     {canComposeDraft ? (
                       <Pressable
                         style={[s.journeySelectorBtn, seedPlaceholderJourneys.length === 0 && s.journeySelectorBtnDisabled]}
@@ -1685,54 +1699,51 @@ export default function CoachPortalScreen() {
                     ) : null}
                   </View>
                 </View>
-                {journeySelectorOpen ? (
-                  <View style={s.journeySelectorPanel}>
-                    <TextInput
-                      value={journeyQuery}
-                      onChangeText={setJourneyQuery}
-                      placeholder="Search journeys..."
-                      placeholderTextColor="#94A3B8"
-                      style={s.journeySelectorSearch}
-                    />
-                    <ScrollView style={s.journeySelectorList} contentContainerStyle={s.journeySelectorListInner}>
-                      {filteredJourneys.length === 0 ? (
-                        <Text style={s.journeySelectorEmpty}>No journeys match search.</Text>
-                      ) : (
-                        filteredJourneys.map((journey) => {
-                          const selected = selectedJourney?.id === journey.id;
-                          return (
-                            <Pressable
-                              key={journey.id}
-                              style={[s.journeySelectorItem, selected && s.journeySelectorItemActive]}
-                              onPress={() => {
-                                setSelectedJourneyId(journey.id);
-                                setJourneySelectorOpen(false);
-                              }}
-                            >
-                              <View style={s.journeySelectorItemBody}>
-                                <Text style={[s.journeySelectorItemTitle, selected && s.journeySelectorItemTitleActive]} numberOfLines={1}>
-                                  {journey.name}
-                                </Text>
-                                <Text style={s.journeySelectorItemMeta}>{journey.audience} · {journey.lessons.length} lessons</Text>
-                              </View>
-                              {canComposeDraft ? (
-                                <Pressable
-                                  style={s.chipDeleteBtn}
-                                  onPress={(event: any) => {
-                                    event?.stopPropagation?.();
-                                    setConfirmDelete({ type: 'journey', id: journey.id, label: journey.name });
-                                  }}
-                                >
-                                  <Text style={s.chipDeleteBtnText}>✕</Text>
-                                </Pressable>
-                              ) : null}
-                            </Pressable>
-                          );
-                        })
-                      )}
-                    </ScrollView>
-                  </View>
-                ) : null}
+                <View style={s.journeySelectorPanel}>
+                  <TextInput
+                    value={journeyQuery}
+                    onChangeText={setJourneyQuery}
+                    placeholder="Search journeys..."
+                    placeholderTextColor="#94A3B8"
+                    style={s.journeySelectorSearch}
+                  />
+                  <ScrollView style={s.journeySelectorList} contentContainerStyle={s.journeySelectorListInner}>
+                    {filteredJourneys.length === 0 ? (
+                      <Text style={s.journeySelectorEmpty}>No journeys match search.</Text>
+                    ) : (
+                      filteredJourneys.map((journey) => {
+                        const selected = selectedJourney?.id === journey.id;
+                        return (
+                          <Pressable
+                            key={journey.id}
+                            style={[s.journeySelectorItem, selected && s.journeySelectorItemActive]}
+                            onPress={() => {
+                              setSelectedJourneyId(journey.id);
+                            }}
+                          >
+                            <View style={s.journeySelectorItemBody}>
+                              <Text style={[s.journeySelectorItemTitle, selected && s.journeySelectorItemTitleActive]} numberOfLines={1}>
+                                {journey.name}
+                              </Text>
+                              <Text style={s.journeySelectorItemMeta}>{journey.audience} · {journey.lessons.length} lessons</Text>
+                            </View>
+                            {canComposeDraft ? (
+                              <Pressable
+                                style={s.chipDeleteBtn}
+                                onPress={(event: any) => {
+                                  event?.stopPropagation?.();
+                                  setConfirmDelete({ type: 'journey', id: journey.id, label: journey.name });
+                                }}
+                              >
+                                <Text style={s.chipDeleteBtnText}>✕</Text>
+                              </Pressable>
+                            ) : null}
+                          </Pressable>
+                        );
+                      })
+                    )}
+                  </ScrollView>
+                </View>
                 {canComposeDraft && seedPlaceholderJourneys.length > 0 ? (
                   <Text style={s.journeyPurgeHint}>{seedPlaceholderJourneys.length} seed placeholder journeys available to purge.</Text>
                 ) : null}
@@ -2007,25 +2018,41 @@ export default function CoachPortalScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Cohort list */}
-                  <View style={s.cohortGrid}>
-                    {cohorts.map((cohort) => {
-                      const sel = selectedCohort?.id === cohort.id;
-                      return (
-                        <Pressable
-                          key={cohort.id}
-                          style={[s.cohortCard, sel && s.cohortCardActive]}
-                          onPress={() => { if (!handleClickAssignPersonToCohort(cohort.id)) setSelectedCohortId(cohort.id); }}
-                          {...({ dataSet: { dropCohort: cohort.id } } as any)}
-                        >
-                          <Text style={s.cohortName}>{cohort.name}</Text>
-                          <Text style={s.cohortMeta}>{cohort.program}</Text>
-                          <View style={s.cohortFooter}>
-                            <Text style={s.cohortMembers}>{cohort.memberIds.length} members</Text>
-                          </View>
-                        </Pressable>
-                      );
-                    })}
+                  {/* Cohort selector (always visible search + list) */}
+                  <View style={s.journeySelectorPanel}>
+                    <TextInput
+                      value={cohortQuery}
+                      onChangeText={setCohortQuery}
+                      placeholder="Search cohorts..."
+                      placeholderTextColor="#94A3B8"
+                      style={s.journeySelectorSearch}
+                    />
+                    <ScrollView style={s.journeySelectorList} contentContainerStyle={s.journeySelectorListInner}>
+                      {filteredCohorts.length === 0 ? (
+                        <Text style={s.journeySelectorEmpty}>No cohorts match search.</Text>
+                      ) : (
+                        filteredCohorts.map((cohort) => {
+                          const sel = selectedCohort?.id === cohort.id;
+                          return (
+                            <Pressable
+                              key={cohort.id}
+                              style={[s.journeySelectorItem, sel && s.journeySelectorItemActive]}
+                              onPress={() => { if (!handleClickAssignPersonToCohort(cohort.id)) setSelectedCohortId(cohort.id); }}
+                              {...({ dataSet: { dropCohort: cohort.id } } as any)}
+                            >
+                              <View style={s.journeySelectorItemBody}>
+                                <Text style={[s.journeySelectorItemTitle, sel && s.journeySelectorItemTitleActive]} numberOfLines={1}>
+                                  {cohort.name}
+                                </Text>
+                                <Text style={s.journeySelectorItemMeta}>
+                                  {cohort.program} · {cohort.memberIds.length} members
+                                </Text>
+                              </View>
+                            </Pressable>
+                          );
+                        })
+                      )}
+                    </ScrollView>
                   </View>
 
                   {/* Selected cohort detail */}
@@ -2350,6 +2377,20 @@ const s = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 7,
     alignItems: 'center',
+  },
+  accountDropSwitch: {
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    paddingVertical: 7,
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+  },
+  accountDropSwitchText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1D4ED8',
   },
   accountDropSignOutText: {
     fontSize: 12,

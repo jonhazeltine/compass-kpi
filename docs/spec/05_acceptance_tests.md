@@ -120,6 +120,22 @@
 - Then selected members are enrolled per challenge settings
 - And mandatory KPIs appear locked for assigned users
 
+### 8A) Challenge Wizard Contract Validation (M6 Team/Mini)
+- Given an authenticated caller creates a challenge via `POST /challenges` with `challenge_kind` and `kpi_goals[]`
+- When payload is valid (`team` + scoped `team_id` or `mini` + invite cap <= 3)
+- Then create succeeds and response includes `challenge_kind` + `kpi_goal_summary`
+- When payload includes duplicate KPI IDs or empty `kpi_goals`
+- Then API returns `422`
+- When `challenge_kind='team'` overlaps an existing team challenge date window
+- Then API returns `409`
+- When team already has one active and one upcoming team challenge slot
+- Then API returns `409` for additional active/upcoming team challenge create attempts
+
+### 8B) Runtime Template Catalog Contract (M6)
+- Given an authenticated caller requests `GET /challenge-templates`
+- Then response returns runtime-safe `templates[]` with `id`, `title`, `description`, `suggested_duration_days`, and ordered `kpi_defaults[]`
+- And each `kpi_defaults[]` row includes `kpi_id`, `label`, `goal_scope_default`, `suggested_target`, and `display_order`
+
 ### 9) Tier Restriction Enforcement
 - Given a user on a lower tier
 - When user attempts restricted action (e.g., premium challenge feature)

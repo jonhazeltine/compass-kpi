@@ -81,9 +81,26 @@ const secureStoreAdapter = {
   },
 };
 
+const webStorageAdapter = {
+  getItem: async (key: string): Promise<string | null> => {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    return window.localStorage.getItem(key);
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.setItem(key, value);
+  },
+  removeItem: async (key: string): Promise<void> => {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.removeItem(key);
+  },
+};
+
+const authStorageAdapter = Platform.OS === 'web' ? webStorageAdapter : secureStoreAdapter;
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: secureStoreAdapter,
+    storage: authStorageAdapter,
     storageKey: 'compass_kpi_auth',
     persistSession: true,
     autoRefreshToken: true,

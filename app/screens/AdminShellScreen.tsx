@@ -63,6 +63,26 @@ import {
   normalizeAdminRole,
 } from '../lib/adminAuthz';
 import {
+  generateScenario,
+  executeRun,
+  compareRuns,
+  computeCalibrationMetrics,
+  registerGoldenScenario,
+  getGoldenScenarios,
+  runRegressionSuite,
+  captureGoldenSnapshot,
+  removeGoldenScenario,
+} from '../lib/projectionLab';
+import type {
+  LabScenario,
+  LabView,
+  RunBundle,
+  RegressionReport,
+  RunComparison,
+  CalibrationMetrics,
+  GoldenExpectedOutput,
+} from '../lib/projectionLab';
+import {
   ADMIN_NOT_FOUND_PATH,
   ADMIN_UNAUTHORIZED_PATH,
   getAdminRouteStage,
@@ -783,96 +803,83 @@ function AdminKpiCatalogPanel({
   }, [rows]);
 
   return (
-    <View style={styles.panel}>
-      <View style={styles.panelTopRow}>
-        <View style={styles.panelTitleBlock}>
-          <Text style={styles.eyebrow}>/admin/kpis</Text>
-          <Text style={styles.panelTitle}>KPI Catalog</Text>
+    <View style={styles.listDetailContainer}>
+      {/* Left panel: search + filter + list */}
+      <View style={styles.listPanel}>
+        <View style={styles.listPanelHeader}>
+          <Text style={styles.listPanelTitle}>KPI Catalog</Text>
+          <TouchableOpacity style={styles.listPanelCreateBtn} onPress={onResetDraft}>
+            <Text style={styles.listPanelCreateBtnText}>+ New</Text>
+          </TouchableOpacity>
         </View>
-        <View style={[styles.stagePill, { backgroundColor: '#EEF3FF', borderColor: '#CEDBFF' }]}>
-          <Text style={[styles.stagePillText, { color: '#204ECF' }]}>A2 Now</Text>
+        <TextInput
+          value={searchQuery}
+          onChangeText={onSearchQueryChange}
+          style={styles.listSearchInput}
+          placeholder="Search KPIs..."
+          placeholderTextColor="#94A3B8"
+        />
+        <View style={styles.listFilterRow}>
+          {(['all', 'active', 'inactive'] as const).map((value) => {
+            const sel = statusFilter === value;
+            return (
+              <Pressable
+                key={value}
+                onPress={() => onStatusFilterChange(value)}
+                style={[styles.listFilterPill, sel && styles.listFilterPillSelected]}
+              >
+                <Text style={[styles.listFilterPillText, sel && styles.listFilterPillTextSelected]}>
+                  {value === 'all' ? 'All' : value === 'active' ? 'Active' : 'Inactive'}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
-      </View>
-      <Text style={styles.panelBody}>
-        Manage KPI definitions for admin operations with search, filtering, and create/edit/deactivate controls.
-      </Text>
-      <View style={styles.filterBar}>
-        <View style={[styles.formField, styles.formFieldWide]}>
-          <View style={styles.formHeaderRow}>
-            <Text style={styles.metaRow}>
-              {filteredRows.length} filtered / {rows.length} total
-              {activeFilterCount
-                ? ` • ${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} active`
-                : ' • no filters'}
-            </Text>
-            <View style={styles.formActionsRow}>
-              {statusFilter !== 'all' || typeFilter !== 'all' ? (
-                <TouchableOpacity
-                  style={styles.smallGhostButton}
-                  onPress={() => {
-                    onStatusFilterChange('all');
-                    onTypeFilterChange('all');
-                  }}
-                >
-                  <Text style={styles.smallGhostButtonText}>Reset filters</Text>
-                </TouchableOpacity>
-              ) : null}
-              {searchQuery.trim() ? (
-                <TouchableOpacity style={styles.smallGhostButton} onPress={() => onSearchQueryChange('')}>
-                  <Text style={styles.smallGhostButtonText}>Clear search</Text>
-                </TouchableOpacity>
-              ) : null}
+        <Text style={styles.listCountText}>
+          {filteredRows.length} of {rows.length}{typeFilter !== 'all' ? ` (${typeFilter})` : ''}
+        </Text>
+        {loading ? <Text style={styles.listCountText}>Loading...</Text> : null}
+        {error ? <Text style={[styles.listCountText, styles.errorText]}>Error: {error}</Text> : null}
+        <ScrollView style={styles.listScrollView}>
+          {visibleRows.map((row) => {
+            const isSelected = selectedRowId === row.id;
+            return (
+              <Pressable
+                key={row.id}
+                style={[styles.listRow, isSelected && styles.listRowSelected]}
+                onPress={() => onSelectRow(row)}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.listRowTitle, isSelected && styles.listRowTitleSelected]} numberOfLines={1}>{row.name}</Text>
+                <View style={styles.listRowMeta}>
+                  <Text style={styles.listRowBadge}>{row.type}</Text>
+                  <View style={[styles.listRowDot, { backgroundColor: row.is_active ? '#22C55E' : '#EF4444' }]} />
+                </View>
+              </Pressable>
+            );
+          })}
+          {filteredRows.length > visibleRowCount ? (
+            <TouchableOpacity style={styles.listShowMore} onPress={() => setVisibleRowCount((prev) => prev + 24)}>
+              <Text style={styles.listShowMoreText}>Show more ({filteredRows.length - visibleRowCount})</Text>
+            </TouchableOpacity>
+          ) : null}
+          {!loading && filteredRows.length === 0 ? (
+            <View style={styles.listEmptyState}>
+              <Text style={styles.listEmptyText}>{rows.length === 0 ? 'No KPIs loaded.' : 'No matches.'}</Text>
             </View>
-          </View>
-        </View>
-        <View style={[styles.formField, styles.formFieldWide]}>
-          <Text style={styles.formLabel}>Search</Text>
-          <TextInput
-            value={searchQuery}
-            onChangeText={onSearchQueryChange}
-            style={styles.input}
-            placeholder="Search name, slug, type"
-          />
-        </View>
-        <View style={styles.formField}>
-          <Text style={styles.formLabel}>Status</Text>
-          <View style={styles.inlineToggleRow}>
-            {(['all', 'active', 'inactive'] as const).map((value) => {
-              const selected = statusFilter === value;
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => onStatusFilterChange(value)}
-                  style={[styles.toggleChip, selected && styles.toggleChipOn]}
-                >
-                  <Text style={[styles.toggleChipText, selected && styles.toggleChipTextOn]}>
-                    {value}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-        <View style={[styles.formField, styles.formFieldWide]}>
-          <Text style={styles.formLabel}>Type Filter</Text>
-          <View style={styles.chipRow}>
-            {(['all', 'PC', 'GP', 'VP', 'Actual', 'Pipeline_Anchor', 'Custom'] as const).map((value) => {
-              const selected = typeFilter === value;
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => onTypeFilterChange(value)}
-                  style={[styles.formChip, selected && styles.formChipSelected]}
-                >
-                  <Text style={[styles.formChipText, selected && styles.formChipTextSelected]}>
-                    {value}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+          ) : null}
+        </ScrollView>
       </View>
+      {/* Right panel: detail/edit form */}
+      <View style={[styles.detailPanel, { padding: 0 }]}>
+        {!editing && !draft.name ? (
+          <View style={[styles.detailEmptyState, { padding: 20 }]}>
+            <Text style={styles.detailEmptyTitle}>Select a KPI</Text>
+            <Text style={styles.detailEmptySubtitle}>Choose from the list to view or edit, or tap + New.</Text>
+          </View>
+        ) : (
+      <View style={{ flex: 1 }}>
+      <ScrollView style={{ maxHeight: '45%' }} contentContainerStyle={[styles.detailScrollInner, { padding: 20, paddingBottom: 8 }]}>
       <View style={styles.formCard}>
         <View style={styles.formHeaderRow}>
           <Text style={styles.formTitle}>{editing ? 'Edit KPI' : 'Create KPI'}</Text>
@@ -1110,144 +1117,74 @@ function AdminKpiCatalogPanel({
           ) : null}
         </View>
       </View>
-      {loading ? <Text style={styles.metaRow}>Loading KPI catalog...</Text> : null}
-      {error ? <Text style={[styles.metaRow, styles.errorText]}>Error: {error}</Text> : null}
-      {!loading && !error ? (
-        <>
-          <View style={styles.formHeaderRow}>
-            <Text style={styles.metaRow}>
-              {filteredRows.length === 0
-                ? rows.length === 0
-                  ? 'No KPI rows loaded yet.'
-                  : `No KPI rows match current search/filter (${rows.length} total loaded)`
-                : `Showing ${visibleRows.length} of ${filteredRows.length} filtered rows (${rows.length} total loaded)`}
-            </Text>
-            <View style={styles.formActionsRow}>
-              {filteredRows.length > visibleRowCount ? (
-                <TouchableOpacity style={styles.smallGhostButton} onPress={() => setVisibleRowCount((prev) => prev + 24)}>
-                  <Text style={styles.smallGhostButtonText}>
-                    Show more ({Math.max(0, filteredRows.length - visibleRowCount)} left)
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-              {visibleRowCount > 24 ? (
-                <TouchableOpacity style={styles.smallGhostButton} onPress={() => setVisibleRowCount(24)}>
-                  <Text style={styles.smallGhostButtonText}>Reset rows</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          </View>
-          <View style={styles.tableWrap}>
-            <Text style={styles.tableFootnote}>
-              Click a row to load it into the form above for editing. The selected row stays highlighted.
-            </Text>
+      </ScrollView>
+      {/* ── Sortable reference table (independent scroll) ── */}
+      <View style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 12 }}>
+        <View style={[styles.formCard, { flex: 1 }]}>
+        <View style={styles.formHeaderRow}>
+          <Text style={styles.summaryLabel}>KPI Reference Table</Text>
+          <Text style={styles.metaRow}>{sortedFilteredRows.length} items{hasActiveFilters ? ` (${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'})` : ''}</Text>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator>
+          <View>
             <View style={styles.tableHeaderRow}>
-              <Pressable style={styles.colWide} onPress={() => onSortHeaderPress('kpi')} accessibilityRole="button">
-                <Text style={[styles.tableHeaderCell, sortKey === 'kpi' && styles.tableHeaderCellActive]}>
-                  {kpiSortLabel('kpi', 'KPI')}
-                </Text>
+              <Pressable style={styles.colWide} onPress={() => onSortHeaderPress('kpi')}>
+                <Text style={[styles.tableHeaderCell, sortKey === 'kpi' && styles.tableHeaderCellActive]}>{kpiSortLabel('kpi', 'KPI')}</Text>
               </Pressable>
-              <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('type')} accessibilityRole="button">
-                <Text style={[styles.tableHeaderCell, sortKey === 'type' && styles.tableHeaderCellActive]}>
-                  {kpiSortLabel('type', 'Type')}
-                </Text>
+              <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('type')}>
+                <Text style={[styles.tableHeaderCell, sortKey === 'type' && styles.tableHeaderCellActive]}>{kpiSortLabel('type', 'Type')}</Text>
               </Pressable>
-              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('pc_weight')} accessibilityRole="button">
-                <Text style={[styles.tableHeaderCell, sortKey === 'pc_weight' && styles.tableHeaderCellActive]}>
-                  {kpiSortLabel('pc_weight', 'PC Wt')}
-                </Text>
+              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('pc_weight')}>
+                <Text style={[styles.tableHeaderCell, sortKey === 'pc_weight' && styles.tableHeaderCellActive]}>{kpiSortLabel('pc_weight', 'Weight')}</Text>
               </Pressable>
-              <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('range')} accessibilityRole="button">
-                <Text style={[styles.tableHeaderCell, sortKey === 'range' && styles.tableHeaderCellActive]}>
-                  {kpiSortLabel('range', 'Range')}
-                </Text>
+              <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('range')}>
+                <Text style={[styles.tableHeaderCell, sortKey === 'range' && styles.tableHeaderCellActive]}>{kpiSortLabel('range', 'Range')}</Text>
               </Pressable>
-              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('ttc')} accessibilityRole="button">
-                <Text style={[styles.tableHeaderCell, sortKey === 'ttc' && styles.tableHeaderCellActive]}>
-                  {kpiSortLabel('ttc', 'TTC')}
-                </Text>
+              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('ttc')}>
+                <Text style={[styles.tableHeaderCell, sortKey === 'ttc' && styles.tableHeaderCellActive]}>{kpiSortLabel('ttc', 'TTC')}</Text>
               </Pressable>
-              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('decay')} accessibilityRole="button">
-                <Text style={[styles.tableHeaderCell, sortKey === 'decay' && styles.tableHeaderCellActive]}>
-                  {kpiSortLabel('decay', 'Decay')}
-                </Text>
+              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('decay')}>
+                <Text style={[styles.tableHeaderCell, sortKey === 'decay' && styles.tableHeaderCellActive]}>{kpiSortLabel('decay', 'Decay')}</Text>
               </Pressable>
-              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('status')} accessibilityRole="button">
-                <Text style={[styles.tableHeaderCell, sortKey === 'status' && styles.tableHeaderCellActive]}>
-                  {kpiSortLabel('status', 'Status')}
-                </Text>
+              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('status')}>
+                <Text style={[styles.tableHeaderCell, sortKey === 'status' && styles.tableHeaderCellActive]}>{kpiSortLabel('status', 'Status')}</Text>
               </Pressable>
-              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('updated')} accessibilityRole="button">
-                <Text style={[styles.tableHeaderCell, sortKey === 'updated' && styles.tableHeaderCellActive]}>
-                  {kpiSortLabel('updated', 'Updated')}
-                </Text>
+              <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('updated')}>
+                <Text style={[styles.tableHeaderCell, sortKey === 'updated' && styles.tableHeaderCellActive]}>{kpiSortLabel('updated', 'Updated')}</Text>
               </Pressable>
             </View>
-            {visibleRows.map((row) => (
-              <Pressable
-                key={row.id}
-                style={[styles.tableDataRow, selectedRowId === row.id && styles.tableDataRowSelectedStrong]}
-                onPress={() => onSelectRow(row)}
-                accessibilityRole="button"
-                accessibilityHint={`Load ${row.name} into the KPI form for editing`}
-              >
-                <View style={[styles.tableCell, styles.colWide]}>
-                  <Text style={styles.tablePrimary}>{row.name}</Text>
-                  <Text style={styles.tableSecondary}>{row.slug ?? row.id}</Text>
-                </View>
-                <Text style={[styles.tableCellText, styles.colMd]}>{row.type}</Text>
-                <Text style={[styles.tableCellText, styles.colSm]}>
-                  {row.pc_weight == null ? '-' : String(row.pc_weight)}
-                </Text>
-                <Text style={[styles.tableCellText, styles.colMd]}>{formatKpiRange(row)}</Text>
-                <Text style={[styles.tableCellText, styles.colSm]}>
-                  {row.ttc_days != null ? `${row.ttc_days}d` : '-'}
-                </Text>
-                <Text style={[styles.tableCellText, styles.colSm]}>
-                  {row.decay_days == null ? '-' : `${row.decay_days}d`}
-                </Text>
-                <Text style={[styles.tableCellText, styles.colSm]}>{row.is_active ? 'active' : 'inactive'}</Text>
-                <Text style={[styles.tableCellText, styles.colSm]}>{formatDateShort(row.updated_at)}</Text>
-              </Pressable>
-            ))}
-            {filteredRows.length === 0 ? (
-              <>
-                <Text style={styles.tableFootnote}>
-                  {rows.length === 0
-                    ? 'No KPI definitions are loaded yet. Use the create form above to add the first KPI.'
-                    : 'No KPI rows match the current search/filter. Adjust filters or clear search to continue browsing.'}
-                </Text>
-                {hasActiveFilters ? (
-                  <View style={[styles.formActionsRow, { paddingHorizontal: 10, paddingBottom: 10, backgroundColor: '#FBFCFF' }]}>
-                    {searchQuery.trim() ? (
-                      <TouchableOpacity style={styles.smallGhostButton} onPress={() => onSearchQueryChange('')}>
-                        <Text style={styles.smallGhostButtonText}>Clear search</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    {(statusFilter !== 'all' || typeFilter !== 'all') ? (
-                      <TouchableOpacity
-                        style={styles.smallGhostButton}
-                        onPress={() => {
-                          onStatusFilterChange('all');
-                          onTypeFilterChange('all');
-                        }}
-                      >
-                        <Text style={styles.smallGhostButtonText}>Reset filters</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                ) : null}
-              </>
-            ) : filteredRows.length > visibleRowCount ? (
-              <Text style={styles.tableFootnote}>
-                More KPI rows are available. Use “Show more” to continue browsing without leaving the current edit form.
-              </Text>
-            ) : (
-              <Text style={styles.tableFootnote}>End of filtered KPI results.</Text>
-            )}
+            {visibleRows.map((row) => {
+              const isSelected = selectedRowId === row.id;
+              return (
+                <Pressable
+                  key={row.id}
+                  style={[styles.tableDataRow, isSelected && styles.tableDataRowSelectedStrong]}
+                  onPress={() => onSelectRow(row)}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.colWide}><Text style={styles.tableCell} numberOfLines={1}>{row.name}</Text></View>
+                  <View style={styles.colMd}><Text style={styles.tableCell}>{row.type}</Text></View>
+                  <View style={styles.colSm}><Text style={styles.tableCell}>{row.pc_weight != null ? String(row.pc_weight) : '—'}</Text></View>
+                  <View style={styles.colMd}><Text style={styles.tableCell}>{formatKpiRange(row)}</Text></View>
+                  <View style={styles.colSm}><Text style={styles.tableCell}>{row.ttc_days != null ? `${row.ttc_days}d` : '—'}</Text></View>
+                  <View style={styles.colSm}><Text style={styles.tableCell}>{row.decay_days != null ? `${row.decay_days}d` : '—'}</Text></View>
+                  <View style={styles.colSm}><Text style={[styles.tableCell, { color: row.is_active ? '#16A34A' : '#DC2626' }]}>{row.is_active ? 'Active' : 'Inactive'}</Text></View>
+                  <View style={styles.colMd}><Text style={styles.tableCell}>{row.updated_at ? formatDateTimeShort(row.updated_at) : '—'}</Text></View>
+                </Pressable>
+              );
+            })}
+            {sortedFilteredRows.length > visibleRowCount ? (
+              <TouchableOpacity style={styles.listShowMore} onPress={() => setVisibleRowCount((prev) => prev + 24)}>
+                <Text style={styles.listShowMoreText}>Show more ({sortedFilteredRows.length - visibleRowCount})</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
-        </>
-      ) : null}
+        </ScrollView>
+        </View>
+      </View>
+      </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -1360,71 +1297,82 @@ function AdminChallengeTemplatesPanel({
   }, [rows]);
 
   return (
-    <View style={styles.panel}>
-      <View style={styles.panelTopRow}>
-        <View style={styles.panelTitleBlock}>
-          <Text style={styles.eyebrow}>/admin/challenge-templates</Text>
-          <Text style={styles.panelTitle}>Challenge Templates</Text>
+    <View style={styles.listDetailContainer}>
+      {/* Left panel: search + filter + list */}
+      <View style={styles.listPanel}>
+        <View style={styles.listPanelHeader}>
+          <Text style={styles.listPanelTitle}>Templates</Text>
+          <TouchableOpacity style={styles.listPanelCreateBtn} onPress={onResetDraft}>
+            <Text style={styles.listPanelCreateBtnText}>+ New</Text>
+          </TouchableOpacity>
         </View>
-        <View style={[styles.stagePill, { backgroundColor: '#EEF3FF', borderColor: '#CEDBFF' }]}>
-          <Text style={[styles.stagePillText, { color: '#204ECF' }]}>A2 Now</Text>
+        <TextInput
+          value={searchQuery}
+          onChangeText={onSearchQueryChange}
+          style={styles.listSearchInput}
+          placeholder="Search templates..."
+          placeholderTextColor="#94A3B8"
+        />
+        <View style={styles.listFilterRow}>
+          {(['all', 'active', 'inactive'] as const).map((value) => {
+            const sel = statusFilter === value;
+            return (
+              <Pressable
+                key={value}
+                onPress={() => onStatusFilterChange(value)}
+                style={[styles.listFilterPill, sel && styles.listFilterPillSelected]}
+              >
+                <Text style={[styles.listFilterPillText, sel && styles.listFilterPillTextSelected]}>
+                  {value === 'all' ? 'All' : value === 'active' ? 'Active' : 'Inactive'}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
-      </View>
-      <Text style={styles.panelBody}>
-        Manage challenge templates with search, filtering, and create/edit/deactivate controls for admin operations.
-      </Text>
-      <View style={styles.filterBar}>
-        <View style={[styles.formField, styles.formFieldWide]}>
-          <View style={styles.formHeaderRow}>
-            <Text style={styles.metaRow}>
-              {filteredRows.length} filtered / {rows.length} total
-              {activeFilterCount
-                ? ` • ${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} active`
-                : ' • no filters'}
-            </Text>
-            <View style={styles.formActionsRow}>
-              {statusFilter !== 'all' ? (
-                <TouchableOpacity style={styles.smallGhostButton} onPress={() => onStatusFilterChange('all')}>
-                  <Text style={styles.smallGhostButtonText}>Reset filters</Text>
-                </TouchableOpacity>
-              ) : null}
-              {searchQuery.trim() ? (
-                <TouchableOpacity style={styles.smallGhostButton} onPress={() => onSearchQueryChange('')}>
-                  <Text style={styles.smallGhostButtonText}>Clear search</Text>
-                </TouchableOpacity>
-              ) : null}
+        <Text style={styles.listCountText}>
+          {filteredRows.length} of {rows.length}
+        </Text>
+        {loading ? <Text style={styles.listCountText}>Loading...</Text> : null}
+        {error ? <Text style={[styles.listCountText, styles.errorText]}>Error: {error}</Text> : null}
+        <ScrollView style={styles.listScrollView}>
+          {visibleRows.map((row) => {
+            const isSelected = selectedRowId === row.id;
+            return (
+              <Pressable
+                key={row.id}
+                style={[styles.listRow, isSelected && styles.listRowSelected]}
+                onPress={() => onSelectRow(row)}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.listRowTitle, isSelected && styles.listRowTitleSelected]} numberOfLines={1}>{row.name}</Text>
+                <View style={styles.listRowMeta}>
+                  <View style={[styles.listRowDot, { backgroundColor: row.is_active ? '#22C55E' : '#EF4444' }]} />
+                  <Text style={styles.listRowBadge} numberOfLines={1}>{row.description?.trim() || '(no description)'}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+          {filteredRows.length > visibleRowCount ? (
+            <TouchableOpacity style={styles.listShowMore} onPress={() => setVisibleRowCount((prev) => prev + 24)}>
+              <Text style={styles.listShowMoreText}>Show more ({filteredRows.length - visibleRowCount})</Text>
+            </TouchableOpacity>
+          ) : null}
+          {!loading && filteredRows.length === 0 ? (
+            <View style={styles.listEmptyState}>
+              <Text style={styles.listEmptyText}>{rows.length === 0 ? 'No templates loaded.' : 'No matches.'}</Text>
             </View>
-          </View>
-        </View>
-        <View style={[styles.formField, styles.formFieldWide]}>
-          <Text style={styles.formLabel}>Search</Text>
-          <TextInput
-            value={searchQuery}
-            onChangeText={onSearchQueryChange}
-            style={styles.input}
-            placeholder="Search name or description"
-          />
-        </View>
-        <View style={styles.formField}>
-          <Text style={styles.formLabel}>Status</Text>
-          <View style={styles.inlineToggleRow}>
-            {(['all', 'active', 'inactive'] as const).map((value) => {
-              const selected = statusFilter === value;
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => onStatusFilterChange(value)}
-                  style={[styles.toggleChip, selected && styles.toggleChipOn]}
-                >
-                  <Text style={[styles.toggleChipText, selected && styles.toggleChipTextOn]}>
-                    {value}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+          ) : null}
+        </ScrollView>
       </View>
+      {/* Right panel: detail/edit form */}
+      <View style={styles.detailPanel}>
+        {!editing && !draft.name ? (
+          <View style={styles.detailEmptyState}>
+            <Text style={styles.detailEmptyTitle}>Select a Template</Text>
+            <Text style={styles.detailEmptySubtitle}>Choose from the list to view or edit, or tap + New.</Text>
+          </View>
+        ) : (
+      <ScrollView contentContainerStyle={styles.detailScrollInner}>
       <View style={styles.formCard}>
         <View style={styles.formHeaderRow}>
           <Text style={styles.formTitle}>{editing ? 'Edit Template' : 'Create Template'}</Text>
@@ -1528,107 +1476,9 @@ function AdminChallengeTemplatesPanel({
           ) : null}
         </View>
       </View>
-      {loading ? <Text style={styles.metaRow}>Loading challenge templates...</Text> : null}
-      {error ? <Text style={[styles.metaRow, styles.errorText]}>Error: {error}</Text> : null}
-      {!loading && !error ? (
-        <>
-          <View style={styles.formHeaderRow}>
-            <Text style={styles.metaRow}>
-              {filteredRows.length === 0
-                ? rows.length === 0
-                  ? 'No challenge template rows loaded yet.'
-                  : `No template rows match current search/filter (${rows.length} total loaded)`
-                : `Showing ${visibleRows.length} of ${filteredRows.length} filtered rows (${rows.length} total loaded)`}
-            </Text>
-            <View style={styles.formActionsRow}>
-              {filteredRows.length > visibleRowCount ? (
-                <TouchableOpacity style={styles.smallGhostButton} onPress={() => setVisibleRowCount((prev) => prev + 24)}>
-                  <Text style={styles.smallGhostButtonText}>
-                    Show more ({Math.max(0, filteredRows.length - visibleRowCount)} left)
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-              {visibleRowCount > 24 ? (
-                <TouchableOpacity style={styles.smallGhostButton} onPress={() => setVisibleRowCount(24)}>
-                  <Text style={styles.smallGhostButtonText}>Reset rows</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          </View>
-          <View style={styles.tableWrap}>
-            <Text style={styles.tableFootnote}>
-              Click a row to load it into the form above for editing. The selected row stays highlighted.
-            </Text>
-            <View style={styles.tableHeaderRow}>
-              <Pressable style={styles.colWide} onPress={() => onSortHeaderPress('template')} accessibilityRole="button">
-                <Text style={[styles.tableHeaderCell, sortKey === 'template' && styles.tableHeaderCellActive]}>
-                  {templateSortLabel('template', 'Template')}
-                </Text>
-              </Pressable>
-              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('status')} accessibilityRole="button">
-                <Text style={[styles.tableHeaderCell, sortKey === 'status' && styles.tableHeaderCellActive]}>
-                  {templateSortLabel('status', 'Status')}
-                </Text>
-              </Pressable>
-              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('updated')} accessibilityRole="button">
-                <Text style={[styles.tableHeaderCell, sortKey === 'updated' && styles.tableHeaderCellActive]}>
-                  {templateSortLabel('updated', 'Updated')}
-                </Text>
-              </Pressable>
-            </View>
-            {visibleRows.map((row) => (
-              <Pressable
-                key={row.id}
-                style={[styles.tableDataRow, selectedRowId === row.id && styles.tableDataRowSelectedStrong]}
-                onPress={() => onSelectRow(row)}
-                accessibilityRole="button"
-                accessibilityHint={`Load ${row.name} into the challenge template form for editing`}
-              >
-                <View style={[styles.tableCell, styles.colWide]}>
-                  <Text style={styles.tablePrimary}>{row.name}</Text>
-                  <Text numberOfLines={1} style={styles.tableSecondary}>
-                    {row.description?.trim() || '(no description)'}
-                  </Text>
-                  <Text numberOfLines={1} style={styles.tableSecondary}>
-                    ID: {row.id}
-                  </Text>
-                </View>
-                <Text style={[styles.tableCellText, styles.colSm]}>{row.is_active ? 'active' : 'inactive'}</Text>
-                <Text style={[styles.tableCellText, styles.colSm]}>{formatDateShort(row.updated_at)}</Text>
-              </Pressable>
-            ))}
-            {filteredRows.length === 0 ? (
-              <>
-                <Text style={styles.tableFootnote}>
-                  {rows.length === 0
-                    ? 'No challenge templates are loaded yet. Use the create form above to add the first template.'
-                    : 'No templates match the current search/filter. Adjust filters or clear search to continue browsing.'}
-                </Text>
-                {hasActiveFilters ? (
-                  <View style={[styles.formActionsRow, { paddingHorizontal: 10, paddingBottom: 10, backgroundColor: '#FBFCFF' }]}>
-                    {searchQuery.trim() ? (
-                      <TouchableOpacity style={styles.smallGhostButton} onPress={() => onSearchQueryChange('')}>
-                        <Text style={styles.smallGhostButtonText}>Clear search</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    {statusFilter !== 'all' ? (
-                      <TouchableOpacity style={styles.smallGhostButton} onPress={() => onStatusFilterChange('all')}>
-                        <Text style={styles.smallGhostButtonText}>Reset filters</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                ) : null}
-              </>
-            ) : filteredRows.length > visibleRowCount ? (
-              <Text style={styles.tableFootnote}>
-                More templates are available. Use “Show more” to continue browsing without leaving the current edit form.
-              </Text>
-            ) : (
-              <Text style={styles.tableFootnote}>End of filtered template results.</Text>
-            )}
-          </View>
-        </>
-      ) : null}
+      </ScrollView>
+        )}
+      </View>
     </View>
   );
 }
@@ -1738,6 +1588,7 @@ function AdminUsersPanel({
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [quickActionsMenuOpen, setQuickActionsMenuOpen] = useState(false);
   const [calibrationMenuOpen, setCalibrationMenuOpen] = useState(false);
+  const [calibrationDiagnosticsExpanded, setCalibrationDiagnosticsExpanded] = useState(false);
   const [bulkActionsMenuOpen, setBulkActionsMenuOpen] = useState(false);
   const [bulkActionNotice, setBulkActionNotice] = useState<string | null>(null);
 
@@ -1924,54 +1775,7 @@ function AdminUsersPanel({
 
   return (
     <View style={styles.panel}>
-      <View style={styles.panelTopRow}>
-        <View style={styles.panelTitleBlock}>
-          <Text style={styles.eyebrow}>/admin/users</Text>
-          <Text style={styles.panelTitle}>Users</Text>
-        </View>
-        <View style={[styles.stagePill, { backgroundColor: '#FFF5E6', borderColor: '#F5D9AA' }]}>
-          <Text style={[styles.stagePillText, { color: '#9A5A00' }]}>A3 Now</Text>
-        </View>
-      </View>
-      <Text style={styles.panelBody}>
-        Manage user access, subscription tier, status, and calibration diagnostics for admin QA and support workflows.
-      </Text>
-      <View style={styles.metaList}>
-        <Text style={styles.metaRow}>Last refreshed: {lastRefreshedAt ? formatDateTimeShort(lastRefreshedAt) : 'Not yet loaded'}</Text>
-        <Text style={styles.metaRow}>
-          Selected user: {selectedUser ? `${selectedUser.name ?? selectedUser.id} (${selectedUser.role} / ${selectedUser.tier} / ${selectedUser.account_status})` : 'none'}
-        </Text>
-        {selectedUser && selectedUserEmail ? (
-          <View style={styles.inlineToggleRow}>
-            <View style={[styles.statusChip, { backgroundColor: '#EAF1FF', borderColor: '#C8DAFF' }]}>
-              <Text style={[styles.statusChipText, { color: '#1E4FBE' }]}>{selectedUserLooksTest ? 'Selected test user' : 'Selected user'}</Text>
-            </View>
-            <Text style={styles.metaRow}>{selectedUserEmail}</Text>
-          </View>
-        ) : null}
-        {copyNotice ? <Text style={[styles.metaRow, styles.successText]}>{copyNotice}</Text> : null}
-      </View>
-
-      <View style={styles.usersWorkflowBanner}>
-        <View style={styles.usersWorkflowBannerCopy}>
-          <Text style={styles.usersWorkflowBannerTitle}>Test-user workflow</Text>
-          <Text style={styles.usersWorkflowBannerText}>
-            Create a test user, keep “Recent First” on, then select the row to manage access and run calibration checks.
-          </Text>
-        </View>
-        <View style={styles.inlineToggleRow}>
-          {testUsersOnly ? (
-            <View style={[styles.statusChip, { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' }]}>
-              <Text style={[styles.statusChipText, { color: '#1D7A4D' }]}>Test-user mode</Text>
-            </View>
-          ) : null}
-          {showRecentFirst ? (
-            <View style={[styles.statusChip, { backgroundColor: '#F4F8FF', borderColor: '#D8E4FA' }]}>
-              <Text style={[styles.statusChipText, { color: '#345892' }]}>Recent first</Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
+      {copyNotice ? <Text style={[styles.metaRow, styles.successText, { paddingHorizontal: 16, paddingTop: 8 }]}>{copyNotice}</Text> : null}
 
       {userSaveError ? (
         <View style={styles.alertErrorBox}>
@@ -2655,6 +2459,15 @@ function AdminUsersPanel({
         </View>
       </View>
 
+      <Pressable
+        style={styles.collapsibleHeader}
+        onPress={() => setCalibrationDiagnosticsExpanded((p) => !p)}
+        accessibilityRole="button"
+      >
+        <Text style={styles.collapsibleHeaderText}>Calibration Diagnostics</Text>
+        <Text style={styles.collapsibleChevron}>{calibrationDiagnosticsExpanded ? '▾' : '▸'}</Text>
+      </Pressable>
+      {calibrationDiagnosticsExpanded ? (
       <View style={styles.usersDiagnosticsGrid}>
         <View style={[styles.summaryCard, { flex: 1 }]}>
           <View style={styles.formHeaderRow}>
@@ -2745,6 +2558,7 @@ function AdminUsersPanel({
           ) : null}
         </View>
       </View>
+      ) : null}
     </View>
   );
 }
@@ -3208,18 +3022,7 @@ function AdminCoachingAuditPanel({
 
   return (
     <View style={styles.panel}>
-      <View style={styles.panelTopRow}>
-        <View style={styles.panelTitleBlock}>
-          <Text style={styles.eyebrow}>/admin/coaching/audit</Text>
-          <Text style={styles.panelTitle}>Super Admin AI Troubleshooting</Text>
-        </View>
-        <View style={[styles.stagePill, { backgroundColor: '#FFF5E6', borderColor: '#F5D9AA' }]}>
-          <Text style={[styles.stagePillText, { color: '#9A5A00' }]}>W7 Exception-Only</Text>
-        </View>
-      </View>
-      <Text style={styles.panelBody}>
-        Exception-only troubleshooting queue for AI draft review and audit history inspection. This is not the primary coach workflow.
-      </Text>
+      <Text style={styles.panelTitle}>AI Troubleshooting Queue</Text>
       <View style={styles.alertErrorBox}>
         <Text style={styles.alertErrorTitle}>Disallowed actions preserved</Text>
         {aiPolicyGuardrails.map((line) => (
@@ -3604,35 +3407,16 @@ function AdminReportsPanel({
 
   return (
     <View style={styles.panel}>
-      <View style={styles.panelTopRow}>
-        <View style={styles.panelTitleBlock}>
-          <Text style={styles.eyebrow}>/admin/reports</Text>
-          <Text style={styles.panelTitle}>Analytics + Reports</Text>
-        </View>
-        <View style={[styles.stagePill, { backgroundColor: '#FFF5E6', borderColor: '#F5D9AA' }]}>
-          <Text style={[styles.stagePillText, { color: '#9A5A00' }]}>A3 Now</Text>
+      <Text style={styles.panelTitle}>Analytics + Reports</Text>
+      <View style={styles.endpointStatusBanner}>
+        <View style={styles.endpointStatusBannerCopy}>
+          <Text style={styles.endpointStatusBannerLabel}>{overallLabel}</Text>
+          <Text style={styles.endpointStatusBannerNote}>
+            {lastCheckedAt ? `Checked ${formatDateTimeShort(lastCheckedAt)}` : 'Not checked yet'}
+          </Text>
         </View>
       </View>
-      <Text style={styles.panelBody}>
-        Reporting tools check live backend availability for analytics endpoints and show readable status and response details.
-      </Text>
-      <View style={styles.metaList}>
-        <View style={styles.endpointStatusBanner}>
-          <View style={styles.endpointStatusBannerCopy}>
-            <Text style={styles.endpointStatusBannerLabel}>Current probe state</Text>
-            <Text style={styles.endpointStatusBannerValue}>{overallLabel}</Text>
-            <Text style={styles.endpointStatusBannerNote}>
-              Last checked: {lastCheckedAt ? formatDateTimeShort(lastCheckedAt) : 'Not checked yet'}
-            </Text>
-          </View>
-          <View style={[styles.statusChip, { backgroundColor: '#EEF4FF', borderColor: '#D3E1FF' }]}>
-            <Text style={[styles.statusChipText, { color: '#1E4FBE' }]}>
-              {lastCheckedAt ? 'State loaded' : 'Awaiting check'}
-            </Text>
-          </View>
-        </View>
-        {reportsCopyNotice ? <Text style={[styles.metaRow, styles.successText]}>{reportsCopyNotice}</Text> : null}
-      </View>
+      {reportsCopyNotice ? <Text style={[styles.metaRow, styles.successText]}>{reportsCopyNotice}</Text> : null}
       <View style={styles.formActionsRow}>
         <TouchableOpacity style={styles.primaryButton} onPress={onRefresh} disabled={loading}>
           <Text style={styles.primaryButtonText}>{loading ? 'Checking...' : 'Recheck All Endpoints'}</Text>
@@ -3870,18 +3654,7 @@ function AdminAuthzPanel({
 
   return (
     <View style={styles.panel}>
-      <View style={styles.panelTopRow}>
-        <View style={styles.panelTitleBlock}>
-          <Text style={styles.eyebrow}>/admin/authz</Text>
-          <Text style={styles.panelTitle}>Authorization Matrix</Text>
-        </View>
-        <View style={[styles.stagePill, { backgroundColor: '#EEF4FF', borderColor: '#CEDBFF' }]}>
-          <Text style={[styles.stagePillText, { color: '#204ECF' }]}>A1 Foundation</Text>
-        </View>
-      </View>
-      <Text style={styles.panelBody}>
-        Validate route access and role resolution with sortable route checks and session-role diagnostics.
-      </Text>
+      <Text style={styles.panelTitle}>Authorization Matrix</Text>
       <View style={styles.sectionNavRow}>
         <Pressable
           style={[styles.sectionNavPill, activeTab === 'route_access' && styles.sectionNavPillSelected]}
@@ -4021,6 +3794,653 @@ function AdminAuthzPanel({
   );
 }
 
+// ── Projection Lab Panel ──────────────────────────────
+
+function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
+  const [labView, setLabView] = useState<LabView>('scenario_list');
+  const [scenarios, setScenarios] = useState<LabScenario[]>([]);
+  const [runs, setRuns] = useState<RunBundle[]>([]);
+  const [selectedScenario, setSelectedScenario] = useState<LabScenario | null>(null);
+  const [selectedRun, setSelectedRun] = useState<RunBundle | null>(null);
+  const [comparison, setComparison] = useState<RunComparison | null>(null);
+  const [calibrationMetrics, setCalibrationMetrics] = useState<CalibrationMetrics | null>(null);
+  const [regressionReport, setRegressionReport] = useState<RegressionReport | null>(null);
+
+  // Scenario creation
+  const [newSeed, setNewSeed] = useState(String(Math.floor(Math.random() * 99999)));
+  const [newName, setNewName] = useState('');
+  const [newKpiCount, setNewKpiCount] = useState('4');
+  const [newLogDays, setNewLogDays] = useState('180');
+  const [newLogsPerKpi, setNewLogsPerKpi] = useState('12');
+  const [newIncludeActuals, setNewIncludeActuals] = useState(false);
+  const [runStatus, setRunStatus] = useState<string | null>(null);
+
+  // Compare selection
+  const [compareRunAId, setCompareRunAId] = useState('');
+  const [compareRunBId, setCompareRunBId] = useState('');
+
+  // Golden tolerance
+  const [goldenTolerance, setGoldenTolerance] = useState('5');
+
+  // Event detail expansion
+  const [expandedEvents, setExpandedEvents] = useState(false);
+
+  const handleCreateScenario = () => {
+    const seed = parseInt(newSeed, 10) || 1;
+    const scenario = generateScenario({
+      seed,
+      adminUser,
+      name: newName || undefined,
+      kpiCount: parseInt(newKpiCount, 10) || 4,
+      logDaysSpan: parseInt(newLogDays, 10) || 180,
+      logsPerKpi: parseInt(newLogsPerKpi, 10) || 12,
+      includeActuals: newIncludeActuals,
+    });
+    setScenarios((prev) => [scenario, ...prev]);
+    setSelectedScenario(scenario);
+    setLabView('scenario_detail');
+    setRunStatus(`Scenario "${scenario.name}" created with seed ${seed}`);
+  };
+
+  const handleRunScenario = (scenario: LabScenario) => {
+    const run = executeRun({ scenario, adminUser });
+    setRuns((prev) => [run, ...prev]);
+    setSelectedRun(run);
+    setLabView('run_detail');
+    setRunStatus(`Run ${run.run_id.slice(0, 12)} completed — PC@eval: $${run.pc_at_eval_date.toLocaleString()}`);
+
+    // Auto-compute calibration if actuals exist
+    if (scenario.actual_closings.length > 0) {
+      setCalibrationMetrics(computeCalibrationMetrics(scenario, run));
+    }
+  };
+
+  const handleCompare = () => {
+    const runA = runs.find((r) => r.run_id === compareRunAId);
+    const runB = runs.find((r) => r.run_id === compareRunBId);
+    if (runA && runB) {
+      setComparison(compareRuns(runA, runB));
+    }
+  };
+
+  const handleMarkGolden = (scenario: LabScenario, run: RunBundle) => {
+    const tol = parseFloat(goldenTolerance) || 5;
+    const expected = captureGoldenSnapshot(run, tol);
+    registerGoldenScenario(scenario, expected);
+    setScenarios((prev) =>
+      prev.map((s) => (s.scenario_id === scenario.scenario_id ? { ...s, is_golden: true } : s))
+    );
+    setRunStatus(`Scenario "${scenario.name}" registered as golden (±${tol}% tolerance)`);
+  };
+
+  const handleRunRegression = () => {
+    const report = runRegressionSuite(adminUser);
+    setRegressionReport(report);
+    setLabView('golden');
+    setRunStatus(
+      `Regression: ${report.passed}/${report.total_scenarios} passed, ${report.failed} failed`
+    );
+  };
+
+  const handleExportJson = (data: unknown, filename: string) => {
+    if (Platform.OS !== 'web') return;
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── Sub-view: Nav pills ──
+
+  const navPills: { key: LabView; label: string }[] = [
+    { key: 'scenario_list', label: 'Scenarios' },
+    { key: 'scenario_create', label: '+ New' },
+    { key: 'compare', label: 'Compare' },
+    { key: 'golden', label: 'Golden Tests' },
+    { key: 'settings', label: 'Settings' },
+  ];
+
+  const renderNavPills = () => (
+    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+      {navPills.map((pill) => (
+        <Pressable
+          key={pill.key}
+          onPress={() => setLabView(pill.key)}
+          style={{
+            paddingHorizontal: 14,
+            paddingVertical: 7,
+            borderRadius: 8,
+            backgroundColor: labView === pill.key ? '#3B82F6' : '#F1F5F9',
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '600', color: labView === pill.key ? '#FFF' : '#475569' }}>
+            {pill.label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+
+  // ── Sub-view: Scenario List ──
+
+  const renderScenarioList = () => (
+    <View>
+      {scenarios.length === 0 ? (
+        <View style={{ padding: 32, alignItems: 'center' }}>
+          <Text style={{ fontSize: 15, color: '#94A3B8', marginBottom: 8 }}>No scenarios yet</Text>
+          <Pressable onPress={() => setLabView('scenario_create')} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#3B82F6', borderRadius: 8 }}>
+            <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>Create First Scenario</Text>
+          </Pressable>
+        </View>
+      ) : (
+        scenarios.map((s) => (
+          <Pressable
+            key={s.scenario_id}
+            onPress={() => { setSelectedScenario(s); setLabView('scenario_detail'); }}
+            style={{
+              padding: 14,
+              borderBottomWidth: 1,
+              borderColor: '#E2E8F0',
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#1E293B' }}>
+                {s.name} {s.is_golden ? '⭐' : ''}
+              </Text>
+              <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+                Seed: {s.seed} · {s.log_stream.length} events · {s.kpi_definitions.length} KPIs
+                {s.actual_closings.length > 0 ? ` · ${s.actual_closings.length} actuals` : ''}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 11, color: '#94A3B8' }}>{new Date(s.created_at).toLocaleDateString()}</Text>
+          </Pressable>
+        ))
+      )}
+    </View>
+  );
+
+  // ── Sub-view: Scenario Create ──
+
+  const renderScenarioCreate = () => (
+    <View style={{ gap: 12 }}>
+      <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>Create New Scenario</Text>
+      {[
+        { label: 'Seed', value: newSeed, set: setNewSeed, placeholder: 'Numeric seed for reproducibility' },
+        { label: 'Name (optional)', value: newName, set: setNewName, placeholder: 'e.g. High-Volume Agent' },
+        { label: 'KPI Count', value: newKpiCount, set: setNewKpiCount, placeholder: '1-6' },
+        { label: 'Log Days Span', value: newLogDays, set: setNewLogDays, placeholder: 'Days of history' },
+        { label: 'Logs Per KPI', value: newLogsPerKpi, set: setNewLogsPerKpi, placeholder: 'Events per KPI' },
+      ].map((field) => (
+        <View key={field.label}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>{field.label}</Text>
+          <TextInput
+            value={field.value}
+            onChangeText={field.set}
+            placeholder={field.placeholder}
+            style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, fontSize: 14, backgroundColor: '#FFF' }}
+          />
+        </View>
+      ))}
+      <Pressable
+        onPress={() => setNewIncludeActuals((v) => !v)}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+      >
+        <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: newIncludeActuals ? '#3B82F6' : '#CBD5E1', backgroundColor: newIncludeActuals ? '#3B82F6' : '#FFF', alignItems: 'center', justifyContent: 'center' }}>
+          {newIncludeActuals ? <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>✓</Text> : null}
+        </View>
+        <Text style={{ fontSize: 13, color: '#475569' }}>Include synthetic actual closings (calibration sandbox)</Text>
+      </Pressable>
+      <Pressable onPress={handleCreateScenario} style={{ marginTop: 8, backgroundColor: '#3B82F6', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}>
+        <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 14 }}>Generate Scenario</Text>
+      </Pressable>
+    </View>
+  );
+
+  // ── Sub-view: Scenario Detail ──
+
+  const renderScenarioDetail = () => {
+    if (!selectedScenario) return <Text style={{ color: '#94A3B8' }}>No scenario selected</Text>;
+    const s = selectedScenario;
+    const scenarioRuns = runs.filter((r) => r.scenario_id === s.scenario_id);
+
+    return (
+      <View style={{ gap: 16 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: '#1E293B' }}>{s.name}</Text>
+            <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>Seed: {s.seed} · {s.algorithm_version}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable onPress={() => handleRunScenario(s)} style={{ backgroundColor: '#3B82F6', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 }}>
+              <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>Run</Text>
+            </Pressable>
+            <Pressable onPress={() => handleExportJson(s, `scenario-${s.seed}.json`)} style={{ backgroundColor: '#F1F5F9', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 }}>
+              <Text style={{ color: '#475569', fontWeight: '600', fontSize: 13 }}>Export</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* User Profile */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 8 }}>User Profile</Text>
+          <Text style={{ fontSize: 12, color: '#64748B' }}>
+            {s.user_profile.display_name} · Avg Price: ${s.user_profile.average_price_point.toLocaleString()} · Commission: {(s.user_profile.commission_rate * 100).toFixed(2)}%
+          </Text>
+        </View>
+
+        {/* KPI Definitions */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 8 }}>KPI Definitions ({s.kpi_definitions.length})</Text>
+          {s.kpi_definitions.map((k) => (
+            <Text key={k.kpi_id} style={{ fontSize: 12, color: '#64748B', marginBottom: 4 }}>
+              {k.name} — Weight: {k.weight_percent}% · TTC: {k.ttc_definition ?? 'none'} · GP: {k.gp_value} · VP: {k.vp_value}
+            </Text>
+          ))}
+        </View>
+
+        {/* Log Summary */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 4 }}>
+            Event Stream: {s.log_stream.length} events
+            {s.actual_closings.length > 0 ? ` · ${s.actual_closings.length} actual closings` : ''}
+          </Text>
+        </View>
+
+        {/* Runs for this scenario */}
+        {scenarioRuns.length > 0 ? (
+          <View>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 8 }}>Runs ({scenarioRuns.length})</Text>
+            {scenarioRuns.map((r) => (
+              <Pressable
+                key={r.run_id}
+                onPress={() => { setSelectedRun(r); setLabView('run_detail'); }}
+                style={{ padding: 10, borderBottomWidth: 1, borderColor: '#E2E8F0' }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B' }}>
+                  PC@eval: ${r.pc_at_eval_date.toLocaleString()} · 90d: ${r.pc_90d.toLocaleString()}
+                </Text>
+                <Text style={{ fontSize: 11, color: '#94A3B8' }}>
+                  {r.run_id.slice(0, 16)} · {new Date(r.created_at).toLocaleTimeString()}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
+  // ── Sub-view: Run Detail ──
+
+  const renderRunDetail = () => {
+    if (!selectedRun) return <Text style={{ color: '#94A3B8' }}>No run selected</Text>;
+    const r = selectedRun;
+    const scenario = scenarios.find((s) => s.scenario_id === r.scenario_id);
+
+    return (
+      <View style={{ gap: 16 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>Run Detail</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {scenario ? (
+              <Pressable onPress={() => handleMarkGolden(scenario, r)} style={{ backgroundColor: '#F59E0B', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+                <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 12 }}>Mark Golden</Text>
+              </Pressable>
+            ) : null}
+            <Pressable onPress={() => handleExportJson(r, `run-${r.run_id.slice(0, 8)}.json`)} style={{ backgroundColor: '#F1F5F9', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+              <Text style={{ color: '#475569', fontWeight: '600', fontSize: 12 }}>Export</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Summary Cards */}
+        <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+          {[
+            { label: 'PC @ Eval', value: `$${r.pc_at_eval_date.toLocaleString()}` },
+            { label: '30-Day', value: `$${r.pc_30d.toLocaleString()}` },
+            { label: '90-Day', value: `$${r.pc_90d.toLocaleString()}` },
+            { label: '180-Day', value: `$${r.pc_180d.toLocaleString()}` },
+          ].map((card) => (
+            <View key={card.label} style={{ backgroundColor: '#F0F9FF', borderRadius: 8, padding: 14, minWidth: 130, flex: 1 }}>
+              <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 4 }}>{card.label}</Text>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: '#1E293B' }}>{card.value}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Raw vs Modified */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 8 }}>Raw vs Modifier-Applied</Text>
+          <Text style={{ fontSize: 12, color: '#64748B' }}>
+            Raw PC: ${r.raw_pc_at_eval.toLocaleString()} → Bump ({(r.gp_vp.total_bump_percent * 100).toFixed(1)}%): ${r.bump_applied_pc_at_eval.toLocaleString()} → Cal (×{r.calibration_multiplier}): ${r.pc_at_eval_date.toLocaleString()}
+          </Text>
+        </View>
+
+        {/* GP/VP State */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 8 }}>GP/VP State</Text>
+          <Text style={{ fontSize: 12, color: '#64748B' }}>
+            GP: {r.gp_vp.gp_current.toFixed(0)} (T{r.gp_vp.gp_tier}, +{(r.gp_vp.gp_bump_percent * 100).toFixed(1)}%) · VP: {r.gp_vp.vp_current.toFixed(0)} (T{r.gp_vp.vp_tier}, +{(r.gp_vp.vp_bump_percent * 100).toFixed(1)}%)
+          </Text>
+        </View>
+
+        {/* Confidence */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 8 }}>
+            Confidence: {r.confidence.composite.toFixed(1)} ({r.confidence.band.toUpperCase()})
+          </Text>
+          <Text style={{ fontSize: 12, color: '#64748B' }}>
+            Historical Accuracy: {r.confidence.historicalAccuracy.toFixed(1)} · Pipeline Health: {r.confidence.pipelineHealth.toFixed(1)} · Inactivity: {r.confidence.inactivity.toFixed(1)}
+          </Text>
+        </View>
+
+        {/* Calibration Metrics */}
+        {calibrationMetrics ? (
+          <View style={{ backgroundColor: '#FFFBEB', borderRadius: 8, padding: 14 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#92400E', marginBottom: 8 }}>Calibration Sandbox</Text>
+            <Text style={{ fontSize: 12, color: '#78350F' }}>
+              Actual: ${calibrationMetrics.actual_total.toLocaleString()} vs Projected: ${calibrationMetrics.projected_total.toLocaleString()}
+            </Text>
+            <Text style={{ fontSize: 12, color: '#78350F' }}>
+              Error Ratio: {calibrationMetrics.error_ratio.toFixed(4)} · Abs Error: ${calibrationMetrics.absolute_error.toLocaleString()}
+            </Text>
+            <Text style={{ fontSize: 12, color: '#78350F' }}>
+              Current Multiplier: ×{calibrationMetrics.current_multiplier} → Adjusted: ×{calibrationMetrics.adjusted_multiplier}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Event Contributions */}
+        <View>
+          <Pressable
+            onPress={() => setExpandedEvents((v) => !v)}
+            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>
+              Event Contributions ({r.event_contributions.length})
+            </Text>
+            <Text style={{ fontSize: 14, color: '#94A3B8' }}>{expandedEvents ? '▼' : '▶'}</Text>
+          </Pressable>
+          {expandedEvents ? (
+            <View style={{ gap: 6 }}>
+              {r.event_contributions.map((e) => (
+                <View key={e.log_id} style={{ backgroundColor: '#F8FAFC', borderRadius: 6, padding: 10 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B' }}>
+                    {e.kpi_name} — ${e.current_value.toLocaleString()} ({e.phase_at_eval})
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#64748B' }}>
+                    Initial: ${e.initial_pc.toLocaleString()} · Delay: {e.delay_days}d · Hold: {e.hold_days}d · Decay: {e.decay_days}d
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#94A3B8' }}>
+                    Event: {e.event_date_iso.slice(0, 10)} · Payoff: {e.payoff_start_iso.slice(0, 10)} · Decay Start: {e.decay_start_iso.slice(0, 10)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+
+        {/* 12m Series */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 8 }}>Future Projected 12m Series</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {r.future_projected_12m.map((p) => (
+              <View key={p.month_start} style={{ minWidth: 80 }}>
+                <Text style={{ fontSize: 10, color: '#94A3B8' }}>{p.month_start.slice(0, 7)}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B' }}>${p.value.toLocaleString()}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Audit */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 8 }}>Audit</Text>
+          <Text style={{ fontSize: 11, color: '#64748B' }}>
+            Run: {r.run_id} · Admin: {r.admin_user} · Seed: {r.seed} · Checksum: {r.checksum} · Prod Writes: {String(r.production_writes_enabled)}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  // ── Sub-view: Compare ──
+
+  const renderCompare = () => (
+    <View style={{ gap: 12 }}>
+      <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>Compare Runs</Text>
+      {runs.length < 2 ? (
+        <Text style={{ fontSize: 13, color: '#94A3B8' }}>Need at least 2 runs to compare. Create and run scenarios first.</Text>
+      ) : (
+        <>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569' }}>Run A</Text>
+          <View style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, backgroundColor: '#FFF' }}>
+            {runs.map((r) => (
+              <Pressable
+                key={r.run_id}
+                onPress={() => setCompareRunAId(r.run_id)}
+                style={{ padding: 10, borderBottomWidth: 1, borderColor: '#F1F5F9', backgroundColor: compareRunAId === r.run_id ? '#EFF6FF' : '#FFF' }}
+              >
+                <Text style={{ fontSize: 12, color: compareRunAId === r.run_id ? '#2563EB' : '#475569' }}>
+                  {r.run_id.slice(0, 16)} · PC: ${r.pc_at_eval_date.toLocaleString()}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569' }}>Run B</Text>
+          <View style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, backgroundColor: '#FFF' }}>
+            {runs.map((r) => (
+              <Pressable
+                key={r.run_id}
+                onPress={() => setCompareRunBId(r.run_id)}
+                style={{ padding: 10, borderBottomWidth: 1, borderColor: '#F1F5F9', backgroundColor: compareRunBId === r.run_id ? '#EFF6FF' : '#FFF' }}
+              >
+                <Text style={{ fontSize: 12, color: compareRunBId === r.run_id ? '#2563EB' : '#475569' }}>
+                  {r.run_id.slice(0, 16)} · PC: ${r.pc_at_eval_date.toLocaleString()}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable
+            onPress={handleCompare}
+            style={{ backgroundColor: compareRunAId && compareRunBId ? '#3B82F6' : '#CBD5E1', borderRadius: 8, paddingVertical: 10, alignItems: 'center', marginTop: 4 }}
+          >
+            <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 14 }}>Compare</Text>
+          </Pressable>
+
+          {comparison ? (
+            <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14, marginTop: 8 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E293B', marginBottom: 10 }}>Top Change Drivers</Text>
+              {comparison.top_drivers.map((d) => (
+                <View key={d.field} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderColor: '#E2E8F0' }}>
+                  <Text style={{ fontSize: 12, color: '#475569', flex: 1 }}>{d.field}</Text>
+                  <Text style={{ fontSize: 12, color: '#64748B', width: 80, textAlign: 'right' }}>A: {typeof d.run_a_value === 'number' ? d.run_a_value.toLocaleString() : d.run_a_value}</Text>
+                  <Text style={{ fontSize: 12, color: '#64748B', width: 80, textAlign: 'right' }}>B: {typeof d.run_b_value === 'number' ? d.run_b_value.toLocaleString() : d.run_b_value}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: d.delta_percent > 0 ? '#16A34A' : d.delta_percent < 0 ? '#DC2626' : '#64748B', width: 70, textAlign: 'right' }}>
+                    {d.delta_percent > 0 ? '+' : ''}{d.delta_percent.toFixed(1)}%
+                  </Text>
+                </View>
+              ))}
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E293B', marginTop: 16, marginBottom: 10 }}>All Deltas</Text>
+              {comparison.summary_deltas.map((d) => (
+                <View key={d.field} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 11, color: '#64748B', flex: 1 }}>{d.field}</Text>
+                  <Text style={{ fontSize: 11, color: d.delta_percent > 0 ? '#16A34A' : d.delta_percent < 0 ? '#DC2626' : '#94A3B8', width: 70, textAlign: 'right' }}>
+                    {d.delta_percent > 0 ? '+' : ''}{d.delta_percent.toFixed(1)}%
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </>
+      )}
+    </View>
+  );
+
+  // ── Sub-view: Golden Tests ──
+
+  const renderGolden = () => {
+    const goldenEntries = getGoldenScenarios();
+    return (
+      <View style={{ gap: 12 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>Golden Tests & Regression</Text>
+          <Pressable
+            onPress={handleRunRegression}
+            style={{ backgroundColor: goldenEntries.length > 0 ? '#3B82F6' : '#CBD5E1', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 }}
+          >
+            <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>Run Regression</Text>
+          </Pressable>
+        </View>
+
+        {goldenEntries.length === 0 ? (
+          <Text style={{ fontSize: 13, color: '#94A3B8' }}>
+            No golden scenarios registered. Run a scenario, then click "Mark Golden" to create a baseline.
+          </Text>
+        ) : (
+          <View>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#475569', marginBottom: 8 }}>
+              Registered Golden Scenarios ({goldenEntries.length})
+            </Text>
+            {goldenEntries.map((entry) => (
+              <View key={entry.scenario.scenario_id} style={{ padding: 10, borderBottomWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B' }}>{entry.scenario.name}</Text>
+                  <Text style={{ fontSize: 11, color: '#64748B' }}>
+                    Expected 30d: ${entry.expected.pc_30d.toLocaleString()} · 90d: ${entry.expected.pc_90d.toLocaleString()} · 180d: ${entry.expected.pc_180d.toLocaleString()} · ±{entry.expected.tolerance_percent}%
+                  </Text>
+                </View>
+                <Pressable onPress={() => removeGoldenScenario(entry.scenario.scenario_id)}>
+                  <Text style={{ fontSize: 12, color: '#DC2626' }}>Remove</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Tolerance setting */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569' }}>Default Tolerance %:</Text>
+          <TextInput
+            value={goldenTolerance}
+            onChangeText={setGoldenTolerance}
+            style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, padding: 6, width: 60, fontSize: 13, textAlign: 'center', backgroundColor: '#FFF' }}
+          />
+        </View>
+
+        {/* Regression Report */}
+        {regressionReport ? (
+          <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14, marginTop: 8 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E293B', marginBottom: 8 }}>
+              Regression Report — {regressionReport.passed}/{regressionReport.total_scenarios} passed
+            </Text>
+            {regressionReport.results.map((res) => (
+              <View key={res.scenario_id} style={{ padding: 10, marginBottom: 6, borderRadius: 6, backgroundColor: res.passed ? '#F0FDF4' : '#FEF2F2' }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: res.passed ? '#16A34A' : '#DC2626' }}>
+                  {res.passed ? '✓' : '✗'} {res.scenario_name}
+                </Text>
+                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                  30d: {res.deltas.pc_30d_pct.toFixed(1)}% · 90d: {res.deltas.pc_90d_pct.toFixed(1)}% · 180d: {res.deltas.pc_180d_pct.toFixed(1)}%
+                </Text>
+              </View>
+            ))}
+            <Pressable
+              onPress={() => handleExportJson(regressionReport, `regression-${regressionReport.report_id}.json`)}
+              style={{ marginTop: 8, backgroundColor: '#F1F5F9', borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}
+            >
+              <Text style={{ color: '#475569', fontWeight: '600', fontSize: 12 }}>Export Report</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
+  // ── Sub-view: Settings ──
+
+  const renderSettings = () => (
+    <View style={{ gap: 12 }}>
+      <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>Projection Lab Settings</Text>
+      <View style={{ backgroundColor: '#FEF2F2', borderRadius: 8, padding: 14 }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: '#991B1B', marginBottom: 4 }}>Safety Controls</Text>
+        <Text style={{ fontSize: 12, color: '#7F1D1D' }}>Production KPI-log writes: DISABLED (hard default)</Text>
+        <Text style={{ fontSize: 12, color: '#7F1D1D' }}>Mode: In-memory injection (Mode 1)</Text>
+        <Text style={{ fontSize: 12, color: '#7F1D1D' }}>Environment: {__DEV__ ? 'DEVELOPMENT' : 'PRODUCTION'}</Text>
+      </View>
+      <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 4 }}>Algorithm Version</Text>
+        <Text style={{ fontSize: 12, color: '#64748B' }}>Engine: 1.0.0-lab (mirrors backend canonical engine)</Text>
+        <Text style={{ fontSize: 12, color: '#64748B' }}>Decay default: 180 days</Text>
+        <Text style={{ fontSize: 12, color: '#64748B' }}>Calibration range: ×0.5 – ×1.5</Text>
+      </View>
+      <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 4 }}>Session State</Text>
+        <Text style={{ fontSize: 12, color: '#64748B' }}>Scenarios: {scenarios.length} · Runs: {runs.length} · Golden: {getGoldenScenarios().length}</Text>
+        <Text style={{ fontSize: 12, color: '#64748B' }}>Admin: {adminUser}</Text>
+      </View>
+    </View>
+  );
+
+  // ── Main Render ──
+
+  const renderContent = () => {
+    switch (labView) {
+      case 'scenario_list': return renderScenarioList();
+      case 'scenario_create': return renderScenarioCreate();
+      case 'scenario_detail': return renderScenarioDetail();
+      case 'run_detail': return renderRunDetail();
+      case 'compare': return renderCompare();
+      case 'golden': return renderGolden();
+      case 'settings': return renderSettings();
+      default: return renderScenarioList();
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, padding: 20 }}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Text style={{ fontSize: 20, fontWeight: '700', color: '#1E293B' }}>Projection Lab</Text>
+        <View style={{ backgroundColor: '#FEF3C7', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 }}>
+          <Text style={{ fontSize: 11, fontWeight: '600', color: '#92400E' }}>ADMIN ONLY · NO PROD WRITES</Text>
+        </View>
+      </View>
+
+      {/* Status bar */}
+      {runStatus ? (
+        <View style={{ backgroundColor: '#F0F9FF', borderRadius: 6, padding: 10, marginBottom: 12 }}>
+          <Text style={{ fontSize: 12, color: '#1E40AF' }}>{runStatus}</Text>
+        </View>
+      ) : null}
+
+      {/* Navigation */}
+      {renderNavPills()}
+
+      {/* Back button for detail views */}
+      {(labView === 'scenario_detail' || labView === 'run_detail') ? (
+        <Pressable
+          onPress={() => setLabView(labView === 'run_detail' && selectedRun ? 'scenario_detail' : 'scenario_list')}
+          style={{ marginBottom: 12 }}
+        >
+          <Text style={{ fontSize: 13, color: '#3B82F6', fontWeight: '600' }}>← Back</Text>
+        </Pressable>
+      ) : null}
+
+      {/* Content */}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+        {renderContent()}
+      </ScrollView>
+    </View>
+  );
+}
+
 export default function AdminShellScreen() {
   const { session, signOut } = useAuth();
   const {
@@ -4105,6 +4525,7 @@ export default function AdminShellScreen() {
   const hasCoachRole = effectiveRoles.includes('coach');
   const hasTeamLeaderRole = effectiveRoles.includes('team_leader');
   const hasSponsorRole = effectiveRoles.includes('challenge_sponsor');
+  const hasSuperAdminRole = effectiveRoles.includes('super_admin');
   const hasCoachFacingRole = hasCoachRole || hasTeamLeaderRole || hasSponsorRole;
   const activeRoute = getAdminRouteByKey(activeRouteKey);
   const canOpenActiveRoute = canAccessAdminRoute(effectiveRoles, activeRoute);
@@ -4121,6 +4542,7 @@ export default function AdminShellScreen() {
   );
   const isCoachingTransitionRoute = COACH_PORTAL_TRANSITION_ROUTE_KEYS.includes(activeRoute.key as CoachingPortalSurfaceKey);
   const showCoachPortalExperience = hasCoachFacingRole && !effectiveHasAdminAccess && isCoachingTransitionRoute;
+  const usePersistentAccountDock = !showCoachPortalExperience && hasSuperAdminRole;
   const visibleRoutes = showCoachPortalExperience ? coachingTransitionRoutes : ADMIN_ROUTES;
   const accountInitial = (session?.user?.email?.trim().charAt(0) || backendRole?.trim().charAt(0) || 'A').toUpperCase();
   const accountLabel = session?.user?.email || 'Signed-in account';
@@ -4148,6 +4570,30 @@ export default function AdminShellScreen() {
             {accountLabel}
           </Text>
           <Text style={styles.accountMenuRole}>{backendRoleLabel}</Text>
+          {hasSuperAdminRole ? (
+            <TouchableOpacity
+              style={styles.accountMenuSwitchSurface}
+              onPress={() => {
+                setAccountMenuOpen(false);
+                if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+                const nextPath = showCoachPortalExperience ? '/admin/users' : '/coach/journeys';
+                if (window.location.pathname === nextPath) return;
+                window.history.pushState({}, '', nextPath);
+                setLastNavPushPath(nextPath);
+                const nextRoute = getAdminRouteByPath(nextPath);
+                if (nextRoute) {
+                  setUnknownAdminPath(null);
+                  setActiveRouteKey(nextRoute.key);
+                }
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={showCoachPortalExperience ? 'Switch to admin panel' : 'Switch to coach portal'}
+            >
+              <Text style={styles.accountMenuSwitchSurfaceText}>
+                {showCoachPortalExperience ? 'Switch to Admin Panel' : 'Switch to Coach Portal'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity
             style={styles.accountMenuSignOut}
             onPress={() => {
@@ -4786,35 +5232,12 @@ export default function AdminShellScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={[styles.backgroundOrbOne, showCoachPortalExperience && styles.backgroundOrbOneCoach]} />
-      <View style={[styles.backgroundOrbTwo, showCoachPortalExperience && styles.backgroundOrbTwoCoach]} />
       <View style={[styles.shell, isCompact && styles.shellCompact]}>
         {!showCoachPortalExperience ? (
           <View style={[styles.sidebar, isCompact && styles.sidebarCompact]}>
-            <View style={styles.brandCard}>
-            <View style={styles.brandRow}>
-                <View style={styles.brandLogoWrap}>
-                <CompassMark width={42} height={42} />
-              </View>
-              <View style={styles.brandCopy}>
-                  <Text style={styles.brandTag}>A1</Text>
-                  <Text style={styles.brandTitle}>Admin Shell</Text>
-                  <Text style={styles.brandSubtitle}>User Ops, Catalog, and Reporting tools</Text>
-              </View>
-            </View>
-            <View style={styles.brandMetricsRow}>
-                <View style={styles.brandMetricCard}>
-                  <Text style={styles.brandMetricLabel}>A1 routes</Text>
-                  <Text style={styles.brandMetricValue}>{a1Routes}</Text>
-              </View>
-                <View style={styles.brandMetricCard}>
-                  <Text style={styles.brandMetricLabel}>Blocked now</Text>
-                  <Text style={styles.brandMetricValue}>{blockedRoutes}</Text>
-              </View>
-            </View>
-              <Text style={styles.brandFootnote}>
-                Styled from Compass export palette (navy + blue gradient) while keeping A1 scope to shell/authz only.
-              </Text>
+            <View style={styles.sidebarHeader}>
+              <CompassMark width={28} height={28} />
+              <Text style={styles.sidebarTitle}>Admin</Text>
             </View>
 
             <ScrollView
@@ -4823,11 +5246,11 @@ export default function AdminShellScreen() {
               contentContainerStyle={[styles.navList, isCompact && styles.navListCompact]}
               style={styles.navScroll}
             >
-              {visibleRoutes.map((route) => {
+              {visibleRoutes
+                .filter((route) => !COACH_PORTAL_TRANSITION_ROUTE_KEYS.includes(route.key as CoachingPortalSurfaceKey))
+                .map((route) => {
                 const selected = route.key === activeRouteKey;
                 const allowed = canAccessAdminRoute(effectiveRoles, route);
-                const stage = getAdminRouteStage(route.key);
-                const tone = getAdminRouteStageTone(stage);
                 return (
                   <Pressable
                     key={route.key}
@@ -4851,27 +5274,35 @@ export default function AdminShellScreen() {
                     accessibilityRole="button"
                     accessibilityState={{ selected, disabled: !allowed }}
                   >
-                    <View style={styles.navTopRow}>
-                      <Text style={[styles.navLabel, selected && styles.navLabelSelected]}>{route.label}</Text>
-                      <View style={[styles.navStagePill, { backgroundColor: tone.bg, borderColor: tone.border }]}>
-                        <Text style={[styles.navStageText, { color: tone.text }]}>{stage.replace(' later', '')}</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.navPath}>{route.path}</Text>
+                    <Text style={[styles.navLabel, selected && styles.navLabelSelected]}>{route.label}</Text>
                   </Pressable>
                 );
               })}
+              {/* Single consolidated Coach Portal link */}
+              {hasSuperAdminRole ? (
+                <Pressable
+                  key="coachPortalLink"
+                  style={[
+                    styles.navItem,
+                    COACH_PORTAL_TRANSITION_ROUTE_KEYS.includes(activeRoute.key as CoachingPortalSurfaceKey) && styles.navItemSelected,
+                    isCompact && styles.navItemCompact,
+                  ]}
+                  onPress={() => {
+                    setUnknownAdminPath(null);
+                    const nextPath = '/coach/journeys';
+                    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.pathname !== nextPath) {
+                      window.history.pushState({}, '', nextPath);
+                      setLastNavPushPath(nextPath);
+                    }
+                    setActiveRouteKey('coachingJourneys');
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: COACH_PORTAL_TRANSITION_ROUTE_KEYS.includes(activeRoute.key as CoachingPortalSurfaceKey) }}
+                >
+                  <Text style={[styles.navLabel, COACH_PORTAL_TRANSITION_ROUTE_KEYS.includes(activeRoute.key as CoachingPortalSurfaceKey) && styles.navLabelSelected]}>Coach Portal</Text>
+                </Pressable>
+              ) : null}
             </ScrollView>
-            <View style={styles.navFooterCard}>
-              <View style={styles.navFooterRow}>
-                <View style={styles.navFooterCopy}>
-                  <Text style={styles.navFooterTitle}>Admin workspace routes</Text>
-                  <Text style={styles.navFooterText}>
-                    Use the left navigation to move between available admin tools. Routes that are not available yet are labeled in the list.
-                  </Text>
-                </View>
-              </View>
-            </View>
           </View>
         ) : null}
 
@@ -4902,19 +5333,8 @@ export default function AdminShellScreen() {
               </View>
             ) : (
               <View style={styles.header}>
-                <View>
-                  <Text style={styles.headerTitle}>Compass KPI Admin</Text>
-                  <Text style={styles.headerSubtitle}>
-                    Operator tools for user access, KPI catalog, templates, and reporting checks
-                  </Text>
-                </View>
+                <Text style={styles.headerTitle}>{activeRoute.label}</Text>
                 <View style={styles.headerActions}>
-                  <View style={styles.roleBadge}>
-                    {backendRoleLoading ? <ActivityIndicator size="small" color="#1F4EBF" /> : null}
-                    <Text style={styles.roleBadgeText}>
-                      {backendRole ? `Backend role: ${backendRole}` : 'Role source: session metadata'}
-                    </Text>
-                  </View>
                   {renderAccountMenu()}
                 </View>
               </View>
@@ -4965,64 +5385,11 @@ export default function AdminShellScreen() {
               </View>
             ) : null}
 
-            {!showCoachPortalExperience ? (
-              <>
-                <View style={[styles.summaryRow, isCompact && styles.summaryRowCompact]}>
-                  <View style={styles.summaryCard}>
-                    <Text style={styles.summaryLabel}>AuthZ Source</Text>
-                    <Text style={styles.summaryValue}>
-                      {backendRole ? 'Supabase session + backend /me fallback' : 'Supabase session metadata first'}
-                    </Text>
-                    <Text style={styles.summaryNote}>
-                      {__DEV__ && devRolePreview !== 'live'
-                        ? `Dev preview override active: ${devRolePreview}`
-                        : 'No new endpoint family introduced'}
-                    </Text>
-                  </View>
-                  <View style={styles.summaryCard}>
-                    <Text style={styles.summaryLabel}>Admin Workspace</Text>
-                    <Text style={styles.summaryValue}>User ops, KPI catalog, templates, and reporting checks in one admin surface</Text>
-                    <Text style={styles.summaryNote}>Use the left navigation to move between admin workflows</Text>
-                  </View>
-                  <View style={styles.summaryCard}>
-                    <Text style={styles.summaryLabel}>Navigation</Text>
-                    <Text style={styles.summaryValue}>
-                      {Platform.OS === 'web'
-                        ? `Path sync enabled (${
-                            !canOpenActiveRoute ? ADMIN_UNAUTHORIZED_PATH : unknownAdminPath ? ADMIN_NOT_FOUND_PATH : activeRoute.path
-                          })`
-                        : 'Path sync inactive outside web runtime'}
-                    </Text>
-                    <Text style={styles.summaryNote}>Browser back/forward tracks admin route changes, unauthorized, and not-found states</Text>
-                  </View>
-                </View>
-
-                <View style={styles.checklistCard}>
-                  <Pressable style={styles.formHeaderRow} onPress={() => setShowImplementationNotes((prev) => !prev)}>
-                    <View style={styles.checklistHeader}>
-                      <Text style={styles.checklistTitle}>Implementation Status</Text>
-                      <Text style={styles.checklistSubtitle}>Internal readiness notes and debug context for admin maintenance</Text>
-                    </View>
-                    <Text style={styles.smallGhostButtonText}>{showImplementationNotes ? 'Hide' : 'Show'}</Text>
-                  </Pressable>
-                  {showImplementationNotes ? (
-                    <View style={styles.checklistList}>
-                      <Text style={styles.metaRow}>Historic A1 shell/authz baseline checklist (completed; kept for traceability)</Text>
-                      {checklistItems.map((item) => {
-                        const done = item.status === 'done';
-                        return (
-                          <View key={item.label} style={styles.checklistRow}>
-                            <View style={[styles.checklistDot, done ? styles.checklistDotDone : styles.checklistDotPending]} />
-                            <Text style={[styles.checklistText, done ? styles.checklistTextDone : styles.checklistTextPending]}>
-                              {done ? '[done]' : '[next]'} {item.label}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  ) : null}
-                </View>
-              </>
+            {!showCoachPortalExperience && activeRoute.key === 'overview' ? (
+              <View style={styles.welcomeCard}>
+                <Text style={styles.welcomeTitle}>Admin Dashboard</Text>
+                <Text style={styles.welcomeSubtitle}>Select a section from the sidebar to get started.</Text>
+              </View>
             ) : null}
 
             {__DEV__ && !showCoachPortalExperience ? (
@@ -5259,6 +5626,8 @@ export default function AdminShellScreen() {
                       setActiveRouteKey(next);
                     }}
                   />
+                ) : activeRoute.key === 'projectionLab' ? (
+                  <AdminProjectionLabPanel adminUser={session?.user?.email ?? 'admin'} />
                 ) : (
                   <PlaceholderScreen route={activeRoute} rolesLabel={rolesLabel} />
                 )}
@@ -5274,17 +5643,17 @@ export default function AdminShellScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#EDF2FA',
+    backgroundColor: '#F8FAFC',
   },
   backgroundOrbOne: {
     position: 'absolute',
     width: 280,
     height: 280,
     borderRadius: 140,
-    backgroundColor: '#CFE0FF',
+    backgroundColor: '#E2E8F0',
     top: -60,
     right: -40,
-    opacity: 0.7,
+    opacity: 0.55,
   },
   backgroundOrbOneCoach: {
     backgroundColor: '#CFEBDD',
@@ -5294,10 +5663,10 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: 110,
-    backgroundColor: '#DCEBFF',
+    backgroundColor: '#DBEAFE',
     bottom: 40,
     left: -60,
-    opacity: 0.75,
+    opacity: 0.5,
   },
   backgroundOrbTwoCoach: {
     backgroundColor: '#E4F4D8',
@@ -5305,33 +5674,63 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1,
     flexDirection: 'row',
-    gap: 16,
-    padding: 16,
+    gap: 0,
+    padding: 0,
   },
   shellCompact: {
     flexDirection: 'column',
-    gap: 12,
+    gap: 0,
   },
   sidebar: {
-    width: 320,
-    gap: 12,
+    width: 260,
+    backgroundColor: '#1E293B',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
   },
   sidebarCoach: {
     width: 300,
   },
   sidebarCompact: {
     width: '100%',
+    flexDirection: 'row' as const,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
   },
-  brandCard: {
-    backgroundColor: '#12203A',
-    borderRadius: 16,
-    padding: 16,
+  sidebarHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingBottom: 16,
+    marginBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  sidebarTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700' as const,
+  },
+  welcomeCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#20365F',
+    borderColor: '#E2E8F0',
+    padding: 32,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: 200,
   },
-  brandCardCoach: {
-    backgroundColor: '#163328',
-    borderColor: '#2B5A48',
+  welcomeTitle: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: '#0F172A',
+  },
+  welcomeSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    marginTop: 8,
   },
   brandRow: {
     flexDirection: 'row',
@@ -5342,11 +5741,11 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 14,
-    backgroundColor: '#0E1830',
+    backgroundColor: '#172554',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#2D4478',
+    borderColor: '#334155',
   },
   brandLogoWrapCoach: {
     backgroundColor: '#10251D',
@@ -5356,7 +5755,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   brandTag: {
-    color: '#9eb6ff',
+    color: '#BFDBFE',
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -5375,7 +5774,7 @@ const styles = StyleSheet.create({
     color: '#F3FFF9',
   },
   brandSubtitle: {
-    color: '#c5d0e6',
+    color: '#94A3B8',
     fontSize: 13,
     marginTop: 6,
     lineHeight: 18,
@@ -5390,9 +5789,9 @@ const styles = StyleSheet.create({
   },
   brandMetricCard: {
     flex: 1,
-    backgroundColor: '#172A4E',
+    backgroundColor: '#1E293B',
     borderWidth: 1,
-    borderColor: '#294171',
+    borderColor: '#475569',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -5402,7 +5801,7 @@ const styles = StyleSheet.create({
     borderColor: '#406E5B',
   },
   brandMetricLabel: {
-    color: '#B9C7E4',
+    color: '#CBD5E1',
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.7,
@@ -5419,7 +5818,7 @@ const styles = StyleSheet.create({
   },
   brandFootnote: {
     marginTop: 10,
-    color: '#B6C2DB',
+    color: '#94A3B8',
     fontSize: 12,
     lineHeight: 17,
   },
@@ -5427,23 +5826,21 @@ const styles = StyleSheet.create({
     color: '#CAE6D7',
   },
   navScroll: {
-    flexGrow: 0,
-    maxHeight: 340,
+    flex: 1,
   },
   navList: {
-    gap: 10,
+    gap: 2,
   },
   navListCompact: {
     gap: 10,
     paddingRight: 8,
   },
   navItem: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#dee6f2',
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
   },
   navItemCoach: {
     backgroundColor: '#F6FCF8',
@@ -5453,8 +5850,8 @@ const styles = StyleSheet.create({
     width: 220,
   },
   navItemSelected: {
-    borderColor: '#2f67e8',
-    backgroundColor: '#edf3ff',
+    borderLeftColor: '#3B82F6',
+    backgroundColor: '#334155',
   },
   navItemCoachSelected: {
     borderColor: '#2D8A62',
@@ -5464,12 +5861,13 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   navLabel: {
-    color: colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '700',
+    color: '#94A3B8',
+    fontSize: 14,
+    fontWeight: '600',
   },
   navLabelSelected: {
-    color: '#1f4ebf',
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   navTopRow: {
     flexDirection: 'row',
@@ -5490,15 +5888,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   navPath: {
-    color: colors.textSecondary,
-    fontSize: 12,
+    color: '#94A3B8',
+    fontSize: 11,
     marginTop: 4,
   },
   navFooterCard: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 14,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#DDE6F5',
+    borderColor: '#334155',
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -5515,12 +5913,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   navFooterTitle: {
-    color: '#23314A',
+    color: '#E2E8F0',
     fontSize: 13,
     fontWeight: '700',
   },
   navFooterText: {
-    color: '#70809D',
+    color: '#94A3B8',
     fontSize: 12,
     lineHeight: 17,
     marginTop: 3,
@@ -5541,21 +5939,182 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentScrollInner: {
-    gap: 12,
+    gap: 14,
+    paddingBottom: 24,
+  },
+  /* ── List-Detail shared layout (KPI Catalog, Challenge Templates) ── */
+  listDetailContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  listPanel: {
+    width: 340,
+    borderRightWidth: 1,
+    borderRightColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    paddingTop: 16,
+  },
+  listPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  listPanelTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  listPanelCreateBtn: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  listPanelCreateBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  listSearchInput: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#334155',
+  },
+  listFilterRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  listFilterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#F1F5F9',
+  },
+  listFilterPillSelected: {
+    backgroundColor: '#3B82F6',
+  },
+  listFilterPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  listFilterPillTextSelected: {
+    color: '#FFFFFF',
+  },
+  listCountText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  listScrollView: {
+    flex: 1,
+  },
+  listRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  listRowSelected: {
+    borderLeftColor: '#3B82F6',
+    backgroundColor: '#EFF6FF',
+  },
+  listRowTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  listRowTitleSelected: {
+    color: '#1E40AF',
+  },
+  listRowMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 3,
+  },
+  listRowBadge: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  listRowDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  listShowMore: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  listShowMoreText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#3B82F6',
+  },
+  listEmptyState: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  listEmptyText: {
+    fontSize: 13,
+    color: '#94A3B8',
+  },
+  detailPanel: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    padding: 20,
+  },
+  detailEmptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 200,
+  },
+  detailEmptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 6,
+  },
+  detailEmptySubtitle: {
+    fontSize: 14,
+    color: '#94A3B8',
+  },
+  detailScrollInner: {
+    gap: 16,
     paddingBottom: 24,
   },
   header: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#dee6f2',
-    paddingHorizontal: 18,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingHorizontal: 20,
     paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    flexWrap: 'wrap',
   },
   headerCoach: {
     backgroundColor: 'rgba(245,252,247,0.96)',
@@ -5612,21 +6171,27 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     zIndex: 30,
   },
+  persistentAccountDock: {
+    position: 'absolute',
+    top: 18,
+    right: 18,
+    zIndex: 120,
+  },
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#202838',
+    color: '#0F172A',
   },
   headerSubtitle: {
     fontSize: 13,
-    color: '#697488',
+    color: '#64748B',
     marginTop: 4,
   },
   signOutButton: {
-    backgroundColor: '#F4F7FF',
-    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#d9e1ef',
+    borderColor: '#CBD5E1',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -5635,7 +6200,7 @@ const styles = StyleSheet.create({
     borderColor: '#D4E7DA',
   },
   signOutButtonText: {
-    color: '#293548',
+    color: '#334155',
     fontWeight: '600',
     fontSize: 14,
   },
@@ -5645,8 +6210,8 @@ const styles = StyleSheet.create({
   },
   avatarButton: {
     borderWidth: 1,
-    borderColor: '#D9E1EF',
-    backgroundColor: '#F4F7FF',
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 7,
@@ -5661,15 +6226,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#ECF8F1',
   },
   avatarButtonOpen: {
-    borderColor: '#2B4C9A',
+    borderColor: '#2563EB',
   },
   avatarButtonText: {
-    color: '#243754',
+    color: '#0F172A',
     fontSize: 13,
     fontWeight: '800',
   },
   avatarChevron: {
-    color: '#4A5D7A',
+    color: '#64748B',
     fontSize: 11,
     fontWeight: '700',
     marginTop: 1,
@@ -5679,13 +6244,13 @@ const styles = StyleSheet.create({
     top: 42,
     right: 0,
     borderWidth: 1,
-    borderColor: '#D6E2FF',
+    borderColor: '#CBD5E1',
     borderRadius: 10,
     backgroundColor: '#FFFFFF',
     minWidth: 220,
     padding: 10,
     gap: 6,
-    shadowColor: '#10213A',
+    shadowColor: '#0F172A',
     shadowOpacity: 0.12,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 },
@@ -5693,32 +6258,46 @@ const styles = StyleSheet.create({
     zIndex: 40,
   },
   accountMenuLabel: {
-    color: '#64738A',
+    color: '#64748B',
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     fontWeight: '700',
   },
   accountMenuValue: {
-    color: '#223043',
+    color: '#0F172A',
     fontSize: 12,
     fontWeight: '600',
   },
   accountMenuRole: {
-    color: '#5A6A83',
+    color: '#64748B',
     fontSize: 11,
   },
   accountMenuSignOut: {
     borderWidth: 1,
-    borderColor: '#D9E1EF',
+    borderColor: '#CBD5E1',
     borderRadius: 8,
-    backgroundColor: '#F4F7FF',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 10,
     paddingVertical: 8,
     marginTop: 2,
   },
+  accountMenuSwitchSurface: {
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 2,
+  },
+  accountMenuSwitchSurfaceText: {
+    color: '#1D4ED8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   accountMenuSignOutText: {
-    color: '#27384F',
+    color: '#DC2626',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -5726,9 +6305,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#EEF4FF',
+    backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#D6E2FF',
+    borderColor: '#BFDBFE',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 7,
@@ -5739,7 +6318,7 @@ const styles = StyleSheet.create({
     borderColor: '#CAE8D8',
   },
   roleBadgeText: {
-    color: '#2B4C9A',
+    color: '#1D4ED8',
     fontSize: 12,
     fontWeight: '600',
   },
@@ -5764,9 +6343,9 @@ const styles = StyleSheet.create({
   },
   usersWorkflowBanner: {
     borderWidth: 1,
-    borderColor: '#DCE6F8',
+    borderColor: '#E2E8F0',
     borderRadius: 12,
-    backgroundColor: '#F6FAFF',
+    backgroundColor: '#F8FAFC',
     padding: 12,
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -5780,12 +6359,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   usersWorkflowBannerTitle: {
-    color: '#20304A',
+    color: '#0F172A',
     fontSize: 13,
     fontWeight: '700',
   },
   usersWorkflowBannerText: {
-    color: '#5B6A84',
+    color: '#64748B',
     fontSize: 12,
     lineHeight: 17,
   },
@@ -5801,27 +6380,27 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#DFE7F3',
+    borderColor: '#E2E8F0',
     borderRadius: 12,
-    backgroundColor: '#FAFCFF',
+    backgroundColor: '#F8FAFC',
     padding: 12,
     gap: 8,
   },
   usersNoResultsTitle: {
-    color: '#20314a',
+    color: '#0F172A',
     fontSize: 13,
     fontWeight: '700',
   },
   usersNoResultsText: {
-    color: '#667792',
+    color: '#64748B',
     fontSize: 12,
     lineHeight: 17,
   },
   activityFeedCard: {
     borderWidth: 1,
-    borderColor: '#E3EBF8',
+    borderColor: '#E2E8F0',
     borderRadius: 12,
-    backgroundColor: '#FAFCFF',
+    backgroundColor: '#F8FAFC',
     padding: 12,
     gap: 8,
   },
@@ -5850,25 +6429,25 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   activityFeedText: {
-    color: '#2A3953',
+    color: '#334155',
     fontSize: 12,
     lineHeight: 17,
   },
   activityFeedMeta: {
-    color: '#7A869B',
+    color: '#64748B',
     fontSize: 11,
   },
   selectedUserSummaryCard: {
     borderWidth: 1,
-    borderColor: '#DCE7FA',
+    borderColor: '#E2E8F0',
     borderRadius: 12,
-    backgroundColor: '#F7FAFF',
+    backgroundColor: '#F8FAFC',
     padding: 10,
     gap: 6,
   },
   userOpsSection: {
     borderWidth: 1,
-    borderColor: '#E5ECF8',
+    borderColor: '#E2E8F0',
     borderRadius: 12,
     backgroundColor: '#FFFFFF',
     padding: 10,
@@ -5880,13 +6459,32 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'flex-start',
   },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  collapsibleHeaderText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  collapsibleChevron: {
+    fontSize: 14,
+    color: '#94A3B8',
+  },
   summaryCard: {
     flex: 1,
     minWidth: 220,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#DFE7F3',
+    borderColor: '#E2E8F0',
     padding: 14,
   },
   endpointHeaderRow: {
@@ -5908,29 +6506,29 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   summaryLabel: {
-    color: '#6A768D',
+    color: '#64748B',
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.7,
   },
   summaryValue: {
-    color: '#202B3E',
+    color: '#0F172A',
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '600',
     marginTop: 6,
   },
   summaryNote: {
-    color: '#748198',
+    color: '#64748B',
     fontSize: 12,
     marginTop: 6,
   },
   endpointStatusBanner: {
     borderWidth: 1,
-    borderColor: '#E1E9F7',
+    borderColor: '#E2E8F0',
     borderRadius: 12,
-    backgroundColor: '#F8FBFF',
+    backgroundColor: '#F8FAFC',
     padding: 10,
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -5942,26 +6540,26 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   endpointStatusBannerLabel: {
-    color: '#6A768D',
+    color: '#64748B',
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
   endpointStatusBannerValue: {
-    color: '#243248',
+    color: '#0F172A',
     fontSize: 16,
     fontWeight: '700',
   },
   endpointStatusBannerNote: {
-    color: '#5E6D86',
+    color: '#64748B',
     fontSize: 12,
   },
   reportsOpsSummaryCard: {
     borderWidth: 1,
-    borderColor: '#E1E9F7',
+    borderColor: '#E2E8F0',
     borderRadius: 12,
-    backgroundColor: '#F8FBFF',
+    backgroundColor: '#F8FAFC',
     padding: 12,
     gap: 8,
   },
@@ -5976,34 +6574,34 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   reportsOpsSummaryLabel: {
-    color: '#23314A',
+    color: '#0F172A',
     fontSize: 12,
     fontWeight: '700',
   },
   reportsOpsSummaryPath: {
-    color: '#6E7B92',
+    color: '#64748B',
     fontSize: 11,
     marginTop: 2,
   },
   codePreviewBox: {
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#E1E9F7',
+    borderColor: '#E2E8F0',
     borderRadius: 10,
-    backgroundColor: '#F7FAFF',
+    backgroundColor: '#F8FAFC',
     padding: 10,
   },
   codePreviewText: {
-    color: '#2A3953',
+    color: '#334155',
     fontSize: 12,
     lineHeight: 17,
     fontFamily: Platform.OS === 'web' ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined,
   },
   checklistCard: {
     backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#DFE7F3',
+    borderColor: '#E2E8F0',
     padding: 14,
     gap: 10,
   },
@@ -6053,9 +6651,9 @@ const styles = StyleSheet.create({
   },
   devPanel: {
     backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#DFE7F3',
+    borderColor: '#E2E8F0',
     padding: 14,
     gap: 10,
   },
@@ -6103,10 +6701,10 @@ const styles = StyleSheet.create({
     minHeight: 260,
   },
   panel: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#dee6f2',
+    borderColor: '#E2E8F0',
     padding: 20,
     gap: 10,
     minHeight: 260,
@@ -6128,12 +6726,12 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   panelTitle: {
-    color: '#1e2738',
+    color: '#0F172A',
     fontSize: 22,
     fontWeight: '700',
   },
   panelBody: {
-    color: '#52607a',
+    color: '#475569',
     fontSize: 15,
     lineHeight: 22,
   },
@@ -6142,10 +6740,10 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#e8edf5',
+    borderTopColor: '#E2E8F0',
   },
   metaRow: {
-    color: '#4a556c',
+    color: '#64748B',
     fontSize: 13,
     lineHeight: 18,
   },
@@ -6170,10 +6768,10 @@ const styles = StyleSheet.create({
   placeholderCard: {
     flex: 1,
     minWidth: 220,
-    backgroundColor: '#F6F9FF',
+    backgroundColor: '#F8FAFC',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E1EAF8',
+    borderColor: '#E2E8F0',
     padding: 12,
     gap: 6,
   },
@@ -6187,15 +6785,15 @@ const styles = StyleSheet.create({
   placeholderCardValue: {
     fontSize: 13,
     lineHeight: 18,
-    color: '#243248',
+    color: '#0F172A',
     fontWeight: '600',
   },
   formCard: {
     marginTop: 2,
     borderWidth: 1,
-    borderColor: '#E3EBF8',
+    borderColor: '#E2E8F0',
     borderRadius: 12,
-    backgroundColor: '#FAFCFF',
+    backgroundColor: '#FFFFFF',
     padding: 12,
     gap: 10,
   },
@@ -6206,20 +6804,20 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   formTitle: {
-    color: '#20304A',
+    color: '#0F172A',
     fontSize: 14,
     fontWeight: '700',
   },
   smallGhostButton: {
     borderWidth: 1,
-    borderColor: '#D8E4FA',
-    borderRadius: 999,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
     backgroundColor: '#FFF',
   },
   smallGhostButtonText: {
-    color: '#345892',
+    color: '#334155',
     fontSize: 12,
     fontWeight: '600',
   },
@@ -6238,7 +6836,7 @@ const styles = StyleSheet.create({
     flex: 1.5,
   },
   formLabel: {
-    color: '#66758F',
+    color: '#64748B',
     fontSize: 11,
     lineHeight: 14,
     textTransform: 'uppercase',
@@ -6247,13 +6845,13 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#DDE7F7',
-    borderRadius: 10,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
     backgroundColor: '#FFF',
     paddingHorizontal: 10,
     paddingVertical: 8,
     fontSize: 13,
-    color: '#243248',
+    color: '#0F172A',
   },
   inputMultiline: {
     minHeight: 72,
@@ -6285,43 +6883,43 @@ const styles = StyleSheet.create({
   },
   sectionNavPill: {
     borderWidth: 1,
-    borderColor: '#D7E3FA',
-    borderRadius: 999,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 7,
     backgroundColor: '#FFF',
   },
   sectionNavPillSelected: {
-    borderColor: '#8EB4FF',
-    backgroundColor: '#EAF1FF',
+    borderColor: '#93C5FD',
+    backgroundColor: '#EFF6FF',
   },
   sectionNavPillText: {
-    color: '#3F5884',
+    color: '#475569',
     fontSize: 12,
     fontWeight: '700',
   },
   sectionNavPillTextSelected: {
-    color: '#1E4FBE',
+    color: '#1D4ED8',
   },
   formChip: {
     borderWidth: 1,
-    borderColor: '#D7E3FA',
-    borderRadius: 999,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
     backgroundColor: '#FFF',
   },
   formChipSelected: {
-    borderColor: '#7EA7FF',
-    backgroundColor: '#EAF1FF',
+    borderColor: '#93C5FD',
+    backgroundColor: '#EFF6FF',
   },
   formChipText: {
-    color: '#38517E',
+    color: '#475569',
     fontSize: 12,
     fontWeight: '600',
   },
   formChipTextSelected: {
-    color: '#1E4FBE',
+    color: '#1D4ED8',
   },
   inlineToggleRow: {
     flexDirection: 'row',
@@ -6355,31 +6953,31 @@ const styles = StyleSheet.create({
   },
   filterBar: {
     borderWidth: 1,
-    borderColor: '#E3EBF8',
+    borderColor: '#E2E8F0',
     borderRadius: 12,
-    backgroundColor: '#FAFCFF',
+    backgroundColor: '#FFFFFF',
     padding: 12,
     gap: 10,
   },
   toggleChip: {
     borderWidth: 1,
-    borderColor: '#D9E4F6',
-    borderRadius: 999,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
     backgroundColor: '#FFF',
   },
   toggleChipOn: {
-    borderColor: '#9FD4B8',
-    backgroundColor: '#EFFCF4',
+    borderColor: '#93C5FD',
+    backgroundColor: '#EFF6FF',
   },
   toggleChipText: {
-    color: '#4C607F',
+    color: '#475569',
     fontSize: 12,
     fontWeight: '600',
   },
   toggleChipTextOn: {
-    color: '#1D7A4D',
+    color: '#1D4ED8',
   },
   formActionsRow: {
     flexDirection: 'row',
@@ -6393,7 +6991,7 @@ const styles = StyleSheet.create({
   menuList: {
     marginTop: 6,
     borderWidth: 1,
-    borderColor: '#D8E4FA',
+    borderColor: '#CBD5E1',
     borderRadius: 10,
     backgroundColor: '#FFFFFF',
     minWidth: 220,
@@ -6403,10 +7001,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 9,
     borderBottomWidth: 1,
-    borderBottomColor: '#EEF2F9',
+    borderBottomColor: '#E2E8F0',
   },
   menuItemText: {
-    color: '#314C7F',
+    color: '#334155',
     fontSize: 12,
     fontWeight: '600',
   },
@@ -6455,8 +7053,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   primaryButton: {
-    backgroundColor: '#2158D5',
-    borderRadius: 10,
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
@@ -6466,10 +7064,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   warnButton: {
-    backgroundColor: '#FFF4F2',
+    backgroundColor: '#FEF2F2',
     borderWidth: 1,
-    borderColor: '#F2C0B9',
-    borderRadius: 10,
+    borderColor: '#FECACA',
+    borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
@@ -6488,38 +7086,38 @@ const styles = StyleSheet.create({
   tableWrap: {
     marginTop: 6,
     borderWidth: 1,
-    borderColor: '#E1E9F7',
+    borderColor: '#E2E8F0',
     borderRadius: 12,
     overflow: 'hidden',
   },
   tableHeaderRow: {
     flexDirection: 'row',
-    backgroundColor: '#F5F8FF',
+    backgroundColor: '#F8FAFC',
     borderBottomWidth: 1,
-    borderBottomColor: '#E1E9F7',
+    borderBottomColor: '#E2E8F0',
   },
   tableHeaderCell: {
     paddingHorizontal: 10,
     paddingVertical: 9,
-    color: '#60718F',
+    color: '#64748B',
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   tableHeaderCellActive: {
-    color: '#204ECF',
+    color: '#1D4ED8',
   },
   tableDataRow: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#EEF2F9',
+    borderBottomColor: '#E2E8F0',
   },
   tableDataRowSelectedStrong: {
-    backgroundColor: '#EAF1FF',
+    backgroundColor: '#EFF6FF',
     borderLeftWidth: 3,
-    borderLeftColor: '#2F67E8',
+    borderLeftColor: '#2563EB',
   },
   tableCell: {
     paddingHorizontal: 10,
@@ -6529,16 +7127,16 @@ const styles = StyleSheet.create({
   tableCellText: {
     paddingHorizontal: 10,
     paddingVertical: 9,
-    color: '#314055',
+    color: '#334155',
     fontSize: 12,
   },
   tablePrimary: {
-    color: '#223149',
+    color: '#0F172A',
     fontSize: 13,
     fontWeight: '600',
   },
   tableSecondary: {
-    color: '#76849D',
+    color: '#64748B',
     fontSize: 11,
     marginTop: 2,
   },
@@ -6554,9 +7152,9 @@ const styles = StyleSheet.create({
   tableFootnote: {
     paddingHorizontal: 10,
     paddingVertical: 8,
-    color: '#73819A',
+    color: '#64748B',
     fontSize: 11,
-    backgroundColor: '#FBFCFF',
+    backgroundColor: '#F8FAFC',
   },
   rowBadgeLine: {
     marginTop: 3,

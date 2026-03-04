@@ -31,6 +31,7 @@
     "test:m6-dm-direct-channel-create-backend": "npm run build && node scripts/m6_dm_direct_channel_create_acceptance.js",
     "test:w13-mux-wave-b": "npm run build && node scripts/w13_mux_wave_b_acceptance.js",
     "test:w13-runtime-parity-matrix": "npm run build && node scripts/w13_runtime_parity_matrix.js",
+    "seed:challenge:cleanup": "node scripts/m6_team_challenge_seed_cleanup.js",
     "seed:coaching:realism:reset": "npm run build && node scripts/coaching_sample_content_seed.js --reset-only",
     "seed:coaching:realism": "npm run build && node scripts/coaching_sample_content_seed.js",
     "seed:coaching:realism:smoke": "npm run seed:coaching:realism"

@@ -12,6 +12,7 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -41,6 +42,9 @@ export interface ChannelRow {
   name: string;
   type?: string | null;
   scope: string;
+  avatar_url?: string | null;
+  avatar_label?: string | null;
+  avatar_tone?: string | null;
   unread_count?: number | null;
   member_count?: number | null;
   my_role?: string | null;
@@ -68,12 +72,18 @@ export interface FallbackChannelRow {
   scope: string;
   label: string;
   context: string;
+  avatar_url?: string | null;
+  avatar_label?: string | null;
+  avatar_tone?: string | null;
 }
 
 export interface FallbackDmRow {
   id: string;
   name: string;
   role: string;
+  avatar_url?: string | null;
+  avatar_label?: string | null;
+  avatar_tone?: string | null;
 }
 
 export interface CommsHubProps {
@@ -149,6 +159,7 @@ export interface CommsHubProps {
   broadcastSubmitting: boolean;
   broadcastError: string | null;
   broadcastSuccessNote: string | null;
+  broadcastAudienceLabel?: string | null;
   onSendBroadcast: () => void;
 
   /* ── package gate ─── */
@@ -235,7 +246,8 @@ function parseThreadMessage(body: string) {
    ================================================================ */
 
 export default function CommsHub(props: CommsHubProps) {
-  const { screen, roleCanBroadcast, composerBottomInset } = props;
+  const { screen, composerBottomInset, primaryTab } = props;
+  const showBroadcastPanel = primaryTab === 'broadcast' || screen === 'coach_broadcast_compose';
 
   return (
     <View style={[st.root, composerBottomInset ? { paddingBottom: composerBottomInset } : undefined]}>
@@ -248,8 +260,8 @@ export default function CommsHub(props: CommsHubProps) {
       {/* ─── View router ─── */}
       {screen === 'channel_thread' ? (
         <ThreadView key={props.selectedChannelId ?? 'thread'} {...props} />
-      ) : screen === 'coach_broadcast_compose' ? (
-        /* BroadcastCompose self-guards when !roleCanBroadcast (shows locked state) */
+      ) : showBroadcastPanel ? (
+        /* Broadcast compose lives inside the same comms shell for parity with Channels */
         <BroadcastCompose {...props} />
       ) : (
         /* inbox/inbox_channels and any other screen → full channel list */
@@ -273,7 +285,7 @@ function CommsTopBar(props: CommsHubProps) {
     headerAvatarKind,
     onPressHeaderAvatar,
   } = props;
-  const showBack = screen === 'channel_thread' || screen === 'coach_broadcast_compose';
+  const showBack = screen === 'channel_thread';
   const showHeaderAvatar = screen === 'channel_thread';
   const resolvedAvatarLabel = String(headerAvatarLabel ?? '?').slice(0, 2);
   const resolvedAvatarTone =
@@ -330,8 +342,8 @@ function CommsTabs(props: CommsHubProps) {
     roleCanBroadcast, screen, personaVariant,
   } = props;
 
-  // Hide tab strip on screens that have their own navigation
-  if (screen === 'channel_thread' || screen === 'coach_broadcast_compose') return null;
+  // Hide tab strip only in deep thread view.
+  if (screen === 'channel_thread') return null;
 
   const tabs: { key: CommsPrimaryTab; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -354,6 +366,8 @@ function CommsTabs(props: CommsHubProps) {
         ? scopeFilter === 'all'
           ? 'Search channels...'
           : `Search ${scopeFilter} channels...`
+        : primaryTab === 'broadcast'
+          ? 'Search broadcast destinations...'
         : 'Search messages...';
 
   return (
@@ -537,6 +551,60 @@ function ChannelList(props: CommsHubProps) {
 
 /* ── Individual channel row (API data) ── */
 
+function ChannelAvatarCircle({
+  avatarUrl,
+  avatarLabel,
+  avatarTone,
+  fallbackIcon,
+  fallbackBg,
+  fallbackFg,
+}: {
+  avatarUrl?: string | null;
+  avatarLabel?: string | null;
+  avatarTone?: string | null;
+  fallbackIcon: string;
+  fallbackBg: string;
+  fallbackFg: string;
+}) {
+  const normalizedUrl = String(avatarUrl ?? '').trim();
+  const hasHttpAvatar = /^https?:\/\//i.test(normalizedUrl);
+  const label = String(avatarLabel ?? '').trim();
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [normalizedUrl]);
+
+  const resolvedBg = String(avatarTone ?? '').trim() || fallbackBg;
+  const resolvedLabel = label || fallbackIcon;
+  const isFallbackIcon = !label;
+
+  return (
+    <View style={[st.channelAvatar, { backgroundColor: resolvedBg }]}>
+      {hasHttpAvatar && !avatarLoadFailed ? (
+        <Image
+          source={{ uri: normalizedUrl }}
+          style={st.channelAvatarImage}
+          resizeMode="cover"
+          onError={() => setAvatarLoadFailed(true)}
+        />
+      ) : (
+        <Text
+          style={[
+            st.channelAvatarIcon,
+            {
+              color: isFallbackIcon ? fallbackFg : C.textPrimary,
+              fontSize: resolvedLabel.length <= 2 ? 15 : 13,
+            },
+          ]}
+        >
+          {resolvedLabel}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 function ChannelRowItem({
   row,
   isSelected,
@@ -569,10 +637,14 @@ function ChannelRowItem({
       disabled={disabled}
       onPress={onPress}
     >
-      {/* Avatar */}
-      <View style={[st.channelAvatar, { backgroundColor: vis.bg }]}>
-        <Text style={[st.channelAvatarIcon, { color: vis.fg }]}>{vis.icon}</Text>
-      </View>
+      <ChannelAvatarCircle
+        avatarUrl={row.avatar_url}
+        avatarLabel={row.avatar_label}
+        avatarTone={row.avatar_tone}
+        fallbackIcon={vis.icon}
+        fallbackBg={vis.bg}
+        fallbackFg={vis.fg}
+      />
 
       {/* Body: title row + snippet */}
       <View style={st.channelBody}>
@@ -612,18 +684,24 @@ function DmRowItem({
   onPress: () => void;
 }) {
   const vis = channelScopeVisual('dm');
-  const initials = row.name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+  const initials =
+    row.name
+      .split(' ')
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2) || 'DM';
 
   return (
     <Pressable style={[st.channelRow, disabled && st.channelRowDisabled]} disabled={disabled} onPress={onPress}>
-      <View style={[st.channelAvatar, { backgroundColor: vis.bg }]}>
-        <Text style={[st.channelAvatarIcon, { color: vis.fg, fontSize: 14 }]}>{initials}</Text>
-      </View>
+      <ChannelAvatarCircle
+        avatarUrl={row.avatar_url}
+        avatarLabel={row.avatar_label ?? initials}
+        avatarTone={row.avatar_tone}
+        fallbackIcon={vis.icon}
+        fallbackBg={vis.bg}
+        fallbackFg={vis.fg}
+      />
       <View style={st.channelBody}>
         <Text numberOfLines={1} style={st.channelTitle}>{row.name}</Text>
         <Text numberOfLines={1} style={st.channelSnippet}>{row.role} · Direct message</Text>
@@ -647,9 +725,14 @@ function FallbackChannelRowItem({
 
   return (
     <Pressable style={[st.channelRow, disabled && st.channelRowDisabled]} disabled={disabled} onPress={onPress}>
-      <View style={[st.channelAvatar, { backgroundColor: vis.bg }]}>
-        <Text style={[st.channelAvatarIcon, { color: vis.fg }]}>{vis.icon}</Text>
-      </View>
+      <ChannelAvatarCircle
+        avatarUrl={row.avatar_url}
+        avatarLabel={row.avatar_label}
+        avatarTone={row.avatar_tone}
+        fallbackIcon={vis.icon}
+        fallbackBg={vis.bg}
+        fallbackFg={vis.fg}
+      />
       <View style={st.channelBody}>
         <Text numberOfLines={1} style={st.channelTitle}>{row.label}</Text>
         <Text numberOfLines={1} style={st.channelSnippet}>{row.context}</Text>
@@ -1187,7 +1270,7 @@ function BroadcastCompose(props: CommsHubProps) {
     broadcastTargetScope, broadcastTargetOptions, onChangeBroadcastTarget,
     broadcastSubmitting, broadcastError, broadcastSuccessNote,
     onSendBroadcast, onOpenAiAssist,
-    selectedChannelName,
+    broadcastAudienceLabel,
   } = props;
 
   if (!roleCanBroadcast) {
@@ -1213,7 +1296,7 @@ function BroadcastCompose(props: CommsHubProps) {
       <View style={st.broadcastHeader}>
         <Text style={st.broadcastHeaderTitle}>New Broadcast</Text>
         <Text style={st.broadcastHeaderSub}>
-          Send a message to {selectedChannelName || 'your audience'}. All members will be notified.
+          Send a message to {broadcastAudienceLabel || 'your audience'}. All members will be notified.
         </Text>
       </View>
 
@@ -1488,6 +1571,11 @@ const st = StyleSheet.create({
     borderRadius: commsAvatarSize.md / 2,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  channelAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   channelAvatarIcon: {
     fontSize: 18,

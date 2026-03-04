@@ -22,6 +22,7 @@ const COACH_PORTAL_ROUTE_KEYS: AdminRouteKey[] = [
 
 function isCoachPortalPath(pathname: string | null): boolean {
   if (!pathname) return false;
+  if (pathname.startsWith('/coach') || pathname.startsWith('/admin/coaching')) return true;
   const route = getAdminRouteByPath(pathname);
   return !!route && COACH_PORTAL_ROUTE_KEYS.includes(route.key);
 }
@@ -30,11 +31,14 @@ function AppContent() {
   const { session, loading, runtimeResetVersion } = useAuth();
   const forceAuthFlow = process.env.EXPO_PUBLIC_FORCE_AUTH_FLOW === 'true';
   const appSurface = (process.env.EXPO_PUBLIC_APP_SURFACE ?? 'member').toLowerCase();
-  const renderAdminShell = Platform.OS === 'web' && appSurface === 'admin';
   const [webPathname, setWebPathname] = useState<string | null>(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
     return window.location.pathname;
   });
+  const hasAdminLikePath =
+    Platform.OS === 'web' &&
+    Boolean(webPathname && (webPathname.startsWith('/admin') || webPathname.startsWith('/coach')));
+  const renderAdminShell = Platform.OS === 'web' && (appSurface === 'admin' || hasAdminLikePath);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;

@@ -152,7 +152,9 @@ type DrawerFilter = 'Quick' | 'PC' | 'GP' | 'VP';
 type LogOtherFilter = 'All' | 'PC' | 'GP' | 'VP';
 type HomePanel = 'Quick' | 'PC' | 'GP' | 'VP';
 type ChallengeMemberListTab = 'all' | 'completed';
-type ChallengeStateTab = 'active' | 'upcoming' | 'history';
+type ChallengeStateTab = 'active' | 'upcoming' | 'completed';
+type ChallengeKind = 'team' | 'mini' | 'sponsored';
+type ChallengeGoalScope = 'team' | 'individual';
 type KpiTileContextBadge = 'CH' | 'TM' | 'TC' | 'REQ';
 type KpiTileContextMeta = {
   badges: KpiTileContextBadge[];
@@ -194,7 +196,14 @@ type ChallengeApiRow = {
   name: string;
   description?: string | null;
   mode?: string | null;
+  challenge_kind?: ChallengeKind | string | null;
   team_id?: string | null;
+  team_identity?: {
+    id?: string | null;
+    name?: string | null;
+    identity_avatar?: string | null;
+    identity_background?: string | null;
+  } | null;
   start_at?: string | null;
   end_at?: string | null;
   late_join_includes_history?: boolean | null;
@@ -211,11 +220,33 @@ type ChallengeApiRow = {
     effective_start_at?: string | null;
     progress_percent?: number | null;
   } | null;
+  kpi_goal_summary?: {
+    total_kpis?: number | null;
+    team_goal_count?: number | null;
+    individual_goal_count?: number | null;
+  } | null;
   leaderboard_top?: ChallengeApiLeaderboardRow[] | null;
 };
-type ChallengeListFilter = 'all' | 'sponsored' | 'team';
+type ChallengeListFilter = 'all' | ChallengeKind;
+type ChallengeTemplateRow = {
+  id: string;
+  title: string;
+  description: string;
+  suggested_duration_days: number;
+  kpi_defaults: Array<{
+    kpi_id: string;
+    label: string;
+    goal_scope_default: ChallengeGoalScope;
+    suggested_target: number | null;
+    display_order: number;
+  }>;
+};
 type ChallengeListApiResponse = {
   challenges?: ChallengeApiRow[];
+};
+type ChallengeTemplateListApiResponse = {
+  templates?: ChallengeTemplateRow[];
+  error?: string;
 };
 type ChallengeJoinApiResponse = {
   participant?: {
@@ -252,12 +283,21 @@ type ChallengeFlowItem = {
   sponsor: boolean;
   bucket: 'active' | 'upcoming' | 'completed';
   joined: boolean;
+  challengeKind: ChallengeKind;
   challengeModeLabel: string;
   targetValueLabel: string;
   startAtIso?: string | null;
   endAtIso?: string | null;
   raw?: ChallengeApiRow | null;
   leaderboardPreview: ChallengeFlowLeaderboardEntry[];
+};
+type ChallengeWizardStep = 'source' | 'basics' | 'kpis' | 'audience' | 'review';
+type ChallengeWizardGoalDraft = {
+  kpi_id: string;
+  label: string;
+  goal_scope: ChallengeGoalScope;
+  goal_target: string;
+  display_order: number;
 };
 type TeamFlowScreen =
   | 'dashboard'
@@ -281,6 +321,7 @@ type TeamDirectoryMember = {
   sub: string;
   roleLabel: string;
   avatarTone: string;
+  avatarUrl: string | null;
   email: string;
   phone: string;
   coachingGoals: string[];
@@ -301,6 +342,8 @@ type TeamDetailResponse = {
   team?: {
     id?: string;
     name?: string | null;
+    identity_avatar?: string | null;
+    identity_background?: string | null;
     created_by?: string | null;
     created_at?: string | null;
     updated_at?: string | null;
@@ -691,6 +734,9 @@ type ChannelApiRow = {
   id: string;
   type: 'team' | 'challenge' | 'sponsor' | 'cohort' | 'direct' | string;
   name: string;
+  avatar_url?: string | null;
+  avatar_label?: string | null;
+  avatar_tone?: string | null;
   team_id?: string | null;
   context_id?: string | null;
   is_active?: boolean | null;
@@ -1449,11 +1495,24 @@ function challengeTimeframeLabel(startAt?: string | null, endAt?: string | null)
 }
 
 function challengeModeLabelFromApi(row: ChallengeApiRow) {
+  const challengeKind = resolveChallengeKindFromApi(row);
+  if (challengeKind === 'mini') return 'Mini';
+  if (challengeKind === 'sponsored') return 'Sponsored';
   const mode = String(row.mode ?? '').toLowerCase();
   if (mode === 'team') return 'Team';
   if (mode === 'solo') return 'Single Agent';
   if (row.team_id) return 'Team';
   return 'Single Agent';
+}
+
+function resolveChallengeKindFromApi(row: ChallengeApiRow): ChallengeKind {
+  const kind = String(row.challenge_kind ?? '').toLowerCase();
+  if (kind === 'team') return 'team';
+  if (kind === 'mini') return 'mini';
+  if (kind === 'sponsored') return 'sponsored';
+  if (row.sponsored_challenge_id || row.sponsor_id) return 'sponsored';
+  if (String(row.mode ?? '').toLowerCase() === 'team' || row.team_id) return 'team';
+  return 'mini';
 }
 
 function leaderboardFallbackName(userId?: string, rank?: number) {
@@ -1489,7 +1548,8 @@ function defaultChallengeFlowItems(): ChallengeFlowItem[] {
       sponsor: false,
       bucket: 'active',
       joined: true,
-      challengeModeLabel: 'Single Agent',
+      challengeKind: 'mini',
+      challengeModeLabel: 'Mini',
       targetValueLabel: '5 per month',
       raw: null,
       leaderboardPreview: [
@@ -1510,7 +1570,8 @@ function defaultChallengeFlowItems(): ChallengeFlowItem[] {
       sponsor: false,
       bucket: 'upcoming',
       joined: false,
-      challengeModeLabel: 'Single Agent',
+      challengeKind: 'mini',
+      challengeModeLabel: 'Mini',
       targetValueLabel: 'TBD',
       raw: null,
       leaderboardPreview: [],
@@ -1527,12 +1588,54 @@ function defaultChallengeFlowItems(): ChallengeFlowItem[] {
       sponsor: true,
       bucket: 'completed',
       joined: true,
-      challengeModeLabel: 'Team',
+      challengeKind: 'sponsored',
+      challengeModeLabel: 'Sponsored',
       targetValueLabel: 'TBD',
       raw: null,
       leaderboardPreview: [],
     },
 ];
+}
+
+function defaultChallengeTemplatesFromKpis(kpis: DashboardPayload['loggable_kpis']): ChallengeTemplateRow[] {
+  const ordered = sortSelectableKpis(
+    (kpis ?? []).filter((kpi) => kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP')
+  );
+  const toDefault = (source: typeof ordered, fallbackScope: ChallengeGoalScope) =>
+    source.slice(0, 3).map((kpi, idx) => ({
+      kpi_id: String(kpi.id),
+      label: String(kpi.name),
+      goal_scope_default: fallbackScope,
+      suggested_target: null,
+      display_order: idx,
+    }));
+  const pc = ordered.filter((kpi) => kpi.type === 'PC');
+  const gp = ordered.filter((kpi) => kpi.type === 'GP');
+  const vp = ordered.filter((kpi) => kpi.type === 'VP');
+  return [
+    {
+      id: 'template-team-sprint',
+      title: 'Team Sprint Template',
+      description: 'Balanced team sprint combining projection, growth, and vitality KPIs.',
+      suggested_duration_days: 21,
+      kpi_defaults: [
+        ...toDefault(pc, 'team').slice(0, 2),
+        ...toDefault(gp, 'individual').slice(0, 1),
+        ...toDefault(vp, 'individual').slice(0, 1),
+      ].map((row, idx) => ({ ...row, display_order: idx })),
+    },
+    {
+      id: 'template-mini-focus',
+      title: 'Mini Focus Template',
+      description: 'Small challenge format for 1-3 invitees with focused KPI outcomes.',
+      suggested_duration_days: 14,
+      kpi_defaults: [
+        ...toDefault(pc, 'individual').slice(0, 1),
+        ...toDefault(gp, 'individual').slice(0, 1),
+        ...toDefault(vp, 'individual').slice(0, 1),
+      ].map((row, idx) => ({ ...row, display_order: idx })),
+    },
+  ];
 }
 
 function mapChallengesToFlowItems(rows: ChallengeApiRow[] | null | undefined): ChallengeFlowItem[] {
@@ -1563,6 +1666,7 @@ function mapChallengesToFlowItems(rows: ChallengeApiRow[] | null | undefined): C
       sponsor: Boolean(row.sponsored_challenge_id ?? row.sponsor_id),
       bucket,
       joined,
+      challengeKind: resolveChallengeKindFromApi(row),
       challengeModeLabel: challengeModeLabelFromApi(row),
       targetValueLabel,
       startAtIso: row.start_at ?? null,
@@ -1575,8 +1679,7 @@ function mapChallengesToFlowItems(rows: ChallengeApiRow[] | null | undefined): C
 
 function challengeListFilterMatches(item: ChallengeFlowItem, filter: ChallengeListFilter) {
   if (filter === 'all') return true;
-  if (filter === 'sponsored') return item.sponsor;
-  return item.challengeModeLabel === 'Team' || Boolean(item.raw?.team_id);
+  return item.challengeKind === filter;
 }
 
 function isApiBackedChallenge(item?: ChallengeFlowItem | null) {
@@ -2525,8 +2628,22 @@ export default function KPIDashboardScreen({
   const [paywallTitle, setPaywallTitle] = useState('Upgrade required');
   const [paywallMessage, setPaywallMessage] = useState('This feature requires a higher plan.');
   const [paywallRequiredPlan, setPaywallRequiredPlan] = useState('pro');
-  const [challengeMemberCreateModalVisible, setChallengeMemberCreateModalVisible] = useState(false);
-  const [challengeMemberCreateMode, setChallengeMemberCreateMode] = useState<'public' | 'team'>('team');
+  const [challengeWizardVisible, setChallengeWizardVisible] = useState(false);
+  const [challengeWizardStep, setChallengeWizardStep] = useState<ChallengeWizardStep>('source');
+  const [challengeWizardSource, setChallengeWizardSource] = useState<'template' | 'custom'>('template');
+  const [challengeWizardType, setChallengeWizardType] = useState<ChallengeKind>('team');
+  const [challengeWizardName, setChallengeWizardName] = useState('');
+  const [challengeWizardDescription, setChallengeWizardDescription] = useState('');
+  const [challengeWizardStartAt, setChallengeWizardStartAt] = useState('');
+  const [challengeWizardEndAt, setChallengeWizardEndAt] = useState('');
+  const [challengeWizardTemplateId, setChallengeWizardTemplateId] = useState<string | null>(null);
+  const [challengeWizardGoals, setChallengeWizardGoals] = useState<ChallengeWizardGoalDraft[]>([]);
+  const [challengeWizardInviteUserIds, setChallengeWizardInviteUserIds] = useState<string[]>([]);
+  const [challengeWizardTemplates, setChallengeWizardTemplates] = useState<ChallengeTemplateRow[]>([]);
+  const [challengeWizardLoadingTemplates, setChallengeWizardLoadingTemplates] = useState(false);
+  const [challengeWizardTemplateError, setChallengeWizardTemplateError] = useState<string | null>(null);
+  const [challengeWizardSubmitting, setChallengeWizardSubmitting] = useState(false);
+  const [challengeWizardError, setChallengeWizardError] = useState<string | null>(null);
   const [teamFlowScreen, setTeamFlowScreen] = useState<TeamFlowScreen>('dashboard');
   const [teamChallengesSegment, setTeamChallengesSegment] = useState<'active' | 'completed'>('active');
   const [teamLeaderExpandedMemberId, setTeamLeaderExpandedMemberId] = useState<string | null>(null);
@@ -5325,7 +5442,7 @@ export default function KPIDashboardScreen({
     if (tab === 'challenge') {
       setViewMode('log');
       if (isSoloPersona) {
-        setChallengeFlowScreen('explore');
+        setChallengeFlowScreen('list');
       }
       return;
     }
@@ -5953,13 +6070,10 @@ export default function KPIDashboardScreen({
     Array.isArray(challengeApiRows) &&
     challengeApiRows.some(
       (row) =>
+        String(row.challenge_kind ?? '').toLowerCase() === 'sponsored' ||
         Object.prototype.hasOwnProperty.call(row, 'sponsored_challenge_id') ||
         Object.prototype.hasOwnProperty.call(row, 'sponsor_id')
     );
-  const challengeFilteredListItems = useMemo(
-    () => challengeListItems.filter((item) => challengeListFilterMatches(item, challengeListFilter)),
-    [challengeListItems, challengeListFilter]
-  );
   const teamPersonaVariant = useMemo<'leader' | 'member'>(() => {
     const roleCandidates = [
       sessionUserMeta.team_role,
@@ -6085,7 +6199,20 @@ export default function KPIDashboardScreen({
       ),
     [currentUserTeamRoleFromRoster, inferredTeamMembershipFromChallenges, runtimeRoleSignals]
   );
-  const isSoloPersona = !isCoachRuntimeOperator && !isChallengeSponsorRuntime && !hasExplicitTeamRole;
+  const hasExplicitSoloRole = useMemo(
+    () =>
+      runtimeRoleSignals.some(
+        (signal) =>
+          signal === 'solo' ||
+          signal === 'solo_agent' ||
+          signal === 'individual' ||
+          signal === 'single_agent' ||
+          signal.includes('solo')
+      ),
+    [runtimeRoleSignals]
+  );
+  const isSoloPersona =
+    !isCoachRuntimeOperator && !isChallengeSponsorRuntime && !hasExplicitTeamRole && hasExplicitSoloRole;
   const bottomTabOrder = useMemo<BottomTab[]>(
     () => (isSoloPersona ? ['comms', 'challenge', 'home', 'logs', 'coach'] : ['comms', 'team', 'home', 'logs', 'coach']),
     [isSoloPersona]
@@ -6098,31 +6225,49 @@ export default function KPIDashboardScreen({
     [effectiveTeamPersonaVariant, runtimeRoleSignals]
   );
   const challengeCreateAllowed = entitlementFlag('can_start_challenges', true);
+  const challengeScopedListItems = useMemo(() => {
+    const resolvedTeamId = String(teamRosterTeamId ?? sessionUserMeta.team_id ?? sessionAppMeta.team_id ?? '').trim();
+    return challengeListItems.filter((item) => {
+      if (item.challengeKind !== 'team') return true;
+      if (isSoloPersona) return false;
+      if (!resolvedTeamId) return false;
+      return String(item.raw?.team_id ?? '').trim() === resolvedTeamId;
+    });
+  }, [challengeListItems, isSoloPersona, sessionAppMeta.team_id, sessionUserMeta.team_id, teamRosterTeamId]);
   const challengeMemberListItems = useMemo(
     () =>
-      challengeListItems.filter((item) =>
+      challengeScopedListItems.filter((item) =>
         challengeMemberListTab === 'all' ? true : item.bucket === 'completed'
       ),
-    [challengeListItems, challengeMemberListTab]
+    [challengeMemberListTab, challengeScopedListItems]
+  );
+  const challengeFilteredScopedListItems = useMemo(
+    () => challengeScopedListItems.filter((item) => challengeListFilterMatches(item, challengeListFilter)),
+    [challengeListFilter, challengeScopedListItems]
   );
   const challengeListItemsForPersona =
-    effectiveTeamPersonaVariant === 'member' ? challengeMemberListItems : challengeFilteredListItems;
+    effectiveTeamPersonaVariant === 'member' ? challengeMemberListItems : challengeFilteredScopedListItems;
   const challengeStateRows = useMemo(
     () => ({
       active: challengeListItemsForPersona.filter((item) => item.bucket === 'active'),
       upcoming: challengeListItemsForPersona.filter((item) => item.bucket === 'upcoming'),
-      history: challengeListItemsForPersona.filter((item) => item.bucket === 'completed'),
+      completed: challengeListItemsForPersona.filter((item) => item.bucket === 'completed'),
     }),
     [challengeListItemsForPersona]
   );
   const challengeDefaultStateTab = useMemo<ChallengeStateTab>(() => {
     if (challengeStateRows.active.length > 0) return 'active';
     if (challengeStateRows.upcoming.length > 0) return 'upcoming';
-    return 'history';
-  }, [challengeStateRows.active.length, challengeStateRows.history.length, challengeStateRows.upcoming.length]);
+    return 'completed';
+  }, [challengeStateRows.active.length, challengeStateRows.completed.length, challengeStateRows.upcoming.length]);
   const challengeCurrentStateRows = challengeStateRows[challengeStateTab];
   const challengeSelectedWithinState =
     challengeCurrentStateRows.find((item) => item.id === challengeSelectedId) ?? challengeCurrentStateRows[0] ?? null;
+  useEffect(() => {
+    if (isSoloPersona && challengeListFilter === 'team') {
+      setChallengeListFilter('all');
+    }
+  }, [challengeListFilter, isSoloPersona]);
   const challengeParticipantRows = useMemo(() => {
     const source = challengeSelectedWithinState?.leaderboardPreview ?? [];
     if (source.length > 0) return source;
@@ -6184,6 +6329,7 @@ export default function KPIDashboardScreen({
       const roleRaw = String(member.role ?? '').toLowerCase();
       const roleLabel = roleRaw.includes('lead') ? 'Team Lead' : 'Member';
       const displayEmail = member.email ? String(member.email) : 'Email unavailable';
+      const avatarUrlRaw = String(member.avatar_url ?? '').trim();
       const dialSuffix = String((1000 + idx * 17) % 9000).padStart(4, '0');
       return {
         id: userId || `team-member-${idx + 1}`,
@@ -6193,6 +6339,7 @@ export default function KPIDashboardScreen({
         metric: '0%',
         sub: displayEmail,
         avatarTone: avatarTones[idx % avatarTones.length],
+        avatarUrl: /^https?:\/\//i.test(avatarUrlRaw) ? avatarUrlRaw : null,
         email: displayEmail,
         phone: `(000) 000-${dialSuffix}`,
         coachingGoals: [],
@@ -6226,15 +6373,11 @@ export default function KPIDashboardScreen({
     }
   }, [challengeCurrentStateRows, challengeSelectedId]);
   useEffect(() => {
-    const hasActiveParticipation = challengeListItems.some((item) => item.joined && item.bucket !== 'completed');
-    if (isSoloPersona && activeTab === 'challenge' && !hasActiveParticipation && challengeFlowScreen !== 'explore') {
-      setChallengeFlowScreen('explore');
-      return;
-    }
-    if (!isSoloPersona && challengeFlowScreen === 'explore') {
+    if (activeTab !== 'challenge') return;
+    if (challengeFlowScreen === 'explore') {
       setChallengeFlowScreen('list');
     }
-  }, [activeTab, challengeFlowScreen, challengeListItems, isSoloPersona]);
+  }, [activeTab, challengeFlowScreen]);
   useEffect(() => {
     if (!menuRouteTarget) return;
     if (menuRouteTarget.tab === 'team') {
@@ -7203,6 +7346,8 @@ export default function KPIDashboardScreen({
       setTeamRosterName(null);
       setTeamRosterError(null);
       setTeamRosterTeamId(null);
+      setTeamIdentityAvatar('🛡️');
+      setTeamIdentityBackground('#dff0da');
       return;
     }
     try {
@@ -7225,6 +7370,8 @@ export default function KPIDashboardScreen({
         const resolvedTeamId = String(body.team?.id ?? candidateTeamId).trim();
         setTeamRosterMembers(members);
         setTeamRosterName(body.team?.name ? String(body.team.name) : null);
+        setTeamIdentityAvatar(String(body.team?.identity_avatar ?? '🛡️').trim() || '🛡️');
+        setTeamIdentityBackground(String(body.team?.identity_background ?? '#dff0da').trim() || '#dff0da');
         setTeamRosterTeamId(resolvedTeamId || candidateTeamId);
         setTeamRosterError(null);
         return;
@@ -7233,11 +7380,15 @@ export default function KPIDashboardScreen({
       setTeamRosterName(null);
       setTeamRosterError(lastFailure ?? 'Team roster unavailable in your current scope.');
       setTeamRosterTeamId(teamRuntimeCandidateIds[0] ?? null);
+      setTeamIdentityAvatar('🛡️');
+      setTeamIdentityBackground('#dff0da');
     } catch (err) {
       setTeamRosterError(err instanceof Error ? err.message : 'Failed to load team roster');
       setTeamRosterMembers([]);
       setTeamRosterName(null);
       setTeamRosterTeamId(teamRuntimeCandidateIds[0] ?? null);
+      setTeamIdentityAvatar('🛡️');
+      setTeamIdentityBackground('#dff0da');
     }
   }, [session?.access_token, teamRuntimeCandidateIds]);
 
@@ -8723,6 +8874,8 @@ export default function KPIDashboardScreen({
             const resolvedTeamId = String(body.team?.id ?? candidateTeamId).trim();
             setTeamRosterMembers(fetchedMembers);
             setTeamRosterName(body.team?.name ? String(body.team.name) : null);
+            setTeamIdentityAvatar(String(body.team?.identity_avatar ?? '🛡️').trim() || '🛡️');
+            setTeamIdentityBackground(String(body.team?.identity_background ?? '#dff0da').trim() || '#dff0da');
             setTeamRosterTeamId(resolvedTeamId || candidateTeamId);
             setTeamRosterError(null);
           }
@@ -8754,6 +8907,272 @@ export default function KPIDashboardScreen({
     }
     return null;
   }, [teamRosterTeamId, teamRuntimeCandidateIds]);
+
+  const challengeWizardFallbackTemplates = useMemo(
+    () => defaultChallengeTemplatesFromKpis(allSelectableKpis),
+    [allSelectableKpis]
+  );
+
+  const buildChallengeWizardGoalDrafts = useCallback(
+    (
+      sourceRows: Array<{
+        kpi_id: string;
+        label: string;
+        goal_scope_default: ChallengeGoalScope;
+        suggested_target: number | null;
+        display_order: number;
+      }>
+    ): ChallengeWizardGoalDraft[] => {
+      const byId = new Map(allSelectableKpis.map((kpi) => [String(kpi.id), kpi] as const));
+      const normalized = sourceRows
+        .map((row, idx) => {
+          const kpi = byId.get(String(row.kpi_id));
+          if (!kpi) return null;
+          return {
+            kpi_id: String(kpi.id),
+            label: String(row.label || kpi.name),
+            goal_scope: row.goal_scope_default === 'individual' ? 'individual' : 'team',
+            goal_target:
+              row.suggested_target == null || !Number.isFinite(Number(row.suggested_target))
+                ? ''
+                : String(Math.max(0, Number(row.suggested_target))),
+            display_order:
+              Number.isInteger(row.display_order) && row.display_order >= 0 ? row.display_order : idx,
+          } as ChallengeWizardGoalDraft;
+        })
+        .filter((row): row is ChallengeWizardGoalDraft => Boolean(row))
+        .sort((a, b) => a.display_order - b.display_order);
+      if (normalized.length > 0) return normalized;
+      return allSelectableKpis.slice(0, 4).map((kpi, idx) => ({
+        kpi_id: String(kpi.id),
+        label: String(kpi.name),
+        goal_scope: kpi.type === 'PC' ? 'team' : 'individual',
+        goal_target: '',
+        display_order: idx,
+      }));
+    },
+    [allSelectableKpis]
+  );
+
+  const fetchChallengeTemplates = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) return;
+    setChallengeWizardLoadingTemplates(true);
+    setChallengeWizardTemplateError(null);
+    try {
+      const response = await fetch(`${API_URL}/challenge-templates`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = (await response.json().catch(() => ({}))) as ChallengeTemplateListApiResponse;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? `Template fetch failed (${response.status})`);
+      }
+      const templates = Array.isArray(payload?.templates) ? payload.templates : [];
+      const normalized: ChallengeTemplateRow[] = templates
+        .map((row, idx) => ({
+          id: String(row.id ?? `template-${idx + 1}`),
+          title: String(row.title ?? 'Challenge Template'),
+          description: String(row.description ?? ''),
+          suggested_duration_days: Math.max(1, Number(row.suggested_duration_days ?? 14) || 14),
+          kpi_defaults: Array.isArray(row.kpi_defaults)
+            ? row.kpi_defaults.map((goal, goalIdx) => {
+                const goalScopeDefault: ChallengeGoalScope =
+                  goal.goal_scope_default === 'individual' ? 'individual' : 'team';
+                return {
+                  kpi_id: String(goal.kpi_id ?? ''),
+                  label: String(goal.label ?? `KPI ${goalIdx + 1}`),
+                  goal_scope_default: goalScopeDefault,
+                  suggested_target:
+                    typeof goal.suggested_target === 'number' && Number.isFinite(goal.suggested_target)
+                      ? goal.suggested_target
+                      : null,
+                  display_order: Number.isInteger(goal.display_order) ? goal.display_order : goalIdx,
+                };
+              })
+            : [],
+        }))
+        .filter((row): row is ChallengeTemplateRow => Boolean(row.id && row.title));
+      if (normalized.length > 0) {
+        setChallengeWizardTemplates(normalized);
+        return;
+      }
+      setChallengeWizardTemplates(challengeWizardFallbackTemplates);
+      setChallengeWizardTemplateError('Live templates unavailable; using fallback catalog.');
+    } catch (err) {
+      setChallengeWizardTemplates(challengeWizardFallbackTemplates);
+      setChallengeWizardTemplateError(err instanceof Error ? err.message : 'Template catalog unavailable.');
+    } finally {
+      setChallengeWizardLoadingTemplates(false);
+    }
+  }, [challengeWizardFallbackTemplates, session?.access_token]);
+
+  const openChallengeWizard = useCallback(
+    (requestedKind?: ChallengeKind) => {
+      const now = new Date();
+      const defaultType = isSoloPersona
+        ? 'mini'
+        : requestedKind === 'mini' || requestedKind === 'team'
+          ? requestedKind
+          : 'team';
+      const defaultTemplates = challengeWizardTemplates.length > 0 ? challengeWizardTemplates : challengeWizardFallbackTemplates;
+      const firstTemplate = defaultTemplates[0] ?? null;
+      const startIso = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const durationDays = Math.max(1, Number(firstTemplate?.suggested_duration_days ?? (defaultType === 'mini' ? 14 : 21)));
+      const endIso = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      setChallengeWizardError(null);
+      setChallengeWizardTemplateError(null);
+      setChallengeWizardStep('source');
+      setChallengeWizardSource('template');
+      setChallengeWizardType(defaultType);
+      setChallengeWizardName(defaultType === 'team' ? 'Team Challenge' : 'Mini Challenge');
+      setChallengeWizardDescription('');
+      setChallengeWizardStartAt(startIso);
+      setChallengeWizardEndAt(endIso);
+      setChallengeWizardTemplateId(firstTemplate?.id ?? null);
+      setChallengeWizardGoals(
+        buildChallengeWizardGoalDrafts(firstTemplate?.kpi_defaults ?? challengeWizardFallbackTemplates[0]?.kpi_defaults ?? [])
+      );
+      setChallengeWizardInviteUserIds([]);
+      setChallengeWizardVisible(true);
+    },
+    [
+      buildChallengeWizardGoalDrafts,
+      challengeWizardFallbackTemplates,
+      challengeWizardTemplates,
+      isSoloPersona,
+    ]
+  );
+
+  const applyChallengeWizardTemplate = useCallback(
+    (templateId: string | null) => {
+      if (!templateId) return;
+      const template = challengeWizardTemplates.find((row) => row.id === templateId) ??
+        challengeWizardFallbackTemplates.find((row) => row.id === templateId) ??
+        null;
+      if (!template) return;
+      setChallengeWizardTemplateId(template.id);
+      setChallengeWizardGoals(buildChallengeWizardGoalDrafts(template.kpi_defaults));
+      if (!challengeWizardDescription.trim()) {
+        setChallengeWizardDescription(template.description);
+      }
+      const startRaw = challengeWizardStartAt.trim();
+      if (startRaw) {
+        const parsedStart = new Date(`${startRaw}T00:00:00.000Z`);
+        if (!Number.isNaN(parsedStart.getTime())) {
+          const nextEnd = new Date(parsedStart.getTime() + Math.max(1, template.suggested_duration_days) * 24 * 60 * 60 * 1000);
+          setChallengeWizardEndAt(nextEnd.toISOString().slice(0, 10));
+        }
+      }
+    },
+    [
+      buildChallengeWizardGoalDrafts,
+      challengeWizardDescription,
+      challengeWizardFallbackTemplates,
+      challengeWizardStartAt,
+      challengeWizardTemplates,
+    ]
+  );
+
+  useEffect(() => {
+    if (!challengeWizardVisible) return;
+    void fetchChallengeTemplates();
+  }, [challengeWizardVisible, fetchChallengeTemplates]);
+
+  const submitChallengeWizard = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) {
+      setChallengeWizardError('Missing session token.');
+      return;
+    }
+    const mode: 'team' | 'solo' = challengeWizardType === 'team' ? 'team' : 'solo';
+    const teamId = resolveCurrentTeamContextId();
+    if (mode === 'team' && !teamId) {
+      setChallengeWizardError('Team context unavailable. Refresh and retry.');
+      return;
+    }
+    const name = challengeWizardName.trim();
+    if (!name) {
+      setChallengeWizardError('Challenge name is required.');
+      return;
+    }
+    const startDate = new Date(`${challengeWizardStartAt.trim()}T00:00:00.000Z`);
+    const endDate = new Date(`${challengeWizardEndAt.trim()}T23:59:59.000Z`);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate.getTime() <= startDate.getTime()) {
+      setChallengeWizardError('Set valid start/end dates. End date must be later than start date.');
+      return;
+    }
+    const normalizedGoals = challengeWizardGoals
+      .map((goal, idx) => ({
+        kpi_id: String(goal.kpi_id ?? '').trim(),
+        goal_scope: goal.goal_scope === 'individual' ? 'individual' : 'team',
+        goal_target: goal.goal_target.trim().length > 0 ? Number(goal.goal_target) : null,
+        display_order: idx,
+      }))
+      .filter((goal) => goal.kpi_id.length > 0);
+    if (normalizedGoals.length === 0) {
+      setChallengeWizardError('Select at least one KPI goal.');
+      return;
+    }
+    if (normalizedGoals.some((goal) => goal.goal_target != null && (!Number.isFinite(goal.goal_target) || Number(goal.goal_target) < 0))) {
+      setChallengeWizardError('Goal targets must be numeric values greater than or equal to 0.');
+      return;
+    }
+    if (challengeWizardType === 'mini' && challengeWizardInviteUserIds.length > 3) {
+      setChallengeWizardError('Mini challenges can include up to 3 invited participants.');
+      return;
+    }
+    setChallengeWizardSubmitting(true);
+    setChallengeWizardError(null);
+    try {
+      const response = await fetch(`${API_URL}/challenges`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name,
+          description: challengeWizardDescription.trim() || undefined,
+          mode,
+          challenge_kind: challengeWizardType === 'team' ? 'team' : 'mini',
+          team_id: mode === 'team' ? teamId : undefined,
+          start_at: startDate.toISOString(),
+          end_at: endDate.toISOString(),
+          template_id: challengeWizardSource === 'template' ? challengeWizardTemplateId ?? undefined : undefined,
+          kpi_goals: normalizedGoals,
+          invite_user_ids: mode === 'solo' ? challengeWizardInviteUserIds.slice(0, 3) : [],
+          late_join_includes_history: mode === 'team',
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload?.error ?? `Create challenge failed (${response.status})`);
+      }
+      setChallengeWizardVisible(false);
+      setChallengeFlowScreen('list');
+      setChallengeStateTab('active');
+      setChallengeListFilter(challengeWizardType === 'team' ? 'team' : 'mini');
+      setActiveTab('challenge');
+      await fetchDashboard();
+    } catch (err) {
+      setChallengeWizardError(err instanceof Error ? err.message : 'Failed to create challenge');
+    } finally {
+      setChallengeWizardSubmitting(false);
+    }
+  }, [
+    challengeWizardDescription,
+    challengeWizardEndAt,
+    challengeWizardGoals,
+    challengeWizardInviteUserIds,
+    challengeWizardName,
+    challengeWizardSource,
+    challengeWizardStartAt,
+    challengeWizardTemplateId,
+    challengeWizardType,
+    fetchDashboard,
+    resolveCurrentTeamContextId,
+    session?.access_token,
+  ]);
 
   const createTeamInviteCode = useCallback(async () => {
     const token = session?.access_token;
@@ -8845,7 +9264,7 @@ export default function KPIDashboardScreen({
       setTeamProfileMemberId(null);
       await Promise.all([fetchDashboard(), fetchTeamRoster()]);
       setActiveTab('challenge');
-      setChallengeFlowScreen('explore');
+      setChallengeFlowScreen('list');
       Alert.alert('Left team', successText);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to leave team';
@@ -10005,8 +10424,7 @@ export default function KPIDashboardScreen({
                         setPaywallVisible(true);
                         return;
                       }
-                      setChallengeMemberCreateMode('public');
-                      setChallengeMemberCreateModalVisible(true);
+                      openChallengeWizard('mini');
                     }}
                   >
                     <Text style={styles.challengeExploreStartBtnText}>Start a Challenge</Text>
@@ -10022,7 +10440,7 @@ export default function KPIDashboardScreen({
                 </View>
                 <View style={styles.challengeExploreSection}>
                   <Text style={styles.challengeExploreSectionTitle}>Browse Available Challenges</Text>
-                  {challengeFilteredListItems.slice(0, 6).map((item) => (
+                  {challengeScopedListItems.slice(0, 6).map((item) => (
                     <TouchableOpacity
                       key={`explore-${item.id}`}
                       style={styles.challengeListItemCard}
@@ -10050,7 +10468,7 @@ export default function KPIDashboardScreen({
                     <View style={styles.challengeHeroBody}>
                       <View style={styles.challengeHeroTopRow}>
                         <Text style={styles.challengeHeroEyebrow}>
-                          {challengeStateTab === 'active' ? '🏆 Active Challenges' : challengeStateTab === 'upcoming' ? '📅 Upcoming' : '📊 History'}
+                          {challengeStateTab === 'active' ? '🏆 Active Challenges' : challengeStateTab === 'upcoming' ? '📅 Upcoming' : '✅ Completed'}
                         </Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                           <Text style={styles.challengeHeroCount}>{challengeCurrentStateRows.length}</Text>
@@ -10066,8 +10484,7 @@ export default function KPIDashboardScreen({
                             <TouchableOpacity
                               style={styles.challengeListCreateBtn}
                               onPress={() => {
-                                setChallengeMemberCreateMode('team');
-                                setChallengeMemberCreateModalVisible(true);
+                                openChallengeWizard(isSoloPersona ? 'mini' : 'team');
                               }}
                             >
                               <Text style={styles.challengeListCreateBtnText}>Create</Text>
@@ -10080,7 +10497,7 @@ export default function KPIDashboardScreen({
                           ? 'Compete, track, and win'
                           : challengeStateTab === 'upcoming'
                             ? 'Coming up next'
-                            : 'Past results'}
+                            : 'Completed challenge results'}
                       </Text>
                       <Text style={styles.challengeHeroSub}>
                         {challengeStateTab === 'active'
@@ -10093,9 +10510,9 @@ export default function KPIDashboardScreen({
                   </View>
                   <View style={styles.challengeMemberSegmentRow}>
                     {([
-                      { key: 'active', label: 'Active' },
                       { key: 'upcoming', label: 'Upcoming' },
-                      { key: 'history', label: 'History' },
+                      { key: 'active', label: 'Active' },
+                      { key: 'completed', label: 'Completed' },
                     ] as const).map((tab) => {
                       const active = challengeStateTab === tab.key;
                       return (
@@ -10122,12 +10539,12 @@ export default function KPIDashboardScreen({
                       ? renderKnownLimitedDataChip('preview rows only')
                       : null}
 
-                  {effectiveTeamPersonaVariant !== 'member' ? (
                   <View style={styles.challengeListFilterRow}>
                     {([
                       { key: 'all', label: 'All' },
+                      ...(!isSoloPersona ? ([{ key: 'team', label: 'Team' }] as const) : []),
+                      { key: 'mini', label: 'Mini' },
                       { key: 'sponsored', label: 'Sponsored' },
-                      { key: 'team', label: 'Team' },
                     ] as const).map((chip) => {
                       const active = challengeListFilter === chip.key;
                       return (
@@ -10143,8 +10560,7 @@ export default function KPIDashboardScreen({
                       );
                     })}
                   </View>
-                  ) : null}
-                  {effectiveTeamPersonaVariant !== 'member' && challengeListFilter === 'sponsored' && !challengeHasSponsorSignal
+                  {challengeListFilter === 'sponsored' && !challengeHasSponsorSignal
                     ? renderKnownLimitedDataChip('sponsor flag coverage')
                     : null}
 
@@ -10154,7 +10570,10 @@ export default function KPIDashboardScreen({
                       challengeCurrentStateRows.map((item) => (
                         <TouchableOpacity
                           key={`challenge-card-${item.id}`}
-                          style={styles.challengeListItemCard}
+                          style={[
+                            styles.challengeListItemCard,
+                            item.challengeKind === 'sponsored' && styles.challengeListItemCardSponsored,
+                          ]}
                           activeOpacity={0.7}
                           onPress={() => {
                             if (item.joined) {
@@ -10192,6 +10611,12 @@ export default function KPIDashboardScreen({
                             </View>
                           </View>
                           <Text numberOfLines={1} style={styles.challengeListItemSub}>{item.subtitle}</Text>
+                          {item.challengeKind === 'sponsored' ? (
+                            <View style={styles.challengeSponsoredMetaRow}>
+                              <Text style={styles.challengeSponsoredMetaLabel}>Sponsored</Text>
+                              <Text style={styles.challengeSponsoredMetaSub}>Featured challenge card</Text>
+                            </View>
+                          ) : null}
                           <View style={styles.challengeListItemMetaRow}>
                             <Text style={styles.challengeListItemMetaText}>{item.timeframe}</Text>
                             <Text style={styles.challengeListItemMetaText}>{item.daysLabel}</Text>
@@ -10209,7 +10634,7 @@ export default function KPIDashboardScreen({
                             ? 'No active challenges are available right now.'
                             : challengeStateTab === 'upcoming'
                               ? 'No upcoming challenges are scheduled for this account.'
-                              : 'No historical challenge rows are available yet.'}
+                              : 'No completed challenge rows are available yet.'}
                         </Text>
                       </View>
                     )}
@@ -10288,65 +10713,387 @@ export default function KPIDashboardScreen({
 
                 {challengeCreateAllowed ? (
                   <Modal
-                    visible={challengeMemberCreateModalVisible}
+                    visible={challengeWizardVisible}
                     transparent
                     animationType="fade"
-                    onRequestClose={() => setChallengeMemberCreateModalVisible(false)}
+                    onRequestClose={() => {
+                      if (challengeWizardSubmitting) return;
+                      setChallengeWizardVisible(false);
+                    }}
                   >
                     <Pressable
                       style={styles.challengeMemberCreateModalBackdrop}
-                      onPress={() => setChallengeMemberCreateModalVisible(false)}
+                      onPress={() => {
+                        if (challengeWizardSubmitting) return;
+                        setChallengeWizardVisible(false);
+                      }}
                     >
                       <Pressable style={styles.challengeMemberCreateModalCard} onPress={() => {}}>
-                        <Text style={styles.challengeMemberCreateModalTitle}>Create New Challenge</Text>
-                        <View style={styles.challengeMemberCreateModeGrid}>
-                          {([
-                            { key: 'public', label: 'Public Challenge', icon: '👜' },
-                            { key: 'team', label: 'Team Challenge', icon: '👥' },
-                          ] as const).map((option) => {
-                            const active = challengeMemberCreateMode === option.key;
-                            return (
-                              <TouchableOpacity
-                                key={option.key}
-                                style={[
-                                  styles.challengeMemberCreateModeCard,
-                                  active && styles.challengeMemberCreateModeCardActive,
-                                ]}
-                                onPress={() => setChallengeMemberCreateMode(option.key)}
-                              >
-                                <Text style={styles.challengeMemberCreateModeIcon}>{option.icon}</Text>
-                                <Text
-                                  style={[
-                                    styles.challengeMemberCreateModeLabel,
-                                    active && styles.challengeMemberCreateModeLabelActive,
-                                  ]}
-                                >
-                                  {option.label}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                        <TouchableOpacity
-                          style={styles.challengeMemberCreateContinueBtn}
-                          onPress={() => {
-                            setChallengeMemberCreateModalVisible(false);
-                            if (challengeMemberCreateMode === 'team') {
-                              const completedOrTeam =
-                                challengeListItems.find((item) => item.bucket === 'completed') ??
-                                challengeListItems.find((item) => item.challengeModeLabel === 'Team') ??
-                                challengeListItems[0];
-                              if (completedOrTeam) setChallengeSelectedId(completedOrTeam.id);
-                              setChallengeFlowScreen('leaderboard');
+                        {(() => {
+                          const stepOrder: ChallengeWizardStep[] = ['source', 'basics', 'kpis', 'audience', 'review'];
+                          const stepIndex = stepOrder.indexOf(challengeWizardStep);
+                          const isFirst = stepIndex <= 0;
+                          const isLast = stepIndex >= stepOrder.length - 1;
+                          const stepLabel = `${Math.max(1, stepIndex + 1)} / ${stepOrder.length}`;
+                          const currentTemplate =
+                            challengeWizardTemplates.find((row) => row.id === challengeWizardTemplateId) ??
+                            challengeWizardFallbackTemplates.find((row) => row.id === challengeWizardTemplateId) ??
+                            null;
+                          const moveStep = (direction: 'back' | 'next') => {
+                            if (challengeWizardSubmitting) return;
+                            if (direction === 'back') {
+                              if (isFirst) {
+                                setChallengeWizardVisible(false);
+                                return;
+                              }
+                              setChallengeWizardStep(stepOrder[Math.max(0, stepIndex - 1)]);
                               return;
                             }
-                            const preferred = challengeListItems[0];
-                            if (preferred) setChallengeSelectedId(preferred.id);
-                            setChallengeFlowScreen('details');
-                          }}
-                        >
-                          <Text style={styles.challengeMemberCreateContinueBtnText}>Continue</Text>
-                        </TouchableOpacity>
+                            if (challengeWizardStep === 'source') {
+                              if (challengeWizardSource === 'template' && !challengeWizardTemplateId) {
+                                setChallengeWizardError('Choose a template or switch to Custom.');
+                                return;
+                              }
+                              if (challengeWizardSource === 'template' && challengeWizardTemplateId) {
+                                applyChallengeWizardTemplate(challengeWizardTemplateId);
+                              }
+                            }
+                            if (challengeWizardStep === 'kpis' && challengeWizardGoals.length === 0) {
+                              setChallengeWizardError('Add at least one KPI goal.');
+                              return;
+                            }
+                            if (challengeWizardStep === 'audience' && challengeWizardType === 'mini' && challengeWizardInviteUserIds.length > 3) {
+                              setChallengeWizardError('Mini challenges can include up to 3 invited participants.');
+                              return;
+                            }
+                            if (isLast) {
+                              void submitChallengeWizard();
+                              return;
+                            }
+                            setChallengeWizardError(null);
+                            setChallengeWizardStep(stepOrder[Math.min(stepOrder.length - 1, stepIndex + 1)]);
+                          };
+                          return (
+                            <>
+                              <View style={styles.challengeWizardHeaderRow}>
+                                <Text style={styles.challengeMemberCreateModalTitle}>Challenge Setup Wizard</Text>
+                                <Text style={styles.challengeWizardStepPill}>{stepLabel}</Text>
+                              </View>
+                              <Text style={styles.challengeWizardSub}>
+                                {challengeWizardType === 'team'
+                                  ? 'Team challenge setup: one active + one upcoming, no date overlap.'
+                                  : 'Mini challenge setup: invite up to 3 participants.'}
+                              </Text>
+
+                              {challengeWizardStep === 'source' ? (
+                                <View style={styles.challengeWizardSection}>
+                                  <Text style={styles.challengeWizardSectionTitle}>1) Choose Source</Text>
+                                  <View style={styles.challengeMemberCreateModeGrid}>
+                                    {([
+                                      { key: 'template', label: 'Template', icon: '🧩' },
+                                      { key: 'custom', label: 'Custom', icon: '✍️' },
+                                    ] as const).map((option) => {
+                                      const active = challengeWizardSource === option.key;
+                                      return (
+                                        <TouchableOpacity
+                                          key={`wizard-source-${option.key}`}
+                                          style={[
+                                            styles.challengeMemberCreateModeCard,
+                                            active && styles.challengeMemberCreateModeCardActive,
+                                          ]}
+                                          onPress={() => {
+                                            setChallengeWizardSource(option.key);
+                                            if (option.key === 'custom') {
+                                              setChallengeWizardTemplateId(null);
+                                              setChallengeWizardGoals(
+                                                buildChallengeWizardGoalDrafts(
+                                                  allSelectableKpis.slice(0, 4).map((kpi, idx) => ({
+                                                    kpi_id: String(kpi.id),
+                                                    label: String(kpi.name),
+                                                    goal_scope_default: kpi.type === 'PC' ? 'team' : 'individual',
+                                                    suggested_target: null,
+                                                    display_order: idx,
+                                                  }))
+                                                )
+                                              );
+                                            }
+                                          }}
+                                        >
+                                          <Text style={styles.challengeMemberCreateModeIcon}>{option.icon}</Text>
+                                          <Text
+                                            style={[
+                                              styles.challengeMemberCreateModeLabel,
+                                              active && styles.challengeMemberCreateModeLabelActive,
+                                            ]}
+                                          >
+                                            {option.label}
+                                          </Text>
+                                        </TouchableOpacity>
+                                      );
+                                    })}
+                                  </View>
+                                  <View style={styles.challengeWizardTypeRow}>
+                                    {([
+                                      ...(isSoloPersona ? ([] as const) : ([{ key: 'team', label: 'Team' }] as const)),
+                                      { key: 'mini', label: 'Mini' },
+                                    ] as const).map((option) => {
+                                      const active = challengeWizardType === option.key;
+                                      return (
+                                        <TouchableOpacity
+                                          key={`wizard-kind-${option.key}`}
+                                          style={[styles.challengeWizardTypeChip, active && styles.challengeWizardTypeChipActive]}
+                                          onPress={() => {
+                                            if (isSoloPersona && option.key === 'team') return;
+                                            setChallengeWizardType(option.key);
+                                          }}
+                                        >
+                                          <Text style={[styles.challengeWizardTypeChipText, active && styles.challengeWizardTypeChipTextActive]}>
+                                            {option.label}
+                                          </Text>
+                                        </TouchableOpacity>
+                                      );
+                                    })}
+                                  </View>
+                                  {challengeWizardSource === 'template' ? (
+                                    <View style={styles.challengeWizardTemplateStack}>
+                                      {challengeWizardLoadingTemplates ? (
+                                        <ActivityIndicator size="small" color="#2f6bff" />
+                                      ) : (
+                                        (challengeWizardTemplates.length > 0 ? challengeWizardTemplates : challengeWizardFallbackTemplates).map((template) => {
+                                          const active = challengeWizardTemplateId === template.id;
+                                          return (
+                                            <TouchableOpacity
+                                              key={`wizard-template-${template.id}`}
+                                              style={[styles.challengeWizardTemplateCard, active && styles.challengeWizardTemplateCardActive]}
+                                              onPress={() => setChallengeWizardTemplateId(template.id)}
+                                            >
+                                              <Text style={styles.challengeWizardTemplateTitle}>{template.title}</Text>
+                                              <Text style={styles.challengeWizardTemplateSub}>{template.description}</Text>
+                                              <Text style={styles.challengeWizardTemplateHint}>
+                                                Suggested duration: {template.suggested_duration_days} day{template.suggested_duration_days === 1 ? '' : 's'}
+                                              </Text>
+                                            </TouchableOpacity>
+                                          );
+                                        })
+                                      )}
+                                    </View>
+                                  ) : null}
+                                </View>
+                              ) : null}
+
+                              {challengeWizardStep === 'basics' ? (
+                                <View style={styles.challengeWizardSection}>
+                                  <Text style={styles.challengeWizardSectionTitle}>2) Basics</Text>
+                                  <TextInput
+                                    value={challengeWizardName}
+                                    onChangeText={setChallengeWizardName}
+                                    placeholder="Challenge name"
+                                    placeholderTextColor="#8ba0c3"
+                                    style={styles.challengeWizardInput}
+                                  />
+                                  <TextInput
+                                    value={challengeWizardDescription}
+                                    onChangeText={setChallengeWizardDescription}
+                                    placeholder="Description (optional)"
+                                    placeholderTextColor="#8ba0c3"
+                                    style={[styles.challengeWizardInput, styles.challengeWizardInputMultiline]}
+                                    multiline
+                                  />
+                                  <View style={styles.challengeWizardDateRow}>
+                                    <TextInput
+                                      value={challengeWizardStartAt}
+                                      onChangeText={setChallengeWizardStartAt}
+                                      placeholder="Start (YYYY-MM-DD)"
+                                      placeholderTextColor="#8ba0c3"
+                                      style={[styles.challengeWizardInput, styles.challengeWizardDateInput]}
+                                      autoCapitalize="none"
+                                    />
+                                    <TextInput
+                                      value={challengeWizardEndAt}
+                                      onChangeText={setChallengeWizardEndAt}
+                                      placeholder="End (YYYY-MM-DD)"
+                                      placeholderTextColor="#8ba0c3"
+                                      style={[styles.challengeWizardInput, styles.challengeWizardDateInput]}
+                                      autoCapitalize="none"
+                                    />
+                                  </View>
+                                  <Text style={styles.challengeWizardHint}>
+                                    Team challenges must not overlap existing team challenge dates.
+                                  </Text>
+                                </View>
+                              ) : null}
+
+                              {challengeWizardStep === 'kpis' ? (
+                                <View style={styles.challengeWizardSection}>
+                                  <Text style={styles.challengeWizardSectionTitle}>3) KPI Goals</Text>
+                                  <Text style={styles.challengeWizardHint}>Set per-KPI scope and optional target values.</Text>
+                                  <ScrollView style={styles.challengeWizardGoalScroll} contentContainerStyle={styles.challengeWizardGoalStack}>
+                                    {challengeWizardGoals.map((goal, idx) => (
+                                      <View key={`wizard-goal-${goal.kpi_id}-${idx}`} style={styles.challengeWizardGoalRow}>
+                                        <View style={styles.challengeWizardGoalCopy}>
+                                          <Text style={styles.challengeWizardGoalLabel}>{goal.label}</Text>
+                                          <Text style={styles.challengeWizardGoalSub}>KPI goal #{idx + 1}</Text>
+                                        </View>
+                                        <View style={styles.challengeWizardGoalControls}>
+                                          <TouchableOpacity
+                                            style={[
+                                              styles.challengeWizardGoalScopeChip,
+                                              goal.goal_scope === 'team' && styles.challengeWizardGoalScopeChipActive,
+                                            ]}
+                                            onPress={() =>
+                                              setChallengeWizardGoals((prev) =>
+                                                prev.map((row, rowIdx) =>
+                                                  rowIdx === idx ? { ...row, goal_scope: 'team' } : row
+                                                )
+                                              )
+                                            }
+                                          >
+                                            <Text
+                                              style={[
+                                                styles.challengeWizardGoalScopeChipText,
+                                                goal.goal_scope === 'team' && styles.challengeWizardGoalScopeChipTextActive,
+                                              ]}
+                                            >
+                                              Team
+                                            </Text>
+                                          </TouchableOpacity>
+                                          <TouchableOpacity
+                                            style={[
+                                              styles.challengeWizardGoalScopeChip,
+                                              goal.goal_scope === 'individual' && styles.challengeWizardGoalScopeChipActive,
+                                            ]}
+                                            onPress={() =>
+                                              setChallengeWizardGoals((prev) =>
+                                                prev.map((row, rowIdx) =>
+                                                  rowIdx === idx ? { ...row, goal_scope: 'individual' } : row
+                                                )
+                                              )
+                                            }
+                                          >
+                                            <Text
+                                              style={[
+                                                styles.challengeWizardGoalScopeChipText,
+                                                goal.goal_scope === 'individual' && styles.challengeWizardGoalScopeChipTextActive,
+                                              ]}
+                                            >
+                                              Individual
+                                            </Text>
+                                          </TouchableOpacity>
+                                          <TextInput
+                                            value={goal.goal_target}
+                                            onChangeText={(value) =>
+                                              setChallengeWizardGoals((prev) =>
+                                                prev.map((row, rowIdx) =>
+                                                  rowIdx === idx ? { ...row, goal_target: value.replace(/[^0-9.]/g, '') } : row
+                                                )
+                                              )
+                                            }
+                                            placeholder="Target"
+                                            placeholderTextColor="#8ba0c3"
+                                            keyboardType="numeric"
+                                            style={styles.challengeWizardGoalTargetInput}
+                                          />
+                                        </View>
+                                      </View>
+                                    ))}
+                                  </ScrollView>
+                                </View>
+                              ) : null}
+
+                              {challengeWizardStep === 'audience' ? (
+                                <View style={styles.challengeWizardSection}>
+                                  <Text style={styles.challengeWizardSectionTitle}>4) Audience</Text>
+                                  {challengeWizardType === 'team' ? (
+                                    <View style={styles.challengeWizardAudienceCard}>
+                                      <Text style={styles.challengeWizardAudienceTitle}>Team-wide enrollment path</Text>
+                                      <Text style={styles.challengeWizardAudienceSub}>
+                                        Team members can join from Team Challenges. One active and one upcoming slot are enforced.
+                                      </Text>
+                                    </View>
+                                  ) : (
+                                    <>
+                                      <Text style={styles.challengeWizardHint}>
+                                        Select up to 3 invitees. Mini challenge can still launch without invites.
+                                      </Text>
+                                      <View style={styles.challengeWizardAudienceList}>
+                                        {teamMemberDirectory.slice(0, 8).map((member) => {
+                                          const userId = String(member.userId ?? '').trim();
+                                          const active = userId.length > 0 && challengeWizardInviteUserIds.includes(userId);
+                                          return (
+                                            <TouchableOpacity
+                                              key={`wizard-audience-${member.id}`}
+                                              style={[styles.challengeWizardAudienceRow, active && styles.challengeWizardAudienceRowActive]}
+                                              onPress={() => {
+                                                if (!userId) return;
+                                                setChallengeWizardInviteUserIds((prev) => {
+                                                  if (prev.includes(userId)) return prev.filter((id) => id !== userId);
+                                                  if (prev.length >= 3) return prev;
+                                                  return [...prev, userId];
+                                                });
+                                              }}
+                                            >
+                                              <Text style={styles.challengeWizardAudienceRowName}>{member.name}</Text>
+                                              <Text style={styles.challengeWizardAudienceRowState}>{active ? 'Invited' : 'Invite'}</Text>
+                                            </TouchableOpacity>
+                                          );
+                                        })}
+                                      </View>
+                                    </>
+                                  )}
+                                </View>
+                              ) : null}
+
+                              {challengeWizardStep === 'review' ? (
+                                <View style={styles.challengeWizardSection}>
+                                  <Text style={styles.challengeWizardSectionTitle}>5) Review & Launch</Text>
+                                  <View style={styles.challengeWizardReviewCard}>
+                                    <Text style={styles.challengeWizardReviewTitle}>{challengeWizardName || 'Untitled challenge'}</Text>
+                                    <Text style={styles.challengeWizardReviewSub}>
+                                      {challengeWizardType === 'team' ? 'Team Challenge' : 'Mini Challenge'} · {challengeWizardStartAt} to {challengeWizardEndAt}
+                                    </Text>
+                                    <Text style={styles.challengeWizardReviewMeta}>
+                                      Source: {challengeWizardSource === 'template' ? (currentTemplate?.title ?? 'Template') : 'Custom'}
+                                    </Text>
+                                    <Text style={styles.challengeWizardReviewMeta}>
+                                      KPI goals: {challengeWizardGoals.length} ({challengeWizardGoals.filter((row) => row.goal_scope === 'team').length} team / {challengeWizardGoals.filter((row) => row.goal_scope === 'individual').length} individual)
+                                    </Text>
+                                    {challengeWizardType === 'mini' ? (
+                                      <Text style={styles.challengeWizardReviewMeta}>
+                                        Invites: {challengeWizardInviteUserIds.length} / 3
+                                      </Text>
+                                    ) : null}
+                                  </View>
+                                </View>
+                              ) : null}
+
+                              {challengeWizardTemplateError ? (
+                                <Text style={styles.challengeWizardInfoText}>{challengeWizardTemplateError}</Text>
+                              ) : null}
+                              {challengeWizardError ? (
+                                <Text style={styles.challengeWizardErrorText}>{challengeWizardError}</Text>
+                              ) : null}
+
+                              <View style={styles.challengeWizardFooterRow}>
+                                <TouchableOpacity
+                                  style={styles.challengeWizardFooterSecondaryBtn}
+                                  onPress={() => moveStep('back')}
+                                  disabled={challengeWizardSubmitting}
+                                >
+                                  <Text style={styles.challengeWizardFooterSecondaryBtnText}>{isFirst ? 'Close' : 'Back'}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={[styles.challengeWizardFooterPrimaryBtn, challengeWizardSubmitting && styles.disabled]}
+                                  onPress={() => moveStep('next')}
+                                  disabled={challengeWizardSubmitting}
+                                >
+                                  <Text style={styles.challengeWizardFooterPrimaryBtnText}>
+                                    {challengeWizardSubmitting ? 'Saving…' : isLast ? 'Launch Challenge' : 'Continue'}
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            </>
+                          );
+                        })()}
                       </Pressable>
                     </Pressable>
                   </Modal>
@@ -10973,7 +11720,7 @@ export default function KPIDashboardScreen({
                 },
                 pipeline: { title: 'Pipeline', figmaNode: '168-16300' },
                 team_challenges: {
-                  title: effectiveTeamPersonaVariant === 'member' ? 'Team Challenges' : 'Single Person Challenges',
+                  title: 'Team Challenges',
                   figmaNode: effectiveTeamPersonaVariant === 'member' ? '389-21273' : '173-4905',
                 },
               };
@@ -11005,10 +11752,42 @@ export default function KPIDashboardScreen({
                 tone: kpi.type === 'PC' ? 'mint' : kpi.type === 'GP' ? 'sand' : 'lavender',
               }));
               const teamPipelineRows: Array<{ name: string; pending: number; current: number }> = [];
+              const resolvedTeamContextId = String(resolveCurrentTeamContextId() ?? '').trim();
               const teamChallengeRows = challengeListItems.filter(
-                (item) => item.challengeModeLabel === 'Team' || Boolean(item.raw?.team_id)
+                (item) =>
+                  item.challengeKind === 'team' &&
+                  resolvedTeamContextId.length > 0 &&
+                  String(item.raw?.team_id ?? '').trim() === resolvedTeamContextId
               );
-              const teamChallengeRowsForSurface = (teamChallengeRows.length > 0 ? teamChallengeRows : challengeListItems).slice(0, 8);
+              const teamChallengeRowsForSurface = (() => {
+                if (teamChallengeRows.length === 0) return [] as ChallengeFlowItem[];
+                const toMs = (iso?: string | null) => {
+                  const ms = new Date(String(iso ?? '')).getTime();
+                  return Number.isFinite(ms) ? ms : null;
+                };
+                const nowMs = Date.now();
+                const completed = [...teamChallengeRows]
+                  .filter((row) => row.bucket === 'completed')
+                  .sort((a, b) => (toMs(b.endAtIso) ?? 0) - (toMs(a.endAtIso) ?? 0))[0] ?? null;
+                const active = [...teamChallengeRows]
+                  .filter((row) => row.bucket === 'active')
+                  .sort((a, b) => (toMs(a.startAtIso) ?? 0) - (toMs(b.startAtIso) ?? 0))[0] ?? null;
+                const upcoming = [...teamChallengeRows]
+                  .filter((row) => row.bucket === 'upcoming')
+                  .filter((row) => {
+                    const start = toMs(row.startAtIso);
+                    if (start == null) return false;
+                    return start > nowMs;
+                  })
+                  .sort((a, b) => (toMs(a.startAtIso) ?? 0) - (toMs(b.startAtIso) ?? 0))[0] ?? null;
+                const dedupe = new Set<string>();
+                return [active, upcoming, completed].filter((row): row is ChallengeFlowItem => {
+                  if (!row) return false;
+                  if (dedupe.has(row.id)) return false;
+                  dedupe.add(row.id);
+                  return true;
+                });
+              })();
               const teamActiveChallengeCount = teamChallengeRowsForSurface.filter((item) => item.bucket !== 'completed').length;
               const teamMemberCount = Math.max(1, teamMembers.length);
               const teamChallengeActiveRows = teamChallengeRowsForSurface.filter(
@@ -11028,15 +11807,21 @@ export default function KPIDashboardScreen({
                 selectedChallengeId?: string
               ) => {
                 const preferred =
-                  challengeListItems.find((item) => item.id === selectedChallengeId) ??
-                  challengeListItems.find((item) => item.challengeModeLabel === 'Team') ??
-                  challengeListItems[0];
+                  teamChallengeRowsForSurface.find((item) => item.id === selectedChallengeId) ??
+                  teamChallengeRowsForSurface.find((item) => item.bucket === 'active') ??
+                  teamChallengeRowsForSurface.find((item) => item.bucket === 'upcoming') ??
+                  teamChallengeRowsForSurface[0] ??
+                  challengeScopedListItems.find((item) => item.challengeKind !== 'team') ??
+                  challengeScopedListItems[0];
                 if (preferred) setChallengeSelectedId(preferred.id);
                 setChallengeFlowScreen(mode);
                 setActiveTab('challenge');
               };
               const teamPrimaryChallenge =
-                challengeListItems.find((item) => item.challengeModeLabel === 'Team') ?? challengeListItems[0] ?? null;
+                teamChallengeRowsForSurface.find((item) => item.bucket === 'active') ??
+                teamChallengeRowsForSurface.find((item) => item.bucket === 'upcoming') ??
+                teamChallengeRowsForSurface[0] ??
+                null;
               const teamIdentityName = teamRosterName ?? 'Team';
               const openTeamCommsHandoff = (source: CoachingShellEntrySource) => {
                 setTeamCommsHandoffError(null);
@@ -11299,9 +12084,20 @@ export default function KPIDashboardScreen({
                       Authorization: `Bearer ${token}`,
                       'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ name: normalizedName }),
+                    body: JSON.stringify({
+                      name: normalizedName,
+                      identity_avatar: teamIdentityDraftAvatar,
+                      identity_background: teamIdentityDraftBackground,
+                    }),
                   });
-                  const payload = (await response.json().catch(() => ({}))) as { error?: string; team?: { name?: string | null } };
+                  const payload = (await response.json().catch(() => ({}))) as {
+                    error?: string;
+                    team?: {
+                      name?: string | null;
+                      identity_avatar?: string | null;
+                      identity_background?: string | null;
+                    };
+                  };
                   if (!response.ok) {
                     const fallback = `Team update failed (${response.status})`;
                     const message = getApiErrorMessage(payload, fallback);
@@ -11310,6 +12106,8 @@ export default function KPIDashboardScreen({
                   }
                   const savedName = String(payload.team?.name ?? normalizedName).trim();
                   setTeamRosterName(savedName || normalizedName);
+                  setTeamIdentityAvatar(String(payload.team?.identity_avatar ?? teamIdentityDraftAvatar).trim() || '🛡️');
+                  setTeamIdentityBackground(String(payload.team?.identity_background ?? teamIdentityDraftBackground).trim() || '#dff0da');
                   setTeamIdentityEditOpen(false);
                 } catch (err) {
                   const message = err instanceof Error ? err.message : 'Failed to save team identity';
@@ -13362,23 +14160,75 @@ export default function KPIDashboardScreen({
               coachingShellScreen === 'coaching_journeys' ||
               coachingShellScreen === 'coaching_journey_detail' ||
               coachingShellScreen === 'coaching_lesson_detail';
+            const deriveAvatarLabel = (rawName: string | null | undefined, fallback: string) => {
+              const name = String(rawName ?? '').trim();
+              if (!name) return fallback;
+              const hasEmojiGlyph = /[\u{1F300}-\u{1FAFF}]/u.test(name);
+              if (hasEmojiGlyph) {
+                const emojiMatch = name.match(/[\u{1F300}-\u{1FAFF}]/u);
+                if (emojiMatch?.[0]) return emojiMatch[0];
+              }
+              const initials = name
+                .split(/\s+/)
+                .map((part) => part[0])
+                .join('')
+                .toUpperCase()
+                .slice(0, 2);
+              return initials || fallback;
+            };
+            const avatarToneForScope = (scope: string) => {
+              if (scope === 'team') return '#dff0da';
+              if (scope === 'challenge') return '#ede9fe';
+              if (scope === 'sponsor') return '#fef3c7';
+              if (scope === 'cohort') return '#d1fae5';
+              if (scope === 'dm') return '#e7eaf1';
+              return '#eef2f8';
+            };
 
             const commsChannelRows: CommsChannelRow[] = sortedPrimaryTabRows.map((row) => {
               const channelType = String(row.type ?? '').toLowerCase();
               const isDirect = channelType === 'direct' || channelType === 'dm';
+              const scope = isDirect ? 'dm' : normalizeChannelTypeToScope(row.type) ?? 'community';
+              const rowTeamId = String(row.team_id ?? '').trim();
+              const hasCurrentTeamContext =
+                scope === 'team' &&
+                rowTeamId.length > 0 &&
+                String(teamRuntimeId ?? '').trim().length > 0 &&
+                rowTeamId === String(teamRuntimeId ?? '').trim();
               const dmMember = isDirect ? resolveDmDirectoryMemberFromRow(row) : null;
               const backendDmName = isDirect ? String(row.dm_display_name ?? '').trim() : '';
+              const teamDisplayName = String(teamRosterName ?? '').trim() || String(teamIdentityDraftName ?? '').trim();
               const resolvedName = isDirect
                 ? backendDmName || dmMember?.name || deriveDmNameFromChannel(row.name)
+                : scope === 'team' && hasCurrentTeamContext
+                  ? teamDisplayName || row.name
                 : row.name;
               const runtimePreview = channelPreviewById[String(row.id)] ?? null;
               const backendPreview = String(row.last_message_preview ?? '').trim() || null;
               const snippet = runtimePreview ?? backendPreview ?? (isDirect ? `${dmMember?.roleLabel ?? 'Member'} · Direct message` : null);
+              const backendAvatarUrlRaw = String(row.avatar_url ?? '').trim();
+              const backendAvatarUrl = /^https?:\/\//i.test(backendAvatarUrlRaw) ? backendAvatarUrlRaw : null;
+              const backendAvatarLabel = String(row.avatar_label ?? '').trim() || null;
+              const backendAvatarTone = String(row.avatar_tone ?? '').trim() || null;
+              const avatarUrl = isDirect ? (backendAvatarUrl ?? dmMember?.avatarUrl ?? null) : backendAvatarUrl;
+              const avatarLabel = isDirect
+                ? backendAvatarLabel ?? deriveAvatarLabel(dmMember?.name ?? resolvedName, 'DM')
+                : scope === 'team' && hasCurrentTeamContext
+                  ? backendAvatarLabel ?? (String(teamIdentityAvatar ?? '').trim() || deriveAvatarLabel(resolvedName, 'TM'))
+                  : backendAvatarLabel ?? deriveAvatarLabel(resolvedName, scope === 'cohort' ? 'CO' : 'CH');
+              const avatarTone = isDirect
+                ? backendAvatarTone ?? dmMember?.avatarTone ?? avatarToneForScope(scope)
+                : scope === 'team' && hasCurrentTeamContext
+                  ? backendAvatarTone ?? (String(teamIdentityBackground ?? '').trim() || avatarToneForScope(scope))
+                  : backendAvatarTone ?? avatarToneForScope(scope);
               return {
                 id: String(row.id),
                 name: resolvedName,
                 type: row.type ?? null,
-                scope: isDirect ? 'dm' : normalizeChannelTypeToScope(row.type) ?? 'community',
+                scope,
+                avatar_url: avatarUrl,
+                avatar_label: avatarLabel,
+                avatar_tone: avatarTone,
                 unread_count: row.unread_count ?? null,
                 member_count: null,
                 my_role: row.my_role ?? null,
@@ -13394,7 +14244,30 @@ export default function KPIDashboardScreen({
                 id: String(member.userId),
                 name: member.name,
                 role: member.roleLabel,
+                avatar_url: member.avatarUrl,
+                avatar_label: deriveAvatarLabel(member.name, 'DM'),
+                avatar_tone: member.avatarTone,
               }));
+            const teamBroadcastLabel =
+              String(teamRosterName ?? '').trim() ||
+              String(teamIdentityDraftName ?? '').trim() ||
+              'your team';
+            const scopedBroadcastCandidate =
+              effectiveBroadcastTargetScope === 'team'
+                ? sortedBroadcastCandidateRows.find((row) => normalizeChannelTypeToScope(row.type) === 'team')
+                : effectiveBroadcastTargetScope === 'cohort'
+                  ? sortedBroadcastCandidateRows.find((row) => normalizeChannelTypeToScope(row.type) === 'cohort')
+                  : sortedBroadcastCandidateRows[0] ?? null;
+            const resolvedBroadcastAudienceLabel =
+              effectiveBroadcastTargetScope === 'team'
+                ? teamBroadcastLabel
+                : scopedBroadcastCandidate?.name ??
+                  coachingShellContext.broadcastAudienceLabel ??
+                  (effectiveBroadcastTargetScope === 'cohort'
+                    ? 'selected cohort'
+                    : effectiveBroadcastTargetScope === 'channel'
+                      ? 'selected channel'
+                      : 'selected segment');
 
             return (
               <>
@@ -13427,8 +14300,16 @@ export default function KPIDashboardScreen({
                           broadcastRoleAllowed: false,
                         });
                       } else if (tab === 'broadcast' && roleCanOpenBroadcast) {
-                        // Broadcast tab: only navigate if role gate allows
-                        openCoachingShell('coach_broadcast_compose');
+                        // Keep broadcast within the same messages shell for channels-parity UX.
+                        openCoachingShell('inbox_channels', {
+                          source: 'user_tab',
+                          preferredChannelScope: null,
+                          preferredChannelLabel: null,
+                          threadTitle: null,
+                          threadSub: null,
+                          broadcastAudienceLabel: resolvedBroadcastAudienceLabel,
+                          broadcastRoleAllowed: roleCanOpenBroadcast,
+                        });
                       }
                     }}
                     onChangeScopeFilter={setCommsHubScopeFilter}
@@ -13466,7 +14347,16 @@ export default function KPIDashboardScreen({
                     }}
                     onOpenBroadcast={() => {
                       if (!roleCanOpenBroadcast) return; // safety: member/sponsor/solo cannot reach broadcast
-                      openCoachingShell('coach_broadcast_compose');
+                      setCommsHubPrimaryTab('broadcast');
+                      openCoachingShell('inbox_channels', {
+                        source: 'user_tab',
+                        preferredChannelScope: null,
+                        preferredChannelLabel: null,
+                        threadTitle: null,
+                        threadSub: null,
+                        broadcastAudienceLabel: resolvedBroadcastAudienceLabel,
+                        broadcastRoleAllowed: roleCanOpenBroadcast,
+                      });
                     }}
                     onOpenChannelsCta={() => openCoachingShell('inbox_channels', {
                       source: 'user_tab',
@@ -13513,7 +14403,18 @@ export default function KPIDashboardScreen({
                     channelsLoading={channelsLoading}
                     channelsError={channelsError}
                     onRetryChannels={() => void fetchChannels()}
-                    fallbackChannels={channelRows.map((r) => ({ scope: r.scope, label: r.label, context: r.context }))}
+                    fallbackChannels={channelRows.map((r) => ({
+                      scope: r.scope,
+                      label: r.label,
+                      context: r.context,
+                      avatar_label:
+                        r.scope === 'team'
+                          ? String(teamIdentityAvatar ?? '').trim() || 'TM'
+                          : deriveAvatarLabel(r.label, r.scope === 'cohort' ? 'CO' : 'CH'),
+                      avatar_tone: r.scope === 'team'
+                        ? String(teamIdentityBackground ?? '').trim() || avatarToneForScope(r.scope)
+                        : avatarToneForScope(r.scope),
+                    }))}
                     fallbackDms={commsRosterDmRows}
                     useFallback={fallbackChannelRowsVisible}
                     selectedChannelId={selectedChannelResolvedId}
@@ -13543,13 +14444,16 @@ export default function KPIDashboardScreen({
                           host: host as any,
                           title: host === 'channel_thread' ? 'AI Reply Draft (Approval-First)' : 'AI Broadcast Draft (Approval-First)',
                           sub: 'Draft only. Human send is required.',
-                          targetLabel: selectedChannelResolvedName ?? contextualThreadTitle,
+                          targetLabel:
+                            host === 'coach_broadcast_compose'
+                              ? resolvedBroadcastAudienceLabel
+                              : (selectedChannelResolvedName ?? contextualThreadTitle),
                           approvedInsertOnly: true,
                         },
                         {
                           prompt: host === 'channel_thread'
                             ? `Draft a reply for ${selectedChannelResolvedName ?? contextualThreadTitle} that is supportive and action-oriented.`
-                            : `Draft a team coaching broadcast for ${coachingShellContext.broadcastAudienceLabel ?? selectedChannelResolvedName ?? 'this audience'} with a clear next action.`,
+                            : `Draft a team coaching broadcast for ${resolvedBroadcastAudienceLabel} with a clear next action.`,
                           draft: host === 'channel_thread' ? channelMessageDraft : broadcastDraft,
                         }
                       )
@@ -13576,10 +14480,20 @@ export default function KPIDashboardScreen({
                     broadcastSubmitting={broadcastSubmitting}
                     broadcastError={broadcastError}
                     broadcastSuccessNote={broadcastSuccessNote}
+                    broadcastAudienceLabel={resolvedBroadcastAudienceLabel}
                     onSendBroadcast={() => {
-                      const targetId =
-                        sortedBroadcastCandidateRows[0]?.id ?? selectedChannelResolvedId;
-                      if (targetId) void sendChannelBroadcast(String(targetId));
+                      const targetId = scopedBroadcastCandidate?.id ?? null;
+                      if (!targetId) {
+                        setBroadcastError(
+                          effectiveBroadcastTargetScope === 'team'
+                            ? 'No team broadcast channel is available. Contact admin to restore team messaging.'
+                            : effectiveBroadcastTargetScope === 'cohort'
+                              ? 'No cohort broadcast channel is available for this scope.'
+                              : 'No broadcast destination is available for this scope.'
+                        );
+                        return;
+                      }
+                      void sendChannelBroadcast(String(targetId));
                     }}
                     gateBlocksActions={shellPackageGateBlocksActions}
                     fmtTime={fmtMonthDayTime}
@@ -16069,6 +16983,294 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
+  challengeWizardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  challengeWizardStepPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d8e4fb',
+    backgroundColor: '#eef4ff',
+    color: '#2b62de',
+    fontSize: 10,
+    fontWeight: '800',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  challengeWizardSub: {
+    color: '#6f7f95',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  challengeWizardSection: {
+    gap: 8,
+  },
+  challengeWizardSectionTitle: {
+    color: '#283346',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  challengeWizardHint: {
+    color: '#74849b',
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  challengeWizardTypeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  challengeWizardTypeChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d9e4f5',
+    backgroundColor: '#f7f9fd',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  challengeWizardTypeChipActive: {
+    borderColor: '#265fe0',
+    backgroundColor: '#eaf1ff',
+  },
+  challengeWizardTypeChipText: {
+    color: '#66788f',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  challengeWizardTypeChipTextActive: {
+    color: '#1f57d8',
+  },
+  challengeWizardTemplateStack: {
+    maxHeight: 180,
+    gap: 8,
+  },
+  challengeWizardTemplateCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e4eaf4',
+    backgroundColor: '#f9fbff',
+    padding: 10,
+    gap: 3,
+  },
+  challengeWizardTemplateCardActive: {
+    borderColor: '#c7d8fb',
+    backgroundColor: '#eef4ff',
+  },
+  challengeWizardTemplateTitle: {
+    color: '#2b3548',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  challengeWizardTemplateSub: {
+    color: '#6f8098',
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  challengeWizardTemplateHint: {
+    color: '#5a6f90',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  challengeWizardInput: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dbe5f3',
+    backgroundColor: '#f8fbff',
+    color: '#233146',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 12,
+  },
+  challengeWizardInputMultiline: {
+    minHeight: 68,
+    textAlignVertical: 'top',
+  },
+  challengeWizardDateRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  challengeWizardDateInput: {
+    flex: 1,
+  },
+  challengeWizardGoalScroll: {
+    maxHeight: 210,
+  },
+  challengeWizardGoalStack: {
+    gap: 8,
+    paddingBottom: 6,
+  },
+  challengeWizardGoalRow: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e3eaf5',
+    backgroundColor: '#fbfdff',
+    padding: 8,
+    gap: 7,
+  },
+  challengeWizardGoalCopy: {
+    gap: 2,
+  },
+  challengeWizardGoalLabel: {
+    color: '#2a3447',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  challengeWizardGoalSub: {
+    color: '#7b8798',
+    fontSize: 10,
+  },
+  challengeWizardGoalControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  challengeWizardGoalScopeChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#dde6f4',
+    backgroundColor: '#f7f9fd',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  challengeWizardGoalScopeChipActive: {
+    borderColor: '#2c63de',
+    backgroundColor: '#eaf1ff',
+  },
+  challengeWizardGoalScopeChipText: {
+    color: '#6d7e95',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  challengeWizardGoalScopeChipTextActive: {
+    color: '#1f57d8',
+  },
+  challengeWizardGoalTargetInput: {
+    width: 74,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dce6f4',
+    backgroundColor: '#fff',
+    color: '#25334a',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  challengeWizardAudienceCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dae7f4',
+    backgroundColor: '#f6fbff',
+    padding: 10,
+    gap: 4,
+  },
+  challengeWizardAudienceTitle: {
+    color: '#2d3750',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  challengeWizardAudienceSub: {
+    color: '#6f8098',
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  challengeWizardAudienceList: {
+    gap: 8,
+    maxHeight: 160,
+  },
+  challengeWizardAudienceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: '#e3eaf5',
+    backgroundColor: '#fbfdff',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  challengeWizardAudienceRowActive: {
+    borderColor: '#bfd4fa',
+    backgroundColor: '#edf4ff',
+  },
+  challengeWizardAudienceRowName: {
+    color: '#2d3850',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  challengeWizardAudienceRowState: {
+    color: '#2b5fda',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  challengeWizardReviewCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dce6f4',
+    backgroundColor: '#f8fbff',
+    padding: 10,
+    gap: 5,
+  },
+  challengeWizardReviewTitle: {
+    color: '#2a3448',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  challengeWizardReviewSub: {
+    color: '#5f738f',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  challengeWizardReviewMeta: {
+    color: '#70829a',
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  challengeWizardInfoText: {
+    color: '#8b5f14',
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  challengeWizardErrorText: {
+    color: '#c13d3d',
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '700',
+  },
+  challengeWizardFooterRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  challengeWizardFooterSecondaryBtn: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d9e2f0',
+    backgroundColor: '#f7f9fd',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+  },
+  challengeWizardFooterSecondaryBtnText: {
+    color: '#5d6f88',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  challengeWizardFooterPrimaryBtn: {
+    flex: 1.4,
+    borderRadius: 10,
+    backgroundColor: '#2a62de',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+  },
+  challengeWizardFooterPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   challengeListBucket: {
     gap: 8,
   },
@@ -16087,6 +17289,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fbfdff',
     padding: 10,
     gap: 8,
+  },
+  challengeListItemCardSponsored: {
+    backgroundColor: '#f6fbff',
+    borderColor: '#cfe2ff',
+    paddingVertical: 12,
   },
   challengeListItemCardSelected: {
     borderColor: '#c8dafd',
@@ -16148,6 +17355,28 @@ const styles = StyleSheet.create({
   },
   challengeListItemMetaText: {
     color: '#7c8798',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  challengeSponsoredMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  challengeSponsoredMetaLabel: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#c8d9ff',
+    backgroundColor: '#ecf3ff',
+    color: '#2f62de',
+    fontSize: 9,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    overflow: 'hidden',
+  },
+  challengeSponsoredMetaSub: {
+    color: '#6680a4',
     fontSize: 10,
     fontWeight: '600',
   },

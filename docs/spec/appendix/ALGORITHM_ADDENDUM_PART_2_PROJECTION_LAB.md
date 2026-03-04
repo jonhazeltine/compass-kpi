@@ -1,224 +1,179 @@
 # Algorithm Addendum Part 2 — Projection Lab (Admin Simulation + Regression)
 
-> Repo integration note (2026-02-25): This appendix preserves uploaded proposal language as the canonical addendum artifact for spec planning.
-> Current canon may be superseded only where explicit addendum integration notes are added to `Master Spec.md`, `03_engines.md`, and `ALGORITHM_SPEC_LOCK.md`.
-
-## Canonical Integration Status (2026-02-25)
+## Canonical Integration Status (2026-03-04)
 - Status: `planned / spec-integrated, implementation deferred`
-- Primary roadmap placement target: `A3` build, `A4` hardening/regression
-- Backend hooks may be staged earlier as a separate scoped backend-prep track
+- Sprint alignment: `A3` build target, `A4` hardening/regression (already mapped in `CURRENT_SPRINT.md`)
+- Scope type for this document: implementation-ready roadmap (no runtime code change by this doc alone)
 
+## 0) Context + Goal
+Projection Lab is an admin-only harness around the real projection engine. It exists to test projection behavior with synthetic inputs, compare algorithm versions, and detect regressions without corrupting production user data.
 
-## 0) Purpose
-Create an internal **Projection Lab** in the admin panel that can:
-1) generate synthetic users + timelines,
-2) run the real KPI→PC algorithm against them,
-3) show outputs over time,
-4) compare versions, and
-5) fail fast when changes reintroduce known issues (6-month cliff, onboarding skew, KPI selection bias, etc.).
+Projection Lab is not a separate calculator and must not fork algorithm math from production.
 
-This is a testing harness for **algorithm integrity**. It should mock **inputs only** (synthetic events), never the algorithm.
+## 1) Explicit Problems To Solve
+- `P1` No safe place to test algorithm changes: need synthetic scenarios isolated from production user activity.
+- `P2` No repeatability: need deterministic seeded scenarios that reproduce exactly.
+- `P3` No regression detection: need golden scenarios + thresholded pass/fail.
+- `P4` No explainability: need per-event timeline and contribution breakdown.
+- `P5` No calibration sandbox: need synthetic actuals + error metrics to evaluate calibration behavior.
 
----
+## 2) Baseline Algorithm Contract (Do Not Redefine)
+Projection Lab must use current canonical algorithm behavior from repo docs/engine modules.
 
-## 1) Admin Panel modules
+### 2.1 Initial PC value per PC log event
+`Initial_PC_Generated = User_Average_Price_Point * User_Commission_Rate * PC_Weight_Percent`
 
-### A) Scenario Library (CRUD)
-A library of reusable scenario definitions.
+### 2.2 Timeline behavior from TTC
+- Range `X-Y days`: delay = `X`, hold = `Y - X`
+- Single `Z days`: delay = `0`, hold = `Z`
 
-**Scenario fields (practical):**
-- name, description, tags (e.g., `6_month_cliff`, `undercounting`, `anchors`)
-- profile: avg price, commission rate, optional seasonality toggle
-- timeline: list of dated events
-  - KPI log events (kpi_id, count)
-  - pipeline anchor events (Listings Pending, Buyers Under Contract, Closed)
-  - silence windows (no activity)
-  - optional: actual closings events (for scoring)
-- expected_assertions (“shape rules”)
-  - bounds (PC never negative)
-  - monotonic segments (steady activity → PC shouldn’t drop)
-  - slope caps (PC delta per day shouldn’t exceed X without anchors)
-  - horizon sanity (PC_365 shouldn’t start near 0 under steady 60–90d TTC)
+For each event:
+- `payoff_start = log_date + delay`
+- `decay_start = log_date + delay + hold`
 
-**UI requirement:** Provide both:
-- guided form builder (to create/edit quickly)
-- JSON editor (authoritative; saves future engineering time)
+### 2.3 Decay behavior (linear)
+Within decay window:
+`Current_Decayed_PC_Value = max(0, Initial_PC_Generated * (1 - Days_Into_Decay / Total_Decay_Duration_Days))`
 
----
+Phase rules:
+- before payoff start -> contributes `0`
+- hold window -> contributes full `Initial_PC_Generated`
+- after full decay -> contributes `0`
 
-### B) Synthetic Data Generator (wizard)
-A wizard to generate scenarios without hand-writing timelines.
+### 2.4 Confidence model support
+Lab must support confidence display and component drill-down using existing/planned confidence structure.
 
-**Inputs:**
-- KPI mix (e.g., calls 5/day, social posts 3/week, appointments 2/week)
-- TTC distribution bands (60–90, 30–60, etc.)
-- logging compliance (100%, 50%, 20%) to test undercounting sensitivity
-- inactivity pattern (none, weekend-only, 2-week gaps)
-- anchors frequency (e.g., 1 buyer UC/month)
-- randomness seed (repeatable runs)
+### 2.5 Onboarding back-plot mechanism
+Lab must support onboarding/back-plot style scenario generation and replay through the same timeline/decay path.
 
-**Outputs:**
-- generates N synthetic “users”
-- generates daily event streams for 90/180/365 days
-- stores them as a scenario set (or multiple scenarios)
+## 3) Sprint + Scope Guardrails
+- In-scope planning target: `A3/A4` admin track.
+- No change to non-negotiables.
+- No production KPI log writes by default.
+- No endpoint-family sprawl outside approved admin/projection-lab surface.
+- Structural changes (new route family/tables) must be logged in `architecture/DECISIONS_LOG.md` in the same implementation change set.
 
----
+## 4) Schema Mapping Requirement (Environment-Tuned)
+Projection Lab implementation must not assume names blindly; map conceptual entities to current schema explicitly.
 
-### C) Runner (Simulation Engine)
-Runs the **production algorithm** against synthetic events.
+Create a mapping artifact:
+- `docs/spec/appendix/PROJECTION_LAB_SCHEMA_MAPPING.md` (or backend constant module)
 
-**Behavior:**
-- creates an isolated simulation run record
-- runs the algorithm exactly as production would, but reading inputs from scenario events
-- captures daily snapshots of outputs
+Conceptual -> expected current candidates (verify on implementation):
+- `Users/settings` -> `public.users`
+- `KPI definitions` -> `public.kpis`
+- `KPI logs` -> `public.kpi_logs`
+- `Pipeline anchors` -> `public.pipeline_anchor_status`
+- `Calibration tracking` -> `public.user_kpi_calibration`, `public.user_kpi_calibration_events`
 
-**Do not mock the algorithm. Mock only inputs.**
+If actual names/columns differ, implementation must update the mapping artifact first.
 
-**Outputs captured per day (minimum):**
-- pc_total, pc_30, pc_90, pc_365
-- confidence + modifiers
-- component breakdowns (per KPI type contribution, anchor contribution, confidence reduction)
-- optional debug traces (admin-only)
+## 5) Architecture (Admin Module)
+Projection Lab module split:
+- `A) Scenario Builder`
+- `B) Scenario Runner`
+- `C) Results Explorer`
+- `D) Golden Tests + Regression`
+- `E) Calibration Sandbox`
+- `F) Audit + Safety`
 
----
+### 5.A Scenario Builder
+Scenario JSON includes:
+- synthetic user profile
+- KPI subset with TTC + weights
+- synthetic log stream over date range
+- optional synthetic actual closings
+- seed/version tags
 
-### D) Diff & Regression
-Compare runs to detect regressions and material changes.
+Required storage fields:
+- `scenario_id`, `seed`, `created_by_admin`, `created_at`, version tags
 
-**Run A vs Run B:**
-- run the same scenarios
-- compare time series
-- highlight material changes
-- show pass/fail on assertions
+### 5.B Runner
+Runs real engine with injected data.
 
-**Material change thresholds (examples):**
-- PC_90 change > 10%
-- confidence curve differs by > 0.10
-- PC_365 at day 1 falls below defined floor
+Mode choice:
+- `Mode 1 (v1 required)`: in-memory injection (recommended)
+- `Mode 2 (optional later)`: dedicated `lab_*` tables via DAL switch
 
----
+Runner output bundle minimum:
+- PC time series
+- per-event contribution breakdown
+- event phase diagnostics (delay/hold/decay)
+- confidence + components (where available)
+- display-time modifiers separated from raw PC
 
-### E) Scorecard Dashboard (shipping gate)
-For each algorithm version/candidate build:
-- pass rate on scenario assertions
-- worst offenders (top failing scenarios)
-- summary metrics: stability, bias, volatility, undercount sensitivity
+### 5.C Results Explorer
+Admin UI views:
+- summary cards (`30/90/180` + selected-date PC)
+- graph: raw vs modifier-applied overlay
+- contribution drilldown by event
+- run diff (`A vs B`) with top change drivers
+- JSON/CSV export
 
-This becomes the **go/no-go** view for changes to projection logic.
+### 5.D Golden + Regression Harness
+- golden scenario flag
+- expected output snapshot per algorithm version
+- thresholded regression runner with pass/fail report
 
----
+### 5.E Calibration Sandbox
+- synthetic actual closings
+- error metrics (standardized formula)
+- lab-only metric writes unless explicitly promoted
 
-## 2) Safe integration: “provider layer” (swap inputs, keep logic)
-Use the same code path as production by abstracting inputs behind providers.
+### 5.F Audit + Safety
+Required:
+- admin-only gate
+- environment banner (`PROD`/`STAGING`)
+- hard default: production KPI-log writes disabled
+- run audit fields: admin, scenario, version, timestamp, seed, checksum
 
-**Providers (conceptual):**
-- KPI log provider (prod reads live data; sim reads scenario events)
-- pipeline anchor provider
-- user profile provider
-- actuals provider (optional)
+## 6) Route / Screen Map (Admin)
+Planned structure:
+- `/admin/projection-lab/scenarios`
+- `/admin/projection-lab/scenarios/new`
+- `/admin/projection-lab/scenarios/:id`
+- `/admin/projection-lab/runs/:id`
+- `/admin/projection-lab/compare`
+- `/admin/projection-lab/golden`
+- `/admin/projection-lab/settings`
 
-**Projection service stays unchanged:**
-- production: calculate(userId, asOfDate)
-- simulation: calculateFromProviders(providers, asOfDate)
+Implementation note:
+- Existing admin shell is route/state-driven; add route keys to `app/lib/adminAuthz.ts` when implementation starts.
 
-Internally, both call the same calculation functions.
+## 7) Sequenced Implementation Plan
+1. Extract/lock callable engine boundary used by runtime and lab.
+2. Define scenario JSON schema + seeded generator.
+3. Implement in-memory runner and run bundle persistence.
+4. Build minimal admin UI (scenario list/create/run, run detail, compare).
+5. Implement golden harness and threshold config.
+6. Add calibration sandbox metrics.
+7. Add CI/manual regression command + report artifact.
 
----
+## 8) Done Criteria
+- `D1` Shared callable engine boundary used by runtime and lab.
+- `D2` Deterministic scenario generation by seed.
+- `D3` Run detail has series + event-level timeline breakdown.
+- `D4` Compare-runs identifies deltas + top drivers.
+- `D5` Golden harness produces pass/fail report with thresholds.
+- `D6` Safety controls enforced (no prod writes by default, admin-only, audited runs).
 
-## 3) Data model (minimum viable)
-Implement alongside existing admin schema without touching user tables.
+## 9) Acceptance Harness Alignment
+Projection Lab remains mapped to acceptance scenario `#28` and A3/A4 harness rows in:
+- `docs/spec/05_acceptance_tests.md`
 
-Minimum entities needed:
-- scenarios
-- scenario_events (date, type, payload)
-- runs (scenario or scenario_set, algorithm_version, seed, timestamps)
-- run_snapshots (date, horizons, confidence, breakdown)
-- assertions (per scenario)
-- assertion_results (per run)
+When implementation starts, expand scenario `#28` with concrete route-level checks and regression thresholds.
 
-Note: use existing naming conventions and persistence patterns; the above are conceptual.
+## 10) Claude Assignment Hand-Off (Ready Block)
+When launching Claude for implementation, include these constraints:
+- implement against this roadmap and current engine contracts
+- mode 1 (in-memory runner) first
+- no production KPI-log writes by default
+- keep display modifiers separate from raw PC values
+- update `DECISIONS_LOG.md` with any structural changes
+- provide deterministic validation artifacts (scenario seed + run checksum + diff report)
 
----
-
-## 4) Admin UI flows
-
-### Flow 1 — Create/edit scenario
-Admin → Projection Lab → Scenario Library → New
-- pick template (steady activity, undercounting, anchor-driven, dormancy, etc.)
-- adjust parameters
-- save
-
-### Flow 2 — Run simulation
-Scenario → Run
-- choose algorithm version (current vs candidate)
-- set duration (180/365)
-- run
-
-### Flow 3 — Inspect run
-Charts:
-- PC over time (total + horizons)
-- confidence over time
-- contribution breakdown (stacked KPI types + anchors)
-- markers where assertions fail
-
-### Flow 4 — Compare
-Select two runs → Diff
-- percent deltas by horizon
-- volatility comparison
-- regression list (e.g., “6-month cliff resurfaced”)
-
----
-
-## 5) Operationalization (so it gets used)
-Every change that touches projection logic should:
-- run the “golden scenario set”
-- store snapshots
-- mark pass/fail
-- show candidate vs current with a simple verdict
-
-If CI is not wired yet, provide a manual alternative:
-- one button: Run regression suite
-- runs 20–50 scenarios
-- returns pass/fail scorecard
-
----
-
-## 6) Convert known issues into first-class scenarios
-
-### A) 6-month cliff scenario set
-**Setup:**
-- TTC 60–90 dominant
-- consistent logging
-- duration 365
-
-**Assertions:**
-- PC_365 day 1 must exceed floor
-- PC_365 should not be materially lower than PC_90 multiplied by a reasonable band
-- decay should not dominate until inactivity occurs
-
-### B) Undercounting sensitivity set
-**Setup:**
-- same “true activity,” different “logged activity %”
-
-**Assertions:**
-- per-KPI implied value stays within bounds
-- PC doesn’t inflate superlinearly when logs are sparse
-- anchors stabilize variance
-
----
-
-## 7) Minimal build path (ship this)
-
-### Phase 1 (fast)
-- scenario library (JSON-first)
-- runner generates daily snapshots
-- 5 scenarios + 8 assertions
-- single-run chart view
-
-### Phase 2
-- generator wizard
-- diff tool
-- regression suite button
-
-### Phase 3
-- CI integration + version gating
+## 11) Out-of-Scope For Initial Build
+- replacing core projection math
+- broad team-level simulation parity
+- production write mode enablement
+- non-admin user-facing Projection Lab surfaces

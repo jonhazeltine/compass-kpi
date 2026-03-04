@@ -40,18 +40,24 @@ export default function LoginScreen({ mode = 'login', onBack, onForgotPassword }
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const { signIn, resetPassword } = useAuth();
 
   const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Email and password required');
+      const msg = 'Email and password required';
+      setFormError(msg);
+      Alert.alert('Error', msg);
       return;
     }
+    setFormError(null);
     setLoading(true);
     try {
       await signIn(email.trim(), password);
+      setFormError(null);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Sign in failed';
+      setFormError(msg);
       Alert.alert('Error', msg);
     } finally {
       setLoading(false);
@@ -60,15 +66,20 @@ export default function LoginScreen({ mode = 'login', onBack, onForgotPassword }
 
   const handleReset = async () => {
     if (!email.trim()) {
-      Alert.alert('Error', 'Email required');
+      const msg = 'Email required';
+      setFormError(msg);
+      Alert.alert('Error', msg);
       return;
     }
+    setFormError(null);
     setLoading(true);
     try {
       await resetPassword(email.trim());
+      setFormError(null);
       Alert.alert('Check your email', 'Password reset instructions sent.');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Reset failed';
+      setFormError(msg);
       Alert.alert('Error', msg);
     } finally {
       setLoading(false);
@@ -154,6 +165,7 @@ export default function LoginScreen({ mode = 'login', onBack, onForgotPassword }
             </ScaledText>
           )}
         </TouchableOpacity>
+        {formError ? <ScaledText style={styles.errorText}>{formError}</ScaledText> : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -251,5 +263,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: type.button,
     fontWeight: '600',
+  },
+  errorText: {
+    marginTop: 10,
+    color: '#b91c1c',
+    fontSize: type.bodySm,
+    lineHeight: lineHeights.bodySm,
+    textAlign: 'center',
   },
 });
