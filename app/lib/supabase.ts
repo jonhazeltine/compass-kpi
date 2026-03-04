@@ -15,18 +15,49 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const secureStoreKeyPrefix = 'compass_kpi_auth_v1_';
 const sanitizeSecureStoreKeyPart = (value: string): string => {
-  const sanitized = value.replace(/[^a-zA-Z0-9._-]/g, '_');
-  return sanitized.length > 0 ? sanitized : 'default';
+  const normalized = String(value ?? '').trim();
+  const sanitized = normalized.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const bounded = sanitized.slice(0, 96);
+  return bounded.length > 0 ? bounded : 'default';
 };
 const secureStoreKeyFor = (key: string): string => `${secureStoreKeyPrefix}${sanitizeSecureStoreKeyPart(key)}`;
 
 const secureStoreAdapter = {
-  getItem: async (key: string): Promise<string | null> => SecureStore.getItemAsync(secureStoreKeyFor(key)),
+  getItem: async (key: string): Promise<string | null> => {
+    const safeKey = secureStoreKeyFor(key);
+    try {
+      return await SecureStore.getItemAsync(safeKey);
+    } catch (error) {
+      throw new Error(
+        `SecureStore getItem failed (raw="${String(key)}" safe="${safeKey}"): ${
+          error instanceof Error ? error.message : 'unknown'
+        }`
+      );
+    }
+  },
   setItem: async (key: string, value: string): Promise<void> => {
-    await SecureStore.setItemAsync(secureStoreKeyFor(key), value);
+    const safeKey = secureStoreKeyFor(key);
+    try {
+      await SecureStore.setItemAsync(safeKey, value);
+    } catch (error) {
+      throw new Error(
+        `SecureStore setItem failed (raw="${String(key)}" safe="${safeKey}"): ${
+          error instanceof Error ? error.message : 'unknown'
+        }`
+      );
+    }
   },
   removeItem: async (key: string): Promise<void> => {
-    await SecureStore.deleteItemAsync(secureStoreKeyFor(key));
+    const safeKey = secureStoreKeyFor(key);
+    try {
+      await SecureStore.deleteItemAsync(safeKey);
+    } catch (error) {
+      throw new Error(
+        `SecureStore removeItem failed (raw="${String(key)}" safe="${safeKey}"): ${
+          error instanceof Error ? error.message : 'unknown'
+        }`
+      );
+    }
   },
 };
 
