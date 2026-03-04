@@ -6073,6 +6073,19 @@ export default function KPIDashboardScreen({
     [challengeListItems, challengeMemberListTab]
   );
   const challengeListItemsForPersona = teamPersonaVariant === 'member' ? challengeMemberListItems : challengeFilteredListItems;
+  const currentUserTeamRoleFromRoster = useMemo<'leader' | 'member' | null>(() => {
+    const sessionUserId = String(session?.user?.id ?? '').trim();
+    if (!sessionUserId) return null;
+    const rosterRow = teamRosterMembers.find(
+      (row) => String(row.user_id ?? '').trim() === sessionUserId
+    );
+    const rawRole = String(rosterRow?.role ?? '').trim().toLowerCase();
+    if (!rawRole) return null;
+    if (rawRole.includes('lead') || rawRole.includes('manager')) return 'leader';
+    if (rawRole.includes('member')) return 'member';
+    return null;
+  }, [session?.user?.id, teamRosterMembers]);
+  const effectiveTeamPersonaVariant = currentUserTeamRoleFromRoster ?? teamPersonaVariant;
   const challengeStateRows = useMemo(
     () => ({
       active: challengeListItemsForPersona.filter((item) => item.bucket === 'active'),
@@ -8760,7 +8773,7 @@ export default function KPIDashboardScreen({
       const payload = (await response.json().catch(() => ({}))) as TeamMembershipMutationResponse;
       if (!response.ok) {
         const fallback = `Leave team failed (${response.status})`;
-        const message = mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback));
+        const message = getApiErrorMessage(payload, fallback);
         setTeamMembershipMutationNotice(message);
         Alert.alert('Unable to leave team', message);
         return;
@@ -8814,7 +8827,7 @@ export default function KPIDashboardScreen({
         const payload = (await response.json().catch(() => ({}))) as TeamMembershipMutationResponse;
         if (!response.ok) {
           const fallback = `Remove member failed (${response.status})`;
-          const message = mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback));
+          const message = getApiErrorMessage(payload, fallback);
           setTeamMembershipMutationNotice(message);
           Alert.alert('Unable to remove member', message);
           return;
@@ -11201,9 +11214,9 @@ export default function KPIDashboardScreen({
                 setTeamIdentityEditOpen(false);
               };
 
-              const teamIdentityCard = (
+                const teamIdentityCard = (
                 <View style={[styles.teamIdentityCard, { backgroundColor: teamIdentityBackground }]}>
-                  {teamPersonaVariant === 'leader' ? (
+                  {effectiveTeamPersonaVariant === 'leader' ? (
                     <TouchableOpacity style={styles.teamIdentityEditIcon} onPress={openTeamIdentityEditor}>
                       <Text style={styles.teamIdentityEditIconText}>✎</Text>
                     </TouchableOpacity>
@@ -11222,7 +11235,11 @@ export default function KPIDashboardScreen({
                   <View style={styles.teamIdentityCardActions}>
                     <TouchableOpacity
                       style={styles.teamIdentityCardChatBtn}
-                      onPress={() => openTeamCommsHandoff(teamPersonaVariant === 'leader' ? 'team_leader_dashboard' : 'team_member_dashboard')}
+                      onPress={() =>
+                        openTeamCommsHandoff(
+                          effectiveTeamPersonaVariant === 'leader' ? 'team_leader_dashboard' : 'team_member_dashboard'
+                        )
+                      }
                     >
                       <Text style={styles.teamIdentityCardChatBtnText}>💬  Team Chat</Text>
                     </TouchableOpacity>
@@ -11236,7 +11253,7 @@ export default function KPIDashboardScreen({
                     >
                       <Text style={styles.teamIdentityCardDetailsBtnText}>{teamIdentityControlsOpen ? '▴' : '▾'}</Text>
                     </TouchableOpacity>
-                    {teamPersonaVariant === 'leader' ? (
+                    {effectiveTeamPersonaVariant === 'leader' ? (
                       <TouchableOpacity style={styles.teamIdentityCardInviteBtn} onPress={() => setTeamFlowScreen('invite_member')}>
                         <Text style={styles.teamIdentityCardInviteBtnText}>⊕</Text>
                       </TouchableOpacity>
@@ -11244,7 +11261,7 @@ export default function KPIDashboardScreen({
                   </View>
                   {teamIdentityControlsOpen ? (
                     <View style={styles.teamIdentityControlsPanel}>
-                      {teamPersonaVariant === 'leader' ? (
+                      {effectiveTeamPersonaVariant === 'leader' ? (
                         <>
                           <TouchableOpacity
                             style={styles.teamIdentityControlPrimaryBtn}
@@ -12260,7 +12277,9 @@ export default function KPIDashboardScreen({
                             >
                               <Text style={styles.teamProfileDrawerDmBtnText}>💬  Message</Text>
                             </TouchableOpacity>
-                            {teamPersonaVariant === 'leader' && selectedTeamProfile.userId && selectedTeamProfile.userId !== String(session?.user?.id ?? '') ? (
+                            {effectiveTeamPersonaVariant === 'leader' &&
+                            selectedTeamProfile.userId &&
+                            selectedTeamProfile.userId !== String(session?.user?.id ?? '') ? (
                               <TouchableOpacity
                                 style={[styles.teamProfileDrawerRemoveBtn, teamMembershipMutationBusy && styles.disabled]}
                                 disabled={teamMembershipMutationBusy}
