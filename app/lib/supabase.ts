@@ -33,6 +33,7 @@ const secureStoreAdapter = {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: secureStoreAdapter,
+    storageKey: 'compass_kpi_auth',
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: false,
