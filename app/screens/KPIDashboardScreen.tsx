@@ -25,6 +25,7 @@ import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
 import LottieSlot from '../components/LottieSlot';
 import { CommsHub } from '../components/comms';
 import type { ChannelRow as CommsChannelRow } from '../components/comms';
+import DeveloperToolsModal from '../components/dev/DeveloperToolsModal';
 import ReportsTabV2 from '../components/reports/ReportsTabV2';
 import PillGrowthBg from '../assets/figma/kpi_icon_bank/pill_growth_bg_v1.svg';
 import PillProjectionsBg from '../assets/figma/kpi_icon_bank/pill_projections_bg_v1.svg';
@@ -49,7 +50,7 @@ import {
   setFeedbackConfig,
   triggerHapticAsync,
 } from '../lib/feedback';
-import { API_URL } from '../lib/supabase';
+import { API_URL, DEV_TOOLS_ENABLED } from '../lib/supabase';
 import { colors, radii } from '../theme/tokens';
 
 type DashboardPayload = {
@@ -2474,6 +2475,7 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   const [logsReportsSubview, setLogsReportsSubview] = useState<LogsReportsSubview>('logs');
   const [activeTab, setActiveTab] = useState<BottomTab>('home');
+  const [devToolsVisible, setDevToolsVisible] = useState(false);
   const [challengeFlowScreen, setChallengeFlowScreen] = useState<'explore' | 'list' | 'details' | 'leaderboard'>('list');
   const [challengeListFilter, setChallengeListFilter] = useState<ChallengeListFilter>('all');
   const [challengeMemberListTab, setChallengeMemberListTab] = useState<ChallengeMemberListTab>('all');
@@ -14666,6 +14668,11 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
               style={[styles.bottomItem, isLog && styles.bottomItemLogCta]}
               activeOpacity={isLog ? 0.75 : 0.6}
               onPress={() => onBottomTabPress(tab)}
+              delayLongPress={3000}
+              onLongPress={() => {
+                if (!DEV_TOOLS_ENABLED || !isLog) return;
+                setDevToolsVisible(true);
+              }}
             >
               <Animated.View
                 style={[
@@ -14727,6 +14734,10 @@ export default function KPIDashboardScreen({ onOpenProfile }: Props) {
           setPaywallVisible(false);
           Alert.alert('Upgrade flow', 'Billing checkout wiring is active via /api/billing/checkout-session.');
         }}
+      />
+      <DeveloperToolsModal
+        visible={devToolsVisible}
+        onClose={() => setDevToolsVisible(false)}
       />
 
       <Modal visible={aiAssistVisible} transparent animationType="fade" onRequestClose={() => setAiAssistVisible(false)}>

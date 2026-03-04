@@ -1,0 +1,55 @@
+{
+  "cli": {
+    "version": ">= 14.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "ENABLE_DEV_TOOLS": "true",
+        "APP_VARIANT": "default"
+      }
+    },
+    "dev-solo": {
+      "extends": "development",
+      "env": {
+        "ENABLE_DEV_TOOLS": "true",
+        "APP_VARIANT": "solo",
+        "DEFAULT_PERSONA_KEY": "solo"
+      }
+    },
+    "dev-member": {
+      "extends": "development",
+      "env": {
+        "ENABLE_DEV_TOOLS": "true",
+        "APP_VARIANT": "member",
+        "DEFAULT_PERSONA_KEY": "member"
+      }
+    },
+    "dev-leader": {
+      "extends": "development",
+      "env": {
+        "ENABLE_DEV_TOOLS": "true",
+        "APP_VARIANT": "leader",
+        "DEFAULT_PERSONA_KEY": "leader"
+      }
+    },
+    "dev-coach": {
+      "extends": "development",
+      "env": {
+        "ENABLE_DEV_TOOLS": "true",
+        "APP_VARIANT": "coach",
+        "DEFAULT_PERSONA_KEY": "coach"
+      }
+    },
+    "dev-sponsor": {
+      "extends": "development",
+      "env": {
+        "ENABLE_DEV_TOOLS": "true",
+        "APP_VARIANT": "sponsor",
+        "DEFAULT_PERSONA_KEY": "sponsor"
+      }
+    }
+  }
+}

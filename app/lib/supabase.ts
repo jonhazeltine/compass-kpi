@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
 const extra = Constants.expoConfig?.extra ?? {};
 const supabaseUrl = extra.supabaseUrl ?? process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -12,7 +13,26 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const secureStoreKeyPrefix = 'compass_kpi_auth_v1:';
+
+const secureStoreAdapter = {
+  getItem: async (key: string): Promise<string | null> => SecureStore.getItemAsync(`${secureStoreKeyPrefix}${key}`),
+  setItem: async (key: string, value: string): Promise<void> => {
+    await SecureStore.setItemAsync(`${secureStoreKeyPrefix}${key}`, value);
+  },
+  removeItem: async (key: string): Promise<void> => {
+    await SecureStore.deleteItemAsync(`${secureStoreKeyPrefix}${key}`);
+  },
+};
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: secureStoreAdapter,
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,
+  },
+});
 
 const getExpoHostIp = (): string | null => {
   const expoConfigHost = (Constants.expoConfig as { hostUri?: unknown } | null)?.hostUri;
@@ -47,3 +67,20 @@ const resolveApiUrl = (): string => {
 };
 
 export const API_URL = resolveApiUrl();
+
+const extraWithDev = extra as {
+  enableDevTools?: boolean | string;
+  defaultPersonaKey?: string;
+  appVariant?: string;
+  personaCredentials?: Record<string, { email: string; password: string }>;
+};
+
+export const DEV_TOOLS_ENABLED =
+  __DEV__ || extraWithDev.enableDevTools === true || String(extraWithDev.enableDevTools ?? '').toLowerCase() === 'true';
+
+export const DEFAULT_PERSONA_KEY = String(extraWithDev.defaultPersonaKey ?? '').trim().toLowerCase();
+
+export const APP_VARIANT = String(extraWithDev.appVariant ?? 'default').trim().toLowerCase();
+
+export const PERSONA_CREDENTIALS: Record<string, { email: string; password: string }> =
+  extraWithDev.personaCredentials ?? {};

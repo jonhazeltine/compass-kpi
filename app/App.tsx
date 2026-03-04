@@ -27,7 +27,7 @@ function isCoachPortalPath(pathname: string | null): boolean {
 }
 
 function AppContent() {
-  const { session, loading } = useAuth();
+  const { session, loading, runtimeResetVersion } = useAuth();
   const forceAuthFlow = process.env.EXPO_PUBLIC_FORCE_AUTH_FLOW === 'true';
   const appSurface = (process.env.EXPO_PUBLIC_APP_SURFACE ?? 'member').toLowerCase();
   const renderAdminShell = Platform.OS === 'web' && appSurface === 'admin';
@@ -84,7 +84,7 @@ function AppContent() {
             <AdminShellScreen />
           )
         ) : (
-          <HomeScreen />
+          <HomeScreen key={`home-runtime-${runtimeResetVersion}`} />
         )
       ) : (
         <AuthFlowScreen />
