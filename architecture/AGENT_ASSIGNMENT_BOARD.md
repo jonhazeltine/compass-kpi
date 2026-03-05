@@ -49,6 +49,18 @@ Only use long custom prompts when the board is missing required details or a one
 - Active QA assignments may validate these flows but must not modify code.
 - If a regression is found, create a new targeted bugfix assignment ID; do not reopen legacy broad-swatch assignments.
 
+## Refactor Lane Lock (2026-03-05)
+- Lane source of truth: `/Users/jon/compass-kpi/ops/refactor_guardrails.json`
+- Mandatory guardrail command before merge/push on refactor-touched swaths:
+  - `node /Users/jon/compass-kpi/ops/scripts/refactor_guardrails_check.js`
+- Lane ownership (collision-safe):
+  - `OWNER-MOBILE-DASHBOARD-MODULES`: `app/screens/KPIDashboardScreen.tsx`, `app/screens/kpi-dashboard/**`
+  - `OWNER-ADMIN-SHELL-MODULES`: `app/screens/AdminShellScreen.tsx`, `app/screens/admin-shell/**`
+  - `OWNER-BACKEND-CORE-SHELL`: `backend/src/index.ts`
+  - `OWNER-BACKEND-SERVICES`: `backend/src/services/**`
+  - `OWNER-GOVERNANCE-CONTROL`: `architecture/**`, `docs/spec/**`
+- If work requires edits across two or more lanes, assignment must be controller-launched as a temporary cross-lane swath with explicit start/end lock notes.
+
 ## Program Status (Current)
 - Program baseline: `M3 / M3b` active
 - Approved overlap slice: `M5` Team management parity (Figma-first)

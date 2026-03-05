@@ -45,6 +45,8 @@ At new-thread start, run this sequence:
 3. Identify `active`, `blocked`, and `review` assignments.
 4. Mark accepted review rows to `committed` or `committed+pushed`.
 5. Confirm current sprint/wave focus and publish next large assignment(s) with explicit ownership.
+6. Run refactor guardrails before launching new code assignments:
+   - `node /Users/jon/compass-kpi/ops/scripts/refactor_guardrails_check.js`
 
 ## Source-of-Truth Map (By Domain)
 - Governance + scope gate:
@@ -106,6 +108,7 @@ Rules:
 3. Worker must update board status first (`active` -> `review`/`blocked`) before final report.
 4. Controller converts accepted `review` rows to `committed` or `committed+pushed` after verification.
 5. If worker output is partial/unclear, controller reassigns with a tighter assignment block.
+6. All refactor-touched assignments must map to exactly one lane in `ops/refactor_guardrails.json`.
 
 ## Review Standard (Controller)
 For each worker return, review in this order:

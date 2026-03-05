@@ -1,0 +1,39 @@
+{
+  "legacy_files": [
+    { "path": "app/screens/KPIDashboardScreen.tsx", "baseline_lines": 26630, "warning_lines": 25000 },
+    { "path": "app/screens/AdminShellScreen.tsx", "baseline_lines": 7245, "warning_lines": 6500 },
+    { "path": "backend/src/index.ts", "baseline_lines": 13895, "warning_lines": 12000 }
+  ],
+  "module_rules": [
+    { "prefix": "app/screens/admin-shell/", "hard_max_lines": 2500, "warning_lines": 1200 },
+    { "prefix": "app/screens/kpi-dashboard/", "hard_max_lines": 1200, "warning_lines": 800 },
+    { "prefix": "backend/src/services/", "hard_max_lines": 1200, "warning_lines": 800 }
+  ],
+  "lane_manifest": [
+    {
+      "lane": "OWNER-MOBILE-DASHBOARD-MODULES",
+      "owner": "Mobile",
+      "paths": ["app/screens/KPIDashboardScreen.tsx", "app/screens/kpi-dashboard/"]
+    },
+    {
+      "lane": "OWNER-ADMIN-SHELL-MODULES",
+      "owner": "Admin",
+      "paths": ["app/screens/AdminShellScreen.tsx", "app/screens/admin-shell/"]
+    },
+    {
+      "lane": "OWNER-BACKEND-CORE-SHELL",
+      "owner": "Backend",
+      "paths": ["backend/src/index.ts"]
+    },
+    {
+      "lane": "OWNER-BACKEND-SERVICES",
+      "owner": "Backend",
+      "paths": ["backend/src/services/"]
+    },
+    {
+      "lane": "OWNER-GOVERNANCE-CONTROL",
+      "owner": "Controller",
+      "paths": ["architecture/", "docs/spec/"]
+    }
+  ]
+}

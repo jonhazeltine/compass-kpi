@@ -52,6 +52,7 @@ import {
 } from '../lib/feedback';
 import { API_URL, DEV_TOOLS_ENABLED } from '../lib/supabase';
 import { colors, radii } from '../theme/tokens';
+import { buildDefaultChallengeTemplatesFromKpis } from './kpi-dashboard/defaultChallengeTemplates';
 
 type DashboardPayload = {
   projection: {
@@ -1598,53 +1599,6 @@ function defaultChallengeFlowItems(): ChallengeFlowItem[] {
       leaderboardPreview: [],
     },
 ];
-}
-
-function defaultChallengeTemplatesFromKpis(kpis: DashboardPayload['loggable_kpis']): ChallengeTemplateRow[] {
-  const ordered = sortSelectableKpis(
-    (kpis ?? []).filter((kpi) => kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP')
-  );
-  const toDefault = (source: typeof ordered, fallbackScope: ChallengeGoalScope) =>
-    source.slice(0, 3).map((kpi, idx) => ({
-      kpi_id: String(kpi.id),
-      label: String(kpi.name),
-      goal_scope_default: fallbackScope,
-      suggested_target: null,
-      display_order: idx,
-    }));
-  const pc = ordered.filter((kpi) => kpi.type === 'PC');
-  const gp = ordered.filter((kpi) => kpi.type === 'GP');
-  const vp = ordered.filter((kpi) => kpi.type === 'VP');
-  return [
-    {
-      id: 'template-team-sprint',
-      title: 'Team Sprint Template',
-      description: 'Balanced team sprint combining projection, growth, and vitality KPIs.',
-      suggested_duration_days: 21,
-      duration_weeks: 3,
-      phase_count: 0,
-      default_challenge_name: null,
-      kpi_defaults: [
-        ...toDefault(pc, 'team').slice(0, 2),
-        ...toDefault(gp, 'individual').slice(0, 1),
-        ...toDefault(vp, 'individual').slice(0, 1),
-      ].map((row, idx) => ({ ...row, display_order: idx })),
-    },
-    {
-      id: 'template-mini-focus',
-      title: 'Mini Focus Template',
-      description: 'Small challenge format for 1-3 invitees with focused KPI outcomes.',
-      suggested_duration_days: 14,
-      duration_weeks: 2,
-      phase_count: 0,
-      default_challenge_name: null,
-      kpi_defaults: [
-        ...toDefault(pc, 'individual').slice(0, 1),
-        ...toDefault(gp, 'individual').slice(0, 1),
-        ...toDefault(vp, 'individual').slice(0, 1),
-      ].map((row, idx) => ({ ...row, display_order: idx })),
-    },
-  ];
 }
 
 function mapChallengesToFlowItems(rows: ChallengeApiRow[] | null | undefined): ChallengeFlowItem[] {
@@ -8918,7 +8872,7 @@ export default function KPIDashboardScreen({
   }, [teamRosterTeamId, teamRuntimeCandidateIds]);
 
   const challengeWizardFallbackTemplates = useMemo(
-    () => defaultChallengeTemplatesFromKpis(allSelectableKpis),
+    () => buildDefaultChallengeTemplatesFromKpis(allSelectableKpis),
     [allSelectableKpis]
   );
 

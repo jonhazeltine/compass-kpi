@@ -34,7 +34,8 @@
     "seed:challenge:cleanup": "node scripts/m6_team_challenge_seed_cleanup.js",
     "seed:coaching:realism:reset": "npm run build && node scripts/coaching_sample_content_seed.js --reset-only",
     "seed:coaching:realism": "npm run build && node scripts/coaching_sample_content_seed.js",
-    "seed:coaching:realism:smoke": "npm run seed:coaching:realism"
+    "seed:coaching:realism:smoke": "npm run seed:coaching:realism",
+    "guardrails:refactor": "node ../ops/scripts/refactor_guardrails_check.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",

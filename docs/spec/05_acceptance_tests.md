@@ -698,6 +698,29 @@
 - And leader self-remove through this route is rejected (`422`)
 - And leader-role target removal through this route is rejected (`403`)
 
+### E17) Refactor Decomposition Parity (No Behavior Drift)
+- Given admin Projection Lab route is opened (`/admin/projection-lab`)
+- When user executes scenario create/run/compare/golden actions
+- Then behavior and output shapes remain unchanged after module extraction (`AdminProjectionLabPanel` moved out of `AdminShellScreen`)
+- And no admin role-gate regressions occur for `platform_admin` and `super_admin` access paths
+- Given challenge-template admin create/update payloads include phased goals
+- When backend validates payloads through extracted validation service
+- Then accepted/rejected outcomes match pre-refactor rules (`max phases`, `goal scope`, `duration`, overlap checks)
+
+### E18) Refactor Guardrails Enforcement
+- Given a candidate change increases line count of locked monolith files:
+  - `app/screens/KPIDashboardScreen.tsx`
+  - `app/screens/AdminShellScreen.tsx`
+  - `backend/src/index.ts`
+- When guardrail command runs (`node ops/scripts/refactor_guardrails_check.js`)
+- Then check fails with deterministic `Legacy file grew beyond baseline` message
+- Given a new module file exceeds configured hard cap
+- When guardrail command runs
+- Then check fails with deterministic `Module exceeds hard max` message
+- Given changed files map to conflicting lane prefixes
+- When guardrail command runs
+- Then check fails with deterministic `Lane collision` message
+
 ## Regression Checklist
 
 - Auth routes still enforce bearer token requirements.

@@ -139,6 +139,18 @@ Parallel staffing assumption: Mobile-first priority; Admin stream starts once M3
 - Approved scope exception track (time-boxed): `M3b Dashboard Gamification + Interaction Polish`, tracked in `docs/spec/appendix/M3B_ANIMATION_AUDIO_CHECKLIST.md`.
 - M3 completion execution guidance (IA + logging surfaces, low-interruption gates) is documented in `docs/spec/appendix/M3_COMPLETION_PLAN_PRIORITY_CONTEXT_SURFACES.md` and should be used to sequence post-M3b dashboard/logging work without re-deciding KPI overlap behavior.
 
+## Refactor Stabilization Slice (Approved, 2026-03-05)
+- Scope: collision-risk reduction + modular seams, no product-contract changes.
+- Landed seams:
+  - `app/screens/admin-shell/AdminProjectionLabPanel.tsx` extracted from `AdminShellScreen.tsx`.
+  - `backend/src/services/adminChallengeTemplateValidation.ts` extracted from backend monolith.
+  - `app/screens/kpi-dashboard/defaultChallengeTemplates.ts` extracted from `KPIDashboardScreen.tsx`.
+- Hard guardrails (must pass before push/merge in refactor-touched swaths):
+  - `node ops/scripts/refactor_guardrails_check.js`
+  - `cd app && npm run guardrails:refactor`
+  - `cd backend && npm run guardrails:refactor`
+- Lane policy source of truth: `ops/refactor_guardrails.json` + `architecture/AGENT_ASSIGNMENT_BOARD.md` refactor-lane section.
+
 ## Planned Addendum Integration (Spec-Only, Implementation Deferred)
 - Addendum references:
   - `docs/spec/appendix/ALGORITHM_ADDENDUM_PART_1_PROJECTION_INTEGRITY_CALIBRATION.md`

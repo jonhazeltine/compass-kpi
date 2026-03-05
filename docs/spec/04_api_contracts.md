@@ -5,6 +5,11 @@
 - Keep request/response schemas explicit and versionable.
 - Preserve non-negotiables in payload design (PC vs Actual separation).
 
+## Refactor Boundary Note (2026-03-05)
+- Internal modularization landed for admin/projection/template flows (`AdminProjectionLabPanel`, backend template-validation service extraction).
+- This refactor pass does **not** introduce endpoint-family changes or response-shape changes beyond previously accepted DEC-0068 additive fields.
+- Existing clients should treat this as implementation-boundary hardening, not contract migration.
+
 ## Auth
 - Preferred pattern in current codebase: bearer token auth (Supabase JWT).
 - Protected endpoints require:
