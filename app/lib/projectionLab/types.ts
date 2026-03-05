@@ -5,6 +5,33 @@
  * Spec: docs/spec/appendix/ALGORITHM_ADDENDUM_PART_2_PROJECTION_LAB.md
  */
 
+// ── Agent Profiles ───────────────────────────────────
+
+export type AgentProfile = {
+  profile_id: string;
+  name: string;
+  description: string;
+  agent_name: string;
+  avg_price_point: number;
+  commission_rate: number;
+  kpi_names: string[];
+  include_actuals: boolean;
+  is_builtin: boolean;
+  created_at: string;
+};
+
+export type KpiVolumeSpec = {
+  kpi_name: string;
+  events_per_month: number;
+};
+
+export type ScenarioVolumeInput = {
+  profile_id: string;
+  volume_specs: KpiVolumeSpec[];
+  time_span_months: number;
+  include_actuals: boolean;
+};
+
 // ── Scenario Builder ──────────────────────────────────
 
 export type LabKpiDefinition = {
@@ -61,6 +88,14 @@ export type LabScenario = {
   actual_closings: LabActualClosing[];
   is_golden: boolean;
   tags: string[];
+  /** Profile this scenario was generated from */
+  source_profile_id?: string;
+  /** Volume input used to generate this scenario */
+  volume_input?: ScenarioVolumeInput;
+  /** User-editable override: number of closed deals per year for actuals line */
+  closed_deals_override?: number;
+  /** User-editable per-KPI annual volume overrides (kpi_id → events/year) */
+  kpi_annual_volume?: Record<string, number>;
 };
 
 // ── Runner Output ─────────────────────────────────────
@@ -209,7 +244,11 @@ export type LabView =
   | 'scenario_list'
   | 'scenario_create'
   | 'scenario_detail'
+  | 'scenario_edit'
   | 'run_detail'
   | 'compare'
   | 'golden'
-  | 'settings';
+  | 'settings'
+  | 'profile_list'
+  | 'profile_create'
+  | 'profile_edit';

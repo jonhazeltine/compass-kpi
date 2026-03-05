@@ -25,6 +25,8 @@ import {
   fetchAdminKpis,
   updateAdminChallengeTemplate,
   updateAdminKpi,
+  type AdminChallengeTemplatePhase,
+  type AdminChallengeTemplatePhaseKpiGoal,
   type AdminChallengeTemplateRow,
   type AdminChallengeTemplateWritePayload,
   type AdminKpiRow,
@@ -63,10 +65,19 @@ import {
   normalizeAdminRole,
 } from '../lib/adminAuthz';
 import {
-  generateScenario,
+  generateScenarioFromProfile,
+  generateScenarioFromVolume,
+  SCENARIO_PROFILES,
+  PC_KPI_TEMPLATES,
+  BUILTIN_AGENT_PROFILES,
   executeRun,
   compareRuns,
   computeCalibrationMetrics,
+  computePerKpiSeries,
+  buildActualBaselineSeries,
+  computeRollingAverage,
+  generateRealisticClosings,
+  rebuildLogStreamFromVolumes,
   registerGoldenScenario,
   getGoldenScenarios,
   runRegressionSuite,
@@ -76,12 +87,20 @@ import {
 import type {
   LabScenario,
   LabView,
+  LabLogEntry,
+  LabKpiDefinition,
   RunBundle,
   RegressionReport,
   RunComparison,
   CalibrationMetrics,
-  GoldenExpectedOutput,
+  ScenarioProfile,
+  KpiMonthlySeries,
+  MonthlySeriesPoint,
+  AgentProfile,
+  KpiVolumeSpec,
+  ScenarioVolumeInput,
 } from '../lib/projectionLab';
+import Svg, { Path, Line as SvgLine, Text as SvgText, Circle } from 'react-native-svg';
 import {
   ADMIN_NOT_FOUND_PATH,
   ADMIN_UNAUTHORIZED_PATH,
@@ -449,11 +468,30 @@ type KpiFormDraft = {
   vpValue: string;
 };
 
+type TemplateBuilderStep = 'basics' | 'phases' | 'kpi_goals' | 'review';
+
+type TemplatePhaseGoalDraft = {
+  kpi_id: string;
+  target_value: string;
+  goal_scope: 'individual' | 'team';
+};
+
+type TemplatePhaseDraft = {
+  phase_name: string;
+  phase_days: string;
+  kpi_goals: TemplatePhaseGoalDraft[];
+};
+
 type TemplateFormDraft = {
   id?: string;
   name: string;
   description: string;
+  defaultChallengeName: string;
+  durationDays: string;
+  phases: TemplatePhaseDraft[];
   isActive: boolean;
+  builderStep: TemplateBuilderStep;
+  showForm: boolean;
 };
 
 type UserFormDraft = {
@@ -597,15 +635,48 @@ function kpiDraftFromRow(row: AdminKpiRow): KpiFormDraft {
 }
 
 function emptyTemplateDraft(): TemplateFormDraft {
-  return { name: '', description: '', isActive: true };
+  return {
+    name: '',
+    description: '',
+    defaultChallengeName: '',
+    durationDays: '',
+    phases: [],
+    isActive: true,
+    builderStep: 'basics',
+    showForm: true,
+  };
 }
 
 function templateDraftFromRow(row: AdminChallengeTemplateRow): TemplateFormDraft {
+  const totalDays = row.suggested_duration_days ?? 30;
+  const rawPhases = (row.template_payload?.phases ?? [])
+    .slice()
+    .sort((a: AdminChallengeTemplatePhase, b: AdminChallengeTemplatePhase) => a.starts_at_week - b.starts_at_week);
+  const phases: TemplatePhaseDraft[] = rawPhases.map(
+    (p: AdminChallengeTemplatePhase, i: number) => {
+      const startDay = p.starts_at_week;
+      const nextStart = i < rawPhases.length - 1 ? rawPhases[i + 1].starts_at_week : totalDays + 1;
+      return {
+        phase_name: p.phase_name,
+        phase_days: String(nextStart - startDay),
+        kpi_goals: (p.kpi_goals ?? []).map((g: AdminChallengeTemplatePhaseKpiGoal) => ({
+          kpi_id: g.kpi_id,
+          target_value: String(g.target_value),
+          goal_scope: g.goal_scope,
+        })),
+      };
+    }
+  );
   return {
     id: row.id,
     name: row.name,
     description: row.description ?? '',
+    defaultChallengeName: row.default_challenge_name ?? '',
+    durationDays: row.suggested_duration_days != null ? String(row.suggested_duration_days) : '',
+    phases,
     isActive: row.is_active,
+    builderStep: 'basics',
+    showForm: true,
   };
 }
 
@@ -664,14 +735,70 @@ function buildKpiPayloadFromDraft(draft: KpiFormDraft): { payload?: AdminKpiWrit
 function buildTemplatePayloadFromDraft(
   draft: TemplateFormDraft
 ): { payload?: AdminChallengeTemplateWritePayload; error?: string } {
-  if (!draft.name.trim()) return { error: 'Name is required' };
-  return {
-    payload: {
-      name: draft.name.trim(),
-      description: draft.description,
-      is_active: draft.isActive,
-    },
+  if (!draft.name.trim()) return { error: 'Theme name is required' };
+  const durationDays = draft.durationDays.trim() ? parseInt(draft.durationDays.trim(), 10) : undefined;
+  if (durationDays !== undefined && (!Number.isFinite(durationDays) || durationDays < 1)) {
+    return { error: 'Duration must be at least 1 day' };
+  }
+
+  // Validate phases if present
+  const phases: AdminChallengeTemplatePhase[] = [];
+  if (draft.phases.length > 0) {
+    if (!durationDays || durationDays < 1) {
+      return { error: 'Duration (days) is required when phases are defined' };
+    }
+    let runningStart = 1;
+    for (let i = 0; i < draft.phases.length; i++) {
+      const p = draft.phases[i];
+      if (!p.phase_name.trim()) return { error: `Phase ${i + 1}: name is required` };
+      const phaseDays = parseInt(p.phase_days, 10);
+      if (!Number.isFinite(phaseDays) || phaseDays < 1) {
+        return { error: `Phase ${i + 1}: days must be >= 1` };
+      }
+      if (p.kpi_goals.length === 0) {
+        return { error: `Phase ${i + 1}: at least one KPI goal is required` };
+      }
+      const kpiGoals: AdminChallengeTemplatePhaseKpiGoal[] = [];
+      for (let j = 0; j < p.kpi_goals.length; j++) {
+        const g = p.kpi_goals[j];
+        if (!g.kpi_id) return { error: `Phase ${i + 1}, Goal ${j + 1}: KPI is required` };
+        const target = parseFloat(g.target_value);
+        if (!Number.isFinite(target) || target <= 0) {
+          return { error: `Phase ${i + 1}, Goal ${j + 1}: target must be a positive number` };
+        }
+        kpiGoals.push({ kpi_id: g.kpi_id, target_value: target, goal_scope: g.goal_scope });
+      }
+      phases.push({
+        phase_order: i + 1,
+        phase_name: p.phase_name.trim(),
+        starts_at_week: runningStart,
+        kpi_goals: kpiGoals,
+      });
+      runningStart += phaseDays;
+    }
+    const totalPhaseDays = draft.phases.reduce((s, p) => s + (parseInt(p.phase_days, 10) || 0), 0);
+    if (totalPhaseDays > durationDays) {
+      return { error: `Phase days (${totalPhaseDays}) exceed total duration (${durationDays})` };
+    }
+  }
+
+  const payload: AdminChallengeTemplateWritePayload = {
+    name: draft.name.trim(),
+    description: draft.description,
+    is_active: draft.isActive,
   };
+  if (draft.defaultChallengeName.trim()) {
+    payload.default_challenge_name = draft.defaultChallengeName.trim();
+  } else {
+    payload.default_challenge_name = null;
+  }
+  if (durationDays !== undefined) {
+    payload.suggested_duration_days = durationDays;
+  }
+  if (phases.length > 0) {
+    payload.phases = phases;
+  }
+  return { payload };
 }
 
 function AdminKpiCatalogPanel({
@@ -1191,6 +1318,7 @@ function AdminKpiCatalogPanel({
 
 function AdminChallengeTemplatesPanel({
   rows,
+  kpiRows,
   loading,
   error,
   searchQuery,
@@ -1209,6 +1337,7 @@ function AdminChallengeTemplatesPanel({
   successMessage,
 }: {
   rows: AdminChallengeTemplateRow[];
+  kpiRows: AdminKpiRow[];
   loading: boolean;
   error: string | null;
   searchQuery: string;
@@ -1270,6 +1399,13 @@ function AdminChallengeTemplatesPanel({
   const selectedRowHiddenByFilters = Boolean(selectedRowId && selectedRowInFilteredIndex === -1);
   const visibleRows = sortedFilteredRows.slice(0, visibleRowCount);
 
+  const activeKpis = useMemo(() => kpiRows.filter((k) => k.is_active), [kpiRows]);
+  const kpiNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const k of kpiRows) map[k.id] = k.name;
+    return map;
+  }, [kpiRows]);
+
   const onSortHeaderPress = (nextKey: TemplateSortKey) => {
     if (nextKey === sortKey) {
       setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
@@ -1295,6 +1431,112 @@ function AdminChallengeTemplatesPanel({
   useEffect(() => {
     setVisibleRowCount(24);
   }, [rows]);
+
+  // Builder step navigation
+  const builderSteps: TemplateBuilderStep[] = ['basics', 'phases', 'kpi_goals', 'review'];
+  const stepLabels: Record<TemplateBuilderStep, string> = { basics: 'Basics', phases: 'Phases', kpi_goals: 'KPI Goals', review: 'Review' };
+  const currentStepIndex = builderSteps.indexOf(draft.builderStep);
+  const goToStep = (step: TemplateBuilderStep) => onDraftChange({ builderStep: step });
+  const goNext = () => { if (currentStepIndex < builderSteps.length - 1) goToStep(builderSteps[currentStepIndex + 1]); };
+  const goBack = () => { if (currentStepIndex > 0) goToStep(builderSteps[currentStepIndex - 1]); };
+
+  // Phase helpers — phases tile contiguously across total duration
+  const totalDays = parseInt(draft.durationDays, 10) || 0;
+  const usedDays = draft.phases.reduce((sum, p) => sum + (parseInt(p.phase_days, 10) || 0), 0);
+  const remainingDays = totalDays - usedDays;
+
+  const addPhase = () => {
+    const next = [...draft.phases];
+    if (next.length > 0) {
+      // New phase becomes the last phase and gets whatever remains
+      const usedByExisting = next.reduce((s, p) => s + (parseInt(p.phase_days, 10) || 0), 0);
+      const remaining = Math.max(0, totalDays - usedByExisting);
+      next.push({ phase_name: `Phase ${next.length + 1}`, phase_days: String(remaining), kpi_goals: [] });
+    } else {
+      next.push({ phase_name: 'Phase 1', phase_days: totalDays > 0 ? String(totalDays) : '', kpi_goals: [] });
+    }
+    onDraftChange({ phases: next });
+  };
+  const removePhase = (index: number) => {
+    const next = [...draft.phases];
+    const removedDays = parseInt(next[index].phase_days, 10) || 0;
+    next.splice(index, 1);
+    // Give removed days to the last remaining phase
+    if (next.length > 0) {
+      const lastIdx = next.length - 1;
+      const lastDays = parseInt(next[lastIdx].phase_days, 10) || 0;
+      next[lastIdx] = { ...next[lastIdx], phase_days: String(lastDays + removedDays) };
+    }
+    onDraftChange({ phases: next });
+  };
+  const updatePhase = (index: number, patch: Partial<TemplatePhaseDraft>) => {
+    const next = [...draft.phases];
+    next[index] = { ...next[index], ...patch };
+    // Auto-calculate last phase when any earlier phase's days change
+    if ('phase_days' in patch && next.length > 1 && index < next.length - 1) {
+      const nonLastUsed = next.slice(0, -1).reduce((s, p) => s + (parseInt(p.phase_days, 10) || 0), 0);
+      const lastPhaseAuto = Math.max(0, totalDays - nonLastUsed);
+      next[next.length - 1] = { ...next[next.length - 1], phase_days: String(lastPhaseAuto) };
+    }
+    onDraftChange({ phases: next });
+  };
+  const addGoalToPhase = (phaseIndex: number) => {
+    const next = [...draft.phases];
+    next[phaseIndex] = { ...next[phaseIndex], kpi_goals: [...next[phaseIndex].kpi_goals, { kpi_id: '', target_value: '', goal_scope: 'individual' }] };
+    onDraftChange({ phases: next });
+  };
+  const removeGoalFromPhase = (phaseIndex: number, goalIndex: number) => {
+    const next = [...draft.phases];
+    next[phaseIndex] = { ...next[phaseIndex], kpi_goals: next[phaseIndex].kpi_goals.filter((_, i) => i !== goalIndex) };
+    onDraftChange({ phases: next });
+  };
+  const updateGoalInPhase = (phaseIndex: number, goalIndex: number, patch: Partial<TemplatePhaseGoalDraft>) => {
+    const next = [...draft.phases];
+    const nextGoals = [...next[phaseIndex].kpi_goals];
+    nextGoals[goalIndex] = { ...nextGoals[goalIndex], ...patch };
+    next[phaseIndex] = { ...next[phaseIndex], kpi_goals: nextGoals };
+    onDraftChange({ phases: next });
+  };
+
+  // Compute phase start days for display (cumulative from phase durations)
+  const phaseStartDays: number[] = [];
+  {
+    let running = 1;
+    for (const p of draft.phases) {
+      phaseStartDays.push(running);
+      running += parseInt(p.phase_days, 10) || 0;
+    }
+  }
+
+  // KPI type filter for step 3
+  type KpiSectionFilter = 'all' | 'PC' | 'GP' | 'VP' | 'other';
+  const [kpiSectionFilter, setKpiSectionFilter] = useState<KpiSectionFilter>('all');
+  const kpiSectionLabel: Record<KpiSectionFilter, string> = { all: 'All', PC: 'Projection', GP: 'Growth', VP: 'Vitality', other: 'Other' };
+  const filteredActiveKpis = useMemo(() => {
+    if (kpiSectionFilter === 'all') return activeKpis;
+    if (kpiSectionFilter === 'other') return activeKpis.filter((k) => !['PC', 'GP', 'VP'].includes(k.type));
+    return activeKpis.filter((k) => k.type === kpiSectionFilter);
+  }, [activeKpis, kpiSectionFilter]);
+
+  // Review validation
+  const reviewErrors: string[] = [];
+  if (!draft.name.trim()) reviewErrors.push('Theme name is required');
+  const dd = parseInt(draft.durationDays, 10);
+  if (!draft.durationDays.trim() || !Number.isFinite(dd) || dd < 1) reviewErrors.push('Duration must be at least 1 day');
+  if (draft.phases.length > 0 && remainingDays < 0) reviewErrors.push(`Phase days exceed total duration by ${Math.abs(remainingDays)}`);
+  for (let i = 0; i < draft.phases.length; i++) {
+    const p = draft.phases[i];
+    if (!p.phase_name.trim()) reviewErrors.push(`Phase ${i + 1}: name required`);
+    const pd = parseInt(p.phase_days, 10);
+    if (!Number.isFinite(pd) || pd < 1) reviewErrors.push(`Phase ${i + 1}: days must be >= 1`);
+    if (p.kpi_goals.length === 0) reviewErrors.push(`Phase ${i + 1}: needs at least 1 KPI goal`);
+    for (let j = 0; j < p.kpi_goals.length; j++) {
+      const g = p.kpi_goals[j];
+      if (!g.kpi_id) reviewErrors.push(`Phase ${i + 1}, Goal ${j + 1}: KPI required`);
+      const tv = parseFloat(g.target_value);
+      if (!Number.isFinite(tv) || tv <= 0) reviewErrors.push(`Phase ${i + 1}, Goal ${j + 1}: target must be positive`);
+    }
+  }
 
   return (
     <View style={styles.listDetailContainer}>
@@ -1337,6 +1579,8 @@ function AdminChallengeTemplatesPanel({
         <ScrollView style={styles.listScrollView}>
           {visibleRows.map((row) => {
             const isSelected = selectedRowId === row.id;
+            const phaseCount = row.template_payload?.phases?.length ?? 0;
+            const durLabel = row.suggested_duration_days != null ? `${row.suggested_duration_days}d` : '';
             return (
               <Pressable
                 key={row.id}
@@ -1347,7 +1591,9 @@ function AdminChallengeTemplatesPanel({
                 <Text style={[styles.listRowTitle, isSelected && styles.listRowTitleSelected]} numberOfLines={1}>{row.name}</Text>
                 <View style={styles.listRowMeta}>
                   <View style={[styles.listRowDot, { backgroundColor: row.is_active ? '#22C55E' : '#EF4444' }]} />
-                  <Text style={styles.listRowBadge} numberOfLines={1}>{row.description?.trim() || '(no description)'}</Text>
+                  <Text style={styles.listRowBadge} numberOfLines={1}>
+                    {[durLabel, phaseCount > 0 ? `${phaseCount} phase${phaseCount !== 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ') || row.description?.trim() || '(no description)'}
+                  </Text>
                 </View>
               </Pressable>
             );
@@ -1364,9 +1610,9 @@ function AdminChallengeTemplatesPanel({
           ) : null}
         </ScrollView>
       </View>
-      {/* Right panel: detail/edit form */}
+      {/* Right panel: multi-step builder */}
       <View style={styles.detailPanel}>
-        {!editing && !draft.name ? (
+        {!editing && !draft.showForm ? (
           <View style={styles.detailEmptyState}>
             <Text style={styles.detailEmptyTitle}>Select a Template</Text>
             <Text style={styles.detailEmptySubtitle}>Choose from the list to view or edit, or tap + New.</Text>
@@ -1380,6 +1626,21 @@ function AdminChallengeTemplatesPanel({
             <Text style={styles.smallGhostButtonText}>{editing ? 'New Template' : 'Clear'}</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Step indicator */}
+        <View style={{ flexDirection: 'row', marginBottom: 16, gap: 4 }}>
+          {builderSteps.map((step, idx) => {
+            const active = step === draft.builderStep;
+            const completed = idx < currentStepIndex;
+            return (
+              <Pressable key={step} onPress={() => goToStep(step)} style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 6, backgroundColor: active ? '#1D4ED8' : completed ? '#DBEAFE' : '#F1F5F9', alignItems: 'center' }}>
+                <Text style={{ fontSize: 11, fontWeight: active ? '700' : '500', color: active ? '#FFFFFF' : completed ? '#1D4ED8' : '#64748B' }}>{idx + 1}. {stepLabels[step]}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Selected template summary (editing) */}
         {selectedRow ? (
           <View style={styles.selectedUserSummaryCard}>
             <View style={styles.formHeaderRow}>
@@ -1387,93 +1648,296 @@ function AdminChallengeTemplatesPanel({
                 <Text style={styles.formTitle}>Selected Template</Text>
                 <Text style={styles.metaRow}>{selectedRow.name}</Text>
               </View>
-              <View
-                style={[
-                  styles.statusChip,
-                  selectedRow.is_active
-                    ? { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' }
-                    : { backgroundColor: '#FFF4F2', borderColor: '#F2C0B9' },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statusChipText,
-                    { color: selectedRow.is_active ? '#1D7A4D' : '#B2483A' },
-                  ]}
-                >
-                  {selectedRow.is_active ? 'active' : 'inactive'}
-                </Text>
+              <View style={[styles.statusChip, selectedRow.is_active ? { backgroundColor: '#EFFCF4', borderColor: '#BFE6CC' } : { backgroundColor: '#FFF4F2', borderColor: '#F2C0B9' }]}>
+                <Text style={[styles.statusChipText, { color: selectedRow.is_active ? '#1D7A4D' : '#B2483A' }]}>{selectedRow.is_active ? 'active' : 'inactive'}</Text>
               </View>
             </View>
-            <Text style={styles.metaRow} numberOfLines={2}>
-              {selectedRow.description?.trim() || '(no description)'}
-            </Text>
-            <Text style={styles.metaRow}>Template ID: {selectedRow.id}</Text>
             {selectedRowHiddenByFilters ? (
               <View style={styles.noticeBox}>
-                <Text style={styles.noticeTitle}>Selected template is hidden by current filters</Text>
-                <Text style={styles.noticeText}>
-                  The edit form is still loaded for {selectedRow.name}, but the row is not visible in the table below.
-                </Text>
+                <Text style={styles.noticeTitle}>Selected template hidden by filters</Text>
                 <View style={styles.formActionsRow}>
-                  <TouchableOpacity
-                    style={styles.noticeButton}
-                    onPress={() => {
-                      onSearchQueryChange('');
-                      onStatusFilterChange('all');
-                    }}
-                  >
+                  <TouchableOpacity style={styles.noticeButton} onPress={() => { onSearchQueryChange(''); onStatusFilterChange('all'); }}>
                     <Text style={styles.noticeButtonText}>Reveal row</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.smallGhostButton} onPress={onResetDraft}>
-                    <Text style={styles.smallGhostButtonText}>Start new template</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             ) : null}
           </View>
         ) : null}
-        <View style={styles.formField}>
-          <Text style={styles.formLabel}>Name</Text>
-          <TextInput value={draft.name} onChangeText={(name) => onDraftChange({ name })} style={styles.input} />
-        </View>
-        <View style={styles.formField}>
-          <Text style={styles.formLabel}>Description</Text>
-          <TextInput
-            value={draft.description}
-            onChangeText={(description) => onDraftChange({ description })}
-            style={[styles.input, styles.inputMultiline]}
-            multiline
-          />
-        </View>
-        <View style={styles.formField}>
-          <Text style={styles.formLabel}>Status</Text>
-          <Pressable
-            onPress={() => onDraftChange({ isActive: !draft.isActive })}
-            style={[styles.toggleChip, draft.isActive && styles.toggleChipOn]}
-          >
-            <Text style={[styles.toggleChipText, draft.isActive && styles.toggleChipTextOn]}>
-              {draft.isActive ? 'Active' : 'Inactive'}
-            </Text>
-          </Pressable>
-        </View>
-        {saveError ? <Text style={[styles.metaRow, styles.errorText]}>Error: {saveError}</Text> : null}
-        {successMessage ? <Text style={[styles.metaRow, styles.successText]}>{successMessage}</Text> : null}
-        <View style={styles.formActionsRow}>
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={editing ? onSubmitUpdate : onSubmitCreate}
-            disabled={saving}
-          >
-            <Text style={styles.primaryButtonText}>
-              {saving ? 'Saving...' : editing ? 'Save Changes' : 'Create Template'}
-            </Text>
-          </TouchableOpacity>
-          {editing ? (
-            <TouchableOpacity style={styles.warnButton} onPress={onDeactivate} disabled={saving}>
-              <Text style={styles.warnButtonText}>{saving ? 'Working...' : 'Deactivate'}</Text>
-            </TouchableOpacity>
-          ) : null}
+
+        {/* === Step 1: Basics === */}
+        {draft.builderStep === 'basics' ? (
+          <View style={{ gap: 12 }}>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Theme Name *</Text>
+              <TextInput value={draft.name} onChangeText={(name) => onDraftChange({ name })} style={styles.input} placeholder="e.g. Hurry Up and Call" placeholderTextColor="#94A3B8" />
+            </View>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Description</Text>
+              <TextInput value={draft.description} onChangeText={(description) => onDraftChange({ description })} style={[styles.input, styles.inputMultiline]} multiline placeholder="What this challenge template is about..." placeholderTextColor="#94A3B8" />
+            </View>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Default Challenge Name</Text>
+              <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 4 }}>Prefills the challenge name at creation. Falls back to theme name.</Text>
+              <TextInput value={draft.defaultChallengeName} onChangeText={(v) => onDraftChange({ defaultChallengeName: v })} style={styles.input} placeholder="(uses theme name if empty)" placeholderTextColor="#94A3B8" />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={[styles.formField, { flex: 1 }]}>
+                <Text style={styles.formLabel}>Duration (days) *</Text>
+                <TextInput value={draft.durationDays} onChangeText={(v) => onDraftChange({ durationDays: v })} style={styles.input} keyboardType="number-pad" placeholder="e.g. 30" placeholderTextColor="#94A3B8" />
+              </View>
+              <View style={[styles.formField, { flex: 1 }]}>
+                <Text style={styles.formLabel}>Status</Text>
+                <Pressable onPress={() => onDraftChange({ isActive: !draft.isActive })} style={[styles.toggleChip, draft.isActive && styles.toggleChipOn, { marginTop: 2 }]}>
+                  <Text style={[styles.toggleChipText, draft.isActive && styles.toggleChipTextOn]}>{draft.isActive ? 'Active' : 'Inactive'}</Text>
+                </Pressable>
+              </View>
+            </View>
+            {draft.durationDays.trim() && Number.isFinite(parseInt(draft.durationDays, 10)) && parseInt(draft.durationDays, 10) >= 1 ? (
+              <View style={{ backgroundColor: '#F0F9FF', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: '#BAE6FD' }}>
+                <Text style={{ fontSize: 12, color: '#0369A1', fontWeight: '600' }}>{parseInt(draft.durationDays, 10)} day{parseInt(draft.durationDays, 10) !== 1 ? 's' : ''} ({Math.ceil(parseInt(draft.durationDays, 10) / 7)} week{Math.ceil(parseInt(draft.durationDays, 10) / 7) !== 1 ? 's' : ''})</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* === Step 2: Phase Plan === */}
+        {draft.builderStep === 'phases' ? (
+          <View style={{ gap: 10 }}>
+            <Text style={{ fontSize: 12, color: '#64748B' }}>Phases split the total duration. Days auto-balance when you add or remove phases.</Text>
+            {/* Duration bar */}
+            {totalDays > 0 ? (
+              <View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 11, color: '#0369A1', fontWeight: '600' }}>Total: {totalDays} days</Text>
+                  {draft.phases.length > 0 ? (
+                    <Text style={{ fontSize: 11, color: remainingDays < 0 ? '#DC2626' : remainingDays > 0 ? '#D97706' : '#16A34A', fontWeight: '600' }}>
+                      {remainingDays === 0 ? 'Fully allocated' : remainingDays > 0 ? `${remainingDays}d unallocated` : `${Math.abs(remainingDays)}d over`}
+                    </Text>
+                  ) : null}
+                </View>
+                {draft.phases.length > 0 ? (
+                  <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: '#E2E8F0' }}>
+                    {draft.phases.map((phase, pi) => {
+                      const pd = parseInt(phase.phase_days, 10) || 0;
+                      const pct = totalDays > 0 ? (pd / totalDays) * 100 : 0;
+                      const colors = ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#6366F1', '#EF4444', '#14B8A6'];
+                      return <View key={pi} style={{ width: `${Math.min(pct, 100)}%` as unknown as number, backgroundColor: colors[pi % colors.length] }} />;
+                    })}
+                  </View>
+                ) : null}
+              </View>
+            ) : (
+              <View style={{ backgroundColor: '#FFFBEB', borderRadius: 6, padding: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
+                <Text style={{ fontSize: 11, color: '#92400E' }}>Set a duration in Basics first.</Text>
+              </View>
+            )}
+            {draft.phases.map((phase, pi) => {
+              const pd = parseInt(phase.phase_days, 10) || 0;
+              const colors = ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#6366F1', '#EF4444', '#14B8A6'];
+              return (
+                <View key={pi} style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#E2E8F0', borderLeftWidth: 3, borderLeftColor: colors[pi % colors.length] }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B' }}>Phase {pi + 1}</Text>
+                      <Text style={{ fontSize: 11, color: '#64748B' }}>day {phaseStartDays[pi]}–{phaseStartDays[pi] + pd - 1}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => removePhase(pi)}><Text style={{ fontSize: 12, color: '#EF4444' }}>Remove</Text></TouchableOpacity>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={[styles.formField, { flex: 2 }]}>
+                      <Text style={styles.formLabel}>Name</Text>
+                      <TextInput value={phase.phase_name} onChangeText={(v) => updatePhase(pi, { phase_name: v })} style={styles.input} placeholder="e.g. Ramp-Up" placeholderTextColor="#94A3B8" />
+                    </View>
+                    <View style={[styles.formField, { flex: 1 }]}>
+                      <Text style={styles.formLabel}>{pi === draft.phases.length - 1 && draft.phases.length > 1 ? 'Days (auto)' : 'Days'}</Text>
+                      {pi === draft.phases.length - 1 && draft.phases.length > 1 ? (
+                        <View style={[styles.input, { backgroundColor: '#F1F5F9', justifyContent: 'center' }]}>
+                          <Text style={{ fontSize: 14, color: '#475569', fontWeight: '600' }}>{phase.phase_days || '0'}</Text>
+                        </View>
+                      ) : (
+                        <TextInput value={phase.phase_days} onChangeText={(v) => updatePhase(pi, { phase_days: v })} style={styles.input} keyboardType="number-pad" placeholder="7" placeholderTextColor="#94A3B8" />
+                      )}
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+            {draft.phases.length < 8 ? (
+              <TouchableOpacity onPress={addPhase} style={{ paddingVertical: 10, paddingHorizontal: 14, backgroundColor: '#EFF6FF', borderRadius: 6, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#BFDBFE' }}>
+                <Text style={{ fontSize: 13, color: '#1D4ED8', fontWeight: '600' }}>+ Add Phase</Text>
+              </TouchableOpacity>
+            ) : <Text style={{ fontSize: 11, color: '#94A3B8' }}>Maximum 8 phases reached.</Text>}
+          </View>
+        ) : null}
+
+        {/* === Step 3: KPI Goals per Phase === */}
+        {draft.builderStep === 'kpi_goals' ? (
+          <View style={{ gap: 14 }}>
+            {draft.phases.length === 0 ? (
+              <View style={{ padding: 16, backgroundColor: '#FFFBEB', borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
+                <Text style={{ fontSize: 13, color: '#92400E', fontWeight: '600', marginBottom: 4 }}>No Phases Defined</Text>
+                <Text style={{ fontSize: 12, color: '#92400E' }}>Go back to add phases first. KPI goals are assigned per phase.</Text>
+              </View>
+            ) : draft.phases.map((phase, pi) => (
+              <View key={pi}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#3B82F6' }} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B' }}>{phase.phase_name || `Phase ${pi + 1}`}</Text>
+                  <Text style={{ fontSize: 11, color: '#64748B' }}>day {phaseStartDays[pi]}–{phaseStartDays[pi] + (parseInt(phase.phase_days, 10) || 1) - 1}</Text>
+                </View>
+                {phase.kpi_goals.map((goal, gi) => {
+                  const selectedKpiName = goal.kpi_id ? kpiNameById[goal.kpi_id] || '(unknown)' : '';
+                  return (
+                    <View key={gi} style={{ backgroundColor: '#F8FAFC', borderRadius: 6, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569' }}>Goal {gi + 1}</Text>
+                        <TouchableOpacity onPress={() => removeGoalFromPhase(pi, gi)}><Text style={{ fontSize: 11, color: '#EF4444' }}>Remove</Text></TouchableOpacity>
+                      </View>
+                      <View style={styles.formField}>
+                        <Text style={styles.formLabel}>KPI</Text>
+                        {activeKpis.length === 0 ? (
+                          <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', paddingVertical: 8 }}>No active KPIs found. Add KPIs in the KPIs tab first.</Text>
+                        ) : (
+                          <View style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 6, backgroundColor: '#FFFFFF', overflow: 'hidden' }}>
+                            {goal.kpi_id ? (
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#EFF6FF' }}>
+                                <Text style={{ fontSize: 12, fontWeight: '600', color: '#1D4ED8' }}>{selectedKpiName}</Text>
+                                <TouchableOpacity onPress={() => updateGoalInPhase(pi, gi, { kpi_id: '' })}><Text style={{ fontSize: 11, color: '#64748B' }}>Change</Text></TouchableOpacity>
+                              </View>
+                            ) : (
+                              <View>
+                                <View style={{ flexDirection: 'row', gap: 4, paddingHorizontal: 8, paddingTop: 6, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
+                                  {(['all', 'PC', 'GP', 'VP', 'other'] as KpiSectionFilter[]).map((f) => {
+                                    const sel = kpiSectionFilter === f;
+                                    return (
+                                      <Pressable key={f} onPress={() => setKpiSectionFilter(f)} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: sel ? '#3B82F6' : '#F1F5F9' }}>
+                                        <Text style={{ fontSize: 10, fontWeight: '600', color: sel ? '#FFFFFF' : '#64748B' }}>{kpiSectionLabel[f]}</Text>
+                                      </Pressable>
+                                    );
+                                  })}
+                                </View>
+                                <ScrollView style={{ maxHeight: 140 }} nestedScrollEnabled>
+                                  {filteredActiveKpis.length === 0 ? (
+                                    <Text style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic', padding: 10 }}>No KPIs in this category.</Text>
+                                  ) : filteredActiveKpis.map((kpi) => (
+                                    <Pressable key={kpi.id} onPress={() => updateGoalInPhase(pi, gi, { kpi_id: kpi.id })} style={{ paddingVertical: 8, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+                                      <Text style={{ fontSize: 12, color: '#334155' }}>{kpi.name}</Text>
+                                    </Pressable>
+                                  ))}
+                                </ScrollView>
+                              </View>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                        <View style={[styles.formField, { flex: 1 }]}>
+                          <Text style={styles.formLabel}>Target</Text>
+                          <TextInput value={goal.target_value} onChangeText={(v) => updateGoalInPhase(pi, gi, { target_value: v })} style={styles.input} keyboardType="numeric" placeholder="e.g. 10" placeholderTextColor="#94A3B8" />
+                        </View>
+                        <View style={[styles.formField, { flex: 1 }]}>
+                          <Text style={styles.formLabel}>Scope</Text>
+                          <View style={{ flexDirection: 'row', gap: 4, marginTop: 2 }}>
+                            {(['individual', 'team'] as const).map((scope) => {
+                              const sel = goal.goal_scope === scope;
+                              return (
+                                <Pressable key={scope} onPress={() => updateGoalInPhase(pi, gi, { goal_scope: scope })} style={[styles.listFilterPill, sel && styles.listFilterPillSelected, { flex: 1, alignItems: 'center' }]}>
+                                  <Text style={[styles.listFilterPillText, sel && styles.listFilterPillTextSelected]}>{scope === 'individual' ? 'Indiv.' : 'Team'}</Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+                {phase.kpi_goals.length < 12 ? (
+                  <TouchableOpacity onPress={() => addGoalToPhase(pi)} style={{ paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#F0FDF4', borderRadius: 6, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#BBF7D0', marginTop: 2 }}>
+                    <Text style={{ fontSize: 12, color: '#166534', fontWeight: '600' }}>+ Add KPI Goal</Text>
+                  </TouchableOpacity>
+                ) : <Text style={{ fontSize: 11, color: '#94A3B8' }}>Max 12 KPI goals per phase.</Text>}
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {/* === Step 4: Review + Save === */}
+        {draft.builderStep === 'review' ? (
+          <View style={{ gap: 12 }}>
+            <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#E2E8F0' }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E293B', marginBottom: 8 }}>Template Summary</Text>
+              <Text style={{ fontSize: 12, color: '#475569', marginBottom: 3 }}>Theme: {draft.name || '(empty)'}</Text>
+              {draft.description ? <Text style={{ fontSize: 12, color: '#475569', marginBottom: 3 }}>Description: {draft.description}</Text> : null}
+              {draft.defaultChallengeName ? <Text style={{ fontSize: 12, color: '#475569', marginBottom: 3 }}>Default Name: {draft.defaultChallengeName}</Text> : null}
+              <Text style={{ fontSize: 12, color: '#475569', marginBottom: 3 }}>Duration: {draft.durationDays || '?'} days</Text>
+              <Text style={{ fontSize: 12, color: '#475569', marginBottom: 3 }}>Phases: {draft.phases.length || '0 (implicit single phase)'}</Text>
+              <Text style={{ fontSize: 12, color: '#475569' }}>Status: {draft.isActive ? 'Active' : 'Inactive'}</Text>
+            </View>
+            {draft.phases.length > 0 ? (
+              <View>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B', marginBottom: 6 }}>Phase Timeline</Text>
+                {draft.phases.map((phase, pi) => (
+                  <View key={pi} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#3B82F6', marginRight: 8 }} />
+                    <Text style={{ fontSize: 12, color: '#334155' }}>Day {phaseStartDays[pi]}–{phaseStartDays[pi] + (parseInt(phase.phase_days, 10) || 1) - 1}: {phase.phase_name || `Phase ${pi + 1}`} ({phase.phase_days || '?'}d) — {phase.kpi_goals.length} KPI goal{phase.kpi_goals.length !== 1 ? 's' : ''}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {draft.phases.length > 0 ? (
+              <View>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B', marginBottom: 6 }}>KPI Scope Summary</Text>
+                {draft.phases.map((phase, pi) => (
+                  <View key={pi} style={{ marginBottom: 6 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569' }}>{phase.phase_name || `Phase ${pi + 1}`}</Text>
+                    {phase.kpi_goals.map((g, gi) => (
+                      <Text key={gi} style={{ fontSize: 11, color: '#64748B', marginLeft: 12 }}>{kpiNameById[g.kpi_id] || g.kpi_id || '(no KPI)'}: target {g.target_value || '?'} ({g.goal_scope})</Text>
+                    ))}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {reviewErrors.length > 0 ? (
+              <View style={{ backgroundColor: '#FEF2F2', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#FECACA' }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#991B1B', marginBottom: 4 }}>Validation Issues</Text>
+                {reviewErrors.map((err, i) => <Text key={i} style={{ fontSize: 12, color: '#991B1B', marginBottom: 2 }}>• {err}</Text>)}
+              </View>
+            ) : null}
+            {saveError ? <Text style={[styles.metaRow, styles.errorText]}>Error: {saveError}</Text> : null}
+            {successMessage ? <Text style={[styles.metaRow, styles.successText]}>{successMessage}</Text> : null}
+          </View>
+        ) : null}
+
+        {/* Step navigation + save */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {currentStepIndex > 0 ? (
+              <TouchableOpacity style={styles.smallGhostButton} onPress={goBack}><Text style={styles.smallGhostButtonText}>Back</Text></TouchableOpacity>
+            ) : null}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {draft.builderStep === 'review' ? (
+              <>
+                <TouchableOpacity style={[styles.primaryButton, reviewErrors.length > 0 && { opacity: 0.5 }]} onPress={editing ? onSubmitUpdate : onSubmitCreate} disabled={saving || reviewErrors.length > 0}>
+                  <Text style={styles.primaryButtonText}>{saving ? 'Saving...' : editing ? 'Save Changes' : 'Create Template'}</Text>
+                </TouchableOpacity>
+                {editing ? (
+                  <TouchableOpacity style={styles.warnButton} onPress={onDeactivate} disabled={saving}>
+                    <Text style={styles.warnButtonText}>{saving ? 'Working...' : 'Deactivate'}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            ) : (() => {
+              const phaseDaysInvalid = draft.builderStep === 'phases' && draft.phases.length > 0 && (remainingDays !== 0 || draft.phases.some((p) => (parseInt(p.phase_days, 10) || 0) < 1));
+              return (
+                <TouchableOpacity style={[styles.primaryButton, phaseDaysInvalid && { opacity: 0.5 }]} onPress={goNext} disabled={phaseDaysInvalid}>
+                  <Text style={styles.primaryButtonText}>Next</Text>
+                </TouchableOpacity>
+              );
+            })()}
+          </View>
         </View>
       </View>
       </ScrollView>
@@ -3806,14 +4270,57 @@ function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
   const [calibrationMetrics, setCalibrationMetrics] = useState<CalibrationMetrics | null>(null);
   const [regressionReport, setRegressionReport] = useState<RegressionReport | null>(null);
 
-  // Scenario creation
-  const [newSeed, setNewSeed] = useState(String(Math.floor(Math.random() * 99999)));
-  const [newName, setNewName] = useState('');
-  const [newKpiCount, setNewKpiCount] = useState('4');
-  const [newLogDays, setNewLogDays] = useState('180');
-  const [newLogsPerKpi, setNewLogsPerKpi] = useState('12');
-  const [newIncludeActuals, setNewIncludeActuals] = useState(false);
   const [runStatus, setRunStatus] = useState<string | null>(null);
+
+  // Chart state
+  const [chartRuns, setChartRuns] = useState<(RunBundle & { scenarioName: string })[]>([]);
+  const [kpiDropdownRunId, setKpiDropdownRunId] = useState<string>('');
+  const [kpiDropdownOpen, setKpiDropdownOpen] = useState(false);
+  const [selectedKpiName, setSelectedKpiName] = useState<string>('');
+  const [perKpiData, setPerKpiData] = useState<KpiMonthlySeries[]>([]);
+
+  // Chart visibility per-scenario toggles
+  type ChartLineVisibility = { projection: boolean; actual: boolean; rollingAvg: boolean };
+  const [chartVisibility, setChartVisibility] = useState<Record<string, ChartLineVisibility>>({});
+
+  useEffect(() => {
+    setChartVisibility((prev) => {
+      const next = { ...prev };
+      for (const run of chartRuns) {
+        if (!next[run.run_id]) {
+          const scenario = scenarios.find((s) => s.scenario_id === run.scenario_id);
+          const hasActuals = (scenario?.actual_closings.length ?? 0) > 0;
+          next[run.run_id] = { projection: true, actual: hasActuals, rollingAvg: false };
+        }
+      }
+      const runIds = new Set(chartRuns.map((r) => r.run_id));
+      for (const key of Object.keys(next)) {
+        if (!runIds.has(key)) delete next[key];
+      }
+      return next;
+    });
+  }, [chartRuns, scenarios]);
+
+  const toggleChartLine = (runId: string, line: keyof ChartLineVisibility) => {
+    setChartVisibility((prev) => ({
+      ...prev,
+      [runId]: { ...prev[runId], [line]: !prev[runId]?.[line] },
+    }));
+  };
+
+  // Auto-generate all profile scenarios and run them on first mount
+  useEffect(() => {
+    const initial = SCENARIO_PROFILES.map((profile) =>
+      generateScenarioFromProfile({ profile, adminUser })
+    );
+    setScenarios(initial);
+    const initialRuns = initial.map((scenario) => executeRun({ scenario, adminUser }));
+    setRuns(initialRuns);
+    setChartRuns(
+      initialRuns.map((r, i) => ({ ...r, scenarioName: initial[i].name }))
+    );
+    setRunStatus(`${initial.length} scenarios generated and run`);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Compare selection
   const [compareRunAId, setCompareRunAId] = useState('');
@@ -3825,26 +4332,322 @@ function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
   // Event detail expansion
   const [expandedEvents, setExpandedEvents] = useState(false);
 
-  const handleCreateScenario = () => {
-    const seed = parseInt(newSeed, 10) || 1;
-    const scenario = generateScenario({
-      seed,
-      adminUser,
-      name: newName || undefined,
-      kpiCount: parseInt(newKpiCount, 10) || 4,
-      logDaysSpan: parseInt(newLogDays, 10) || 180,
-      logsPerKpi: parseInt(newLogsPerKpi, 10) || 12,
-      includeActuals: newIncludeActuals,
+  // Edit state
+  const [editName, setEditName] = useState('');
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editPricePoint, setEditPricePoint] = useState('');
+  const [editCommission, setEditCommission] = useState('');
+  const [editLogStream, setEditLogStream] = useState<LabLogEntry[]>([]);
+  const [editKpiDefs, setEditKpiDefs] = useState<LabKpiDefinition[]>([]);
+  const [editAddKpiOpen, setEditAddKpiOpen] = useState(false);
+  const [editClosedDeals, setEditClosedDeals] = useState('');
+  const [editKpiAnnualVolume, setEditKpiAnnualVolume] = useState<Record<string, string>>({});
+
+  // Profile state
+  const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>(() => [...BUILTIN_AGENT_PROFILES]);
+  const [selectedProfile, setSelectedProfile] = useState<AgentProfile | null>(null);
+  const [profileFormName, setProfileFormName] = useState('');
+  const [profileFormAgent, setProfileFormAgent] = useState('');
+  const [profileFormPrice, setProfileFormPrice] = useState('');
+  const [profileFormCommission, setProfileFormCommission] = useState('');
+  const [profileFormKpis, setProfileFormKpis] = useState<string[]>([]);
+  const [profileFormActuals, setProfileFormActuals] = useState(false);
+  const [profileFormDesc, setProfileFormDesc] = useState('');
+
+  // Volume-based scenario create state
+  const [createProfileId, setCreateProfileId] = useState('');
+  const [createVolumeSpecs, setCreateVolumeSpecs] = useState<KpiVolumeSpec[]>([]);
+  const [createTimeSpan, setCreateTimeSpan] = useState('6');
+  const [createActuals, setCreateActuals] = useState(false);
+  const [createStep, setCreateStep] = useState<'pick_profile' | 'volume_spec'>('pick_profile');
+
+  // Chart colors
+  const CHART_COLORS = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16', '#F97316'];
+
+  // ── Edit handlers ──
+
+  const handleStartEdit = (scenario: LabScenario) => {
+    setEditName(scenario.name);
+    setEditDisplayName(scenario.user_profile.display_name);
+    setEditPricePoint(scenario.user_profile.average_price_point.toString());
+    setEditCommission((scenario.user_profile.commission_rate * 100).toFixed(2));
+    setEditLogStream([...scenario.log_stream]);
+    setEditKpiDefs([...scenario.kpi_definitions]);
+    setEditAddKpiOpen(false);
+    setEditClosedDeals(scenario.closed_deals_override?.toString() ?? '');
+    // Initialize per-KPI annual volume from scenario or derive from log_stream
+    const kpiVolMap: Record<string, string> = {};
+    if (scenario.kpi_annual_volume) {
+      for (const [kId, v] of Object.entries(scenario.kpi_annual_volume)) {
+        kpiVolMap[kId] = v.toString();
+      }
+    } else {
+      // Derive: count events per KPI in the log stream, annualize from time span
+      const kpiCounts = new Map<string, number>();
+      for (const log of scenario.log_stream) {
+        kpiCounts.set(log.kpi_id, (kpiCounts.get(log.kpi_id) ?? 0) + log.quantity);
+      }
+      for (const [kId, count] of kpiCounts) {
+        kpiVolMap[kId] = count.toString();
+      }
+    }
+    setEditKpiAnnualVolume(kpiVolMap);
+    setLabView('scenario_edit');
+  };
+
+  const handleSaveEdit = () => {
+    if (!selectedScenario) return;
+    const pricePoint = parseFloat(editPricePoint) || selectedScenario.user_profile.average_price_point;
+    const commRate = (parseFloat(editCommission) || selectedScenario.user_profile.commission_rate * 100) / 100;
+    const userProfile = {
+      ...selectedScenario.user_profile,
+      display_name: editDisplayName,
+      average_price_point: pricePoint,
+      commission_rate: commRate,
+    };
+
+    // Parse per-KPI annual volumes
+    const kpiAnnualVolume: Record<string, number> = {};
+    let hasVolumeOverrides = false;
+    for (const [kId, v] of Object.entries(editKpiAnnualVolume)) {
+      const n = parseInt(v) || 0;
+      if (n > 0) {
+        kpiAnnualVolume[kId] = n;
+        hasVolumeOverrides = true;
+      }
+    }
+
+    // Rebuild log stream from KPI volumes if overrides present
+    const logStream = hasVolumeOverrides
+      ? rebuildLogStreamFromVolumes({
+          kpiAnnualVolume,
+          kpiDefinitions: editKpiDefs,
+          userProfile,
+          timeSpanMonths: selectedScenario.volume_input?.time_span_months ?? 6,
+        })
+      : editLogStream;
+
+    // Parse closed deals override
+    const closedDealsOverride = editClosedDeals ? parseInt(editClosedDeals) || undefined : undefined;
+
+    // Regenerate actual closings when closed_deals_override changes
+    const baseDateIso = new Date().toISOString().split('T')[0] + 'T00:00:00.000Z';
+    let varCounter = 0;
+    const actualClosings = closedDealsOverride != null
+      ? generateRealisticClosings({
+          baseDateIso,
+          avgPricePoint: pricePoint,
+          commissionRate: commRate,
+          daysSpan: 365,
+          idGen: () => {
+            varCounter++;
+            return `edit-${Date.now().toString(36)}-${varCounter}`;
+          },
+          rngVariance: () => {
+            varCounter++;
+            return (Math.sin(varCounter * 2.654) + 1) / 2;
+          },
+          overrideAnnualDeals: closedDealsOverride,
+        })
+      : selectedScenario.actual_closings;
+
+    const updated: LabScenario = {
+      ...selectedScenario,
+      name: editName,
+      user_profile: userProfile,
+      kpi_definitions: editKpiDefs,
+      log_stream: logStream,
+      actual_closings: actualClosings,
+      closed_deals_override: closedDealsOverride,
+      kpi_annual_volume: hasVolumeOverrides ? kpiAnnualVolume : undefined,
+    };
+    setScenarios((prev) => prev.map((s) => (s.scenario_id === updated.scenario_id ? updated : s)));
+    setSelectedScenario(updated);
+    // Re-run the scenario and update chart
+    const run = executeRun({ scenario: updated, adminUser });
+    setRuns((prev) => [run, ...prev.filter((r) => r.scenario_id !== updated.scenario_id)]);
+    setChartRuns((prev) => {
+      const withoutOld = prev.filter((r) => r.scenario_id !== updated.scenario_id);
+      return [...withoutOld, { ...run, scenarioName: updated.name }];
     });
+    setSelectedRun(run);
+    setLabView('scenario_list');
+    setRunStatus(`"${updated.name}" updated and re-run — PC@eval: $${run.pc_at_eval_date.toLocaleString()}`);
+  };
+
+  const handleAddLogEntry = () => {
+    if (!selectedScenario || editKpiDefs.length === 0) return;
+    const newEntry: LabLogEntry = {
+      log_id: `log-edit-${Date.now().toString(36)}`,
+      kpi_id: editKpiDefs[0].kpi_id,
+      event_date_iso: new Date().toISOString().split('T')[0] + 'T00:00:00.000Z',
+      quantity: 1,
+    };
+    setEditLogStream((prev) => [...prev, newEntry]);
+  };
+
+  const handleRemoveLogEntry = (logId: string) => {
+    setEditLogStream((prev) => prev.filter((l) => l.log_id !== logId));
+  };
+
+  const handleUpdateLogEntry = (logId: string, field: keyof LabLogEntry, value: string) => {
+    setEditLogStream((prev) =>
+      prev.map((l) => {
+        if (l.log_id !== logId) return l;
+        if (field === 'kpi_id') return { ...l, kpi_id: value };
+        if (field === 'event_date_iso') return { ...l, event_date_iso: value.includes('T') ? value : value + 'T00:00:00.000Z' };
+        if (field === 'quantity') return { ...l, quantity: parseInt(value) || 1 };
+        return l;
+      })
+    );
+  };
+
+  const handleAddKpiToEdit = (template: Omit<LabKpiDefinition, 'kpi_id'>) => {
+    const newKpi: LabKpiDefinition = {
+      ...template,
+      kpi_id: `kpi-edit-${Date.now().toString(36)}`,
+    };
+    setEditKpiDefs((prev) => [...prev, newKpi]);
+    setEditAddKpiOpen(false);
+  };
+
+  const handleRemoveKpiFromEdit = (kpiId: string) => {
+    setEditKpiDefs((prev) => prev.filter((k) => k.kpi_id !== kpiId));
+    // Also remove any log entries for this KPI
+    setEditLogStream((prev) => prev.filter((l) => l.kpi_id !== kpiId));
+  };
+
+  // ── Profile handlers ──
+
+  const handleProfileFormReset = () => {
+    setProfileFormName('');
+    setProfileFormAgent('');
+    setProfileFormPrice('350000');
+    setProfileFormCommission('2.75');
+    setProfileFormKpis([]);
+    setProfileFormActuals(false);
+    setProfileFormDesc('');
+  };
+
+  const handleProfileFormStartEdit = (profile: AgentProfile) => {
+    setSelectedProfile(profile);
+    setProfileFormName(profile.name);
+    setProfileFormAgent(profile.agent_name);
+    setProfileFormPrice(profile.avg_price_point.toString());
+    setProfileFormCommission((profile.commission_rate * 100).toFixed(2));
+    setProfileFormKpis([...profile.kpi_names]);
+    setProfileFormActuals(profile.include_actuals);
+    setProfileFormDesc(profile.description);
+    setLabView('profile_edit');
+  };
+
+  const handleSaveProfile = (isNew: boolean) => {
+    const profile: AgentProfile = {
+      profile_id: isNew ? `custom-${Date.now().toString(36)}` : selectedProfile!.profile_id,
+      name: profileFormName || 'Untitled Profile',
+      description: profileFormDesc,
+      agent_name: profileFormAgent || 'Agent',
+      avg_price_point: parseFloat(profileFormPrice) || 350000,
+      commission_rate: (parseFloat(profileFormCommission) || 2.75) / 100,
+      kpi_names: profileFormKpis,
+      include_actuals: profileFormActuals,
+      is_builtin: false,
+      created_at: isNew ? new Date().toISOString() : selectedProfile!.created_at,
+    };
+    if (isNew) {
+      setAgentProfiles((prev) => [...prev, profile]);
+    } else {
+      setAgentProfiles((prev) => prev.map((p) => p.profile_id === profile.profile_id ? profile : p));
+    }
+    setSelectedProfile(profile);
+    setLabView('profile_list');
+    setRunStatus(`Profile "${profile.name}" ${isNew ? 'created' : 'updated'}`);
+  };
+
+  const handleDeleteProfile = (profileId: string) => {
+    setAgentProfiles((prev) => prev.filter((p) => p.profile_id !== profileId));
+    setSelectedProfile(null);
+    setLabView('profile_list');
+    setRunStatus('Profile deleted');
+  };
+
+  const handleDuplicateProfile = (profile: AgentProfile) => {
+    const dup: AgentProfile = {
+      ...profile,
+      profile_id: `custom-${Date.now().toString(36)}`,
+      name: `${profile.name} (Copy)`,
+      is_builtin: false,
+      created_at: new Date().toISOString(),
+    };
+    setAgentProfiles((prev) => [...prev, dup]);
+    setRunStatus(`Duplicated "${profile.name}" as custom profile`);
+  };
+
+  // ── Volume-based scenario create handlers ──
+
+  const handleStartVolumeCreate = (profile: AgentProfile) => {
+    setCreateProfileId(profile.profile_id);
+    setCreateVolumeSpecs(
+      profile.kpi_names.map((name) => ({ kpi_name: name, events_per_month: 10 }))
+    );
+    setCreateTimeSpan('6');
+    setCreateActuals(profile.include_actuals);
+    setCreateStep('volume_spec');
+    setLabView('scenario_create');
+  };
+
+  const handleGenerateFromVolume = () => {
+    const profile = agentProfiles.find((p) => p.profile_id === createProfileId);
+    if (!profile) return;
+    const volumeInput: ScenarioVolumeInput = {
+      profile_id: profile.profile_id,
+      volume_specs: createVolumeSpecs.filter((v) => v.events_per_month > 0),
+      time_span_months: parseInt(createTimeSpan) || 6,
+      include_actuals: createActuals,
+    };
+    const scenario = generateScenarioFromVolume({ profile, volumeInput, adminUser });
     setScenarios((prev) => [scenario, ...prev]);
+    const run = executeRun({ scenario, adminUser });
+    setRuns((prev) => [run, ...prev]);
+    setChartRuns((prev) => [...prev, { ...run, scenarioName: scenario.name }]);
     setSelectedScenario(scenario);
-    setLabView('scenario_detail');
-    setRunStatus(`Scenario "${scenario.name}" created with seed ${seed}`);
+    setSelectedRun(run);
+    setLabView('scenario_list');
+    setRunStatus(`"${scenario.name}" generated from volume specs — PC@eval: $${run.pc_at_eval_date.toLocaleString()}`);
+  };
+
+  const handleCreateFromProfile = (profile: ScenarioProfile) => {
+    const scenario = generateScenarioFromProfile({ profile, adminUser });
+    setScenarios((prev) => [scenario, ...prev]);
+    // Auto-run and add to chart
+    const run = executeRun({ scenario, adminUser });
+    setRuns((prev) => [run, ...prev]);
+    setChartRuns((prev) => [...prev, { ...run, scenarioName: scenario.name }]);
+    setSelectedScenario(scenario);
+    setSelectedRun(run);
+    setLabView('scenario_list');
+    setRunStatus(`"${scenario.name}" created and run — PC@eval: $${run.pc_at_eval_date.toLocaleString()}`);
+  };
+
+  const handleDeleteScenario = (scenarioId: string) => {
+    setScenarios((prev) => prev.filter((s) => s.scenario_id !== scenarioId));
+    setRuns((prev) => prev.filter((r) => r.scenario_id !== scenarioId));
+    setChartRuns((prev) => prev.filter((r) => r.scenario_id !== scenarioId));
+    if (selectedScenario?.scenario_id === scenarioId) {
+      setSelectedScenario(null);
+      setLabView('scenario_list');
+    }
+    setRunStatus('Scenario deleted');
   };
 
   const handleRunScenario = (scenario: LabScenario) => {
     const run = executeRun({ scenario, adminUser });
     setRuns((prev) => [run, ...prev]);
+    // Replace or add this scenario's line on the chart
+    setChartRuns((prev) => {
+      const withoutOld = prev.filter((r) => r.scenario_id !== scenario.scenario_id);
+      return [...withoutOld, { ...run, scenarioName: scenario.name }];
+    });
     setSelectedRun(run);
     setLabView('run_detail');
     setRunStatus(`Run ${run.run_id.slice(0, 12)} completed — PC@eval: $${run.pc_at_eval_date.toLocaleString()}`);
@@ -3894,11 +4697,391 @@ function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
     URL.revokeObjectURL(url);
   };
 
+  // ── KPI drill-down handler ──
+
+  const handleKpiDropdownSelect = (runId: string) => {
+    setKpiDropdownRunId(runId);
+    setSelectedKpiName('');
+    setKpiDropdownOpen(true);
+    const run = chartRuns.find((r) => r.run_id === runId);
+    if (run) {
+      const scenario = scenarios.find((s) => s.scenario_id === run.scenario_id);
+      if (scenario) {
+        setPerKpiData(computePerKpiSeries(scenario, new Date(run.eval_date_iso), run.gp_vp.total_bump_percent));
+      }
+    }
+  };
+
+  // ── Sub-view: Projection Chart ──
+
+  const renderProjectionChart = () => {
+    if (chartRuns.length === 0) return null;
+
+    const CHART_W = 720;
+    const CHART_H = 280;
+    const PAD = { top: 20, right: 20, bottom: 50, left: 72 };
+    const plotW = CHART_W - PAD.left - PAD.right;
+    const plotH = CHART_H - PAD.top - PAD.bottom;
+
+    // Collect all month labels from first run (all runs share same 12 months)
+    const monthLabels = chartRuns[0]?.future_projected_12m.map((p) =>
+      p.month_start.slice(0, 7)
+    ) ?? [];
+    const monthCount = monthLabels.length || 1;
+
+    // Build actual baseline + rolling avg series per run
+    type ChartLineDef = {
+      runId: string;
+      type: 'projection' | 'actual' | 'rollingAvg';
+      d: string;
+      color: string;
+      strokeWidth: number;
+      opacity: number;
+      dash?: string;
+    };
+
+    // Build per-scenario series: projected income, actual baseline, rolling avg
+    const projIncomeMap: Record<string, MonthlySeriesPoint[]> = {};
+    const actualSeriesMap: Record<string, MonthlySeriesPoint[]> = {};
+    const rollingSeriesMap: Record<string, MonthlySeriesPoint[]> = {};
+    for (const run of chartRuns) {
+      const scenario = scenarios.find((s) => s.scenario_id === run.scenario_id);
+      // Use raw PC values from the engine — no income conversion yet
+      projIncomeMap[run.run_id] = run.future_projected_12m;
+      // Actual baseline — cumulative closing GCI
+      if (scenario && scenario.actual_closings.length > 0) {
+        const actual = buildActualBaselineSeries(scenario.actual_closings, run.future_projected_12m);
+        actualSeriesMap[run.run_id] = actual;
+        rollingSeriesMap[run.run_id] = computeRollingAverage(actual, 2);
+      }
+    }
+
+    // Find max value across all visible lines
+    let maxVal = 0;
+    for (const run of chartRuns) {
+      const vis = chartVisibility[run.run_id];
+      if (vis?.projection !== false && projIncomeMap[run.run_id]) {
+        for (const pt of projIncomeMap[run.run_id]) {
+          if (pt.value > maxVal) maxVal = pt.value;
+        }
+      }
+      if (vis?.actual && actualSeriesMap[run.run_id]) {
+        for (const pt of actualSeriesMap[run.run_id]) {
+          if (pt.value > maxVal) maxVal = pt.value;
+        }
+      }
+      if (vis?.rollingAvg && rollingSeriesMap[run.run_id]) {
+        for (const pt of rollingSeriesMap[run.run_id]) {
+          if (pt.value > maxVal) maxVal = pt.value;
+        }
+      }
+    }
+    maxVal = maxVal > 0 ? maxVal * 1.1 : 1000; // 10% headroom
+
+    // Y-axis ticks
+    const yTickCount = 5;
+    const yStep = maxVal / yTickCount;
+    const yTicks = Array.from({ length: yTickCount + 1 }, (_, i) => i * yStep);
+
+    // Helper: series → SVG path
+    const seriesToPath = (series: MonthlySeriesPoint[]): string => {
+      const pts = series.map((pt, i) => {
+        const x = PAD.left + (i / (monthCount - 1)) * plotW;
+        const y = PAD.top + plotH - (pt.value / maxVal) * plotH;
+        return `${x},${y}`;
+      });
+      return 'M' + pts.join(' L');
+    };
+
+    // Build ChartLineDef[] array — up to 3 per scenario
+    const chartLines: ChartLineDef[] = [];
+    chartRuns.forEach((run, runIdx) => {
+      const color = CHART_COLORS[runIdx % CHART_COLORS.length];
+      const vis = chartVisibility[run.run_id] ?? { projection: true, actual: false, rollingAvg: false };
+
+      // Rolling avg (render first = behind others)
+      if (vis.rollingAvg && rollingSeriesMap[run.run_id]) {
+        chartLines.push({
+          runId: run.run_id, type: 'rollingAvg',
+          d: seriesToPath(rollingSeriesMap[run.run_id]),
+          color, strokeWidth: 3.5, opacity: 0.35,
+        });
+      }
+      // Actual baseline (dashed)
+      if (vis.actual && actualSeriesMap[run.run_id]) {
+        chartLines.push({
+          runId: run.run_id, type: 'actual',
+          d: seriesToPath(actualSeriesMap[run.run_id]),
+          color, strokeWidth: 2, opacity: 0.6, dash: '6,4',
+        });
+      }
+      // Projection — cumulative projected income (solid, on top)
+      if (vis.projection && projIncomeMap[run.run_id]) {
+        chartLines.push({
+          runId: run.run_id, type: 'projection',
+          d: seriesToPath(projIncomeMap[run.run_id]),
+          color, strokeWidth: 2.5, opacity: 1.0,
+        });
+      }
+    });
+
+    const fmtDollar = (v: number) => {
+      if (v >= 1000000) return `$${(v / 1000000).toFixed(1)}M`;
+      if (v >= 1000) return `$${(v / 1000).toFixed(0)}K`;
+      return `$${v.toFixed(0)}`;
+    };
+
+    return (
+      <View style={{ marginBottom: 20, backgroundColor: '#FFF', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#E2E8F0' }}>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: '#1E293B', marginBottom: 12 }}>
+          Monthly Income — Projected vs Prior-Year Baseline
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <Svg width={CHART_W} height={CHART_H}>
+            {/* Grid lines */}
+            {yTicks.map((tick, i) => {
+              const y = PAD.top + plotH - (tick / maxVal) * plotH;
+              return (
+                <SvgLine key={`grid-${i}`} x1={PAD.left} y1={y} x2={PAD.left + plotW} y2={y} stroke="#F1F5F9" strokeWidth={1} />
+              );
+            })}
+            {/* Y-axis labels */}
+            {yTicks.map((tick, i) => {
+              const y = PAD.top + plotH - (tick / maxVal) * plotH;
+              return (
+                <SvgText key={`y-${i}`} x={PAD.left - 8} y={y + 4} textAnchor="end" fontSize={10} fill="#94A3B8">
+                  {fmtDollar(tick)}
+                </SvgText>
+              );
+            })}
+            {/* X-axis labels */}
+            {monthLabels.map((label, i) => {
+              const x = PAD.left + (i / (monthCount - 1)) * plotW;
+              return (
+                <SvgText key={`x-${i}`} x={x} y={CHART_H - PAD.bottom + 18} textAnchor="middle" fontSize={9} fill="#94A3B8">
+                  {label.slice(5)}
+                </SvgText>
+              );
+            })}
+            {/* Y-axis line */}
+            <SvgLine x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + plotH} stroke="#E2E8F0" strokeWidth={1} />
+            {/* X-axis line */}
+            <SvgLine x1={PAD.left} y1={PAD.top + plotH} x2={PAD.left + plotW} y2={PAD.top + plotH} stroke="#E2E8F0" strokeWidth={1} />
+            {/* Data lines — all types */}
+            {chartLines.map((line, li) => (
+              <Path
+                key={`${line.runId}-${line.type}-${li}`}
+                d={line.d}
+                stroke={line.color}
+                strokeWidth={line.strokeWidth}
+                strokeOpacity={line.opacity}
+                strokeDasharray={line.dash}
+                fill="none"
+              />
+            ))}
+            {/* End-point dots (projection lines only) */}
+            {chartRuns.map((run, runIdx) => {
+              const vis = chartVisibility[run.run_id];
+              if (!vis?.projection) return null;
+              const projSeries = projIncomeMap[run.run_id];
+              const lastPt = projSeries?.[projSeries.length - 1];
+              if (!lastPt) return null;
+              const x = PAD.left + ((monthCount - 1) / (monthCount - 1)) * plotW;
+              const y = PAD.top + plotH - (lastPt.value / maxVal) * plotH;
+              return (
+                <Circle key={`dot-${run.run_id}`} cx={x} cy={y} r={4} fill={CHART_COLORS[runIdx % CHART_COLORS.length]} />
+              );
+            })}
+          </Svg>
+        </ScrollView>
+
+        {/* Chart Key */}
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 20, marginTop: 10, paddingVertical: 6, borderTopWidth: 1, borderColor: '#F1F5F9' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 24, height: 2.5, backgroundColor: '#64748B', borderRadius: 1 }} />
+            <Text style={{ fontSize: 10, color: '#64748B' }}>Projection</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 24, height: 0, borderTopWidth: 2, borderColor: '#64748B', borderStyle: 'dashed' }} />
+            <Text style={{ fontSize: 10, color: '#64748B' }}>Actuals</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 24, height: 3.5, backgroundColor: '#64748B', borderRadius: 2, opacity: 0.35 }} />
+            <Text style={{ fontSize: 10, color: '#64748B' }}>Rolling Avg</Text>
+          </View>
+        </View>
+
+        {/* Scenario rows — name, projection vs actuals values, toggles */}
+        <View style={{ marginTop: 10, gap: 2 }}>
+          {chartRuns.map((run, runIdx) => {
+            const color = CHART_COLORS[runIdx % CHART_COLORS.length];
+            const vis = chartVisibility[run.run_id] ?? { projection: true, actual: false, rollingAvg: false };
+            const hasActuals = !!actualSeriesMap[run.run_id];
+            const toggleBtn = (label: string, key: 'projection' | 'actual' | 'rollingAvg', enabled: boolean) => {
+              const active = vis[key];
+              return (
+                <Pressable
+                  key={key}
+                  onPress={() => enabled && toggleChartLine(run.run_id, key)}
+                  style={{
+                    paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4,
+                    backgroundColor: !enabled ? '#F1F5F9' : active ? color : '#F1F5F9',
+                    opacity: enabled ? 1 : 0.4,
+                  }}
+                >
+                  <Text style={{ fontSize: 9, fontWeight: '600', color: !enabled ? '#94A3B8' : active ? '#FFF' : '#64748B' }}>
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            };
+            const fmtShort = (v: number) => v >= 1000 ? `$${(v / 1000).toFixed(1)}K` : `$${v.toFixed(0)}`;
+
+            // Quarterly income: sum months 0-2, 3-5, 6-8, 9-11 from chart series
+            const projSeries = projIncomeMap[run.run_id] ?? [];
+            const actSeries = actualSeriesMap[run.run_id] ?? [];
+            const qSum = (series: MonthlySeriesPoint[], qIdx: number) =>
+              series.slice(qIdx * 3, qIdx * 3 + 3).reduce((s, p) => s + p.value, 0);
+            const totalSum = (series: MonthlySeriesPoint[]) =>
+              series.reduce((s, p) => s + p.value, 0);
+
+            return (
+              <Pressable
+                key={run.run_id}
+                onPress={() => handleKpiDropdownSelect(run.run_id)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 8,
+                  paddingVertical: 5, paddingHorizontal: 8, borderRadius: 6,
+                  backgroundColor: kpiDropdownRunId === run.run_id ? '#F8FAFC' : 'transparent',
+                  borderLeftWidth: 3, borderLeftColor: color,
+                }}
+              >
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, alignSelf: 'flex-start', marginTop: 6 }} />
+                <View style={{ width: 140, flexShrink: 1 }}>
+                  <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: '#1E293B' }}>
+                    {run.scenarioName}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  {/* Column headers */}
+                  <View style={{ flexDirection: 'row', gap: 4, marginBottom: 2 }}>
+                    <Text style={{ fontSize: 8, color: '#94A3B8', width: 26 }} />
+                    <Text style={{ fontSize: 8, color: '#94A3B8', fontWeight: '700', width: 52, textAlign: 'right' }}>Q1</Text>
+                    <Text style={{ fontSize: 8, color: '#94A3B8', fontWeight: '700', width: 52, textAlign: 'right' }}>Q2</Text>
+                    <Text style={{ fontSize: 8, color: '#94A3B8', fontWeight: '700', width: 52, textAlign: 'right' }}>Q3</Text>
+                    <Text style={{ fontSize: 8, color: '#94A3B8', fontWeight: '700', width: 52, textAlign: 'right' }}>Q4</Text>
+                    <Text style={{ fontSize: 8, color: '#94A3B8', fontWeight: '700', width: 58, textAlign: 'right' }}>Year</Text>
+                  </View>
+                  {/* Projection row */}
+                  <View style={{ flexDirection: 'row', gap: 4, marginBottom: 1 }}>
+                    <Text style={{ fontSize: 9, color: '#3B82F6', fontWeight: '700', width: 26 }}>Proj</Text>
+                    <Text style={{ fontSize: 10, color: '#334155', width: 52, textAlign: 'right' }}>{fmtShort(qSum(projSeries, 0))}</Text>
+                    <Text style={{ fontSize: 10, color: '#334155', width: 52, textAlign: 'right' }}>{fmtShort(qSum(projSeries, 1))}</Text>
+                    <Text style={{ fontSize: 10, color: '#334155', width: 52, textAlign: 'right' }}>{fmtShort(qSum(projSeries, 2))}</Text>
+                    <Text style={{ fontSize: 10, color: '#334155', width: 52, textAlign: 'right' }}>{fmtShort(qSum(projSeries, 3))}</Text>
+                    <Text style={{ fontSize: 10, color: '#1E293B', fontWeight: '700', width: 58, textAlign: 'right' }}>{fmtShort(totalSum(projSeries))}</Text>
+                  </View>
+                  {/* Actuals row */}
+                  <View style={{ flexDirection: 'row', gap: 4 }}>
+                    <Text style={{ fontSize: 9, color: '#F59E0B', fontWeight: '700', width: 26 }}>Act</Text>
+                    <Text style={{ fontSize: 10, color: '#64748B', width: 52, textAlign: 'right' }}>{fmtShort(qSum(actSeries, 0))}</Text>
+                    <Text style={{ fontSize: 10, color: '#64748B', width: 52, textAlign: 'right' }}>{fmtShort(qSum(actSeries, 1))}</Text>
+                    <Text style={{ fontSize: 10, color: '#64748B', width: 52, textAlign: 'right' }}>{fmtShort(qSum(actSeries, 2))}</Text>
+                    <Text style={{ fontSize: 10, color: '#64748B', width: 52, textAlign: 'right' }}>{fmtShort(qSum(actSeries, 3))}</Text>
+                    <Text style={{ fontSize: 10, color: '#475569', fontWeight: '700', width: 58, textAlign: 'right' }}>{fmtShort(totalSum(actSeries))}</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 3, alignSelf: 'flex-start', marginTop: 4 }}>
+                  {toggleBtn('Proj', 'projection', true)}
+                  {toggleBtn('Act', 'actual', hasActuals)}
+                  {toggleBtn('Avg', 'rollingAvg', hasActuals)}
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* KPI Drill-Down */}
+        {kpiDropdownOpen && perKpiData.length > 0 ? (
+          <View style={{ marginTop: 16, borderTopWidth: 1, borderColor: '#E2E8F0', paddingTop: 14 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 8 }}>
+              KPI Revenue Breakdown — {chartRuns.find((r) => r.run_id === kpiDropdownRunId)?.scenarioName}
+            </Text>
+
+            {/* KPI selector pills */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              <Pressable
+                onPress={() => setSelectedKpiName('')}
+                style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: selectedKpiName === '' ? '#3B82F6' : '#F1F5F9' }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '600', color: selectedKpiName === '' ? '#FFF' : '#475569' }}>All KPIs</Text>
+              </Pressable>
+              {perKpiData.map((kpi) => (
+                <Pressable
+                  key={kpi.kpi_id}
+                  onPress={() => setSelectedKpiName(kpi.kpi_name)}
+                  style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: selectedKpiName === kpi.kpi_name ? '#3B82F6' : '#F1F5F9' }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: selectedKpiName === kpi.kpi_name ? '#FFF' : '#475569' }}>{kpi.kpi_name}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Monthly revenue table */}
+            {selectedKpiName === '' ? (
+              // Summary: all KPIs totals
+              <View>
+                {perKpiData.sort((a, b) => b.total - a.total).map((kpi) => (
+                  <View key={kpi.kpi_id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderColor: '#F1F5F9' }}>
+                    <Text style={{ fontSize: 12, color: '#475569', flex: 1 }}>{kpi.kpi_name}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B', width: 100, textAlign: 'right' }}>
+                      ${kpi.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </Text>
+                  </View>
+                ))}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, marginTop: 4 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E293B' }}>Total (12mo)</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E293B', width: 100, textAlign: 'right' }}>
+                    ${perKpiData.reduce((s, k) => s + k.total, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              // Selected KPI: monthly breakdown
+              <View>
+                {perKpiData
+                  .filter((k) => k.kpi_name === selectedKpiName)
+                  .map((kpi) => (
+                    <View key={kpi.kpi_id}>
+                      {kpi.series.map((pt) => (
+                        <View key={pt.month_start} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5, borderBottomWidth: 1, borderColor: '#F1F5F9' }}>
+                          <Text style={{ fontSize: 12, color: '#64748B' }}>{pt.month_start.slice(0, 7)}</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B' }}>
+                            ${pt.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </Text>
+                        </View>
+                      ))}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, marginTop: 4 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E293B' }}>Total (12mo)</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E293B' }}>
+                          ${kpi.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+              </View>
+            )}
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
   // ── Sub-view: Nav pills ──
 
   const navPills: { key: LabView; label: string }[] = [
+    { key: 'profile_list', label: 'Profiles' },
     { key: 'scenario_list', label: 'Scenarios' },
-    { key: 'scenario_create', label: '+ New' },
     { key: 'compare', label: 'Compare' },
     { key: 'golden', label: 'Golden Tests' },
     { key: 'settings', label: 'Settings' },
@@ -3929,38 +5112,59 @@ function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
 
   const renderScenarioList = () => (
     <View>
+      {/* Projection Chart */}
+      {renderProjectionChart()}
+
+      {/* Inline create button */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 4 }}>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: '#64748B' }}>{scenarios.length} scenario{scenarios.length !== 1 ? 's' : ''}</Text>
+        <Pressable
+          onPress={() => { setCreateStep('pick_profile'); setLabView('scenario_create'); }}
+          style={{ paddingHorizontal: 14, paddingVertical: 7, backgroundColor: '#3B82F6', borderRadius: 8 }}
+        >
+          <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>+ New Scenario</Text>
+        </Pressable>
+      </View>
+
       {scenarios.length === 0 ? (
         <View style={{ padding: 32, alignItems: 'center' }}>
           <Text style={{ fontSize: 15, color: '#94A3B8', marginBottom: 8 }}>No scenarios yet</Text>
-          <Pressable onPress={() => setLabView('scenario_create')} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#3B82F6', borderRadius: 8 }}>
+          <Pressable onPress={() => { setCreateStep('pick_profile'); setLabView('scenario_create'); }} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#3B82F6', borderRadius: 8 }}>
             <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>Create First Scenario</Text>
           </Pressable>
         </View>
       ) : (
         scenarios.map((s) => (
-          <Pressable
+          <View
             key={s.scenario_id}
-            onPress={() => { setSelectedScenario(s); setLabView('scenario_detail'); }}
             style={{
               padding: 14,
               borderBottomWidth: 1,
               borderColor: '#E2E8F0',
               flexDirection: 'row',
-              justifyContent: 'space-between',
               alignItems: 'center',
             }}
           >
-            <View style={{ flex: 1 }}>
+            <Pressable
+              onPress={() => { setSelectedScenario(s); setLabView('scenario_detail'); }}
+              style={{ flex: 1 }}
+            >
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#1E293B' }}>
                 {s.name} {s.is_golden ? '⭐' : ''}
               </Text>
               <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
-                Seed: {s.seed} · {s.log_stream.length} events · {s.kpi_definitions.length} KPIs
+                {s.user_profile.display_name} · {s.log_stream.length} events · {s.kpi_definitions.length} KPIs
                 {s.actual_closings.length > 0 ? ` · ${s.actual_closings.length} actuals` : ''}
               </Text>
-            </View>
-            <Text style={{ fontSize: 11, color: '#94A3B8' }}>{new Date(s.created_at).toLocaleDateString()}</Text>
-          </Pressable>
+            </Pressable>
+            <Text style={{ fontSize: 11, color: '#94A3B8', marginRight: 10 }}>{new Date(s.created_at).toLocaleDateString()}</Text>
+            <Pressable
+              onPress={() => handleDeleteScenario(s.scenario_id)}
+              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, backgroundColor: '#FEF2F2' }}
+            >
+              <Text style={{ fontSize: 12, color: '#DC2626', fontWeight: '600' }}>Delete</Text>
+            </Pressable>
+          </View>
         ))
       )}
     </View>
@@ -3968,40 +5172,581 @@ function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
 
   // ── Sub-view: Scenario Create ──
 
-  const renderScenarioCreate = () => (
+  const renderScenarioCreate = () => {
+    if (createStep === 'volume_spec') {
+      const profile = agentProfiles.find((p) => p.profile_id === createProfileId);
+      if (!profile) return <Text style={{ color: '#94A3B8' }}>Profile not found</Text>;
+      return (
+        <View style={{ gap: 16 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>Volume Specification</Text>
+            <Pressable onPress={() => setCreateStep('pick_profile')} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: '#F1F5F9' }}>
+              <Text style={{ fontSize: 12, color: '#475569', fontWeight: '600' }}>← Change Profile</Text>
+            </Pressable>
+          </View>
+
+          {/* Profile summary */}
+          <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#E2E8F0' }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B' }}>{profile.name}</Text>
+            <Text style={{ fontSize: 12, color: '#3B82F6', marginTop: 2 }}>{profile.agent_name} · ${profile.avg_price_point.toLocaleString()} avg · {(profile.commission_rate * 100).toFixed(2)}%</Text>
+          </View>
+
+          {/* Per-KPI volume inputs */}
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#475569' }}>Events per month by KPI:</Text>
+          {createVolumeSpecs.map((spec, idx) => (
+            <View key={spec.kpi_name} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FFF', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: '#E2E8F0' }}>
+              <Text style={{ flex: 1, fontSize: 12, color: '#1E293B' }}>{spec.kpi_name}</Text>
+              <TextInput
+                value={spec.events_per_month.toString()}
+                onChangeText={(v) => {
+                  const val = parseInt(v) || 0;
+                  setCreateVolumeSpecs((prev) => prev.map((s, i) => i === idx ? { ...s, events_per_month: val } : s));
+                }}
+                keyboardType="numeric"
+                style={{ width: 60, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, fontSize: 13, textAlign: 'center', backgroundColor: '#FFF' }}
+              />
+              <Text style={{ fontSize: 11, color: '#94A3B8' }}>/mo</Text>
+            </View>
+          ))}
+
+          {/* Time span */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#475569' }}>Time span:</Text>
+            <TextInput
+              value={createTimeSpan}
+              onChangeText={setCreateTimeSpan}
+              keyboardType="numeric"
+              style={{ width: 50, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, fontSize: 13, textAlign: 'center' }}
+            />
+            <Text style={{ fontSize: 13, color: '#475569' }}>months</Text>
+          </View>
+
+          {/* Include actuals toggle */}
+          <Pressable onPress={() => setCreateActuals(!createActuals)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: createActuals ? '#3B82F6' : '#CBD5E1', backgroundColor: createActuals ? '#3B82F6' : '#FFF', alignItems: 'center', justifyContent: 'center' }}>
+              {createActuals ? <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>✓</Text> : null}
+            </View>
+            <Text style={{ fontSize: 13, color: '#475569' }}>Include actual closings</Text>
+          </Pressable>
+
+          {/* Generate button */}
+          <Pressable
+            onPress={handleGenerateFromVolume}
+            style={{ backgroundColor: '#3B82F6', borderRadius: 8, paddingVertical: 12, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 14 }}>Generate Scenario</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    // Step 1: Pick profile
+    return (
+      <View style={{ gap: 16 }}>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>Create Scenario — Pick a Profile</Text>
+        <Text style={{ fontSize: 13, color: '#64748B', marginTop: -8 }}>
+          Choose an agent profile, then configure per-KPI volume and frequency. Or use "Quick Generate" for a random scenario.
+        </Text>
+        {agentProfiles.map((profile) => (
+          <View
+            key={profile.profile_id}
+            style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, padding: 16 }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#1E293B' }}>{profile.name}</Text>
+                <Text style={{ fontSize: 12, color: '#3B82F6', marginTop: 2 }}>{profile.agent_name}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <View style={{ backgroundColor: profile.is_builtin ? '#FEF3C7' : '#E0E7FF', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: profile.is_builtin ? '#92400E' : '#4338CA' }}>{profile.is_builtin ? 'BUILT-IN' : 'CUSTOM'}</Text>
+                </View>
+              </View>
+            </View>
+            <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 18, marginBottom: 8 }}>{profile.description}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+              {profile.kpi_names.map((kpi) => (
+                <View key={kpi} style={{ backgroundColor: '#F1F5F9', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                  <Text style={{ fontSize: 10, color: '#475569' }}>{kpi}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => handleStartVolumeCreate(profile)}
+                style={{ flex: 1, paddingVertical: 8, borderRadius: 6, backgroundColor: '#3B82F6', alignItems: 'center' }}
+              >
+                <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 12 }}>Configure Volume →</Text>
+              </Pressable>
+              {/* Quick Generate uses the legacy random path if a matching ScenarioProfile exists */}
+              {(() => {
+                const legacyProfile = SCENARIO_PROFILES.find((sp) => `builtin-${sp.id}` === profile.profile_id);
+                if (!legacyProfile) return null;
+                return (
+                  <Pressable
+                    onPress={() => handleCreateFromProfile(legacyProfile)}
+                    style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6, backgroundColor: '#F1F5F9', alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#475569', fontWeight: '600', fontSize: 12 }}>Quick Generate (random)</Text>
+                  </Pressable>
+                );
+              })()}
+            </View>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  // ── Sub-view: Profile List ──
+
+  const renderProfileList = () => (
     <View style={{ gap: 12 }}>
-      <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>Create New Scenario</Text>
-      {[
-        { label: 'Seed', value: newSeed, set: setNewSeed, placeholder: 'Numeric seed for reproducibility' },
-        { label: 'Name (optional)', value: newName, set: setNewName, placeholder: 'e.g. High-Volume Agent' },
-        { label: 'KPI Count', value: newKpiCount, set: setNewKpiCount, placeholder: '1-6' },
-        { label: 'Log Days Span', value: newLogDays, set: setNewLogDays, placeholder: 'Days of history' },
-        { label: 'Logs Per KPI', value: newLogsPerKpi, set: setNewLogsPerKpi, placeholder: 'Events per KPI' },
-      ].map((field) => (
-        <View key={field.label}>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>{field.label}</Text>
-          <TextInput
-            value={field.value}
-            onChangeText={field.set}
-            placeholder={field.placeholder}
-            style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, fontSize: 14, backgroundColor: '#FFF' }}
-          />
-        </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>Agent Profiles</Text>
+        <Pressable
+          onPress={() => { handleProfileFormReset(); setLabView('profile_create'); }}
+          style={{ paddingHorizontal: 14, paddingVertical: 7, backgroundColor: '#3B82F6', borderRadius: 8 }}
+        >
+          <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>+ Create Profile</Text>
+        </Pressable>
+      </View>
+      <Text style={{ fontSize: 13, color: '#64748B' }}>
+        Agent profiles define WHO the agent is and WHICH KPIs they track. Use profiles to create scenarios.
+      </Text>
+      {agentProfiles.map((profile) => (
+        <Pressable
+          key={profile.profile_id}
+          onPress={() => {
+            if (profile.is_builtin) {
+              setSelectedProfile(profile);
+              // Read-only for built-in, but allow duplicate
+            } else {
+              handleProfileFormStartEdit(profile);
+            }
+          }}
+          style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, padding: 14 }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E293B' }}>{profile.name}</Text>
+              <Text style={{ fontSize: 12, color: '#3B82F6', marginTop: 1 }}>{profile.agent_name} · ${profile.avg_price_point.toLocaleString()} · {(profile.commission_rate * 100).toFixed(2)}%</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+              <View style={{ backgroundColor: profile.is_builtin ? '#FEF3C7' : '#E0E7FF', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: profile.is_builtin ? '#92400E' : '#4338CA' }}>{profile.is_builtin ? 'BUILT-IN' : 'CUSTOM'}</Text>
+              </View>
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                <Text style={{ fontSize: 10, color: '#475569' }}>{profile.kpi_names.length} KPIs</Text>
+              </View>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+            {profile.kpi_names.slice(0, 6).map((kpi) => (
+              <View key={kpi} style={{ backgroundColor: '#F1F5F9', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                <Text style={{ fontSize: 10, color: '#475569' }}>{kpi}</Text>
+              </View>
+            ))}
+            {profile.kpi_names.length > 6 ? (
+              <Text style={{ fontSize: 10, color: '#94A3B8' }}>+{profile.kpi_names.length - 6} more</Text>
+            ) : null}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+            <Pressable
+              onPress={(e) => { e.stopPropagation?.(); handleStartVolumeCreate(profile); }}
+              style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, backgroundColor: '#EFF6FF' }}
+            >
+              <Text style={{ fontSize: 11, color: '#2563EB', fontWeight: '600' }}>→ Create Scenario</Text>
+            </Pressable>
+            {profile.is_builtin ? (
+              <Pressable
+                onPress={(e) => { e.stopPropagation?.(); handleDuplicateProfile(profile); }}
+                style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, backgroundColor: '#F1F5F9' }}
+              >
+                <Text style={{ fontSize: 11, color: '#475569', fontWeight: '600' }}>Duplicate</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={(e) => { e.stopPropagation?.(); handleProfileFormStartEdit(profile); }}
+                style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, backgroundColor: '#F1F5F9' }}
+              >
+                <Text style={{ fontSize: 11, color: '#475569', fontWeight: '600' }}>Edit</Text>
+              </Pressable>
+            )}
+          </View>
+        </Pressable>
       ))}
-      <Pressable
-        onPress={() => setNewIncludeActuals((v) => !v)}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-      >
-        <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: newIncludeActuals ? '#3B82F6' : '#CBD5E1', backgroundColor: newIncludeActuals ? '#3B82F6' : '#FFF', alignItems: 'center', justifyContent: 'center' }}>
-          {newIncludeActuals ? <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>✓</Text> : null}
-        </View>
-        <Text style={{ fontSize: 13, color: '#475569' }}>Include synthetic actual closings (calibration sandbox)</Text>
-      </Pressable>
-      <Pressable onPress={handleCreateScenario} style={{ marginTop: 8, backgroundColor: '#3B82F6', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}>
-        <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 14 }}>Generate Scenario</Text>
-      </Pressable>
     </View>
   );
+
+  // ── Sub-view: Profile Create / Edit ──
+
+  const renderProfileForm = (isNew: boolean) => (
+    <View style={{ gap: 14 }}>
+      <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>
+        {isNew ? 'Create Agent Profile' : `Edit: ${profileFormName}`}
+      </Text>
+
+      {/* Name */}
+      <View>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Profile Name</Text>
+        <TextInput
+          value={profileFormName}
+          onChangeText={setProfileFormName}
+          placeholder="e.g. Luxury Listing Agent"
+          style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, backgroundColor: '#FFF' }}
+        />
+      </View>
+
+      {/* Agent name */}
+      <View>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Agent Name</Text>
+        <TextInput
+          value={profileFormAgent}
+          onChangeText={setProfileFormAgent}
+          placeholder="e.g. Sarah Mitchell"
+          style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, backgroundColor: '#FFF' }}
+        />
+      </View>
+
+      {/* Price point + Commission row */}
+      <View style={{ flexDirection: 'row', gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Avg Price Point ($)</Text>
+          <TextInput
+            value={profileFormPrice}
+            onChangeText={setProfileFormPrice}
+            keyboardType="numeric"
+            style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, backgroundColor: '#FFF' }}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Commission (%)</Text>
+          <TextInput
+            value={profileFormCommission}
+            onChangeText={setProfileFormCommission}
+            keyboardType="numeric"
+            style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, backgroundColor: '#FFF' }}
+          />
+        </View>
+      </View>
+
+      {/* Description */}
+      <View>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 4 }}>Description</Text>
+        <TextInput
+          value={profileFormDesc}
+          onChangeText={setProfileFormDesc}
+          placeholder="Describe this agent archetype..."
+          multiline
+          numberOfLines={3}
+          style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, backgroundColor: '#FFF', minHeight: 60 }}
+        />
+      </View>
+
+      {/* Include actuals toggle */}
+      <Pressable onPress={() => setProfileFormActuals(!profileFormActuals)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: profileFormActuals ? '#3B82F6' : '#CBD5E1', backgroundColor: profileFormActuals ? '#3B82F6' : '#FFF', alignItems: 'center', justifyContent: 'center' }}>
+          {profileFormActuals ? <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>✓</Text> : null}
+        </View>
+        <Text style={{ fontSize: 13, color: '#475569' }}>Include actual closings by default</Text>
+      </Pressable>
+
+      {/* KPI picker */}
+      <View>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>KPIs Tracked ({profileFormKpis.length})</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {PC_KPI_TEMPLATES.map((t) => {
+            const selected = profileFormKpis.includes(t.name);
+            return (
+              <Pressable
+                key={t.name}
+                onPress={() => {
+                  setProfileFormKpis((prev) =>
+                    selected ? prev.filter((n) => n !== t.name) : [...prev, t.name]
+                  );
+                }}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 6,
+                  borderWidth: 1,
+                  borderColor: selected ? '#3B82F6' : '#CBD5E1',
+                  backgroundColor: selected ? '#EFF6FF' : '#FFF',
+                }}
+              >
+                <Text style={{ fontSize: 11, color: selected ? '#2563EB' : '#64748B', fontWeight: selected ? '600' : '400' }}>{t.name}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Save / Delete row */}
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+        <Pressable
+          onPress={() => handleSaveProfile(isNew)}
+          style={{ flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: '#3B82F6', alignItems: 'center' }}
+        >
+          <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 14 }}>{isNew ? 'Create Profile' : 'Save Changes'}</Text>
+        </Pressable>
+        {!isNew ? (
+          <Pressable
+            onPress={() => handleDeleteProfile(selectedProfile!.profile_id)}
+            style={{ paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#FEF2F2', alignItems: 'center' }}
+          >
+            <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 14 }}>Delete</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+
+  // ── Sub-view: Scenario Edit ──
+
+  const renderScenarioEdit = () => {
+    if (!selectedScenario) return <Text style={{ color: '#94A3B8' }}>No scenario selected</Text>;
+    const kpiNameMap = new Map(editKpiDefs.map((k) => [k.kpi_id, k.name]));
+    const availableTemplates = PC_KPI_TEMPLATES.filter(
+      (t) => !editKpiDefs.some((k) => k.name === t.name)
+    );
+
+    return (
+      <View style={{ gap: 16 }}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: '#1E293B' }}>Edit Scenario</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable onPress={() => setLabView('scenario_detail')} style={{ backgroundColor: '#F1F5F9', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 }}>
+              <Text style={{ color: '#475569', fontWeight: '600', fontSize: 13 }}>Cancel</Text>
+            </Pressable>
+            <Pressable onPress={handleSaveEdit} style={{ backgroundColor: '#3B82F6', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 }}>
+              <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>Save & Re-Run</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Scenario Name */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14, gap: 10 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#334155' }}>Scenario Name</Text>
+          <TextInput
+            value={editName}
+            onChangeText={setEditName}
+            style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, padding: 10, fontSize: 14, color: '#1E293B' }}
+          />
+        </View>
+
+        {/* Agent Profile */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14, gap: 10 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#334155' }}>Agent Profile</Text>
+          <View style={{ gap: 8 }}>
+            <View>
+              <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 3 }}>Agent Name</Text>
+              <TextInput
+                value={editDisplayName}
+                onChangeText={setEditDisplayName}
+                style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, padding: 10, fontSize: 13, color: '#1E293B' }}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 3 }}>Avg Price Point ($)</Text>
+                <TextInput
+                  value={editPricePoint}
+                  onChangeText={setEditPricePoint}
+                  keyboardType="numeric"
+                  style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, padding: 10, fontSize: 13, color: '#1E293B' }}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 3 }}>Commission (%)</Text>
+                <TextInput
+                  value={editCommission}
+                  onChangeText={setEditCommission}
+                  keyboardType="numeric"
+                  style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, padding: 10, fontSize: 13, color: '#1E293B' }}
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Closed Deals Per Year (actuals) */}
+        <View style={{ backgroundColor: '#F0FDF4', borderRadius: 8, padding: 14, gap: 10, borderWidth: 1, borderColor: '#BBF7D0' }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#334155' }}>Actuals — Closed Deals / Year</Text>
+          <Text style={{ fontSize: 11, color: '#64748B' }}>
+            How many deals this agent closes per year. Evenly distributed across 12 months for the actuals line.
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <TextInput
+              value={editClosedDeals}
+              onChangeText={setEditClosedDeals}
+              keyboardType="numeric"
+              placeholder={`Auto (${Math.max(6, Math.min(20, Math.round(150000 / ((parseFloat(editPricePoint) || 400000) * ((parseFloat(editCommission) || 3) / 100)))))})`}
+              placeholderTextColor="#94A3B8"
+              style={{ flex: 1, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1FAE5', borderRadius: 6, padding: 10, fontSize: 14, color: '#1E293B' }}
+            />
+            <Text style={{ fontSize: 12, color: '#64748B' }}>deals/year</Text>
+          </View>
+        </View>
+
+        {/* KPI Definitions + Annual Volume */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14, gap: 10 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#334155' }}>KPIs ({editKpiDefs.length})</Text>
+            <Pressable onPress={() => setEditAddKpiOpen(!editAddKpiOpen)} style={{ backgroundColor: '#3B82F6', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 }}>
+              <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '600' }}>{editAddKpiOpen ? 'Close' : '+ Add KPI'}</Text>
+            </Pressable>
+          </View>
+
+          {/* Add KPI dropdown */}
+          {editAddKpiOpen && availableTemplates.length > 0 ? (
+            <View style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, maxHeight: 200, overflow: 'hidden' }}>
+              <ScrollView nestedScrollEnabled style={{ maxHeight: 200 }}>
+                {availableTemplates.map((t) => (
+                  <Pressable
+                    key={t.name}
+                    onPress={() => handleAddKpiToEdit(t)}
+                    style={{ padding: 10, borderBottomWidth: 1, borderColor: '#F1F5F9' }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B' }}>{t.name}</Text>
+                    <Text style={{ fontSize: 10, color: '#64748B' }}>
+                      Weight: {t.weight_percent}% · TTC: {t.ttc_definition ?? 'none'} · Delay: {t.delay_days ?? 0}d · Hold: {t.hold_days ?? 0}d
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          ) : editAddKpiOpen && availableTemplates.length === 0 ? (
+            <Text style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>All available KPI templates already added</Text>
+          ) : null}
+
+          {/* Current KPIs with annual volume */}
+          {editKpiDefs.map((k) => (
+            <View key={k.kpi_id} style={{ backgroundColor: '#FFF', borderRadius: 6, padding: 10, borderWidth: 1, borderColor: '#E2E8F0', gap: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B' }}>{k.name}</Text>
+                  <Text style={{ fontSize: 10, color: '#64748B' }}>
+                    Weight: {k.weight_percent}% · TTC: {k.ttc_definition ?? 'none'} · GP: {k.gp_value} · VP: {k.vp_value}
+                  </Text>
+                </View>
+                <Pressable onPress={() => handleRemoveKpiFromEdit(k.kpi_id)} style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#FEF2F2', borderRadius: 4 }}>
+                  <Text style={{ fontSize: 10, color: '#DC2626', fontWeight: '600' }}>✕</Text>
+                </Pressable>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
+                <Text style={{ fontSize: 11, color: '#64748B' }}>Annual events:</Text>
+                <TextInput
+                  value={editKpiAnnualVolume[k.kpi_id] ?? ''}
+                  onChangeText={(v) => setEditKpiAnnualVolume((prev) => ({ ...prev, [k.kpi_id]: v }))}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor="#CBD5E1"
+                  style={{ width: 60, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, fontSize: 12, textAlign: 'center', color: '#1E293B' }}
+                />
+                <Text style={{ fontSize: 10, color: '#94A3B8' }}>/yr</Text>
+                {(() => {
+                  const vol = parseInt(editKpiAnnualVolume[k.kpi_id] ?? '0') || 0;
+                  if (vol <= 0) return null;
+                  const pp = parseFloat(editPricePoint) || 0;
+                  const cr = (parseFloat(editCommission) || 0) / 100;
+                  const pcPerEvent = pp * cr * (k.weight_percent / 100);
+                  return <Text style={{ fontSize: 10, color: '#94A3B8' }}>→ PC: ${(pcPerEvent * vol).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr</Text>;
+                })()}
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* Event Stream (Log Entries) */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14, gap: 10 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#334155' }}>Events ({editLogStream.length})</Text>
+            <Pressable onPress={handleAddLogEntry} style={{ backgroundColor: '#3B82F6', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 }}>
+              <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '600' }}>+ Add Event</Text>
+            </Pressable>
+          </View>
+          <Text style={{ fontSize: 11, color: '#94A3B8' }}>
+            Each event generates projected commission (PC) based on the KPI weight, your price point, and commission rate.
+          </Text>
+
+          {editLogStream.length === 0 ? (
+            <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', textAlign: 'center', paddingVertical: 12 }}>
+              No events. Tap "+ Add Event" to create one.
+            </Text>
+          ) : (
+            editLogStream.map((log, idx) => (
+              <View key={log.log_id} style={{ backgroundColor: '#FFF', borderRadius: 6, padding: 10, borderWidth: 1, borderColor: '#E2E8F0', gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#94A3B8' }}>Event #{idx + 1}</Text>
+                  <Pressable onPress={() => handleRemoveLogEntry(log.log_id)} style={{ paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#FEF2F2', borderRadius: 4 }}>
+                    <Text style={{ fontSize: 10, color: '#DC2626', fontWeight: '600' }}>Remove</Text>
+                  </Pressable>
+                </View>
+                <View style={{ gap: 6 }}>
+                  {/* KPI selector */}
+                  <View>
+                    <Text style={{ fontSize: 10, color: '#64748B', marginBottom: 2 }}>KPI</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                      {editKpiDefs.map((k) => (
+                        <Pressable
+                          key={k.kpi_id}
+                          onPress={() => handleUpdateLogEntry(log.log_id, 'kpi_id', k.kpi_id)}
+                          style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                            borderRadius: 4,
+                            backgroundColor: log.kpi_id === k.kpi_id ? '#3B82F6' : '#F1F5F9',
+                          }}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: '600', color: log.kpi_id === k.kpi_id ? '#FFF' : '#475569' }}>
+                            {k.name}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 2 }}>
+                      <Text style={{ fontSize: 10, color: '#64748B', marginBottom: 2 }}>Date (YYYY-MM-DD)</Text>
+                      <TextInput
+                        value={log.event_date_iso.split('T')[0]}
+                        onChangeText={(v) => handleUpdateLogEntry(log.log_id, 'event_date_iso', v)}
+                        style={{ backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, padding: 8, fontSize: 12, color: '#1E293B' }}
+                        placeholder="2025-01-15"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 10, color: '#64748B', marginBottom: 2 }}>Qty</Text>
+                      <TextInput
+                        value={log.quantity.toString()}
+                        onChangeText={(v) => handleUpdateLogEntry(log.log_id, 'quantity', v)}
+                        keyboardType="numeric"
+                        style={{ backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, padding: 8, fontSize: 12, color: '#1E293B' }}
+                      />
+                    </View>
+                  </View>
+                  {/* Computed PC preview */}
+                  <Text style={{ fontSize: 10, color: '#94A3B8' }}>
+                    KPI: {kpiNameMap.get(log.kpi_id) ?? 'Unknown'}
+                    {(() => {
+                      const kpi = editKpiDefs.find((k) => k.kpi_id === log.kpi_id);
+                      if (!kpi) return '';
+                      const pp = parseFloat(editPricePoint) || 0;
+                      const cr = (parseFloat(editCommission) || 0) / 100;
+                      const pc = pp * cr * (kpi.weight_percent / 100) * log.quantity;
+                      return ` → Initial PC: $${pc.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+                    })()}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      </View>
+    );
+  };
 
   // ── Sub-view: Scenario Detail ──
 
@@ -4015,13 +5760,26 @@ function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View>
             <Text style={{ fontSize: 18, fontWeight: '700', color: '#1E293B' }}>{s.name}</Text>
-            <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>Seed: {s.seed} · {s.algorithm_version}</Text>
+            <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{s.user_profile.display_name} · {s.algorithm_version}</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable onPress={() => handleRunScenario(s)} style={{ backgroundColor: '#3B82F6', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 }}>
-              <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>Run</Text>
+            <Pressable onPress={() => handleStartEdit(s)} style={{ backgroundColor: '#F59E0B', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 }}>
+              <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>Edit</Text>
             </Pressable>
-            <Pressable onPress={() => handleExportJson(s, `scenario-${s.seed}.json`)} style={{ backgroundColor: '#F1F5F9', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 }}>
+            {(() => {
+              const hasRun = chartRuns.some((r) => r.scenario_id === s.scenario_id);
+              return (
+                <Pressable
+                  onPress={() => !hasRun && handleRunScenario(s)}
+                  style={{ backgroundColor: hasRun ? '#E2E8F0' : '#3B82F6', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, opacity: hasRun ? 0.5 : 1 }}
+                >
+                  <Text style={{ color: hasRun ? '#94A3B8' : '#FFF', fontWeight: '600', fontSize: 13 }}>
+                    {hasRun ? 'Up to date' : 'Run'}
+                  </Text>
+                </Pressable>
+              );
+            })()}
+            <Pressable onPress={() => handleExportJson(s, `scenario-${s.scenario_id.slice(0, 12)}.json`)} style={{ backgroundColor: '#F1F5F9', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 }}>
               <Text style={{ color: '#475569', fontWeight: '600', fontSize: 13 }}>Export</Text>
             </Pressable>
           </View>
@@ -4035,6 +5793,30 @@ function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
           </Text>
         </View>
 
+        {/* Actuals / Volume Summary */}
+        {(s.closed_deals_override || s.kpi_annual_volume) ? (
+          <View style={{ backgroundColor: '#F0FDF4', borderRadius: 8, padding: 14, borderWidth: 1, borderColor: '#BBF7D0' }}>
+            {s.closed_deals_override ? (
+              <Text style={{ fontSize: 12, color: '#16A34A', fontWeight: '600', marginBottom: 4 }}>
+                Closed Deals: {s.closed_deals_override}/yr · {s.actual_closings.length} closings generated
+              </Text>
+            ) : null}
+            {s.kpi_annual_volume ? (
+              <View style={{ gap: 2 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: '#334155' }}>KPI Volumes (annual):</Text>
+                {Object.entries(s.kpi_annual_volume).map(([kId, vol]) => {
+                  const kpi = s.kpi_definitions.find((k) => k.kpi_id === kId);
+                  return (
+                    <Text key={kId} style={{ fontSize: 11, color: '#64748B' }}>
+                      {kpi?.name ?? kId}: {vol}/yr
+                    </Text>
+                  );
+                })}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         {/* KPI Definitions */}
         <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
           <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 8 }}>KPI Definitions ({s.kpi_definitions.length})</Text>
@@ -4045,12 +5827,40 @@ function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
           ))}
         </View>
 
-        {/* Log Summary */}
+        {/* Event Stream */}
         <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 4 }}>
-            Event Stream: {s.log_stream.length} events
-            {s.actual_closings.length > 0 ? ` · ${s.actual_closings.length} actual closings` : ''}
-          </Text>
+          <Pressable
+            onPress={() => setExpandedEvents(!expandedEvents)}
+            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>
+              Event Stream: {s.log_stream.length} events
+              {s.actual_closings.length > 0 ? ` · ${s.actual_closings.length} actual closings` : ''}
+            </Text>
+            <Text style={{ fontSize: 12, color: '#3B82F6' }}>{expandedEvents ? '▼ Hide' : '▶ Show'}</Text>
+          </Pressable>
+          {expandedEvents ? (
+            <View style={{ marginTop: 10, gap: 6 }}>
+              {s.log_stream.map((log, idx) => {
+                const kpi = s.kpi_definitions.find((k) => k.kpi_id === log.kpi_id);
+                const pc = s.user_profile.average_price_point * s.user_profile.commission_rate * ((kpi?.weight_percent ?? 0) / 100) * log.quantity;
+                return (
+                  <View key={log.log_id} style={{ backgroundColor: '#FFF', borderRadius: 6, padding: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B' }}>
+                        {kpi?.name ?? 'Unknown'} × {log.quantity}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: '#64748B' }}>{log.event_date_iso.split('T')[0]}</Text>
+                    </View>
+                    <Text style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
+                      Initial PC: ${pc.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      {log.initial_pc_override ? ` (override: $${log.initial_pc_override.toLocaleString()})` : ''}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
         </View>
 
         {/* Runs for this scenario */}
@@ -4204,7 +6014,7 @@ function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
         <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14 }}>
           <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 8 }}>Audit</Text>
           <Text style={{ fontSize: 11, color: '#64748B' }}>
-            Run: {r.run_id} · Admin: {r.admin_user} · Seed: {r.seed} · Checksum: {r.checksum} · Prod Writes: {String(r.production_writes_enabled)}
+            Run: {r.run_id} · Admin: {r.admin_user} · Checksum: {r.checksum} · Prod Writes: {String(r.production_writes_enabled)}
           </Text>
         </View>
       </View>
@@ -4392,9 +6202,13 @@ function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
 
   const renderContent = () => {
     switch (labView) {
+      case 'profile_list': return renderProfileList();
+      case 'profile_create': return renderProfileForm(true);
+      case 'profile_edit': return renderProfileForm(false);
       case 'scenario_list': return renderScenarioList();
       case 'scenario_create': return renderScenarioCreate();
       case 'scenario_detail': return renderScenarioDetail();
+      case 'scenario_edit': return renderScenarioEdit();
       case 'run_detail': return renderRunDetail();
       case 'compare': return renderCompare();
       case 'golden': return renderGolden();
@@ -4423,10 +6237,17 @@ function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
       {/* Navigation */}
       {renderNavPills()}
 
-      {/* Back button for detail views */}
-      {(labView === 'scenario_detail' || labView === 'run_detail') ? (
+      {/* Back button for detail/edit views */}
+      {(['scenario_detail', 'run_detail', 'scenario_edit', 'scenario_create', 'profile_create', 'profile_edit'] as LabView[]).includes(labView) ? (
         <Pressable
-          onPress={() => setLabView(labView === 'run_detail' && selectedRun ? 'scenario_detail' : 'scenario_list')}
+          onPress={() => setLabView(
+            labView === 'run_detail' && selectedRun ? 'scenario_detail'
+            : labView === 'scenario_edit' ? 'scenario_detail'
+            : labView === 'scenario_create' ? 'scenario_list'
+            : labView === 'profile_create' ? 'profile_list'
+            : labView === 'profile_edit' ? 'profile_list'
+            : 'scenario_list'
+          )}
           style={{ marginBottom: 12 }}
         >
           <Text style={{ fontSize: 13, color: '#3B82F6', fontWeight: '600' }}>← Back</Text>
@@ -4478,7 +6299,7 @@ export default function AdminShellScreen() {
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [templateSearchQuery, setTemplateSearchQuery] = useState('');
   const [templateStatusFilter, setTemplateStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [templateDraft, setTemplateDraft] = useState<TemplateFormDraft>(emptyTemplateDraft);
+  const [templateDraft, setTemplateDraft] = useState<TemplateFormDraft>(() => ({ ...emptyTemplateDraft(), showForm: false }));
   const [templateSaving, setTemplateSaving] = useState(false);
   const [templateSaveError, setTemplateSaveError] = useState<string | null>(null);
   const [templateSuccessMessage, setTemplateSuccessMessage] = useState<string | null>(null);
@@ -4808,7 +6629,7 @@ export default function AdminShellScreen() {
   useEffect(() => {
     let cancelled = false;
     if (!session?.access_token) return;
-    if (activeRouteKey !== 'kpis') return;
+    if (activeRouteKey !== 'kpis' && activeRouteKey !== 'challengeTemplates') return;
     if (!effectiveHasAdminAccess) return;
 
     void refreshKpis().catch(() => {});
@@ -4952,7 +6773,7 @@ export default function AdminShellScreen() {
       setTemplateSuccessMessage(`Template created: ${created.name}`);
       await refreshTemplates();
     } catch (error) {
-      setTemplateSaveError(error instanceof Error ? error.message : 'Failed to create template');
+      setTemplateSaveError(error instanceof Error ? error.message : String(error) || 'Failed to create template');
     } finally {
       setTemplateSaving(false);
     }
@@ -5483,6 +7304,7 @@ export default function AdminShellScreen() {
                 ) : activeRoute.key === 'challengeTemplates' ? (
                   <AdminChallengeTemplatesPanel
                     rows={templateRows}
+                    kpiRows={kpiRows}
                     loading={templateLoading}
                     error={templateError}
                     searchQuery={templateSearchQuery}

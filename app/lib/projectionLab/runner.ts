@@ -7,6 +7,8 @@
 
 import type {
   LabScenario,
+  LabActualClosing,
+  MonthlySeriesPoint,
   RunBundle,
   EventPhaseDiagnostic,
   CalibrationMetrics,
@@ -325,4 +327,134 @@ export function compareRuns(runA: RunBundle, runB: RunBundle): RunComparison {
     top_drivers: topDrivers,
     summary_deltas: summaryDeltas,
   };
+}
+
+// ── Per-KPI Monthly Projection Series ────────────────
+
+export type KpiMonthlySeries = {
+  kpi_name: string;
+  kpi_id: string;
+  series: { month_start: string; value: number }[];
+  total: number;
+};
+
+export function computePerKpiSeries(
+  scenario: LabScenario,
+  evalDate?: Date,
+  bumpPercent: number = 0
+): KpiMonthlySeries[] {
+  const evalD = evalDate ?? new Date();
+
+  return scenario.kpi_definitions.map((kpi) => {
+    const kpiLogs = scenario.log_stream.filter((l) => l.kpi_id === kpi.kpi_id);
+    const pcEvents: PcEvent[] = kpiLogs.map((log) => {
+      const timing = resolvePcTiming({
+        ttc_definition: kpi.ttc_definition,
+        delay_days: kpi.delay_days,
+        hold_days: kpi.hold_days,
+      });
+      const initialPc =
+        log.initial_pc_override ??
+        scenario.user_profile.average_price_point *
+          scenario.user_profile.commission_rate *
+          (kpi.weight_percent / 100) *
+          log.quantity;
+
+      return {
+        eventTimestampIso: log.event_date_iso,
+        initialPcGenerated: initialPc,
+        delayBeforePayoffStartsDays: timing.delayDays,
+        holdDurationDays: timing.holdDays,
+        decayDurationDays: kpi.decay_days ?? ALGO_CONSTANTS.pc.defaultDecayDays,
+      };
+    });
+
+    const series = buildFutureProjected12mSeries(pcEvents, evalD, bumpPercent);
+    const total = series.reduce((s, p) => s + p.value, 0);
+
+    return { kpi_name: kpi.name, kpi_id: kpi.kpi_id, series, total };
+  });
+}
+
+// ── Projected Income Series (per-month, not cumulative) ─
+
+/**
+ * Monthly projected income from KPI activity.
+ *
+ * Each event's `payoff_start_iso` determines WHEN its income lands.
+ * Events entering payoff in a month contribute a proportional share
+ * of the agent's estimated annual GCI.  The result is a spiky
+ * month-by-month income chart directly comparable to the actuals line.
+ */
+export function buildProjectedIncomeSeries(
+  eventContributions: EventPhaseDiagnostic[],
+  monthBoundaries: MonthlySeriesPoint[],
+  annualGciEstimate: number,
+): MonthlySeriesPoint[] {
+  if (eventContributions.length === 0 || monthBoundaries.length === 0) {
+    return monthBoundaries.map((b) => ({ month_start: b.month_start, value: 0 }));
+  }
+
+  // Count events entering payoff per month
+  const eventCounts: number[] = monthBoundaries.map((boundary) => {
+    const monthKey = boundary.month_start.slice(0, 7);
+    return eventContributions.filter(
+      (ev) => ev.payoff_start_iso.slice(0, 7) === monthKey
+    ).length;
+  });
+  const totalEventsAssigned = eventCounts.reduce((s, c) => s + c, 0);
+
+  // If no events land in the projection window, distribute evenly
+  if (totalEventsAssigned === 0) {
+    const even = annualGciEstimate / monthBoundaries.length;
+    return monthBoundaries.map((b) => ({
+      month_start: b.month_start, value: Number(even.toFixed(2)),
+    }));
+  }
+
+  // Per-month income (not cumulative)
+  return monthBoundaries.map((boundary, i) => {
+    const share = eventCounts[i] / totalEventsAssigned;
+    return { month_start: boundary.month_start, value: Number((annualGciEstimate * share).toFixed(2)) };
+  });
+}
+
+// ── Actual Baseline Series (per-month, not cumulative) ─
+
+/**
+ * Monthly actual-closings GCI bucketed into the 12-month projection grid.
+ * Each point = total closing commission earned in that month.
+ * Months with no closings = $0.  Result is spiky — matches real
+ * commission patterns (big checks when deals close, nothing between).
+ */
+export function buildActualBaselineSeries(
+  actualClosings: LabActualClosing[],
+  monthBoundaries: MonthlySeriesPoint[],
+): MonthlySeriesPoint[] {
+  return monthBoundaries.map((boundary) => {
+    const monthKey = boundary.month_start.slice(0, 7);
+    const total = actualClosings.reduce((sum, c) => {
+      const closingKey = c.event_date_iso.slice(0, 7);
+      return closingKey === monthKey ? sum + c.actual_gci_delta : sum;
+    }, 0);
+    return { month_start: boundary.month_start, value: Number(total.toFixed(2)) };
+  });
+}
+
+// ── Rolling Average ───────────────────────────────────
+
+/**
+ * Compute a trailing moving average over a MonthlySeriesPoint[].
+ * Default windowSize=2 averages current + previous month.
+ */
+export function computeRollingAverage(
+  series: MonthlySeriesPoint[],
+  windowSize: number = 2,
+): MonthlySeriesPoint[] {
+  return series.map((pt, i) => {
+    const start = Math.max(0, i - windowSize + 1);
+    const windowSlice = series.slice(start, i + 1);
+    const avg = windowSlice.reduce((s, p) => s + p.value, 0) / windowSlice.length;
+    return { month_start: pt.month_start, value: Number(avg.toFixed(2)) };
+  });
 }
