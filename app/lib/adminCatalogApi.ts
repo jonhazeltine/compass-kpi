@@ -18,10 +18,37 @@ export type AdminKpiRow = {
   updated_at?: string | null;
 };
 
+export type AdminChallengeTemplatePhaseKpiGoal = {
+  kpi_id: string;
+  target_value: number;
+  goal_scope: 'individual' | 'team';
+};
+
+export type AdminChallengeTemplatePhase = {
+  phase_order: number;
+  phase_name: string;
+  starts_at_week: number;
+  kpi_goals: AdminChallengeTemplatePhaseKpiGoal[];
+};
+
 export type AdminChallengeTemplateRow = {
   id: string;
   name: string;
   description?: string | null;
+  default_challenge_name?: string | null;
+  duration_weeks?: number | null;
+  suggested_duration_days?: number | null;
+  template_payload?: {
+    phases?: AdminChallengeTemplatePhase[];
+    kpi_defaults?: Array<{
+      kpi_id: string;
+      label: string;
+      goal_scope_default: 'team' | 'individual';
+      suggested_target: number | null;
+      display_order: number;
+    }>;
+    [key: string]: unknown;
+  } | null;
   is_active: boolean;
   updated_at?: string | null;
 };
@@ -104,6 +131,10 @@ export type AdminKpiWritePayload = {
 export type AdminChallengeTemplateWritePayload = {
   name: string;
   description?: string;
+  default_challenge_name?: string | null;
+  duration_weeks?: number;
+  suggested_duration_days?: number;
+  phases?: AdminChallengeTemplatePhase[];
   is_active?: boolean;
 };
 

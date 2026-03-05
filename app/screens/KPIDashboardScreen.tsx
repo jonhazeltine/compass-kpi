@@ -233,6 +233,9 @@ type ChallengeTemplateRow = {
   title: string;
   description: string;
   suggested_duration_days: number;
+  duration_weeks: number | null;
+  phase_count: number;
+  default_challenge_name: string | null;
   kpi_defaults: Array<{
     kpi_id: string;
     label: string;
@@ -1618,6 +1621,9 @@ function defaultChallengeTemplatesFromKpis(kpis: DashboardPayload['loggable_kpis
       title: 'Team Sprint Template',
       description: 'Balanced team sprint combining projection, growth, and vitality KPIs.',
       suggested_duration_days: 21,
+      duration_weeks: 3,
+      phase_count: 0,
+      default_challenge_name: null,
       kpi_defaults: [
         ...toDefault(pc, 'team').slice(0, 2),
         ...toDefault(gp, 'individual').slice(0, 1),
@@ -1629,6 +1635,9 @@ function defaultChallengeTemplatesFromKpis(kpis: DashboardPayload['loggable_kpis
       title: 'Mini Focus Template',
       description: 'Small challenge format for 1-3 invitees with focused KPI outcomes.',
       suggested_duration_days: 14,
+      duration_weeks: 2,
+      phase_count: 0,
+      default_challenge_name: null,
       kpi_defaults: [
         ...toDefault(pc, 'individual').slice(0, 1),
         ...toDefault(gp, 'individual').slice(0, 1),
@@ -8974,6 +8983,9 @@ export default function KPIDashboardScreen({
           title: String(row.title ?? 'Challenge Template'),
           description: String(row.description ?? ''),
           suggested_duration_days: Math.max(1, Number(row.suggested_duration_days ?? 14) || 14),
+          duration_weeks: typeof (row as Record<string, unknown>).duration_weeks === 'number' ? Number((row as Record<string, unknown>).duration_weeks) : null,
+          phase_count: typeof (row as Record<string, unknown>).phase_count === 'number' ? Number((row as Record<string, unknown>).phase_count) : 0,
+          default_challenge_name: typeof (row as Record<string, unknown>).default_challenge_name === 'string' ? String((row as Record<string, unknown>).default_challenge_name) : null,
           kpi_defaults: Array.isArray(row.kpi_defaults)
             ? row.kpi_defaults.map((goal, goalIdx) => {
                 const goalScopeDefault: ChallengeGoalScope =
@@ -9024,7 +9036,9 @@ export default function KPIDashboardScreen({
       setChallengeWizardStep('source');
       setChallengeWizardSource('template');
       setChallengeWizardType(defaultType);
-      setChallengeWizardName(defaultType === 'team' ? 'Team Challenge' : 'Mini Challenge');
+      setChallengeWizardName(
+        firstTemplate?.default_challenge_name?.trim() || firstTemplate?.title || (defaultType === 'team' ? 'Team Challenge' : 'Mini Challenge')
+      );
       setChallengeWizardDescription('');
       setChallengeWizardStartAt(startIso);
       setChallengeWizardEndAt(endIso);
@@ -9052,6 +9066,9 @@ export default function KPIDashboardScreen({
       if (!template) return;
       setChallengeWizardTemplateId(template.id);
       setChallengeWizardGoals(buildChallengeWizardGoalDrafts(template.kpi_defaults));
+      // Prefill challenge name from default_challenge_name, falling back to template title
+      const prefillName = template.default_challenge_name?.trim() || template.title;
+      if (prefillName) setChallengeWizardName(prefillName);
       if (!challengeWizardDescription.trim()) {
         setChallengeWizardDescription(template.description);
       }
@@ -10868,9 +10885,11 @@ export default function KPIDashboardScreen({
                                               onPress={() => setChallengeWizardTemplateId(template.id)}
                                             >
                                               <Text style={styles.challengeWizardTemplateTitle}>{template.title}</Text>
-                                              <Text style={styles.challengeWizardTemplateSub}>{template.description}</Text>
+                                              {template.description ? <Text style={styles.challengeWizardTemplateSub}>{template.description}</Text> : null}
                                               <Text style={styles.challengeWizardTemplateHint}>
-                                                Suggested duration: {template.suggested_duration_days} day{template.suggested_duration_days === 1 ? '' : 's'}
+                                                {`${template.suggested_duration_days} day${template.suggested_duration_days === 1 ? '' : 's'}`}
+                                                {template.phase_count > 0 ? ` · ${template.phase_count} phase${template.phase_count !== 1 ? 's' : ''}` : ''}
+                                                {template.kpi_defaults.length > 0 ? ` · ${template.kpi_defaults.slice(0, 4).map((k) => k.label).join(', ')}` : ''}
                                               </Text>
                                             </TouchableOpacity>
                                           );

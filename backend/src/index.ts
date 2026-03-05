@@ -281,9 +281,24 @@ type AdminKpiPayload = {
   is_active?: boolean;
 };
 
+type AdminChallengeTemplatePhaseKpiGoal = {
+  kpi_id: string;
+  target_value: number;
+  goal_scope: "individual" | "team";
+};
+
+type AdminChallengeTemplatePhase = {
+  phase_order: number;
+  phase_name: string;
+  starts_at_week: number;
+  kpi_goals: AdminChallengeTemplatePhaseKpiGoal[];
+};
+
 type AdminChallengeTemplatePayload = {
   name: string;
   description?: string;
+  default_challenge_name?: string | null;
+  duration_weeks?: number;
   suggested_duration_days?: number;
   template_payload?: Record<string, unknown>;
   is_active?: boolean;
@@ -8058,7 +8073,7 @@ app.get("/challenge-templates", async (req, res) => {
 
     const { data, error } = await dataClient
       .from("challenge_templates")
-      .select("id,name,description,suggested_duration_days,template_payload,is_active,created_at,updated_at")
+      .select("id,name,description,default_challenge_name,duration_weeks,suggested_duration_days,template_payload,is_active,created_at,updated_at")
       .eq("is_active", true)
       .order("created_at", { ascending: true });
     if (error) {
@@ -8105,13 +8120,26 @@ app.get("/challenge-templates", async (req, res) => {
             .sort((a, b) => a.display_order - b.display_order)
         : [];
 
+      // Extract phase metadata for card display
+      const phases = Array.isArray(payload.phases) ? payload.phases : [];
+      const phaseCount = phases.length || (kpiDefaults.length > 0 ? 1 : 0);
+      const durationWeeks = typeof (row as { duration_weeks?: unknown }).duration_weeks === "number"
+        ? Number((row as { duration_weeks?: unknown }).duration_weeks)
+        : null;
+      const defaultChallengeName = typeof (row as { default_challenge_name?: unknown }).default_challenge_name === "string"
+        ? String((row as { default_challenge_name?: unknown }).default_challenge_name)
+        : null;
+
       return {
         id: String((row as { id?: unknown }).id ?? ""),
         title: String((row as { name?: unknown }).name ?? "Challenge Template"),
         description: typeof (row as { description?: unknown }).description === "string"
           ? String((row as { description?: unknown }).description)
           : "",
+        default_challenge_name: defaultChallengeName,
+        duration_weeks: durationWeeks,
         suggested_duration_days: Number((row as { suggested_duration_days?: unknown }).suggested_duration_days ?? 30) || 30,
+        phase_count: phaseCount,
         kpi_defaults: kpiDefaults,
       };
     });
@@ -8520,7 +8548,7 @@ app.get("/admin/challenge-templates", async (req, res) => {
 
     const { data, error } = await dataClient
       .from("challenge_templates")
-      .select("id,name,description,suggested_duration_days,template_payload,is_active,created_at,updated_at")
+      .select("id,name,description,default_challenge_name,duration_weeks,suggested_duration_days,template_payload,is_active,created_at,updated_at")
       .order("created_at", { ascending: true });
     if (error) return handleSupabaseError(res, "Failed to fetch challenge templates", error);
     return res.json({ challenge_templates: data ?? [] });
@@ -8544,7 +8572,7 @@ app.post("/admin/challenge-templates", async (req, res) => {
     const { data, error } = await dataClient
       .from("challenge_templates")
       .insert(payloadCheck.payload)
-      .select("id,name,description,suggested_duration_days,template_payload,is_active,created_at,updated_at")
+      .select("id,name,description,default_challenge_name,duration_weeks,suggested_duration_days,template_payload,is_active,created_at,updated_at")
       .single();
     if (error) return handleSupabaseError(res, "Failed to create challenge template", error);
 
@@ -8573,7 +8601,7 @@ app.put("/admin/challenge-templates/:id", async (req, res) => {
       .from("challenge_templates")
       .update({ ...payloadCheck.payload, updated_at: new Date().toISOString() })
       .eq("id", templateId)
-      .select("id,name,description,suggested_duration_days,template_payload,is_active,created_at,updated_at")
+      .select("id,name,description,default_challenge_name,duration_weeks,suggested_duration_days,template_payload,is_active,created_at,updated_at")
       .single();
     if (error) return handleSupabaseError(res, "Failed to update challenge template", error);
 
@@ -11176,6 +11204,70 @@ function validateCoachingCohortMembershipUpdatePayload(body: unknown):
   return { ok: true, payload: { member_user_ids: Array.from(new Set(memberUserIds)) } };
 }
 
+function validatePhaseKpiGoals(
+  goals: unknown[]
+): { ok: true; parsed: AdminChallengeTemplatePhaseKpiGoal[] } | { ok: false; error: string } {
+  if (goals.length === 0) return { ok: false, error: "every phase must contain at least one KPI goal" };
+  if (goals.length > 12) return { ok: false, error: "max 12 KPI goals per phase" };
+  const parsed: AdminChallengeTemplatePhaseKpiGoal[] = [];
+  for (let i = 0; i < goals.length; i++) {
+    const g = goals[i];
+    if (!isRecord(g)) return { ok: false, error: `kpi_goals[${i}] must be an object` };
+    const kpiId = typeof g.kpi_id === "string" ? g.kpi_id.trim() : "";
+    if (!kpiId) return { ok: false, error: `kpi_goals[${i}].kpi_id is required` };
+    const targetValue = g.target_value;
+    if (typeof targetValue !== "number" || !Number.isFinite(targetValue) || targetValue <= 0) {
+      return { ok: false, error: `kpi_goals[${i}].target_value must be a positive number` };
+    }
+    const scopeRaw = typeof g.goal_scope === "string" ? g.goal_scope.trim().toLowerCase() : "";
+    if (scopeRaw !== "individual" && scopeRaw !== "team") {
+      return { ok: false, error: `kpi_goals[${i}].goal_scope must be "individual" or "team"` };
+    }
+    parsed.push({ kpi_id: kpiId, target_value: Number(targetValue.toFixed(2)), goal_scope: scopeRaw });
+  }
+  return { ok: true, parsed };
+}
+
+function validateTemplatePhases(
+  phases: unknown[],
+  durationDays: number
+): { ok: true; parsed: AdminChallengeTemplatePhase[] } | { ok: false; error: string } {
+  if (phases.length > 8) return { ok: false, error: "max 8 phases allowed" };
+  const parsed: AdminChallengeTemplatePhase[] = [];
+  for (let i = 0; i < phases.length; i++) {
+    const p = phases[i];
+    if (!isRecord(p)) return { ok: false, error: `phases[${i}] must be an object` };
+    const phaseOrder = typeof p.phase_order === "number" ? p.phase_order : i + 1;
+    const phaseName = typeof p.phase_name === "string" ? p.phase_name.trim() : `Phase ${phaseOrder}`;
+    if (!phaseName) return { ok: false, error: `phases[${i}].phase_name is required` };
+    const startsAtWeek = p.starts_at_week;
+    if (typeof startsAtWeek !== "number" || !Number.isInteger(startsAtWeek) || startsAtWeek < 1) {
+      return { ok: false, error: `phases[${i}].starts_at_week must be a positive integer` };
+    }
+    if (startsAtWeek > durationDays) {
+      return { ok: false, error: `phases[${i}].starts_at_week (${startsAtWeek}) exceeds total duration (${durationDays} days)` };
+    }
+    if (!Array.isArray(p.kpi_goals)) {
+      return { ok: false, error: `phases[${i}].kpi_goals must be an array` };
+    }
+    const goalsResult = validatePhaseKpiGoals(p.kpi_goals as unknown[]);
+    if (!goalsResult.ok) return { ok: false, error: `phases[${i}]: ${goalsResult.error}` };
+    parsed.push({ phase_order: phaseOrder, phase_name: phaseName, starts_at_week: startsAtWeek, kpi_goals: goalsResult.parsed });
+  }
+  // Sort by starts_at_week and check for overlaps
+  parsed.sort((a, b) => a.starts_at_week - b.starts_at_week);
+  for (let i = 1; i < parsed.length; i++) {
+    if (parsed[i].starts_at_week <= parsed[i - 1].starts_at_week) {
+      return { ok: false, error: "phase windows must not overlap (duplicate starts_at_week)" };
+    }
+  }
+  // Reassign phase_order after sort
+  for (let i = 0; i < parsed.length; i++) {
+    parsed[i].phase_order = i + 1;
+  }
+  return { ok: true, parsed };
+}
+
 function validateAdminChallengeTemplatePayload(
   body: unknown,
   requireName: boolean
@@ -11184,11 +11276,11 @@ function validateAdminChallengeTemplatePayload(
   if (!body || typeof body !== "object") {
     return { ok: false, status: 400, error: "Body must be a JSON object" };
   }
-  const candidate = body as Partial<AdminChallengeTemplatePayload>;
+  const candidate = body as Record<string, unknown>;
   const payload: AdminChallengeTemplatePayload = {} as AdminChallengeTemplatePayload;
 
   if (requireName) {
-    if (!candidate.name || typeof candidate.name !== "string" || !candidate.name.trim()) {
+    if (!candidate.name || typeof candidate.name !== "string" || !(candidate.name as string).trim()) {
       return { ok: false, status: 422, error: "name is required" };
     }
   }
@@ -11204,22 +11296,97 @@ function validateAdminChallengeTemplatePayload(
     }
     payload.description = candidate.description;
   }
+  if (candidate.default_challenge_name !== undefined) {
+    if (candidate.default_challenge_name !== null && typeof candidate.default_challenge_name !== "string") {
+      return { ok: false, status: 422, error: "default_challenge_name must be a string or null" };
+    }
+    payload.default_challenge_name = typeof candidate.default_challenge_name === "string"
+      ? candidate.default_challenge_name.trim() || null
+      : null;
+  }
   if (candidate.suggested_duration_days !== undefined) {
     if (
       typeof candidate.suggested_duration_days !== "number" ||
       !Number.isInteger(candidate.suggested_duration_days) ||
-      candidate.suggested_duration_days <= 0
+      (candidate.suggested_duration_days as number) <= 0
     ) {
       return { ok: false, status: 422, error: "suggested_duration_days must be a positive integer when provided" };
     }
-    payload.suggested_duration_days = candidate.suggested_duration_days;
+    payload.suggested_duration_days = candidate.suggested_duration_days as number;
+    // Sync duration_weeks for backward compat
+    payload.duration_weeks = Math.max(1, Math.ceil((candidate.suggested_duration_days as number) / 7));
+  } else if (candidate.duration_weeks !== undefined) {
+    if (
+      typeof candidate.duration_weeks !== "number" ||
+      !Number.isInteger(candidate.duration_weeks) ||
+      candidate.duration_weeks < 1
+    ) {
+      return { ok: false, status: 422, error: "duration_weeks must be a positive integer >= 1" };
+    }
+    payload.duration_weeks = candidate.duration_weeks;
+    payload.suggested_duration_days = candidate.duration_weeks * 7;
   }
-  if (candidate.template_payload !== undefined) {
+
+  // Validate phases if provided (stored in template_payload)
+  const phases = candidate.phases;
+  if (phases !== undefined) {
+    if (!Array.isArray(phases)) {
+      return { ok: false, status: 422, error: "phases must be an array when provided" };
+    }
+    const durationDays = payload.suggested_duration_days
+      ?? (payload.duration_weeks ? payload.duration_weeks * 7 : 0);
+    if (phases.length > 0 && durationDays < 1) {
+      return { ok: false, status: 422, error: "duration (days) is required when phases are defined" };
+    }
+    if (phases.length > 0) {
+      const phaseResult = validateTemplatePhases(phases as unknown[], durationDays);
+      if (!phaseResult.ok) return { ok: false, status: 422, error: phaseResult.error };
+
+      // Merge phases into template_payload
+      const existingPayload = isRecord(candidate.template_payload) ? { ...candidate.template_payload } : {};
+      existingPayload.phases = phaseResult.parsed;
+
+      // Synthesize kpi_defaults from phases for backward compat with challenge wizard
+      const allGoals: Array<{ kpi_id: string; goal_scope: string; target_value: number; display_order: number }> = [];
+      const seenKpiIds = new Set<string>();
+      let displayOrder = 0;
+      for (const phase of phaseResult.parsed) {
+        for (const goal of phase.kpi_goals) {
+          if (!seenKpiIds.has(goal.kpi_id)) {
+            seenKpiIds.add(goal.kpi_id);
+            allGoals.push({
+              kpi_id: goal.kpi_id,
+              goal_scope: goal.goal_scope,
+              target_value: goal.target_value,
+              display_order: displayOrder++,
+            });
+          }
+        }
+      }
+      if (allGoals.length > 0) {
+        existingPayload.kpi_defaults = allGoals.map((g) => ({
+          kpi_id: g.kpi_id,
+          label: "",
+          goal_scope_default: g.goal_scope,
+          suggested_target: g.target_value,
+          display_order: g.display_order,
+        }));
+      }
+
+      payload.template_payload = existingPayload;
+    } else {
+      // Empty phases array: clear phases from payload
+      const existingPayload = isRecord(candidate.template_payload) ? { ...candidate.template_payload } : {};
+      delete existingPayload.phases;
+      payload.template_payload = existingPayload;
+    }
+  } else if (candidate.template_payload !== undefined) {
     if (!isRecord(candidate.template_payload)) {
       return { ok: false, status: 422, error: "template_payload must be an object when provided" };
     }
-    payload.template_payload = candidate.template_payload;
+    payload.template_payload = candidate.template_payload as Record<string, unknown>;
   }
+
   if (candidate.is_active !== undefined) {
     if (typeof candidate.is_active !== "boolean") {
       return { ok: false, status: 422, error: "is_active must be boolean when provided" };
