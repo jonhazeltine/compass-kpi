@@ -29,6 +29,7 @@ import {
 } from './engine';
 import type { PcEvent } from './engine';
 import { ALGORITHM_VERSION } from './scenarioGenerator';
+import { buildCadenceProjectedSeries, computeCadenceConfidenceBand } from './cadenceProjection';
 
 // ── Checksum ──────────────────────────────────────────
 
@@ -43,7 +44,7 @@ function simpleChecksum(data: string): string {
 
 // ── Convert scenario logs to PcEvents ─────────────────
 
-function scenarioToPcEvents(scenario: LabScenario): PcEvent[] {
+export function scenarioToPcEvents(scenario: LabScenario): PcEvent[] {
   const kpiMap = new Map(scenario.kpi_definitions.map((k) => [k.kpi_id, k]));
 
   return scenario.log_stream.map((log) => {
@@ -118,6 +119,17 @@ export function executeRun(input: {
       event_timestamp: c.event_date_iso,
       actual_gci_delta: c.actual_gci_delta,
     })),
+    evalDate
+  );
+
+  // Cadence-based forward projection (sustains KPI cadence into future)
+  const cadenceProjected12m = buildCadenceProjectedSeries(
+    scenario,
+    evalDate,
+    gpVp.total_bump_percent
+  );
+  const cadenceConfidence = computeCadenceConfidenceBand(
+    scenario.log_stream,
     evalDate
   );
 
@@ -249,6 +261,10 @@ export function executeRun(input: {
     event_contributions: eventContributions,
     gp_vp: gpVp,
     confidence,
+
+    cadence_projected_12m: cadenceProjected12m,
+    cadence_confidence: cadenceConfidence,
+
     production_writes_enabled: false,
   };
 }

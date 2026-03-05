@@ -24,8 +24,15 @@ export type {
 } from './engine';
 export { generateScenario, generateScenarioFromProfile, generateScenarioFromVolume, convertScenarioProfileToAgentProfile, generateRealisticClosings, rebuildLogStreamFromVolumes, ALGORITHM_VERSION, SCENARIO_PROFILES, PC_KPI_TEMPLATES, BUILTIN_AGENT_PROFILES } from './scenarioGenerator';
 export type { ScenarioProfile } from './scenarioGenerator';
-export { executeRun, computeCalibrationMetrics, compareRuns, computePerKpiSeries, buildProjectedIncomeSeries, buildActualBaselineSeries, computeRollingAverage } from './runner';
+export { executeRun, computeCalibrationMetrics, compareRuns, computePerKpiSeries, buildProjectedIncomeSeries, buildActualBaselineSeries, computeRollingAverage, scenarioToPcEvents } from './runner';
 export type { KpiMonthlySeries } from './runner';
+export {
+  measureKpiCadence,
+  generateSyntheticFutureEvents,
+  buildCadenceProjectedSeries,
+  computeCadenceConfidenceBand,
+} from './cadenceProjection';
+export type { KpiCadence, CadenceMeasurement, CadenceConfidenceMeta } from './cadenceProjection';
 export {
   registerGoldenScenario,
   removeGoldenScenario,

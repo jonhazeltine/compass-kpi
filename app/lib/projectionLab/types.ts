@@ -177,6 +177,17 @@ export type RunBundle = {
   // Confidence
   confidence: ConfidenceComponents;
 
+  // Cadence-based forward projection (sustains KPI cadence into future)
+  cadence_projected_12m?: MonthlySeriesPoint[];
+
+  // Cadence projection confidence band metadata
+  cadence_confidence?: {
+    coefficient_of_variation: number;
+    observation_months: number;
+    band_width_percent: number;
+    label: 'narrow' | 'moderate' | 'wide';
+  };
+
   // Safety
   production_writes_enabled: false;
 };

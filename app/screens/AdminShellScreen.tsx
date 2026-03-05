@@ -489,6 +489,7 @@ type TemplateFormDraft = {
   defaultChallengeName: string;
   durationDays: string;
   phases: TemplatePhaseDraft[];
+  singlePhaseGoals: TemplatePhaseGoalDraft[];
   isActive: boolean;
   builderStep: TemplateBuilderStep;
   showForm: boolean;
@@ -641,6 +642,7 @@ function emptyTemplateDraft(): TemplateFormDraft {
     defaultChallengeName: '',
     durationDays: '',
     phases: [],
+    singlePhaseGoals: [],
     isActive: true,
     builderStep: 'basics',
     showForm: true,
@@ -649,9 +651,34 @@ function emptyTemplateDraft(): TemplateFormDraft {
 
 function templateDraftFromRow(row: AdminChallengeTemplateRow): TemplateFormDraft {
   const totalDays = row.suggested_duration_days ?? 30;
+  const isSinglePhaseMode = !!(row.template_payload as Record<string, unknown> | null)?.single_phase_mode;
   const rawPhases = (row.template_payload?.phases ?? [])
     .slice()
     .sort((a: AdminChallengeTemplatePhase, b: AdminChallengeTemplatePhase) => a.starts_at_week - b.starts_at_week);
+
+  // If saved as single-phase, extract goals into singlePhaseGoals instead of explicit phases
+  if (isSinglePhaseMode && rawPhases.length === 1) {
+    const singlePhaseGoals: TemplatePhaseGoalDraft[] = (rawPhases[0].kpi_goals ?? []).map(
+      (g: AdminChallengeTemplatePhaseKpiGoal) => ({
+        kpi_id: g.kpi_id,
+        target_value: String(g.target_value),
+        goal_scope: g.goal_scope,
+      })
+    );
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description ?? '',
+      defaultChallengeName: row.default_challenge_name ?? '',
+      durationDays: row.suggested_duration_days != null ? String(row.suggested_duration_days) : '',
+      phases: [],
+      singlePhaseGoals,
+      isActive: row.is_active,
+      builderStep: 'basics',
+      showForm: true,
+    };
+  }
+
   const phases: TemplatePhaseDraft[] = rawPhases.map(
     (p: AdminChallengeTemplatePhase, i: number) => {
       const startDay = p.starts_at_week;
@@ -674,6 +701,7 @@ function templateDraftFromRow(row: AdminChallengeTemplateRow): TemplateFormDraft
     defaultChallengeName: row.default_challenge_name ?? '',
     durationDays: row.suggested_duration_days != null ? String(row.suggested_duration_days) : '',
     phases,
+    singlePhaseGoals: [],
     isActive: row.is_active,
     builderStep: 'basics',
     showForm: true,
@@ -743,7 +771,10 @@ function buildTemplatePayloadFromDraft(
 
   // Validate phases if present
   const phases: AdminChallengeTemplatePhase[] = [];
+  let singlePhaseMode = false;
+
   if (draft.phases.length > 0) {
+    // Explicit multi-phase
     if (!durationDays || durationDays < 1) {
       return { error: 'Duration (days) is required when phases are defined' };
     }
@@ -780,6 +811,28 @@ function buildTemplatePayloadFromDraft(
     if (totalPhaseDays > durationDays) {
       return { error: `Phase days (${totalPhaseDays}) exceed total duration (${durationDays})` };
     }
+  } else if (draft.singlePhaseGoals.length > 0) {
+    // Phaseless template with challenge-level goals → wrap in one implicit phase
+    if (!durationDays || durationDays < 1) {
+      return { error: 'Duration (days) is required when KPI goals are defined' };
+    }
+    singlePhaseMode = true;
+    const kpiGoals: AdminChallengeTemplatePhaseKpiGoal[] = [];
+    for (let j = 0; j < draft.singlePhaseGoals.length; j++) {
+      const g = draft.singlePhaseGoals[j];
+      if (!g.kpi_id) return { error: `Goal ${j + 1}: KPI is required` };
+      const target = parseFloat(g.target_value);
+      if (!Number.isFinite(target) || target <= 0) {
+        return { error: `Goal ${j + 1}: target must be a positive number` };
+      }
+      kpiGoals.push({ kpi_id: g.kpi_id, target_value: target, goal_scope: g.goal_scope });
+    }
+    phases.push({
+      phase_order: 1,
+      phase_name: draft.name.trim() || 'Challenge',
+      starts_at_week: 1,
+      kpi_goals: kpiGoals,
+    });
   }
 
   const payload: AdminChallengeTemplateWritePayload = {
@@ -797,6 +850,9 @@ function buildTemplatePayloadFromDraft(
   }
   if (phases.length > 0) {
     payload.phases = phases;
+    if (singlePhaseMode) {
+      (payload as Record<string, unknown>).single_phase_mode = true;
+    }
   }
   return { payload };
 }
@@ -1482,7 +1538,7 @@ function AdminChallengeTemplatesPanel({
   };
   const addGoalToPhase = (phaseIndex: number) => {
     const next = [...draft.phases];
-    next[phaseIndex] = { ...next[phaseIndex], kpi_goals: [...next[phaseIndex].kpi_goals, { kpi_id: '', target_value: '', goal_scope: 'individual' }] };
+    next[phaseIndex] = { ...next[phaseIndex], kpi_goals: [...next[phaseIndex].kpi_goals, { kpi_id: '', target_value: '', goal_scope: 'team' }] };
     onDraftChange({ phases: next });
   };
   const removeGoalFromPhase = (phaseIndex: number, goalIndex: number) => {
@@ -1496,6 +1552,19 @@ function AdminChallengeTemplatesPanel({
     nextGoals[goalIndex] = { ...nextGoals[goalIndex], ...patch };
     next[phaseIndex] = { ...next[phaseIndex], kpi_goals: nextGoals };
     onDraftChange({ phases: next });
+  };
+
+  // Single-phase (phaseless) goal helpers
+  const addSinglePhaseGoal = () => {
+    onDraftChange({ singlePhaseGoals: [...draft.singlePhaseGoals, { kpi_id: '', target_value: '', goal_scope: 'team' }] });
+  };
+  const removeSinglePhaseGoal = (goalIndex: number) => {
+    onDraftChange({ singlePhaseGoals: draft.singlePhaseGoals.filter((_, i) => i !== goalIndex) });
+  };
+  const updateSinglePhaseGoal = (goalIndex: number, patch: Partial<TemplatePhaseGoalDraft>) => {
+    const next = [...draft.singlePhaseGoals];
+    next[goalIndex] = { ...next[goalIndex], ...patch };
+    onDraftChange({ singlePhaseGoals: next });
   };
 
   // Compute phase start days for display (cumulative from phase durations)
@@ -1535,6 +1604,15 @@ function AdminChallengeTemplatesPanel({
       if (!g.kpi_id) reviewErrors.push(`Phase ${i + 1}, Goal ${j + 1}: KPI required`);
       const tv = parseFloat(g.target_value);
       if (!Number.isFinite(tv) || tv <= 0) reviewErrors.push(`Phase ${i + 1}, Goal ${j + 1}: target must be positive`);
+    }
+  }
+  // Validate single-phase goals
+  if (draft.phases.length === 0) {
+    for (let j = 0; j < draft.singlePhaseGoals.length; j++) {
+      const g = draft.singlePhaseGoals[j];
+      if (!g.kpi_id) reviewErrors.push(`Goal ${j + 1}: KPI required`);
+      const tv = parseFloat(g.target_value);
+      if (!Number.isFinite(tv) || tv <= 0) reviewErrors.push(`Goal ${j + 1}: target must be positive`);
     }
   }
 
@@ -1704,7 +1782,15 @@ function AdminChallengeTemplatesPanel({
         {/* === Step 2: Phase Plan === */}
         {draft.builderStep === 'phases' ? (
           <View style={{ gap: 10 }}>
-            <Text style={{ fontSize: 12, color: '#64748B' }}>Phases split the total duration. Days auto-balance when you add or remove phases.</Text>
+            <Text style={{ fontSize: 12, color: '#64748B' }}>
+              Optional — split the challenge into distinct phases with separate KPI goals.{'\n'}Skip this step for a simple single-phase challenge.
+            </Text>
+            {draft.phases.length === 0 ? (
+              <View style={{ backgroundColor: '#F0F9FF', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#BAE6FD' }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#0369A1', marginBottom: 2 }}>No phases — single-phase challenge</Text>
+                <Text style={{ fontSize: 11, color: '#0C4A6E' }}>The entire {totalDays > 0 ? `${totalDays}-day` : ''} duration is one phase. KPI goals are set when the challenge is created. Tap Next to continue, or add phases below.</Text>
+              </View>
+            ) : null}
             {/* Duration bar */}
             {totalDays > 0 ? (
               <View>
@@ -1771,15 +1857,95 @@ function AdminChallengeTemplatesPanel({
           </View>
         ) : null}
 
-        {/* === Step 3: KPI Goals per Phase === */}
+        {/* === Step 3: KPI Goals === */}
         {draft.builderStep === 'kpi_goals' ? (
           <View style={{ gap: 14 }}>
             {draft.phases.length === 0 ? (
-              <View style={{ padding: 16, backgroundColor: '#FFFBEB', borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
-                <Text style={{ fontSize: 13, color: '#92400E', fontWeight: '600', marginBottom: 4 }}>No Phases Defined</Text>
-                <Text style={{ fontSize: 12, color: '#92400E' }}>Go back to add phases first. KPI goals are assigned per phase.</Text>
+              /* ---- Single-phase (no explicit phases) ---- */
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#3B82F6' }} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#1E293B' }}>Challenge Goals</Text>
+                  {totalDays > 0 ? <Text style={{ fontSize: 11, color: '#64748B' }}>{totalDays} days, single phase</Text> : null}
+                </View>
+                {draft.singlePhaseGoals.map((goal, gi) => {
+                  const selectedKpiName = goal.kpi_id ? kpiNameById[goal.kpi_id] || '(unknown)' : '';
+                  return (
+                    <View key={gi} style={{ backgroundColor: '#F8FAFC', borderRadius: 6, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569' }}>Goal {gi + 1}</Text>
+                        <TouchableOpacity onPress={() => removeSinglePhaseGoal(gi)}><Text style={{ fontSize: 11, color: '#EF4444' }}>Remove</Text></TouchableOpacity>
+                      </View>
+                      <View style={styles.formField}>
+                        <Text style={styles.formLabel}>KPI</Text>
+                        {activeKpis.length === 0 ? (
+                          <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', paddingVertical: 8 }}>No active KPIs found. Add KPIs in the KPIs tab first.</Text>
+                        ) : (
+                          <View style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 6, backgroundColor: '#FFFFFF', overflow: 'hidden' }}>
+                            {goal.kpi_id ? (
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#EFF6FF' }}>
+                                <Text style={{ fontSize: 12, fontWeight: '600', color: '#1D4ED8' }}>{selectedKpiName}</Text>
+                                <TouchableOpacity onPress={() => updateSinglePhaseGoal(gi, { kpi_id: '' })}><Text style={{ fontSize: 11, color: '#64748B' }}>Change</Text></TouchableOpacity>
+                              </View>
+                            ) : (
+                              <View>
+                                <View style={{ flexDirection: 'row', gap: 4, paddingHorizontal: 8, paddingTop: 6, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
+                                  {(['all', 'PC', 'GP', 'VP', 'other'] as KpiSectionFilter[]).map((f) => {
+                                    const sel = kpiSectionFilter === f;
+                                    return (
+                                      <Pressable key={f} onPress={() => setKpiSectionFilter(f)} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: sel ? '#3B82F6' : '#F1F5F9' }}>
+                                        <Text style={{ fontSize: 10, fontWeight: '600', color: sel ? '#FFFFFF' : '#64748B' }}>{kpiSectionLabel[f]}</Text>
+                                      </Pressable>
+                                    );
+                                  })}
+                                </View>
+                                <ScrollView style={{ maxHeight: 140 }} nestedScrollEnabled>
+                                  {filteredActiveKpis.length === 0 ? (
+                                    <Text style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic', padding: 10 }}>No KPIs in this category.</Text>
+                                  ) : filteredActiveKpis.map((kpi) => (
+                                    <Pressable key={kpi.id} onPress={() => updateSinglePhaseGoal(gi, { kpi_id: kpi.id })} style={{ paddingVertical: 8, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+                                      <Text style={{ fontSize: 12, color: '#334155' }}>{kpi.name}</Text>
+                                    </Pressable>
+                                  ))}
+                                </ScrollView>
+                              </View>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                        <View style={[styles.formField, { flex: 1 }]}>
+                          <Text style={styles.formLabel}>Target / person</Text>
+                          <TextInput value={goal.target_value} onChangeText={(v) => updateSinglePhaseGoal(gi, { target_value: v })} style={styles.input} keyboardType="numeric" placeholder="e.g. 10" placeholderTextColor="#94A3B8" />
+                          <Text style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
+                            {goal.goal_scope === 'team' ? 'Multiplied by team size at runtime' : 'Each member targets this individually'}
+                          </Text>
+                        </View>
+                        <View style={[styles.formField, { flex: 1 }]}>
+                          <Text style={styles.formLabel}>Scope</Text>
+                          <View style={{ flexDirection: 'row', gap: 4, marginTop: 2 }}>
+                            {(['team', 'individual'] as const).map((scope) => {
+                              const sel = goal.goal_scope === scope;
+                              return (
+                                <Pressable key={scope} onPress={() => updateSinglePhaseGoal(gi, { goal_scope: scope })} style={[styles.listFilterPill, sel && styles.listFilterPillSelected, { flex: 1, alignItems: 'center' }]}>
+                                  <Text style={[styles.listFilterPillText, sel && styles.listFilterPillTextSelected]}>{scope === 'individual' ? 'Indiv.' : 'Team'}</Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+                {draft.singlePhaseGoals.length < 12 ? (
+                  <TouchableOpacity onPress={addSinglePhaseGoal} style={{ paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#F0FDF4', borderRadius: 6, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#BBF7D0', marginTop: 2 }}>
+                    <Text style={{ fontSize: 12, color: '#166534', fontWeight: '600' }}>+ Add KPI Goal</Text>
+                  </TouchableOpacity>
+                ) : <Text style={{ fontSize: 11, color: '#94A3B8' }}>Max 12 KPI goals.</Text>}
               </View>
             ) : draft.phases.map((phase, pi) => (
+              /* ---- Multi-phase: goals per phase ---- */
               <View key={pi}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
                   <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#3B82F6' }} />
@@ -1833,13 +1999,16 @@ function AdminChallengeTemplatesPanel({
                       </View>
                       <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
                         <View style={[styles.formField, { flex: 1 }]}>
-                          <Text style={styles.formLabel}>Target</Text>
+                          <Text style={styles.formLabel}>Target / person</Text>
                           <TextInput value={goal.target_value} onChangeText={(v) => updateGoalInPhase(pi, gi, { target_value: v })} style={styles.input} keyboardType="numeric" placeholder="e.g. 10" placeholderTextColor="#94A3B8" />
+                          <Text style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
+                            {goal.goal_scope === 'team' ? 'Multiplied by team size at runtime' : 'Each member targets this individually'}
+                          </Text>
                         </View>
                         <View style={[styles.formField, { flex: 1 }]}>
                           <Text style={styles.formLabel}>Scope</Text>
                           <View style={{ flexDirection: 'row', gap: 4, marginTop: 2 }}>
-                            {(['individual', 'team'] as const).map((scope) => {
+                            {(['team', 'individual'] as const).map((scope) => {
                               const sel = goal.goal_scope === scope;
                               return (
                                 <Pressable key={scope} onPress={() => updateGoalInPhase(pi, gi, { goal_scope: scope })} style={[styles.listFilterPill, sel && styles.listFilterPillSelected, { flex: 1, alignItems: 'center' }]}>
@@ -1872,7 +2041,7 @@ function AdminChallengeTemplatesPanel({
               {draft.description ? <Text style={{ fontSize: 12, color: '#475569', marginBottom: 3 }}>Description: {draft.description}</Text> : null}
               {draft.defaultChallengeName ? <Text style={{ fontSize: 12, color: '#475569', marginBottom: 3 }}>Default Name: {draft.defaultChallengeName}</Text> : null}
               <Text style={{ fontSize: 12, color: '#475569', marginBottom: 3 }}>Duration: {draft.durationDays || '?'} days</Text>
-              <Text style={{ fontSize: 12, color: '#475569', marginBottom: 3 }}>Phases: {draft.phases.length || '0 (implicit single phase)'}</Text>
+              <Text style={{ fontSize: 12, color: '#475569', marginBottom: 3 }}>Phases: {draft.phases.length > 0 ? draft.phases.length : 'Single phase'}</Text>
               <Text style={{ fontSize: 12, color: '#475569' }}>Status: {draft.isActive ? 'Active' : 'Inactive'}</Text>
             </View>
             {draft.phases.length > 0 ? (
@@ -1888,17 +2057,30 @@ function AdminChallengeTemplatesPanel({
             ) : null}
             {draft.phases.length > 0 ? (
               <View>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B', marginBottom: 6 }}>KPI Scope Summary</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B', marginBottom: 6 }}>KPI Goals (per person)</Text>
                 {draft.phases.map((phase, pi) => (
                   <View key={pi} style={{ marginBottom: 6 }}>
                     <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569' }}>{phase.phase_name || `Phase ${pi + 1}`}</Text>
                     {phase.kpi_goals.map((g, gi) => (
-                      <Text key={gi} style={{ fontSize: 11, color: '#64748B', marginLeft: 12 }}>{kpiNameById[g.kpi_id] || g.kpi_id || '(no KPI)'}: target {g.target_value || '?'} ({g.goal_scope})</Text>
+                      <Text key={gi} style={{ fontSize: 11, color: '#64748B', marginLeft: 12 }}>
+                        {kpiNameById[g.kpi_id] || g.kpi_id || '(no KPI)'}: {g.target_value || '?'}/person{g.goal_scope === 'team' ? ' × team size' : ' (individual)'}
+                      </Text>
                     ))}
                   </View>
                 ))}
               </View>
-            ) : null}
+            ) : draft.singlePhaseGoals.length > 0 ? (
+              <View>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B', marginBottom: 6 }}>Challenge Goals (per person)</Text>
+                {draft.singlePhaseGoals.map((g, gi) => (
+                  <Text key={gi} style={{ fontSize: 11, color: '#64748B', marginLeft: 12 }}>
+                    {kpiNameById[g.kpi_id] || g.kpi_id || '(no KPI)'}: {g.target_value || '?'}/person{g.goal_scope === 'team' ? ' × team size' : ' (individual)'}
+                  </Text>
+                ))}
+              </View>
+            ) : (
+              <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>No KPI goals added yet.</Text>
+            )}
             {reviewErrors.length > 0 ? (
               <View style={{ backgroundColor: '#FEF2F2', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#FECACA' }}>
                 <Text style={{ fontSize: 13, fontWeight: '600', color: '#991B1B', marginBottom: 4 }}>Validation Issues</Text>
@@ -4746,8 +4928,8 @@ function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
     const rollingSeriesMap: Record<string, MonthlySeriesPoint[]> = {};
     for (const run of chartRuns) {
       const scenario = scenarios.find((s) => s.scenario_id === run.scenario_id);
-      // Use raw PC values from the engine — no income conversion yet
-      projIncomeMap[run.run_id] = run.future_projected_12m;
+      // Use cadence-projected values (sustained) with fallback to raw PC (decaying)
+      projIncomeMap[run.run_id] = run.cadence_projected_12m ?? run.future_projected_12m;
       // Actual baseline — cumulative closing GCI
       if (scenario && scenario.actual_closings.length > 0) {
         const actual = buildActualBaselineSeries(scenario.actual_closings, run.future_projected_12m);
