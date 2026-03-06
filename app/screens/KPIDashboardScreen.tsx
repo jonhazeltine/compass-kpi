@@ -26,6 +26,7 @@ import LottieSlot from '../components/LottieSlot';
 import { CommsHub } from '../components/comms';
 import type { ChannelRow as CommsChannelRow } from '../components/comms';
 import DeveloperToolsModal from '../components/dev/DeveloperToolsModal';
+import { KpiIcon, KpiIconPicker } from '../components/kpi';
 import ReportsTabV2 from '../components/reports/ReportsTabV2';
 import PillGrowthBg from '../assets/figma/kpi_icon_bank/pill_growth_bg_v1.svg';
 import PillProjectionsBg from '../assets/figma/kpi_icon_bank/pill_projections_bg_v1.svg';
@@ -51,6 +52,8 @@ import {
   triggerHapticAsync,
 } from '../lib/feedback';
 import { API_URL, DEV_TOOLS_ENABLED } from '../lib/supabase';
+import { createCustomKpi, fetchCustomKpis, updateCustomKpi, type CustomKpiRow } from '../lib/customKpiApi';
+import { normalizeKpiIdentifier, type KpiIconSource } from '../lib/kpiIcons';
 import { colors, radii } from '../theme/tokens';
 import { buildDefaultChallengeTemplatesFromKpis } from './kpi-dashboard/defaultChallengeTemplates';
 
@@ -100,6 +103,10 @@ type DashboardPayload = {
     name: string;
     slug?: string;
     type: 'PC' | 'GP' | 'VP' | 'Actual' | 'Pipeline_Anchor' | 'Custom';
+    icon_source?: 'brand_asset' | 'vector_icon' | 'emoji' | null;
+    icon_name?: string | null;
+    icon_emoji?: string | null;
+    icon_file?: string | null;
     requires_direct_value_input: boolean;
     pc_weight?: number;
     ttc_definition?: string;
@@ -187,6 +194,15 @@ type TeamKpiGroups = {
 };
 type TeamLeaderKpiStatusFilter = 'all' | 'on_track' | 'watch' | 'at_risk';
 type TeamFocusEditorFilter = 'PC' | 'GP' | 'VP';
+type CustomKpiDraft = {
+  id?: string;
+  name: string;
+  slug: string;
+  requiresDirectValueInput: boolean;
+  iconSource?: KpiIconSource | null;
+  iconName?: string | null;
+  iconEmoji?: string | null;
+};
 type ChallengeApiLeaderboardRow = {
   user_id: string;
   activity_count: number;
@@ -771,10 +787,18 @@ type ChannelMessageRow = {
   channel_id: string;
   sender_user_id?: string | null;
   body: string;
-  message_type?: 'message' | 'broadcast' | string;
+  message_type?: 'message' | 'broadcast' | 'media_attachment' | string;
   created_at?: string | null;
   package_visibility?: RuntimePackageVisibilityOutcome | null;
   packaging_read_model?: RuntimePackagingReadModel | null;
+  /** Structured media attachment from API read model */
+  media_attachment?: {
+    media_id: string;
+    caption?: string;
+    lifecycle?: { processing_status: string; playback_ready: boolean } | null;
+    file_url?: string;
+    content_type?: string;
+  };
 };
 type ChannelMessagesResponse = {
   channel?: ChannelApiRow | null;
@@ -832,6 +856,7 @@ type CoachingMediaUploadUrlResponse = {
   media_id?: string;
   upload_url?: string;
   upload_url_expires_at?: string;
+  file_url?: string;
   lifecycle?: {
     processing_status?: string;
     playback_ready?: boolean;
@@ -1699,147 +1724,6 @@ function kpiTypeAccent(type: DashboardPayload['loggable_kpis'][number]['type']) 
   return '#48505f';
 }
 
-const KPI_ICON_ASSETS = {
-  phone_call_logged: require('../assets/figma/kpi_icon_bank/pc_phone_call_logged_v1.png'),
-  sphere_call: require('../assets/figma/kpi_icon_bank/pc_sphere_call_v1.png'),
-  fsbo_expired_call: require('../assets/figma/kpi_icon_bank/pc_fsbo_expired_call_v1.png'),
-  door_knock_logged: require('../assets/figma/kpi_icon_bank/pc_door_knock_logged_v1.png'),
-  appointment_set_buyer: require('../assets/figma/kpi_icon_bank/pc_appointment_set_buyer_v1.png'),
-  appointment_set_seller: require('../assets/figma/kpi_icon_bank/pc_appointment_set_seller_v1.png'),
-  coffee_lunch_with_sphere: require('../assets/figma/kpi_icon_bank/pc_coffee_lunch_with_sphere_v1.png'),
-  conversations_held: require('../assets/figma/kpi_icon_bank/pc_conversations_held_v1.png'),
-  listing_taken: require('../assets/figma/kpi_icon_bank/pc_listing_taken_v1.png'),
-  buyer_contract_signed: require('../assets/figma/kpi_icon_bank/pc_buyer_contract_signed_v1.png'),
-  new_client_logged: require('../assets/figma/kpi_icon_bank/pc_new_client_logged_v1.png'),
-  text_dm_conversation: require('../assets/figma/kpi_icon_bank/pc_text_dm_conversation_v1.png'),
-  open_house_logged: require('../assets/figma/kpi_icon_bank/pc_open_house_logged_v1.png'),
-  seasonal_check_in_call: require('../assets/figma/kpi_icon_bank/pc_seasonal_check_in_call_v1.png'),
-  pop_by_delivered: require('../assets/figma/kpi_icon_bank/pc_pop_by_delivered_v1.png'),
-  holiday_card_sent: require('../assets/figma/kpi_icon_bank/pc_holiday_card_sent_v1.png'),
-  biz_post: require('../assets/figma/kpi_icon_bank/pc_biz_post_v1.png'),
-  time_blocks_honored: require('../assets/figma/kpi_icon_bank/gp_time_blocks_honored_v1.png'),
-  social_posts_shared: require('../assets/figma/kpi_icon_bank/gp_social_posts_shared_v1.png'),
-  crm_tag_applied: require('../assets/figma/kpi_icon_bank/gp_crm_tag_applied_v1.png'),
-  smart_plan_activated: require('../assets/figma/kpi_icon_bank/gp_smart_plan_activated_v1.png'),
-  email_subscribers_added: require('../assets/figma/kpi_icon_bank/gp_email_subscribers_added_v1.png'),
-  listing_video_created: require('../assets/figma/kpi_icon_bank/gp_listing_video_created_v1.png'),
-  listing_presentation_given: require('../assets/figma/kpi_icon_bank/gp_listing_presentation_given_v1.png'),
-  buyer_consult_held: require('../assets/figma/kpi_icon_bank/gp_buyer_consult_held_v1.png'),
-  business_book_completed: require('../assets/figma/kpi_icon_bank/gp_business_book_completed_v1.png'),
-  pipeline_cleaned_up: require('../assets/figma/kpi_icon_bank/gp_pipeline_cleaned_up_v1.png'),
-  automation_rule_added: require('../assets/figma/kpi_icon_bank/gp_automation_rule_added_v1.png'),
-  roleplay_session_completed: require('../assets/figma/kpi_icon_bank/gp_roleplay_session_completed_v1.png'),
-  script_practice_session: require('../assets/figma/kpi_icon_bank/gp_script_practice_session_v1.png'),
-  objection_handling_reps_logged: require('../assets/figma/kpi_icon_bank/gp_objection_handling_reps_logged_v1.png'),
-  cma_created_practice_or_live: require('../assets/figma/kpi_icon_bank/gp_cma_created_practice_or_live_v1.png'),
-  market_stats_review_weekly: require('../assets/figma/kpi_icon_bank/gp_market_stats_review_weekly_v1.png'),
-  offer_strategy_review_completed: require('../assets/figma/kpi_icon_bank/gp_offer_strategy_review_completed_v1.png'),
-  deal_review_postmortem_completed: require('../assets/figma/kpi_icon_bank/gp_deal_review_postmortem_completed_v1.png'),
-  negotiation_practice_session: require('../assets/figma/kpi_icon_bank/gp_negotiation_practice_session_v1.png'),
-  content_batch_created: require('../assets/figma/kpi_icon_bank/gp_content_batch_created_v1.png'),
-  database_segmented_cleaned: require('../assets/figma/kpi_icon_bank/gp_database_segmented_cleaned_v1.png'),
-  sop_created_or_updated: require('../assets/figma/kpi_icon_bank/gp_sop_created_or_updated_v1.png'),
-  weekly_scorecard_review: require('../assets/figma/kpi_icon_bank/gp_weekly_scorecard_review_v1.png'),
-  coaching_session_attended: require('../assets/figma/kpi_icon_bank/gp_coaching_session_attended_v1.png'),
-  training_module_completed: require('../assets/figma/kpi_icon_bank/gp_training_module_completed_v1.png'),
-  instagram_post_shared: require('../assets/figma/kpi_icon_bank/gp_instagram_post_shared_v1.png'),
-  facebook_post_shared: require('../assets/figma/kpi_icon_bank/gp_facebook_post_shared_v1.png'),
-  tiktok_post_shared: require('../assets/figma/kpi_icon_bank/gp_tiktok_post_shared_v1.png'),
-  x_post_shared: require('../assets/figma/kpi_icon_bank/gp_x_post_shared_v1.png'),
-  linkedin_post_shared: require('../assets/figma/kpi_icon_bank/gp_linkedin_post_shared_v1.png'),
-  youtube_short_posted: require('../assets/figma/kpi_icon_bank/gp_youtube_short_posted_v1.png'),
-  gratitude_entry: require('../assets/figma/kpi_icon_bank/vp_gratitude_entry_v1.png'),
-  good_night_of_sleep: require('../assets/figma/kpi_icon_bank/vp_good_night_of_sleep_v1.png'),
-  exercise_session: require('../assets/figma/kpi_icon_bank/vp_exercise_session_v1.png'),
-  prayer_meditation_time: require('../assets/figma/kpi_icon_bank/vp_prayer_meditation_time_v1.png'),
-  hydration_goal_met: require('../assets/figma/kpi_icon_bank/vp_hydration_goal_met_v1.png'),
-  whole_food_meal_logged: require('../assets/figma/kpi_icon_bank/vp_whole_food_meal_logged_v1.png'),
-  steps_goal_met_walk_completed: require('../assets/figma/kpi_icon_bank/vp_steps_goal_met_walk_completed_v1.png'),
-  stretching_mobility_session: require('../assets/figma/kpi_icon_bank/vp_stretching_mobility_session_v1.png'),
-  outdoor_time_logged: require('../assets/figma/kpi_icon_bank/vp_outdoor_time_logged_v1.png'),
-  screen_curfew_honored: require('../assets/figma/kpi_icon_bank/vp_screen_curfew_honored_v1.png'),
-  mindfulness_breath_reset: require('../assets/figma/kpi_icon_bank/vp_mindfulness_breath_reset_v1.png'),
-  sabbath_block_honored_rest: require('../assets/figma/kpi_icon_bank/vp_sabbath_block_honored_rest_v1.png'),
-  social_connection_non_work: require('../assets/figma/kpi_icon_bank/vp_social_connection_non_work_v1.png'),
-  journal_entry_non_gratitude: require('../assets/figma/kpi_icon_bank/vp_journal_entry_non_gratitude_v1.png'),
-} as const;
-
-const KPI_ICON_BY_NORMALIZED_NAME = {
-  phone_call_logged: KPI_ICON_ASSETS.phone_call_logged,
-  sphere_call: KPI_ICON_ASSETS.sphere_call,
-  fsbo_expired_call: KPI_ICON_ASSETS.fsbo_expired_call,
-  door_knock_logged: KPI_ICON_ASSETS.door_knock_logged,
-  appointment_set_buyer: KPI_ICON_ASSETS.appointment_set_buyer,
-  appointment_set_seller: KPI_ICON_ASSETS.appointment_set_seller,
-  coffee_lunch_with_sphere: KPI_ICON_ASSETS.coffee_lunch_with_sphere,
-  conversations_held: KPI_ICON_ASSETS.conversations_held,
-  listing_taken: KPI_ICON_ASSETS.listing_taken,
-  buyer_contract_signed: KPI_ICON_ASSETS.buyer_contract_signed,
-  new_client_logged: KPI_ICON_ASSETS.new_client_logged,
-  text_dm_conversation: KPI_ICON_ASSETS.text_dm_conversation,
-  open_house_logged: KPI_ICON_ASSETS.open_house_logged,
-  seasonal_check_in_call: KPI_ICON_ASSETS.seasonal_check_in_call,
-  pop_by_delivered: KPI_ICON_ASSETS.pop_by_delivered,
-  holiday_card_sent: KPI_ICON_ASSETS.holiday_card_sent,
-  biz_post: KPI_ICON_ASSETS.biz_post,
-  time_blocks_honored: KPI_ICON_ASSETS.time_blocks_honored,
-  social_posts_shared: KPI_ICON_ASSETS.social_posts_shared,
-  crm_tag_applied: KPI_ICON_ASSETS.crm_tag_applied,
-  smart_plan_activated: KPI_ICON_ASSETS.smart_plan_activated,
-  email_subscribers_added: KPI_ICON_ASSETS.email_subscribers_added,
-  listing_video_created: KPI_ICON_ASSETS.listing_video_created,
-  listing_presentation_given: KPI_ICON_ASSETS.listing_presentation_given,
-  buyer_consult_held: KPI_ICON_ASSETS.buyer_consult_held,
-  business_book_completed: KPI_ICON_ASSETS.business_book_completed,
-  pipeline_cleaned_up: KPI_ICON_ASSETS.pipeline_cleaned_up,
-  automation_rule_added: KPI_ICON_ASSETS.automation_rule_added,
-  roleplay_session_completed: KPI_ICON_ASSETS.roleplay_session_completed,
-  script_practice_session: KPI_ICON_ASSETS.script_practice_session,
-  objection_handling_reps_logged: KPI_ICON_ASSETS.objection_handling_reps_logged,
-  cma_created_practice_or_live: KPI_ICON_ASSETS.cma_created_practice_or_live,
-  market_stats_review_weekly: KPI_ICON_ASSETS.market_stats_review_weekly,
-  offer_strategy_review_completed: KPI_ICON_ASSETS.offer_strategy_review_completed,
-  deal_review_postmortem_completed: KPI_ICON_ASSETS.deal_review_postmortem_completed,
-  negotiation_practice_session: KPI_ICON_ASSETS.negotiation_practice_session,
-  content_batch_created: KPI_ICON_ASSETS.content_batch_created,
-  database_segmented_cleaned: KPI_ICON_ASSETS.database_segmented_cleaned,
-  sop_created_or_updated: KPI_ICON_ASSETS.sop_created_or_updated,
-  weekly_scorecard_review: KPI_ICON_ASSETS.weekly_scorecard_review,
-  coaching_session_attended: KPI_ICON_ASSETS.coaching_session_attended,
-  training_module_completed: KPI_ICON_ASSETS.training_module_completed,
-  instagram_post_shared: KPI_ICON_ASSETS.instagram_post_shared,
-  facebook_post_shared: KPI_ICON_ASSETS.facebook_post_shared,
-  tiktok_post_shared: KPI_ICON_ASSETS.tiktok_post_shared,
-  x_post_shared: KPI_ICON_ASSETS.x_post_shared,
-  linkedin_post_shared: KPI_ICON_ASSETS.linkedin_post_shared,
-  youtube_short_posted: KPI_ICON_ASSETS.youtube_short_posted,
-  gratitude_entry: KPI_ICON_ASSETS.gratitude_entry,
-  good_night_of_sleep: KPI_ICON_ASSETS.good_night_of_sleep,
-  exercise_session: KPI_ICON_ASSETS.exercise_session,
-  prayer_meditation_time: KPI_ICON_ASSETS.prayer_meditation_time,
-  hydration_goal_met: KPI_ICON_ASSETS.hydration_goal_met,
-  whole_food_meal_logged: KPI_ICON_ASSETS.whole_food_meal_logged,
-  steps_goal_met_walk_completed: KPI_ICON_ASSETS.steps_goal_met_walk_completed,
-  stretching_mobility_session: KPI_ICON_ASSETS.stretching_mobility_session,
-  outdoor_time_logged: KPI_ICON_ASSETS.outdoor_time_logged,
-  screen_curfew_honored: KPI_ICON_ASSETS.screen_curfew_honored,
-  mindfulness_breath_reset: KPI_ICON_ASSETS.mindfulness_breath_reset,
-  sabbath_block_honored_rest: KPI_ICON_ASSETS.sabbath_block_honored_rest,
-  social_connection_non_work: KPI_ICON_ASSETS.social_connection_non_work,
-  journal_entry_non_gratitude: KPI_ICON_ASSETS.journal_entry_non_gratitude,
-} as const;
-
-const CUSTOM_KPI_ICON_BANK = ['🧩', '⭐', '🎯', '🛠️', '📌', '🌀', '✨', '🧠'] as const;
-
-function normalizeKpiIdentifier(input: string) {
-  return (input || '')
-    .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .replace(/_+/g, '_');
-}
-
 function kpiSortSlug(kpi: DashboardPayload['loggable_kpis'][number]) {
   return normalizeKpiIdentifier(String(kpi.slug || kpi.name || ''));
 }
@@ -1879,111 +1763,8 @@ function compareKpisForSelectionOrder(
   return a.name.localeCompare(b.name);
 }
 
-function hashString(input: string) {
-  let h = 0;
-  for (let i = 0; i < input.length; i += 1) {
-    h = (h * 31 + input.charCodeAt(i)) >>> 0;
-  }
-  return h;
-}
-
-function customKpiEmoji(name: string) {
-  const idx = hashString(name || 'custom') % CUSTOM_KPI_ICON_BANK.length;
-  return CUSTOM_KPI_ICON_BANK[idx];
-}
-
-function kpiImageSourceFor(kpi: DashboardPayload['loggable_kpis'][number]) {
-  const name = (kpi.name || '').toLowerCase();
-  const exact = KPI_ICON_BY_NORMALIZED_NAME[normalizeKpiIdentifier(kpi.name || '') as keyof typeof KPI_ICON_BY_NORMALIZED_NAME];
-  if (exact) return exact;
-
-  if (kpi.type === 'PC') {
-    if (name.includes('listing') && name.includes('taken')) return KPI_ICON_ASSETS.listing_taken;
-    if (name.includes('buyer') && name.includes('contract')) return KPI_ICON_ASSETS.buyer_contract_signed;
-    if (name.includes('appointment') && name.includes('buyer')) return KPI_ICON_ASSETS.appointment_set_buyer;
-    if (name.includes('appointment') && name.includes('seller')) return KPI_ICON_ASSETS.appointment_set_seller;
-    if (name.includes('coffee') || name.includes('lunch')) return KPI_ICON_ASSETS.coffee_lunch_with_sphere;
-    if (name.includes('conversation')) return KPI_ICON_ASSETS.conversations_held;
-    if (name.includes('door')) return KPI_ICON_ASSETS.door_knock_logged;
-    if (name.includes('cold call') || (name.includes('phone') && name.includes('follow'))) return KPI_ICON_ASSETS.fsbo_expired_call;
-    if (name.includes('referral') || (name.includes('user') && name.includes('add'))) return KPI_ICON_ASSETS.new_client_logged;
-    if (name.includes('sphere')) return KPI_ICON_ASSETS.sphere_call;
-    if (name.includes('mail') || name.includes('email') || name.includes('text') || name.includes('dm')) return KPI_ICON_ASSETS.text_dm_conversation;
-    if (name.includes('open house')) return KPI_ICON_ASSETS.open_house_logged;
-    if (name.includes('phone call')) return KPI_ICON_ASSETS.phone_call_logged;
-  }
-
-  if (kpi.type === 'GP') {
-    if (name.includes('buyer consult') || (name.includes('chat') && name.includes('check'))) return KPI_ICON_ASSETS.buyer_consult_held;
-    if (name.includes('system') || name.includes('process') || name.includes('automation')) return KPI_ICON_ASSETS.automation_rule_added;
-    if (name.includes('training') || name.includes('read') || name.includes('book') || name.includes('learn')) return KPI_ICON_ASSETS.business_book_completed;
-    if (name.includes('call')) return KPI_ICON_ASSETS.buyer_consult_held;
-    if (name.includes('tag') || name.includes('crm')) return KPI_ICON_ASSETS.crm_tag_applied;
-    if (name.includes('database')) return KPI_ICON_ASSETS.database_segmented_cleaned;
-    if (name.includes('referral') || name.includes('community') || name.includes('network') || name.includes('subscriber')) return KPI_ICON_ASSETS.email_subscribers_added;
-    if (name.includes('presentation') || name.includes('listing presentation')) return KPI_ICON_ASSETS.listing_presentation_given;
-    if (name.includes('video') || name.includes('content')) return KPI_ICON_ASSETS.listing_video_created;
-    if (name.includes('social') || name.includes('post') || name.includes('share') || name.includes('marketing')) return KPI_ICON_ASSETS.social_posts_shared;
-    if (name.includes('plan') || name.includes('goal') || name.includes('schedule')) return KPI_ICON_ASSETS.smart_plan_activated;
-    if (name.includes('pipeline') && (name.includes('clean') || name.includes('cleanup'))) return KPI_ICON_ASSETS.pipeline_cleaned_up;
-    if (name.includes('time block')) return KPI_ICON_ASSETS.time_blocks_honored;
-  }
-
-  if (kpi.type === 'VP') {
-    if (name.includes('workout') || name.includes('fitness') || name.includes('exercise')) return KPI_ICON_ASSETS.exercise_session;
-    if (name.includes('family') || name.includes('gratitude') || name.includes('relationship') || name.includes('heart')) return KPI_ICON_ASSETS.gratitude_entry;
-    if (name.includes('home') || name.includes('house')) return KPI_ICON_ASSETS.outdoor_time_logged;
-    if (name.includes('sleep') || name.includes('rest') || name.includes('recovery')) return KPI_ICON_ASSETS.good_night_of_sleep;
-    if (name.includes('prayer') || name.includes('meditat')) return KPI_ICON_ASSETS.prayer_meditation_time;
-    if (name.includes('mind') || name.includes('wellness')) return KPI_ICON_ASSETS.mindfulness_breath_reset;
-    if (name.includes('walk') || name.includes('step')) return KPI_ICON_ASSETS.steps_goal_met_walk_completed;
-  }
-
-  return null;
-}
-
-function kpiEmojiFor(kpi: DashboardPayload['loggable_kpis'][number]) {
-  const name = (kpi.name || '').toLowerCase();
-
-  if (kpi.type === 'Custom') return customKpiEmoji(kpi.name || 'custom');
-  if (name.includes('cold call') || name.includes('phone') || name.includes('sphere')) return '📞';
-  if (name.includes('appointment') || name.includes('meeting')) return '🤝';
-  if (name.includes('coffee') || name.includes('lunch')) return '☕';
-  if (name.includes('contract')) return '📄';
-  if (name.includes('listing')) return '🏠';
-  if (name.includes('buyer')) return '🧍';
-  if (name.includes('seller')) return '🪧';
-  if (name.includes('closing') || name.includes('deal closed') || name.includes('actual gci')) return '🏆';
-  if (name.includes('open house')) return '🏡';
-  if (name.includes('showing') || name.includes('tour')) return '🚪';
-  if (name.includes('mail') || name.includes('email')) return '✉️';
-  if (name.includes('social') || name.includes('post') || name.includes('content')) return '📣';
-  if (name.includes('referral')) return '🔁';
-  if (name.includes('follow')) return '🔄';
-  if (name.includes('video')) return '🎥';
-  if (name.includes('training') || name.includes('course') || name.includes('learn') || name.includes('coach')) return '📘';
-  if (name.includes('challenge')) return '🏁';
-  if (name.includes('health') || name.includes('fitness') || name.includes('workout')) return '💪';
-  if (name.includes('sleep')) return '😴';
-  if (name.includes('mindset') || name.includes('gratitude')) return '✨';
-  if (name.includes('family') || name.includes('relationship')) return '❤️';
-
-  if (kpi.type === 'PC') return '🟢';
-  if (kpi.type === 'GP') return '🔵';
-  if (kpi.type === 'VP') return '🟠';
-  return '•';
-}
-
 function renderKpiIcon(kpi: DashboardPayload['loggable_kpis'][number]) {
-  const imageSource = kpiImageSourceFor(kpi);
-  if (imageSource) {
-    return (
-      <View style={styles.gridIconImageClip}>
-        <Image source={imageSource} style={styles.gridIconImage} resizeMode="cover" />
-      </View>
-    );
-  }
-  return <Text style={styles.gridIcon}>{kpiEmojiFor(kpi)}</Text>;
+  return <KpiIcon kpi={kpi} size={44} />;
 }
 
 function sortSelectableKpis(
@@ -2022,6 +1803,29 @@ function dedupeKpisById(kpis: DashboardPayload['loggable_kpis']): DashboardPaylo
     deduped.push(kpi);
   }
   return deduped;
+}
+
+function emptyCustomKpiDraft(): CustomKpiDraft {
+  return {
+    name: '',
+    slug: '',
+    requiresDirectValueInput: false,
+    iconSource: null,
+    iconName: null,
+    iconEmoji: null,
+  };
+}
+
+function customKpiDraftFromRow(row: CustomKpiRow): CustomKpiDraft {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug ?? '',
+    requiresDirectValueInput: Boolean(row.requires_direct_value_input),
+    iconSource: row.icon_source ?? (row.icon_file ? 'brand_asset' : null),
+    iconName: row.icon_name ?? row.icon_file ?? null,
+    iconEmoji: row.icon_emoji ?? null,
+  };
 }
 
 function derivePlaceholderOverlayBadgesForHomeTile(
@@ -2720,6 +2524,20 @@ export default function KPIDashboardScreen({
   } | null>(null);
   const [coachingLessonProgressSubmittingId, setCoachingLessonProgressSubmittingId] = useState<string | null>(null);
   const [coachingLessonProgressError, setCoachingLessonProgressError] = useState<string | null>(null);
+  type LessonMediaAsset = {
+    media_id: string;
+    filename: string;
+    content_type: string;
+    category: string;
+    processing_status: string;
+    playback_ready: boolean;
+    playback_id: string | null;
+    file_url: string | null;
+    provider: string;
+  };
+  const [lessonMediaAssets, setLessonMediaAssets] = useState<LessonMediaAsset[]>([]);
+  const [lessonMediaLoading, setLessonMediaLoading] = useState(false);
+  const [lessonMediaLessonId, setLessonMediaLessonId] = useState<string | null>(null);
   const [channelsApiRows, setChannelsApiRows] = useState<ChannelApiRow[] | null>(null);
   const [channelsPackageVisibility, setChannelsPackageVisibility] = useState<RuntimePackageVisibilityOutcome | null>(null);
   const [channelsNotificationItems, setChannelsNotificationItems] = useState<RuntimeNotificationItem[]>([]);
@@ -2749,6 +2567,8 @@ export default function KPIDashboardScreen({
   const [mediaUploadStatus, setMediaUploadStatus] = useState<string | null>(null);
   const [latestMediaId, setLatestMediaId] = useState<string | null>(null);
   const [latestMediaFileName, setLatestMediaFileName] = useState<string | null>(null);
+  type PendingMediaUpload = { fileName: string; progress: number; mediaId: string | null; status: 'picking' | 'uploading' | 'processing' | 'ready' | 'error'; error?: string };
+  const [pendingMediaUpload, setPendingMediaUpload] = useState<PendingMediaUpload | null>(null);
   const [liveSessionBusy, setLiveSessionBusy] = useState(false);
   const [liveSessionStatus, setLiveSessionStatus] = useState<string | null>(null);
   const [activeLiveSession, setActiveLiveSession] = useState<LiveSessionRecord | null>(null);
@@ -2772,6 +2592,12 @@ export default function KPIDashboardScreen({
   const [aiSuggestionListError, setAiSuggestionListError] = useState<string | null>(null);
   const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [logOtherVisible, setLogOtherVisible] = useState(false);
+  const [customKpiRows, setCustomKpiRows] = useState<CustomKpiRow[]>([]);
+  const [customKpiModalVisible, setCustomKpiModalVisible] = useState(false);
+  const [customKpiDraft, setCustomKpiDraft] = useState<CustomKpiDraft>(emptyCustomKpiDraft());
+  const [customKpiSaving, setCustomKpiSaving] = useState(false);
+  const [customKpiError, setCustomKpiError] = useState<string | null>(null);
+  const [customKpiSuccessNote, setCustomKpiSuccessNote] = useState<string | null>(null);
   const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('Quick');
   const [logOtherFilter, setLogOtherFilter] = useState<LogOtherFilter>('All');
   const [managedKpiIds, setManagedKpiIds] = useState<string[]>([]);
@@ -2930,7 +2756,7 @@ export default function KPIDashboardScreen({
     }
 
     try {
-      const [dashRes, meRes, challengesRes] = await Promise.all([
+      const [dashRes, meRes, challengesRes, customKpisRes] = await Promise.all([
         fetch(`${API_URL}/dashboard`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
@@ -2938,6 +2764,9 @@ export default function KPIDashboardScreen({
           headers: { Authorization: `Bearer ${token}` },
         }),
         fetch(`${API_URL}/challenges`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => null),
+        fetch(`${API_URL}/api/custom-kpis`, {
           headers: { Authorization: `Bearer ${token}` },
         }).catch(() => null),
       ]);
@@ -2984,6 +2813,20 @@ export default function KPIDashboardScreen({
       } else {
         setChallengeApiRows(null);
         setChallengeApiFetchError('Challenge list request failed');
+      }
+      if (customKpisRes) {
+        try {
+          const customBody = (await customKpisRes.json()) as { custom_kpis?: CustomKpiRow[]; error?: string };
+          if (customKpisRes.ok) {
+            setCustomKpiRows(Array.isArray(customBody.custom_kpis) ? customBody.custom_kpis : []);
+          } else {
+            setCustomKpiRows([]);
+          }
+        } catch {
+          setCustomKpiRows([]);
+        }
+      } else {
+        setCustomKpiRows([]);
       }
 
       if (managedKpiIds.length === 0) {
@@ -5541,6 +5384,101 @@ export default function KPIDashboardScreen({
     return kpi.requires_direct_value_input ? 'Manual value input' : 'Tap to log';
   }, [estimatePcGeneratedForKpi]);
 
+  const customKpiById = useMemo(
+    () => new Map(customKpiRows.map((row) => [String(row.id), row])),
+    [customKpiRows]
+  );
+
+  const openCreateCustomKpiModal = useCallback(() => {
+    setCustomKpiError(null);
+    setCustomKpiSuccessNote(null);
+    setCustomKpiDraft(emptyCustomKpiDraft());
+    setCustomKpiModalVisible(true);
+  }, []);
+
+  const openEditCustomKpiModal = useCallback((row: CustomKpiRow) => {
+    setCustomKpiError(null);
+    setCustomKpiSuccessNote(null);
+    setCustomKpiDraft(customKpiDraftFromRow(row));
+    setCustomKpiModalVisible(true);
+  }, []);
+
+  const submitCustomKpi = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) {
+      setCustomKpiError('Missing session token.');
+      return;
+    }
+    if (!customKpiDraft.name.trim()) {
+      setCustomKpiError('Name is required.');
+      return;
+    }
+
+    const slug = customKpiDraft.slug.trim() || normalizeKpiIdentifier(customKpiDraft.name);
+    if (!slug) {
+      setCustomKpiError('Name or slug must contain at least one alphanumeric character.');
+      return;
+    }
+
+    const payload: {
+      name: string;
+      slug: string;
+      requires_direct_value_input: boolean;
+      icon_source?: KpiIconSource | null;
+      icon_name?: string | null;
+      icon_emoji?: string | null;
+    } = {
+      name: customKpiDraft.name.trim(),
+      slug,
+      requires_direct_value_input: customKpiDraft.requiresDirectValueInput,
+    };
+
+    if (customKpiDraft.iconSource === 'brand_asset') {
+      if (!customKpiDraft.iconName?.trim()) {
+        setCustomKpiError('Pick a brand asset icon.');
+        return;
+      }
+      payload.icon_source = 'brand_asset';
+      payload.icon_name = customKpiDraft.iconName.trim();
+      payload.icon_emoji = null;
+    } else if (customKpiDraft.iconSource === 'vector_icon') {
+      if (!customKpiDraft.iconName?.trim()) {
+        setCustomKpiError('Pick a vector icon.');
+        return;
+      }
+      payload.icon_source = 'vector_icon';
+      payload.icon_name = customKpiDraft.iconName.trim();
+      payload.icon_emoji = null;
+    } else if (customKpiDraft.iconSource === 'emoji') {
+      if (!customKpiDraft.iconEmoji?.trim()) {
+        setCustomKpiError('Pick an emoji icon.');
+        return;
+      }
+      payload.icon_source = 'emoji';
+      payload.icon_name = null;
+      payload.icon_emoji = customKpiDraft.iconEmoji.trim();
+    }
+
+    setCustomKpiSaving(true);
+    setCustomKpiError(null);
+    try {
+      if (customKpiDraft.id) {
+        await updateCustomKpi(token, customKpiDraft.id, payload);
+        setCustomKpiSuccessNote('Custom KPI updated.');
+      } else {
+        await createCustomKpi(token, payload);
+        setCustomKpiSuccessNote('Custom KPI created.');
+      }
+      await fetchDashboard();
+      setCustomKpiModalVisible(false);
+      setAddDrawerVisible(true);
+    } catch (error) {
+      setCustomKpiError(error instanceof Error ? error.message : 'Failed to save custom KPI.');
+    } finally {
+      setCustomKpiSaving(false);
+    }
+  }, [customKpiDraft, fetchDashboard, session?.access_token]);
+
   const openPipelineCheckinOverlay = useCallback(() => {
     setPipelineCheckinListings(pipelineAnchorCounts.listings);
     setPipelineCheckinBuyers(pipelineAnchorCounts.buyers);
@@ -6188,6 +6126,7 @@ export default function KPIDashboardScreen({
     [effectiveTeamPersonaVariant, runtimeRoleSignals]
   );
   const challengeCreateAllowed = entitlementFlag('can_start_challenges', true);
+  const canCreateCustomKpis = entitlementFlag('can_create_custom_kpis', false);
   const challengeScopedListItems = useMemo(() => {
     const resolvedTeamId = String(teamRosterTeamId ?? sessionUserMeta.team_id ?? sessionAppMeta.team_id ?? '').trim();
     return challengeListItems.filter((item) => {
@@ -8035,6 +7974,41 @@ export default function KPIDashboardScreen({
     ]
   );
 
+  const fetchLessonMedia = useCallback(
+    async (lessonId: string) => {
+      const token = session?.access_token;
+      if (!token) return;
+      if (lessonMediaLessonId === lessonId && lessonMediaAssets.length > 0) return; // already loaded
+      setLessonMediaLoading(true);
+      setLessonMediaLessonId(lessonId);
+      try {
+        const resp = await fetch(`${API_URL}/api/coaching/lessons/${encodeURIComponent(lessonId)}/media`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!resp.ok) {
+          setLessonMediaAssets([]);
+          return;
+        }
+        const payload = (await resp.json()) as { media?: LessonMediaAsset[] };
+        setLessonMediaAssets(payload.media ?? []);
+      } catch {
+        setLessonMediaAssets([]);
+      } finally {
+        setLessonMediaLoading(false);
+      }
+    },
+    [session?.access_token, lessonMediaLessonId, lessonMediaAssets.length]
+  );
+
+  /* Auto-fetch lesson media when lesson detail is opened */
+  useEffect(() => {
+    if (coachingShellScreen !== 'coaching_lesson_detail') return;
+    const lid = coachingShellContext.selectedLessonId;
+    if (!lid) return;
+    if (lessonMediaLessonId === lid) return; // already loaded for this lesson
+    void fetchLessonMedia(lid);
+  }, [coachingShellScreen, coachingShellContext.selectedLessonId, lessonMediaLessonId, fetchLessonMedia]);
+
   const ensureStreamChannelToken = useCallback(
     async (channelId: string, tokenPurpose: ChannelTokenPurpose) => {
       const token = session?.access_token;
@@ -8501,6 +8475,76 @@ export default function KPIDashboardScreen({
       setMediaUploadStatus(`Attachment sent to thread with media id ${latestMediaId}.`);
     },
     [latestMediaFileName, latestMediaId, sendChannelMessage]
+  );
+
+  /** Real file-picker → upload URL → PUT to Mux → mark ready */
+  const handlePickMediaFile = useCallback(
+    async (channelId: string | null, file: { name: string; type: string; size: number; uri: string }) => {
+      const token = session?.access_token;
+      if (!token) { setPendingMediaUpload({ fileName: file.name, progress: 0, mediaId: null, status: 'error', error: 'Sign in required.' }); return; }
+      if (!channelId) { setPendingMediaUpload({ fileName: file.name, progress: 0, mediaId: null, status: 'error', error: 'Select a channel first.' }); return; }
+      setPendingMediaUpload({ fileName: file.name, progress: 0, mediaId: null, status: 'uploading' });
+      setMediaUploadBusy(true);
+      try {
+        // 1) Get upload URL from backend
+        const idempotencyKey = `media_upl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+        const contextLessonId = coachingShellContext.selectedLessonId;
+        const contextJourneyId = coachingShellContext.selectedJourneyId;
+        const urlRes = await fetch(`${API_URL}/api/coaching/media/upload-url`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lesson_id: contextLessonId ?? undefined,
+            journey_id: contextLessonId ? undefined : contextJourneyId ?? undefined,
+            channel_id: channelId,
+            filename: file.name,
+            content_type: file.type || 'application/octet-stream',
+            content_length_bytes: file.size,
+            idempotency_key: idempotencyKey,
+          }),
+        });
+        const urlPayload = (await urlRes.json().catch(() => ({}))) as CoachingMediaUploadUrlResponse;
+        if (!urlRes.ok || !urlPayload.media_id || !urlPayload.upload_url) {
+          const msg = getApiErrorMessage(urlPayload, `Upload URL request failed (${urlRes.status})`);
+          setPendingMediaUpload((p) => p ? { ...p, status: 'error', error: msg } : null);
+          return;
+        }
+        const mediaId = String(urlPayload.media_id);
+        setPendingMediaUpload((p) => p ? { ...p, mediaId, progress: 0.1 } : null);
+
+        // 2) Upload the file to provider's upload URL (Supabase Storage for images, Mux for videos)
+        const isImageUpload = (file.type || '').startsWith('image/');
+        const fileUrl = typeof urlPayload.file_url === 'string' ? urlPayload.file_url : null;
+        const blob = await fetch(file.uri).then((r) => r.blob());
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', urlPayload.upload_url!);
+          xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+          if (isImageUpload) xhr.setRequestHeader('x-upsert', 'true');
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              const pct = 0.1 + 0.85 * (e.loaded / e.total);
+              setPendingMediaUpload((p) => p ? { ...p, progress: pct } : null);
+            }
+          };
+          xhr.onload = () => { xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status})`)); };
+          xhr.onerror = () => reject(new Error('Upload network error'));
+          xhr.send(blob);
+        });
+
+        // 3) Mark ready
+        setLatestMediaId(mediaId);
+        setLatestMediaFileName(file.name);
+        setPendingMediaUpload({ fileName: file.name, progress: 1, mediaId, status: 'ready' });
+        setMediaUploadStatus(`Uploaded ${file.name}. Media id: ${mediaId}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Upload failed.';
+        setPendingMediaUpload((p) => p ? { ...p, status: 'error', error: msg } : null);
+      } finally {
+        setMediaUploadBusy(false);
+      }
+    },
+    [coachingShellContext.selectedJourneyId, coachingShellContext.selectedLessonId, session?.access_token]
   );
 
   const startLiveSession = useCallback(
@@ -14451,6 +14495,8 @@ export default function KPIDashboardScreen({
                     }
                     onRequestMediaUpload={() => void requestMediaUploadUrl(selectedChannelResolvedId)}
                     onSendLatestMediaAttachment={() => void sendLatestMediaAttachment(selectedChannelResolvedId)}
+                    onPickMediaFile={(file) => void handlePickMediaFile(selectedChannelResolvedId, file)}
+                    pendingMediaUpload={pendingMediaUpload}
                     mediaUploadBusy={mediaUploadBusy}
                     mediaUploadStatus={mediaUploadStatus}
                     liveSessionBusy={liveSessionBusy}
@@ -15908,6 +15954,71 @@ export default function KPIDashboardScreen({
                             <Text style={styles.coachingLessonDetailBody}>
                               {selectedLesson.body?.trim() || 'No lesson content yet.'}
                             </Text>
+                            {/* ── Lesson Media ── */}
+                            {lessonMediaLoading ? (
+                              <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                                <ActivityIndicator size="small" color="#64748B" />
+                                <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 4 }}>Loading media…</Text>
+                              </View>
+                            ) : lessonMediaAssets.length > 0 ? (
+                              <View style={{ marginTop: 12, gap: 8 }}>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: '#475569', marginBottom: 2 }}>
+                                  Lesson Media ({lessonMediaAssets.length})
+                                </Text>
+                                {lessonMediaAssets.map((media) => (
+                                  <View
+                                    key={media.media_id}
+                                    style={{
+                                      backgroundColor: '#F8FAFC',
+                                      borderRadius: 10,
+                                      borderWidth: 1,
+                                      borderColor: '#E2E8F0',
+                                      overflow: 'hidden',
+                                    }}
+                                  >
+                                    {/* Inline image preview */}
+                                    {media.file_url && media.content_type.startsWith('image/') ? (
+                                      <Image
+                                        source={{ uri: media.file_url }}
+                                        style={{ width: '100%' as any, aspectRatio: 16 / 9, backgroundColor: '#F1F5F9' }}
+                                        resizeMode="cover"
+                                      />
+                                    ) : null}
+                                    {/* Video placeholder */}
+                                    {media.content_type.startsWith('video/') ? (
+                                      <View
+                                        style={{
+                                          width: '100%' as any,
+                                          aspectRatio: 16 / 9,
+                                          backgroundColor: '#1E293B',
+                                          justifyContent: 'center',
+                                          alignItems: 'center',
+                                        }}
+                                      >
+                                        <Text style={{ fontSize: 32 }}>
+                                          {media.playback_ready ? '▶' : media.processing_status === 'failed' ? '✗' : '⏳'}
+                                        </Text>
+                                        <Text style={{ color: '#CBD5E1', fontSize: 12, marginTop: 4 }}>
+                                          {media.playback_ready
+                                            ? 'Video ready'
+                                            : media.processing_status === 'failed'
+                                              ? 'Processing failed'
+                                              : 'Processing…'}
+                                        </Text>
+                                      </View>
+                                    ) : null}
+                                    <View style={{ paddingHorizontal: 10, paddingVertical: 8 }}>
+                                      <Text style={{ fontSize: 13, fontWeight: '500', color: '#334155' }} numberOfLines={1}>
+                                        {media.filename || 'Media'}
+                                      </Text>
+                                      <Text style={{ fontSize: 11, color: '#94A3B8' }}>
+                                        {media.category} · {media.processing_status}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                ))}
+                              </View>
+                            ) : null}
                           </View>
                           {shellPackageGateBlocksActions ? (
                             renderKnownLimitedDataChip('lesson actions')
@@ -16412,11 +16523,45 @@ export default function KPIDashboardScreen({
               ))}
             </View>
             <ScrollView style={styles.drawerGridScroll} contentContainerStyle={styles.drawerList}>
+              {canCreateCustomKpis ? (
+                <TouchableOpacity
+                  style={[styles.drawerListRow, styles.drawerListRowSelected, { marginBottom: 6 }]}
+                  onPress={openCreateCustomKpiModal}
+                >
+                  <View style={[styles.drawerListIconWrap, { backgroundColor: '#EEF4FF' }]}>
+                    <View style={styles.drawerListIconInner}>
+                      <KpiIcon
+                        kpi={{ icon_source: 'vector_icon', icon_name: 'plus-circle-outline' }}
+                        size={44}
+                        backgroundColor="transparent"
+                        color="#2453D4"
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.drawerListMain}>
+                    <View style={styles.drawerListTitleRow}>
+                      <Text numberOfLines={1} style={styles.drawerListLabel}>Create Custom KPI</Text>
+                      <View style={[styles.drawerTypeBadge, { backgroundColor: '#F3E8FF' }]}>
+                        <Text style={[styles.drawerTypeBadgeText, { color: '#7A4CC8' }]}>Custom</Text>
+                      </View>
+                    </View>
+                    <Text numberOfLines={2} style={styles.drawerListMeta}>
+                      Add your own KPI with a brand asset, vector icon, or emoji.
+                    </Text>
+                  </View>
+                  <View style={styles.drawerActionCol}>
+                    <View style={[styles.drawerActionPill, styles.drawerActionAdd]}>
+                      <Text style={styles.drawerActionText}>New</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ) : null}
               {drawerCatalogKpis.map((kpi) => {
                 const locked = (kpi.type === 'GP' && !gpUnlocked) || (kpi.type === 'VP' && !vpUnlocked);
                 const selected = managedKpiIdSet.has(kpi.id);
                 const isFavorite = favoriteKpiIds.includes(kpi.id);
                 const favoriteRank = favoriteKpiIds.indexOf(kpi.id);
+                const editableCustomKpi = customKpiById.get(String(kpi.id));
                 const categoryFull =
                   (kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP') &&
                   selectedCountsByType[kpi.type] >= MAX_KPIS_PER_TYPE &&
@@ -16479,6 +16624,14 @@ export default function KPIDashboardScreen({
                     <View style={[styles.drawerActionPill, selected ? styles.drawerActionRemove : styles.drawerActionAdd]}>
                       <Text style={styles.drawerActionText}>{selected ? 'On' : 'Off'}</Text>
                     </View>
+                    {editableCustomKpi ? (
+                      <TouchableOpacity
+                        style={[styles.drawerActionPill, styles.drawerActionAdd]}
+                        onPress={() => openEditCustomKpiModal(editableCustomKpi)}
+                      >
+                        <Text style={styles.drawerActionText}>Edit</Text>
+                      </TouchableOpacity>
+                    ) : null}
                     <TouchableOpacity
                       style={[styles.drawerActionPill, isFavorite ? styles.drawerActionFavorite : styles.drawerActionAdd]}
                       disabled={!selected}
@@ -16499,6 +16652,102 @@ export default function KPIDashboardScreen({
             </TouchableOpacity>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={customKpiModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCustomKpiModalVisible(false)}
+      >
+        <Pressable style={styles.drawerBackdrop} onPress={() => setCustomKpiModalVisible(false)}>
+          <Pressable style={[styles.drawerCard, { maxHeight: '86%' }]} onPress={() => {}}>
+            <Text style={styles.drawerTitle}>{customKpiDraft.id ? 'Edit Custom KPI' : 'Create Custom KPI'}</Text>
+            <Text style={styles.drawerUnlockedHint}>
+              Custom KPIs stay owner-scoped and still fall back safely where icon metadata is not backfilled yet.
+            </Text>
+            <ScrollView style={styles.drawerGridScroll} contentContainerStyle={{ gap: 14, paddingBottom: 10 }}>
+              <View>
+                <Text style={styles.formLabel}>Name</Text>
+                <TextInput
+                  value={customKpiDraft.name}
+                  onChangeText={(name) =>
+                    setCustomKpiDraft((prev) => ({
+                      ...prev,
+                      name,
+                      slug: prev.id ? prev.slug : normalizeKpiIdentifier(name),
+                    }))
+                  }
+                  style={styles.input}
+                  placeholder="Neighborhood Mailer Responses"
+                />
+              </View>
+              <View>
+                <Text style={styles.formLabel}>Slug</Text>
+                <TextInput
+                  value={customKpiDraft.slug}
+                  onChangeText={(slug) => setCustomKpiDraft((prev) => ({ ...prev, slug }))}
+                  style={styles.input}
+                  placeholder="neighborhood_mailer_responses"
+                />
+              </View>
+              <View>
+                <Text style={styles.formLabel}>Options</Text>
+                <View style={styles.inlineToggleRow}>
+                  <Pressable
+                    onPress={() =>
+                      setCustomKpiDraft((prev) => ({
+                        ...prev,
+                        requiresDirectValueInput: !prev.requiresDirectValueInput,
+                      }))
+                    }
+                    style={[styles.toggleChip, customKpiDraft.requiresDirectValueInput && styles.toggleChipOn]}
+                  >
+                    <Text
+                      style={[
+                        styles.toggleChipText,
+                        customKpiDraft.requiresDirectValueInput && styles.toggleChipTextOn,
+                      ]}
+                    >
+                      Direct Value Input
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+              <KpiIconPicker
+                value={{
+                  icon_source: customKpiDraft.iconSource ?? null,
+                  icon_name: customKpiDraft.iconName ?? null,
+                  icon_emoji: customKpiDraft.iconEmoji ?? null,
+                  icon_file: customKpiDraft.iconSource === 'brand_asset' ? customKpiDraft.iconName ?? null : null,
+                }}
+                onChange={(next) =>
+                  setCustomKpiDraft((prev) => ({
+                    ...prev,
+                    iconSource: next.icon_source ?? null,
+                    iconName: next.icon_name ?? null,
+                    iconEmoji: next.icon_emoji ?? null,
+                  }))
+                }
+                subtitle="Choose the canonical icon metadata used by mobile KPI tiles and future catalog backfill."
+              />
+              {customKpiError ? <Text style={[styles.metaRow, styles.errorText]}>{customKpiError}</Text> : null}
+              {customKpiSuccessNote ? <Text style={[styles.metaRow, styles.successText]}>{customKpiSuccessNote}</Text> : null}
+            </ScrollView>
+            <View style={styles.formActionsRow}>
+              <TouchableOpacity
+                style={styles.smallGhostButton}
+                onPress={() => setCustomKpiModalVisible(false)}
+                disabled={customKpiSaving}
+              >
+                <Text style={styles.smallGhostButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.primaryButton} onPress={() => void submitCustomKpi()} disabled={customKpiSaving}>
+                <Text style={styles.primaryButtonText}>{customKpiSaving ? 'Saving...' : customKpiDraft.id ? 'Save Custom KPI' : 'Create Custom KPI'}</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <Modal
@@ -25341,6 +25590,93 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
+  },
+  formLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#D8E4FA',
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontSize: 14,
+    color: '#0F172A',
+  },
+  inlineToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  toggleChip: {
+    borderWidth: 1,
+    borderColor: '#D8E4FA',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  toggleChipOn: {
+    borderColor: '#2F5FE3',
+    backgroundColor: '#E8F0FF',
+  },
+  toggleChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  toggleChipTextOn: {
+    color: '#204ECF',
+  },
+  metaRow: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#64748B',
+  },
+  successText: {
+    color: '#0F7A45',
+    fontWeight: '600',
+  },
+  formActionsRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  smallGhostButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#D8E4FA',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  smallGhostButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  primaryButton: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: '#2453D4',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   disabled: {
     opacity: 0.55,

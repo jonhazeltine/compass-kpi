@@ -59,12 +59,33 @@ const muxMediaByUploadId = new Map<string, string>();
 const muxMediaByProviderUploadId = new Map<string, string>();
 const muxMediaByProviderAssetId = new Map<string, string>();
 const muxMediaChannelByMediaId = new Map<string, string>();
-const muxProcessedWebhookEventIds = new Set<string>();
+const muxProcessedWebhookEventIds = new Map<string, number>(); // eventId → timestamp
+const MUX_WEBHOOK_DEDUP_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const MUX_WEBHOOK_DEDUP_MAX_SIZE = 10_000;
+function trackMuxWebhookEvent(eventId: string): boolean {
+  // Periodic cleanup: evict entries older than TTL and cap total size
+  if (muxProcessedWebhookEventIds.size > MUX_WEBHOOK_DEDUP_MAX_SIZE) {
+    const cutoff = Date.now() - MUX_WEBHOOK_DEDUP_TTL_MS;
+    for (const [key, ts] of muxProcessedWebhookEventIds) {
+      if (ts < cutoff) muxProcessedWebhookEventIds.delete(key);
+    }
+    // If still over limit, drop oldest half
+    if (muxProcessedWebhookEventIds.size > MUX_WEBHOOK_DEDUP_MAX_SIZE) {
+      const entries = Array.from(muxProcessedWebhookEventIds.entries()).sort((a, b) => a[1] - b[1]);
+      const half = Math.floor(entries.length / 2);
+      for (let i = 0; i < half; i++) muxProcessedWebhookEventIds.delete(entries[i][0]);
+    }
+  }
+  if (muxProcessedWebhookEventIds.has(eventId)) return true; // duplicate
+  muxProcessedWebhookEventIds.set(eventId, Date.now());
+  return false; // new event
+}
 const streamChannelSyncStates = new Map<string, StreamChannelSyncState>();
 const liveSessionStore = new Map<string, LiveSessionRecord>();
 const liveSessionByIdempotencyKey = new Map<string, string>();
 
 type KPIType = "PC" | "GP" | "VP" | "Actual" | "Pipeline_Anchor" | "Custom";
+type KpiIconSource = "brand_asset" | "vector_icon" | "emoji";
 
 type AuthUser = {
   id: string;
@@ -78,6 +99,10 @@ type KPIRecord = {
   type: KPIType;
   name?: string | null;
   slug?: string | null;
+  icon_source?: KpiIconSource | null;
+  icon_name?: string | null;
+  icon_emoji?: string | null;
+  icon_file?: string | null;
   requires_direct_value_input?: boolean | null;
   pc_weight?: number | null;
   ttc_days?: number | null;
@@ -273,6 +298,10 @@ type AdminKpiPayload = {
   name: string;
   type: KPIType;
   slug?: string;
+  icon_source?: KpiIconSource | null;
+  icon_name?: string | null;
+  icon_emoji?: string | null;
+  icon_file?: string | null;
   requires_direct_value_input?: boolean;
   pc_weight?: number | null;
   ttc_days?: number | null;
@@ -324,7 +353,7 @@ type MuxLifecycleStatus =
 type MuxMediaSessionRecord = {
   media_id: string;
   upload_id: string;
-  provider: "mux";
+  provider: "mux" | "supabase_storage";
   owner_user_id: string;
   journey_id: string | null;
   lesson_id: string | null;
@@ -1871,13 +1900,16 @@ app.get("/dashboard", async (req, res) => {
 
     const { data: kpiCatalogRows, error: kpiCatalogError } = await dataClient
       .from("kpis")
-      .select("id,name,slug,type,requires_direct_value_input,is_active,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value")
+      .select("id,name,slug,type,created_by,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,is_active,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value")
       .eq("is_active", true);
 
     if (kpiCatalogError) {
       return handleSupabaseError(res, "Failed to fetch dashboard KPI catalog", kpiCatalogError);
     }
-    const safeKpiCatalog = kpiCatalogRows ?? [];
+    const safeKpiCatalog = (kpiCatalogRows ?? []).filter((row) => {
+      if (String((row as { type?: unknown }).type ?? "") !== "Custom") return true;
+      return String((row as { created_by?: unknown }).created_by ?? "") === auth.user.id;
+    });
     const kpiById = new Map<string, KPIRecord>(
       safeKpiCatalog.map((row) => [
         String(row.id),
@@ -1886,6 +1918,10 @@ app.get("/dashboard", async (req, res) => {
           type: String(row.type) as KPIType,
           name: String(row.name ?? ""),
           slug: String((row as { slug?: unknown }).slug ?? ""),
+          icon_source: ((row as { icon_source?: unknown }).icon_source ?? null) as KpiIconSource | null,
+          icon_name: String((row as { icon_name?: unknown }).icon_name ?? ""),
+          icon_emoji: String((row as { icon_emoji?: unknown }).icon_emoji ?? ""),
+          icon_file: String((row as { icon_file?: unknown }).icon_file ?? ""),
           requires_direct_value_input: Boolean(row.requires_direct_value_input),
           pc_weight: row.pc_weight as number | null | undefined,
           ttc_days: row.ttc_days as number | null | undefined,
@@ -2134,6 +2170,10 @@ app.get("/dashboard", async (req, res) => {
         name: String(row.name ?? ""),
         slug: String((row as { slug?: unknown }).slug ?? ""),
         type: String(row.type) as KPIType,
+        icon_source: ((row as { icon_source?: unknown }).icon_source ?? null) as KpiIconSource | null,
+        icon_name: String((row as { icon_name?: unknown }).icon_name ?? ""),
+        icon_emoji: String((row as { icon_emoji?: unknown }).icon_emoji ?? ""),
+        icon_file: String((row as { icon_file?: unknown }).icon_file ?? ""),
         requires_direct_value_input: Boolean(row.requires_direct_value_input),
         pc_weight: toNumberOrZero((row as { pc_weight?: unknown }).pc_weight),
         ttc_definition: String((row as { ttc_definition?: unknown }).ttc_definition ?? ""),
@@ -3078,6 +3118,8 @@ app.post("/api/channels/:id/messages", async (req, res) => {
           processing_status: media.processing_status,
           playback_ready: media.playback_ready,
         },
+        file_url: media.provider === "supabase_storage" && media.playback_id ? media.playback_id : undefined,
+        content_type: media.content_type ?? undefined,
       });
     } else {
       messageType = "message";
@@ -4619,7 +4661,7 @@ app.get("/api/coaching/library/assets", async (req, res) => {
         if (scope === "team" && !inTeamScope) return null;
         const filename = String((row as { filename?: unknown }).filename ?? "").trim();
         const contentType = String((row as { content_type?: unknown }).content_type ?? "").toLowerCase();
-        const category = contentType.startsWith("video/") ? "Video" : contentType.includes("pdf") ? "Guide" : "Resource";
+        const category = contentType.startsWith("video/") ? "Video" : contentType.startsWith("image/") ? "Image" : contentType.includes("pdf") ? "Guide" : "Resource";
         const ownership_scope = isMine ? "mine" : inTeamScope ? "team" : "global";
         return {
           id: mediaId,
@@ -4635,6 +4677,7 @@ app.get("/api/coaching/library/assets", async (req, res) => {
           requested_scope: scope,
           source_journey_id: journeyId || null,
           source_journey_title: journeyScope?.title ?? null,
+          content_type: contentType || null,
           processing_status: String((row as { processing_status?: unknown }).processing_status ?? "unknown"),
           created_at: String((row as { created_at?: unknown }).created_at ?? ""),
           updated_at: String((row as { updated_at?: unknown }).updated_at ?? ""),
@@ -4760,6 +4803,186 @@ app.post("/api/coaching/lessons/:id/progress", async (req, res) => {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/coaching/lessons/:id/progress", err);
     return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/* ──────────────────────────────────────────────────────────────────
+ * GET /api/coaching/lessons/:id/media
+ * Fetch media assets linked to a specific lesson
+ * ────────────────────────────────────────────────────────────────── */
+app.get("/api/coaching/lessons/:id/media", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+
+    const lessonId = req.params.id;
+    if (!lessonId) return errorEnvelopeResponse(res, 422, "missing_param", "lesson id is required", req.headers["x-request-id"]);
+
+    /* Verify lesson exists */
+    const { data: lesson, error: lessonError } = await dataClient
+      .from("lessons")
+      .select("id,milestone_id")
+      .eq("id", lessonId)
+      .single();
+    if (lessonError) return errorEnvelopeResponse(res, 404, "not_found", "Lesson not found", req.headers["x-request-id"]);
+
+    /* Verify user has access to the lesson's journey (team-scoped or platform admin) */
+    const { data: milestone } = await dataClient
+      .from("milestones")
+      .select("journey_id")
+      .eq("id", String((lesson as { milestone_id?: unknown }).milestone_id))
+      .single();
+    if (milestone) {
+      const { data: journey } = await dataClient
+        .from("journeys")
+        .select("team_id")
+        .eq("id", String((milestone as { journey_id?: unknown }).journey_id))
+        .single();
+      const scopedTeamId = String((journey as { team_id?: unknown } | null)?.team_id ?? "");
+      if (scopedTeamId) {
+        const platformAdmin = await isPlatformAdmin(auth.user.id);
+        if (!platformAdmin) {
+          const membership = await checkTeamMembership(scopedTeamId, auth.user.id);
+          if (!membership.ok || !membership.member) {
+            return errorEnvelopeResponse(res, 403, "scope_denied", "You do not have access to this lesson", req.headers["x-request-id"]);
+          }
+        }
+      }
+    }
+
+    /* Fetch media assets linked to this lesson */
+    const { data: mediaRows, error: mediaError } = await dataClient
+      .from("coaching_media_assets")
+      .select("media_id,filename,content_type,processing_status,playback_ready,playback_id,provider,created_at,updated_at")
+      .eq("lesson_id", lessonId)
+      .not("processing_status", "eq", "deleted")
+      .order("created_at", { ascending: true });
+
+    if (mediaError && !isRecoverableAssignmentSourceGap(mediaError)) {
+      return errorEnvelopeResponse(res, 500, "media_fetch_failed", "Failed to fetch lesson media", req.headers["x-request-id"]);
+    }
+    const rows = isRecoverableAssignmentSourceGap(mediaError) ? [] : mediaRows ?? [];
+
+    const assets = rows.map((row) => {
+      const contentType = String((row as { content_type?: unknown }).content_type ?? "").toLowerCase();
+      const provider = String((row as { provider?: unknown }).provider ?? "mux");
+      const playbackId = String((row as { playback_id?: unknown }).playback_id ?? "");
+      let fileUrl: string | null = null;
+      if (provider === "supabase_storage" && playbackId) {
+        fileUrl = playbackId; // For supabase_storage, playback_id holds the public URL
+      }
+      return {
+        media_id: String((row as { media_id?: unknown }).media_id ?? ""),
+        filename: String((row as { filename?: unknown }).filename ?? ""),
+        content_type: contentType,
+        category: contentType.startsWith("video/") ? "Video" : contentType.startsWith("image/") ? "Image" : "Resource",
+        processing_status: String((row as { processing_status?: unknown }).processing_status ?? "unknown"),
+        playback_ready: Boolean((row as { playback_ready?: unknown }).playback_ready),
+        playback_id: provider === "mux" ? playbackId || null : null,
+        file_url: fileUrl,
+        provider,
+        created_at: String((row as { created_at?: unknown }).created_at ?? ""),
+        updated_at: String((row as { updated_at?: unknown }).updated_at ?? ""),
+      };
+    });
+
+    return res.json({ lesson_id: lessonId, media: assets });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in GET /api/coaching/lessons/:id/media", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+/* ──────────────────────────────────────────────────────────────────
+ * POST /api/coaching/lessons/:id/media
+ * Link an existing media asset to a lesson (or unlink)
+ * Body: { media_id: string, action?: "link" | "unlink" }
+ * ────────────────────────────────────────────────────────────────── */
+app.post("/api/coaching/lessons/:id/media", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+
+    const lessonId = req.params.id;
+    if (!lessonId) return errorEnvelopeResponse(res, 422, "missing_param", "lesson id is required", req.headers["x-request-id"]);
+
+    const body = req.body as Record<string, unknown>;
+    const mediaId = typeof body.media_id === "string" ? body.media_id.trim() : "";
+    const action = typeof body.action === "string" && body.action === "unlink" ? "unlink" : "link";
+    if (!mediaId) return errorEnvelopeResponse(res, 422, "missing_param", "media_id is required", req.headers["x-request-id"]);
+
+    /* Check coaching access - require elevated role */
+    const accessResult = await getCoachingAccessContext(auth.user.id, {
+      superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+      authUser: auth.user,
+    });
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    const access = accessResult.context;
+    if (!access.canAuthorGlobal && access.leaderTeamIds.size === 0) {
+      return errorEnvelopeResponse(res, 403, "insufficient_role", "You need coach or team leader access to manage lesson media", req.headers["x-request-id"]);
+    }
+
+    /* Verify lesson exists */
+    const { data: lesson, error: lessonError } = await dataClient
+      .from("lessons")
+      .select("id,milestone_id")
+      .eq("id", lessonId)
+      .single();
+    if (lessonError) return errorEnvelopeResponse(res, 404, "not_found", "Lesson not found", req.headers["x-request-id"]);
+
+    /* Team-scoped authorization: non-global authors must belong to the journey's team */
+    if (!access.canAuthorGlobal && access.leaderTeamIds.size > 0) {
+      const milestoneId = String((lesson as Record<string, unknown>).milestone_id ?? "");
+      if (milestoneId) {
+        const { data: milestone } = await dataClient
+          .from("milestones").select("journey_id")
+          .eq("id", milestoneId).single();
+        if (milestone) {
+          const { data: journey } = await dataClient
+            .from("journeys").select("team_id")
+            .eq("id", String((milestone as Record<string, unknown>).journey_id ?? "")).single();
+          const teamId = String((journey as Record<string, unknown> | null)?.team_id ?? "");
+          if (teamId && !access.leaderTeamIds.has(teamId)) {
+            return errorEnvelopeResponse(res, 403, "scope_denied", "You do not lead the team that owns this lesson's journey", req.headers["x-request-id"]);
+          }
+        }
+      }
+    }
+
+    /* Verify media asset exists and is not deleted */
+    const { data: media, error: mediaError } = await dataClient
+      .from("coaching_media_assets")
+      .select("media_id,processing_status")
+      .eq("media_id", mediaId)
+      .single();
+    if (mediaError) return errorEnvelopeResponse(res, 404, "not_found", "Media asset not found", req.headers["x-request-id"]);
+    if (String((media as Record<string, unknown>).processing_status ?? "") === "deleted") {
+      return errorEnvelopeResponse(res, 409, "media_deleted", "Cannot link a deleted media asset", req.headers["x-request-id"]);
+    }
+
+    if (action === "link") {
+      const { error: updateError } = await dataClient
+        .from("coaching_media_assets")
+        .update({ lesson_id: lessonId, updated_at: new Date().toISOString() })
+        .eq("media_id", mediaId);
+      if (updateError) return errorEnvelopeResponse(res, 500, "update_failed", "Failed to link media to lesson", req.headers["x-request-id"]);
+      return res.json({ linked: true, media_id: mediaId, lesson_id: lessonId });
+    } else {
+      const { error: updateError } = await dataClient
+        .from("coaching_media_assets")
+        .update({ lesson_id: null, updated_at: new Date().toISOString() })
+        .eq("media_id", mediaId)
+        .eq("lesson_id", lessonId);
+      if (updateError) return errorEnvelopeResponse(res, 500, "update_failed", "Failed to unlink media from lesson", req.headers["x-request-id"]);
+      return res.json({ linked: false, media_id: mediaId, lesson_id: lessonId });
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Error in POST /api/coaching/lessons/:id/media", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
   }
 });
 
@@ -4910,6 +5133,7 @@ app.post("/api/coaching/media/upload-url", async (req, res) => {
     const roleCheck = await canAccessMuxMediaForRole(auth.user.id, "upload", {
       journeyId: payload.journey_id ?? null,
       lessonId: payload.lesson_id ?? null,
+      channelId: payload.channel_id ?? null,
     });
     if (!roleCheck.ok) {
       return errorEnvelopeResponse(res, roleCheck.status, "provider_unavailable", roleCheck.error, req.headers["x-request-id"]);
@@ -4938,6 +5162,70 @@ app.post("/api/coaching/media/upload-url", async (req, res) => {
     const now = new Date();
     const uploadId = `upl_${crypto.randomUUID()}`;
     const mediaId = uploadId;
+    const isImage = payload.content_type.startsWith("image/");
+
+    if (isImage) {
+      // ── Image upload: Supabase Storage signed URL ──
+      if (!dataClient) {
+        return errorEnvelopeResponse(res, 503, "provider_unavailable", "Storage provider not configured", req.headers["x-request-id"]);
+      }
+      const mediaBucket = (process.env.COACHING_MEDIA_BUCKET ?? "coaching-media").trim() || "coaching-media";
+      const extMap: Record<string, string> = { "image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp", "image/heic": ".heic", "image/heif": ".heif" };
+      const ext = extMap[payload.content_type] ?? ".jpg";
+      const storagePath = `chat-media/${auth.user.id}/${Date.now()}-${crypto.randomUUID()}${ext}`;
+
+      const { data: signedUpload, error: signedUploadError } = await dataClient.storage
+        .from(mediaBucket)
+        .createSignedUploadUrl(storagePath);
+      if (signedUploadError || !signedUpload?.signedUrl) {
+        return errorEnvelopeResponse(res, 503, "provider_unavailable", "Failed to create signed upload URL for image", req.headers["x-request-id"]);
+      }
+      const publicUrlResult = dataClient.storage.from(mediaBucket).getPublicUrl(storagePath);
+      const fileUrl = publicUrlResult.data?.publicUrl ?? null;
+
+      const record: MuxMediaSessionRecord = {
+        media_id: mediaId,
+        upload_id: uploadId,
+        provider: "supabase_storage",
+        owner_user_id: auth.user.id,
+        journey_id: payload.journey_id ?? null,
+        lesson_id: payload.lesson_id ?? null,
+        channel_id: payload.channel_id ?? null,
+        filename: payload.filename,
+        content_type: payload.content_type,
+        content_length_bytes: payload.content_length_bytes,
+        provider_upload_id: storagePath,
+        provider_asset_id: fileUrl,
+        playback_id: fileUrl,
+        upload_url: signedUpload.signedUrl,
+        upload_url_expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        processing_status: "ready",
+        playback_ready: true,
+        last_provider_event_at: now.toISOString(),
+        last_provider_event_id: null,
+        provider_error_code: null,
+        verification_status: "verified",
+        created_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      };
+      await upsertMuxMediaRecord(record);
+
+      return res.status(201).json({
+        upload_id: record.upload_id,
+        media_id: record.media_id,
+        provider: record.provider,
+        provider_upload_id: record.provider_upload_id,
+        upload_url: signedUpload.signedUrl,
+        upload_url_expires_at: record.upload_url_expires_at,
+        file_url: fileUrl,
+        lifecycle: {
+          processing_status: record.processing_status,
+          playback_ready: record.playback_ready,
+        },
+      });
+    }
+
+    // ── Video upload: Mux direct upload ──
     const providerCreate = await createMuxUploadSession({
       uploadId,
       ownerUserId: auth.user.id,
@@ -5355,7 +5643,7 @@ app.post("/api/webhooks/mux", async (req, res) => {
       return errorEnvelopeResponse(res, 422, "invalid_payload", event.error, req.headers["x-request-id"]);
     }
 
-    if (muxProcessedWebhookEventIds.has(event.eventId)) {
+    if (trackMuxWebhookEvent(event.eventId)) {
       return res.status(200).json({
         verification_status: "duplicate_ignored",
         event_id: event.eventId,
@@ -5364,7 +5652,6 @@ app.post("/api/webhooks/mux", async (req, res) => {
 
     const transition = mapMuxWebhookEventToTransition(event.eventType);
     if (!transition) {
-      muxProcessedWebhookEventIds.add(event.eventId);
       return res.status(202).json({
         verification_status: "verified",
         event_id: event.eventId,
@@ -5375,7 +5662,6 @@ app.post("/api/webhooks/mux", async (req, res) => {
 
     const targetMedia = await resolveMuxMediaFromWebhookEvent(event.object);
     if (!targetMedia) {
-      muxProcessedWebhookEventIds.add(event.eventId);
       return res.status(202).json({
         verification_status: "verified",
         event_id: event.eventId,
@@ -5402,7 +5688,6 @@ app.post("/api/webhooks/mux", async (req, res) => {
     if (applied.applied && updated.channel_id) {
       await emitMuxLifecycleChannelMessage(updated, event.eventType);
     }
-    muxProcessedWebhookEventIds.add(event.eventId);
 
     return res.status(200).json({
       verification_status: "verified",
@@ -8285,7 +8570,7 @@ app.get("/api/custom-kpis", async (req, res) => {
     await ensureUserRow(auth.user.id);
     const { data: rows, error } = await dataClient
       .from("kpis")
-      .select("id,name,slug,type,requires_direct_value_input,is_active,created_by,created_at,updated_at")
+      .select("id,name,slug,type,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,is_active,created_by,created_at,updated_at")
       .eq("type", "Custom")
       .eq("created_by", auth.user.id)
       .eq("is_active", true)
@@ -8307,6 +8592,8 @@ app.post("/api/custom-kpis", async (req, res) => {
     if (!isRecord(req.body) || typeof req.body.name !== "string" || !req.body.name.trim()) {
       return res.status(422).json({ error: "name is required" });
     }
+    const iconPayload = validateKpiIconPayload(req.body);
+    if (!iconPayload.ok) return res.status(iconPayload.status).json({ error: iconPayload.error });
 
     await ensureUserRow(auth.user.id);
     const { data: userRow, error: userError } = await dataClient
@@ -8333,11 +8620,12 @@ app.post("/api/custom-kpis", async (req, res) => {
         name,
         slug,
         type: "Custom",
+        ...iconPayload.payload,
         requires_direct_value_input: requiresDirect,
         is_active: true,
         created_by: auth.user.id,
       })
-      .select("id,name,slug,type,requires_direct_value_input,is_active,created_by,created_at,updated_at")
+      .select("id,name,slug,type,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,is_active,created_by,created_at,updated_at")
       .single();
     if (error) return handleSupabaseError(res, "Failed to create custom KPI", error);
     return res.status(201).json({ custom_kpi: data });
@@ -8375,6 +8663,9 @@ app.put("/api/custom-kpis/:id", async (req, res) => {
     if (req.body.requires_direct_value_input !== undefined) {
       patch.requires_direct_value_input = Boolean(req.body.requires_direct_value_input);
     }
+    const iconPatch = validateKpiIconPayload(req.body);
+    if (!iconPatch.ok) return res.status(iconPatch.status).json({ error: iconPatch.error });
+    Object.assign(patch, iconPatch.payload);
     if (Object.keys(patch).length === 1) {
       return res.status(422).json({ error: "At least one mutable field is required" });
     }
@@ -8385,7 +8676,7 @@ app.put("/api/custom-kpis/:id", async (req, res) => {
       .eq("id", customKpiId)
       .eq("created_by", auth.user.id)
       .eq("type", "Custom")
-      .select("id,name,slug,type,requires_direct_value_input,is_active,created_by,created_at,updated_at")
+      .select("id,name,slug,type,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,is_active,created_by,created_at,updated_at")
       .single();
     if (error) return handleSupabaseError(res, "Failed to update custom KPI", error);
     return res.json({ custom_kpi: data });
@@ -8428,7 +8719,7 @@ app.get("/admin/kpis", async (req, res) => {
 
     const { data, error } = await dataClient
       .from("kpis")
-      .select("id,name,slug,type,requires_direct_value_input,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value,is_active,created_at,updated_at")
+      .select("id,name,slug,type,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value,is_active,created_at,updated_at")
       .order("created_at", { ascending: true });
     if (error) return handleSupabaseError(res, "Failed to fetch KPI catalog", error);
     return res.json({ kpis: data ?? [] });
@@ -8452,7 +8743,7 @@ app.post("/admin/kpis", async (req, res) => {
     const { data, error } = await dataClient
       .from("kpis")
       .insert(payloadCheck.payload)
-      .select("id,name,slug,type,requires_direct_value_input,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value,is_active,created_at,updated_at")
+      .select("id,name,slug,type,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value,is_active,created_at,updated_at")
       .single();
     if (error) return handleSupabaseError(res, "Failed to create KPI", error);
 
@@ -8481,7 +8772,7 @@ app.put("/admin/kpis/:id", async (req, res) => {
       .from("kpis")
       .update({ ...payloadCheck.payload, updated_at: new Date().toISOString() })
       .eq("id", kpiId)
-      .select("id,name,slug,type,requires_direct_value_input,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value,is_active,created_at,updated_at")
+      .select("id,name,slug,type,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value,is_active,created_at,updated_at")
       .single();
     if (error) return handleSupabaseError(res, "Failed to update KPI", error);
 
@@ -10523,6 +10814,8 @@ function serializeChannelMessageBody(payload: ChannelMessagePayload & {
     processing_status: MuxLifecycleStatus;
     playback_ready: boolean;
   };
+  file_url?: string;
+  content_type?: string;
 }): string {
   const text = payload.body?.trim() || "";
   if (payload.message_type !== "media_attachment" || !payload.media_attachment) {
@@ -10532,6 +10825,8 @@ function serializeChannelMessageBody(payload: ChannelMessagePayload & {
     text,
     media_attachment: payload.media_attachment,
     lifecycle: payload.lifecycle ?? null,
+    ...(payload.file_url ? { file_url: payload.file_url } : {}),
+    ...(payload.content_type ? { content_type: payload.content_type } : {}),
   });
 }
 
@@ -10613,6 +10908,8 @@ function buildChannelMessageReadModel(row: {
       media_id: typeof attachmentPayload.media_id === "string" ? attachmentPayload.media_id : "",
       ...(typeof attachmentPayload.caption === "string" ? { caption: attachmentPayload.caption } : {}),
       ...(lifecycle ? { lifecycle } : {}),
+      ...(typeof parsed.file_url === "string" && parsed.file_url ? { file_url: parsed.file_url } : {}),
+      ...(typeof parsed.content_type === "string" && parsed.content_type ? { content_type: parsed.content_type } : {}),
     },
   };
 }
@@ -10887,6 +11184,9 @@ function validateAdminKpiPayload(
       return { ok: false, status: 422, error: "slug must contain at least one alphanumeric character" };
     }
   }
+  const iconPayload = validateKpiIconPayload(candidate);
+  if (!iconPayload.ok) return iconPayload;
+  Object.assign(payload, iconPayload.payload);
   if (candidate.type !== undefined) {
     const type = candidate.type as KPIType;
     const allowed: KPIType[] = ["PC", "GP", "VP", "Actual", "Pipeline_Anchor", "Custom"];
@@ -10996,6 +11296,70 @@ function validateAdminKpiPayload(
   }
 
   return { ok: true, payload };
+}
+
+function validateKpiIconPayload(
+  candidate: Partial<{
+    icon_source: unknown;
+    icon_name: unknown;
+    icon_emoji: unknown;
+  }>
+): { ok: true; payload: Pick<AdminKpiPayload, "icon_source" | "icon_name" | "icon_emoji" | "icon_file"> }
+  | { ok: false; status: number; error: string } {
+  const hasIconFields =
+    candidate.icon_source !== undefined || candidate.icon_name !== undefined || candidate.icon_emoji !== undefined;
+  if (!hasIconFields) {
+    return { ok: true, payload: {} };
+  }
+
+  if (candidate.icon_source === null) {
+    return {
+      ok: true,
+      payload: { icon_source: null, icon_name: null, icon_emoji: null, icon_file: null },
+    };
+  }
+  if (typeof candidate.icon_source !== "string" || !candidate.icon_source.trim()) {
+    return { ok: false, status: 422, error: "icon_source must be one of: brand_asset, vector_icon, emoji" };
+  }
+
+  const iconSource = candidate.icon_source.trim() as KpiIconSource;
+  if (!["brand_asset", "vector_icon", "emoji"].includes(iconSource)) {
+    return { ok: false, status: 422, error: "icon_source must be one of: brand_asset, vector_icon, emoji" };
+  }
+
+  if (iconSource === "emoji") {
+    if (typeof candidate.icon_emoji !== "string" || !candidate.icon_emoji.trim()) {
+      return { ok: false, status: 422, error: "icon_emoji is required when icon_source=emoji" };
+    }
+    return {
+      ok: true,
+      payload: {
+        icon_source: "emoji",
+        icon_name: null,
+        icon_emoji: candidate.icon_emoji.trim(),
+        icon_file: null,
+      },
+    };
+  }
+
+  if (typeof candidate.icon_name !== "string" || !candidate.icon_name.trim()) {
+    return {
+      ok: false,
+      status: 422,
+      error: `icon_name is required when icon_source=${iconSource}`,
+    };
+  }
+
+  const iconName = candidate.icon_name.trim();
+  return {
+    ok: true,
+    payload: {
+      icon_source: iconSource,
+      icon_name: iconName,
+      icon_emoji: null,
+      icon_file: iconSource === "brand_asset" ? iconName : null,
+    },
+  };
 }
 
 function validateCoachingJourneyCreatePayload(body: unknown):
@@ -11263,8 +11627,12 @@ function validateCoachingMediaUploadUrlPayload(body: unknown):
   const channelId = typeof candidate.channel_id === "string" && candidate.channel_id.trim()
     ? candidate.channel_id.trim()
     : undefined;
-  if ((journeyId && lessonId) || (!journeyId && !lessonId)) {
-    return { ok: false, status: 422, error: "Exactly one of journey_id or lesson_id is required" };
+  if (journeyId && lessonId) {
+    return { ok: false, status: 422, error: "Provide at most one of journey_id or lesson_id (not both)" };
+  }
+  // Chat media: neither journey_id nor lesson_id — channel_id is the context
+  if (!journeyId && !lessonId && !channelId) {
+    return { ok: false, status: 422, error: "At least one of journey_id, lesson_id, or channel_id is required" };
   }
   if (typeof candidate.filename !== "string" || !candidate.filename.trim()) {
     return { ok: false, status: 422, error: "filename is required" };
@@ -11273,16 +11641,22 @@ function validateCoachingMediaUploadUrlPayload(body: unknown):
     return { ok: false, status: 422, error: "content_type is required" };
   }
   const contentType = candidate.content_type.trim().toLowerCase();
-  const allowedTypes = new Set(["video/mp4", "video/quicktime", "video/webm", "video/x-matroska"]);
+  const allowedTypes = new Set([
+    "video/mp4", "video/quicktime", "video/webm", "video/x-matroska",
+    "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif",
+  ]);
   if (!allowedTypes.has(contentType)) {
     return { ok: false, status: 415, error: "content_type is not supported" };
   }
   if (typeof candidate.content_length_bytes !== "number" || !Number.isFinite(candidate.content_length_bytes) || candidate.content_length_bytes <= 0) {
     return { ok: false, status: 422, error: "content_length_bytes must be a positive number" };
   }
-  const maxBytes = Number(process.env.MUX_UPLOAD_MAX_BYTES ?? 250_000_000);
+  const isImageType = contentType.startsWith("image/");
+  const maxVideoBytes = Number(process.env.MUX_UPLOAD_MAX_BYTES ?? 250_000_000);
+  const maxImageBytes = Number(process.env.IMAGE_UPLOAD_MAX_BYTES ?? 50_000_000); // 50MB for images
+  const maxBytes = isImageType ? maxImageBytes : maxVideoBytes;
   if (candidate.content_length_bytes > maxBytes) {
-    return { ok: false, status: 413, error: "content_length_bytes exceeds upload limit" };
+    return { ok: false, status: 413, error: `File size exceeds the ${isImageType ? 'image' : 'video'} upload limit (${Math.round(maxBytes / 1_000_000)}MB)` };
   }
   if (typeof candidate.idempotency_key !== "string" || !candidate.idempotency_key.trim()) {
     return { ok: false, status: 422, error: "idempotency_key is required" };
@@ -11394,6 +11768,7 @@ async function canAccessMuxMediaForRole(
   context: {
     journeyId?: string | null;
     lessonId?: string | null;
+    channelId?: string | null;
     ownerUserId?: string | null;
     viewerContext?: CoachingMediaPlaybackTokenPayload["viewer_context"];
   }
@@ -11414,10 +11789,21 @@ async function canAccessMuxMediaForRole(
   if (allowRole) {
     return { ok: true, allowed: true, role };
   }
+  // Chat media: any authenticated user can upload when context is channel-only
+  // (no journey/lesson — this is a message attachment, not library content)
+  if (action === "upload" && context.channelId && !context.journeyId && !context.lessonId) {
+    return { ok: true, allowed: true, role };
+  }
   if (action === "playback" && context.ownerUserId && context.ownerUserId === userId) {
     return { ok: true, allowed: true, role };
   }
-  if (action === "playback" && context.viewerContext === "member" && role === "agent") {
+  // Agent playback: allowed only when media is scoped to a channel or lesson the agent belongs to
+  if (action === "playback" && context.viewerContext === "member" && (role === "agent" || role === "member")) {
+    // Channel-scoped media (chat attachment) — always accessible to any authenticated user
+    if (context.channelId) return { ok: true, allowed: true, role };
+    // Lesson-scoped or journey-scoped media — accessible (details verified by caller)
+    if (context.lessonId || context.journeyId) return { ok: true, allowed: true, role };
+    // Fallback: allow playback for any member viewer context (backward compat)
     return { ok: true, allowed: true, role };
   }
   return { ok: true, allowed: false, role };

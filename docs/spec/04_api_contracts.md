@@ -423,6 +423,7 @@ These notes are additive contract guidance only. They do not introduce a new end
   - `activity`: engagement counters used for unlock display (`total_logs`, `active_days`)
   - `loggable_kpis`: active KPI catalog entries for mobile quick-log surfaces, including:
     - identity: `id`, `name`, `slug`, `type`
+    - icon metadata: `icon_source` (`brand_asset|vector_icon|emoji`), `icon_name`, `icon_emoji`, legacy `icon_file` fallback
     - behavior: `requires_direct_value_input`
     - spec metadata: `pc_weight`, `ttc_definition`, `delay_days`, `hold_days`, `decay_days`, `gp_value`, `vp_value`
   - `chart`:
@@ -725,6 +726,11 @@ These notes are additive contract guidance only. They do not introduce a new end
 - `GET /admin/kpis`, `POST /admin/kpis`, `PUT /admin/kpis/{id}`, `DELETE /admin/kpis/{id}`
   - Platform-admin-only access.
   - Delete route performs safe deactivation (`is_active=false`) for backward-safe behavior.
+  - Additive KPI icon fields:
+    - `icon_source` (`brand_asset|vector_icon|emoji`)
+    - `icon_name` (brand asset key or MaterialCommunityIcons name)
+    - `icon_emoji`
+    - `icon_file` remains as legacy fallback and is still returned for backfill safety.
 - `GET /admin/challenge-templates`, `POST /admin/challenge-templates`, `PUT /admin/challenge-templates/{id}`, `DELETE /admin/challenge-templates/{id}`
   - Platform-admin-only access.
   - Delete route performs safe deactivation (`is_active=false`).
@@ -812,6 +818,11 @@ These notes are additive contract guidance only. They do not introduce a new end
   - `PUT /api/custom-kpis/{id}`
   - `DELETE /api/custom-kpis/{id}`
   - ownership rule: system KPI `created_by IS NULL`, custom KPI `created_by = user.id`.
+  - additive icon fields:
+    - `icon_source` (`brand_asset|vector_icon|emoji`)
+    - `icon_name`
+    - `icon_emoji`
+    - legacy `icon_file` echo for fallback compatibility.
 
 ## Error Model
 - Legacy routes continue using status/error payloads.

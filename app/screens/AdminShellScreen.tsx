@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -14,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AdminRouteGuard from '../components/AdminRouteGuard';
+import { KpiIcon, KpiIconPicker } from '../components/kpi';
 import { useAdminAuthz } from '../contexts/AdminAuthzContext';
 import { useAuth } from '../contexts/AuthContext';
 import AdminProjectionLabPanel from './admin-shell/AdminProjectionLabPanel';
@@ -71,6 +73,7 @@ import {
   getAdminRouteStage,
   getAdminRouteStageTone,
 } from '../lib/adminShellConfig';
+import { API_URL } from '../lib/supabase';
 import { colors, space } from '../theme/tokens';
 import CompassMark from '../assets/brand/compass_mark.svg';
 
@@ -421,6 +424,9 @@ type KpiFormDraft = {
   name: string;
   slug: string;
   type: AdminKpiWritePayload['type'];
+  iconSource?: 'brand_asset' | 'vector_icon' | 'emoji' | null;
+  iconName?: string | null;
+  iconEmoji?: string | null;
   requiresDirectValueInput: boolean;
   isActive: boolean;
   pcWeight: string;
@@ -569,6 +575,9 @@ function emptyKpiDraft(): KpiFormDraft {
     name: '',
     slug: '',
     type: 'Custom',
+    iconSource: null,
+    iconName: null,
+    iconEmoji: null,
     requiresDirectValueInput: false,
     isActive: true,
     pcWeight: '',
@@ -587,6 +596,9 @@ function kpiDraftFromRow(row: AdminKpiRow): KpiFormDraft {
     name: row.name,
     slug: row.slug ?? '',
     type: (row.type as KpiFormDraft['type']) ?? 'Custom',
+    iconSource: row.icon_source ?? (row.icon_file ? 'brand_asset' : null),
+    iconName: row.icon_name ?? row.icon_file ?? null,
+    iconEmoji: row.icon_emoji ?? null,
     requiresDirectValueInput: Boolean(row.requires_direct_value_input),
     isActive: row.is_active,
     pcWeight: row.pc_weight == null ? '' : String(row.pc_weight),
@@ -688,6 +700,22 @@ function buildKpiPayloadFromDraft(draft: KpiFormDraft): { payload?: AdminKpiWrit
     is_active: draft.isActive,
   };
   if (draft.slug.trim()) payload.slug = draft.slug.trim();
+  if (draft.iconSource === 'emoji') {
+    if (!draft.iconEmoji?.trim()) return { error: 'Emoji icon requires a selected emoji' };
+    payload.icon_source = 'emoji';
+    payload.icon_emoji = draft.iconEmoji.trim();
+    payload.icon_name = null;
+  } else if (draft.iconSource === 'vector_icon') {
+    if (!draft.iconName?.trim()) return { error: 'Vector icon requires a selected icon' };
+    payload.icon_source = 'vector_icon';
+    payload.icon_name = draft.iconName.trim();
+    payload.icon_emoji = null;
+  } else if (draft.iconSource === 'brand_asset') {
+    if (!draft.iconName?.trim()) return { error: 'Brand asset icon requires a selected asset' };
+    payload.icon_source = 'brand_asset';
+    payload.icon_name = draft.iconName.trim();
+    payload.icon_emoji = null;
+  }
 
   if (draft.type === 'PC') {
     const pcWeight = parseOptionalNumber(draft.pcWeight);
@@ -1020,10 +1048,19 @@ function AdminKpiCatalogPanel({
                 onPress={() => { setIsCreating(false); onSelectRow(row); }}
                 accessibilityRole="button"
               >
+                <View style={{ marginRight: 12 }}>
+                  <KpiIcon
+                    kpi={row}
+                    size={36}
+                    backgroundColor="#F8FAFC"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
                 <Text style={[styles.listRowTitle, isSelected && styles.listRowTitleSelected]} numberOfLines={1}>{row.name}</Text>
                 <View style={styles.listRowMeta}>
                   <Text style={styles.listRowBadge}>{row.type}</Text>
                   <View style={[styles.listRowDot, { backgroundColor: row.is_active ? '#22C55E' : '#EF4444' }]} />
+                </View>
                 </View>
               </Pressable>
             );
@@ -1068,6 +1105,11 @@ function AdminKpiCatalogPanel({
                 <Text style={styles.formTitle}>Selected KPI</Text>
                 <Text style={styles.metaRow}>{selectedRow.name}</Text>
               </View>
+              <KpiIcon
+                kpi={selectedRow}
+                size={42}
+                backgroundColor="#F8FAFC"
+              />
               <View style={styles.inlineToggleRow}>
                 <View style={[styles.statusChip, { backgroundColor: '#F4F8FF', borderColor: '#D8E4FA' }]}>
                   <Text style={[styles.statusChipText, { color: '#345892' }]}>{selectedRow.type}</Text>
@@ -1182,6 +1224,23 @@ function AdminKpiCatalogPanel({
             <Text style={styles.fieldHelpText}>
               `Direct Value Input` means users enter the numeric value for this KPI event directly (not just a count/tap).
             </Text>
+          </View>
+          <View style={[styles.formField, styles.formFieldWide]}>
+            <KpiIconPicker
+              value={{
+                icon_source: draft.iconSource ?? null,
+                icon_name: draft.iconName ?? null,
+                icon_emoji: draft.iconEmoji ?? null,
+                icon_file: draft.iconSource === 'brand_asset' ? draft.iconName ?? null : null,
+              }}
+              onChange={(next) =>
+                onDraftChange({
+                  iconSource: next.icon_source ?? null,
+                  iconName: next.icon_name ?? null,
+                  iconEmoji: next.icon_emoji ?? null,
+                })
+              }
+            />
           </View>
           {draft.type === 'PC' ? (
             <>
@@ -3495,6 +3554,488 @@ function AdminCoachingPortalFoundationPanel({
   );
 }
 
+/* ───────────────────────────────────────────────────────────────
+ * AdminMediaLibraryPanel – real Uploads + Library surface
+ * Replaces the stub for coachingUploads & coachingLibrary
+ * ─────────────────────────────────────────────────────────────── */
+
+type AdminMediaAsset = {
+  id: string;
+  title: string;
+  category: string;
+  scope: string;
+  duration: string;
+  owner_label: string;
+  ownership_scope: 'mine' | 'team' | 'global';
+  processing_status: string;
+  created_at: string;
+  updated_at: string;
+  content_type?: string;
+  source_journey_title?: string | null;
+};
+
+type AdminMediaCollection = {
+  id: string;
+  name: string;
+  ownership_scope: string;
+  asset_ids: string[];
+};
+
+type AdminMediaLibraryPayload = {
+  assets?: Array<{
+    id: string;
+    title?: string;
+    category?: string;
+    scope?: string;
+    duration?: string;
+    owner_user_id?: string;
+    owner_label?: string;
+    ownership_scope?: 'mine' | 'team' | 'global';
+    processing_status?: string;
+    created_at?: string;
+    updated_at?: string;
+    content_type?: string;
+    source_journey_title?: string | null;
+  }>;
+  collections?: Array<{
+    id: string;
+    name?: string;
+    ownership_scope?: string;
+    asset_ids?: string[];
+  }>;
+  access_context?: {
+    role?: string;
+    effective_roles?: string[];
+    can_global_view?: boolean;
+  };
+};
+
+function AdminMediaLibraryPanel({
+  routeKey,
+  effectiveRoles,
+  onNavigate,
+  accessToken,
+}: {
+  routeKey: 'coachingUploads' | 'coachingLibrary';
+  effectiveRoles: AdminRole[];
+  onNavigate: (next: CoachingPortalSurfaceKey) => void;
+  accessToken: string;
+}) {
+  const [assets, setAssets] = useState<AdminMediaAsset[]>([]);
+  const [collections, setCollections] = useState<AdminMediaCollection[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'mine' | 'team' | 'global'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+
+  const fetchLibrary = useCallback(async () => {
+    if (!accessToken) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await fetch(`${API_URL}/api/coaching/library/assets`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({})) as { error?: string };
+        throw new Error(typeof body.error === 'string' ? body.error : `Request failed (${resp.status})`);
+      }
+      const payload = (await resp.json()) as AdminMediaLibraryPayload;
+      const mappedAssets: AdminMediaAsset[] = (payload.assets ?? []).map((a) => ({
+        id: a.id,
+        title: a.title || `Asset ${a.id.slice(0, 8)}`,
+        category: a.category || 'Resource',
+        scope: a.scope || 'Global',
+        duration: a.duration || '-',
+        owner_label: a.owner_label || 'Unknown',
+        ownership_scope: a.ownership_scope ?? 'global',
+        processing_status: a.processing_status || 'unknown',
+        created_at: a.created_at || '',
+        updated_at: a.updated_at || '',
+        content_type: a.content_type,
+        source_journey_title: a.source_journey_title ?? null,
+      }));
+      const mappedCollections: AdminMediaCollection[] = (payload.collections ?? []).map((c) => ({
+        id: c.id,
+        name: c.name || 'Collection',
+        ownership_scope: c.ownership_scope ?? 'global',
+        asset_ids: c.asset_ids ?? [],
+      }));
+      setAssets(mappedAssets);
+      setCollections(mappedCollections);
+      if (mappedCollections.length > 0 && !selectedCollectionId) {
+        setSelectedCollectionId(mappedCollections[0].id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load library assets');
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken, selectedCollectionId]);
+
+  useEffect(() => {
+    void fetchLibrary();
+  }, [fetchLibrary]);
+
+  /* ── file picker (web) ── */
+  const handleUploadFile = useCallback(async () => {
+    if (Platform.OS !== 'web') {
+      Alert.alert('Upload', 'File upload is only supported in the web browser.');
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'video/*,image/*';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      setUploadBusy(true);
+      setUploadError(null);
+      setUploadSuccess(null);
+      try {
+        /* Step 1: get a signed upload URL from backend */
+        const urlResp = await fetch(`${API_URL}/api/coaching/media/upload-url`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            filename: file.name,
+            content_type: file.type,
+          }),
+        });
+        if (!urlResp.ok) {
+          const body = await urlResp.json().catch(() => ({})) as { error?: string | { message?: string } };
+          const msg = typeof body.error === 'string' ? body.error : typeof body.error === 'object' && body.error?.message ? body.error.message : `Upload URL request failed (${urlResp.status})`;
+          throw new Error(msg);
+        }
+        const urlPayload = (await urlResp.json()) as {
+          upload_url?: string;
+          media_id?: string;
+          file_url?: string;
+        };
+        if (!urlPayload.upload_url) throw new Error('No upload URL returned');
+
+        /* Step 2: upload the file */
+        const isImage = file.type.startsWith('image/');
+        const headers: Record<string, string> = { 'Content-Type': file.type };
+        if (isImage) headers['x-upsert'] = 'true';
+        await fetch(urlPayload.upload_url, {
+          method: 'PUT',
+          headers,
+          body: file,
+        });
+
+        setUploadSuccess(`Uploaded "${file.name}" successfully${urlPayload.media_id ? ` (${urlPayload.media_id.slice(0, 8)})` : ''}`);
+        /* Refresh library */
+        void fetchLibrary();
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : 'Upload failed');
+      } finally {
+        setUploadBusy(false);
+      }
+    };
+    input.click();
+  }, [accessToken, fetchLibrary]);
+
+  /* ── filtering ── */
+  const filteredAssets = useMemo(() => {
+    let list = assets;
+    if (scopeFilter !== 'all') list = list.filter((a) => a.ownership_scope === scopeFilter);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((a) => a.title.toLowerCase().includes(q) || a.category.toLowerCase().includes(q) || a.owner_label.toLowerCase().includes(q));
+    }
+    return list;
+  }, [assets, scopeFilter, searchQuery]);
+
+  const selectedAsset = useMemo(() => assets.find((a) => a.id === selectedAssetId) ?? null, [assets, selectedAssetId]);
+  const activeCollection = useMemo(() => collections.find((c) => c.id === selectedCollectionId) ?? null, [collections, selectedCollectionId]);
+
+  /* ── helper: format relative date ── */
+  const relDate = (iso: string) => {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    const now = Date.now();
+    const diff = now - d.getTime();
+    if (diff < 60_000) return 'just now';
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+    if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
+    return d.toLocaleDateString();
+  };
+
+  const statusColor = (s: string) => {
+    if (s === 'ready') return { bg: '#ECFDF5', fg: '#065F46' };
+    if (s === 'processing' || s === 'waiting') return { bg: '#FEF3C7', fg: '#92400E' };
+    if (s === 'failed' || s === 'errored') return { bg: '#FEF2F2', fg: '#991B1B' };
+    return { bg: '#F1F5F9', fg: '#475569' };
+  };
+
+  const isUploads = routeKey === 'coachingUploads';
+
+  return (
+    <View style={styles.panel}>
+      {/* Header */}
+      <View style={styles.panelTopRow}>
+        <View style={styles.panelTitleBlock}>
+          <Text style={styles.eyebrow}>{isUploads ? '/coach/uploads' : '/coach/library'}</Text>
+          <Text style={styles.panelTitle}>Coach Portal • {isUploads ? 'Content Uploads' : 'Content Library'}</Text>
+        </View>
+        <View style={[styles.stagePill, { backgroundColor: '#E8FFF3', borderColor: '#B6E6CB' }]}>
+          <Text style={[styles.stagePillText, { color: '#146C43' }]}>Live</Text>
+        </View>
+      </View>
+      <Text style={styles.panelBody}>
+        {isUploads
+          ? 'Upload images and videos to the coaching media library. Assets are scoped by role and connected to Library + Journeys pipelines.'
+          : 'Browse and manage approved coaching assets grouped by ownership scope. Library assets feed Journeys, Cohort programs, and Channel campaigns.'}
+      </Text>
+
+      {/* Nav pills */}
+      <View style={styles.sectionNavRow}>
+        {COACH_PORTAL_NAV_ITEMS.map((section) => {
+          const selected = section.key === routeKey;
+          return (
+            <Pressable
+              key={section.key}
+              style={[styles.sectionNavPill, selected && styles.sectionNavPillSelected]}
+              onPress={() => onNavigate(section.key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+            >
+              <Text style={[styles.sectionNavPillText, selected && styles.sectionNavPillTextSelected]}>{section.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* Upload bar (visible on both surfaces) */}
+      {isUploads ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <TouchableOpacity
+            style={[styles.primaryButton, uploadBusy && { opacity: 0.6 }]}
+            onPress={() => void handleUploadFile()}
+            disabled={uploadBusy}
+          >
+            <Text style={styles.primaryButtonText}>{uploadBusy ? 'Uploading…' : '+ Upload File'}</Text>
+          </TouchableOpacity>
+          {uploadSuccess ? <Text style={{ color: '#065F46', fontSize: 13 }}>{uploadSuccess}</Text> : null}
+          {uploadError ? <Text style={{ color: '#991B1B', fontSize: 13 }}>{uploadError}</Text> : null}
+        </View>
+      ) : null}
+
+      {/* Toolbar: scope + search */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        {(['all', 'mine', 'team', 'global'] as const).map((s) => {
+          const active = scopeFilter === s;
+          return (
+            <Pressable
+              key={s}
+              onPress={() => setScopeFilter(s)}
+              style={[styles.sectionNavPill, active && styles.sectionNavPillSelected, { paddingHorizontal: 10, paddingVertical: 4 }]}
+            >
+              <Text style={[styles.sectionNavPillText, active && styles.sectionNavPillTextSelected, { fontSize: 12 }]}>
+                {s === 'all' ? 'All' : s === 'mine' ? 'Mine' : s === 'team' ? 'Team' : 'Global'}
+              </Text>
+            </Pressable>
+          );
+        })}
+        <TextInput
+          style={[styles.listSearchInput, { flex: 1, minWidth: 180, maxWidth: 320, marginHorizontal: 0, marginBottom: 0 }]}
+          placeholder="Search assets…"
+          placeholderTextColor="#94A3B8"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        <TouchableOpacity
+          style={styles.smallGhostButton}
+          onPress={() => void fetchLibrary()}
+          disabled={loading}
+        >
+          <Text style={styles.smallGhostButtonText}>{loading ? 'Loading…' : 'Refresh'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {error ? (
+        <View style={styles.noticeBox}>
+          <Text style={[styles.noticeTitle, { color: '#991B1B' }]}>Error</Text>
+          <Text style={styles.noticeText}>{error}</Text>
+        </View>
+      ) : null}
+
+      {loading && assets.length === 0 ? (
+        <ActivityIndicator size="small" color="#64748B" style={{ marginVertical: 20 }} />
+      ) : null}
+
+      {/* Main split: list + detail */}
+      <View style={styles.usersTopSplit}>
+        {/* Asset table */}
+        <View style={[styles.tableWrap, { flex: 1, minWidth: 420 }]}>
+          <View style={[styles.formHeaderRow, { paddingHorizontal: 12, paddingTop: 10 }]}>
+            <Text style={styles.formTitle}>{isUploads ? 'Uploaded Assets' : 'Library Assets'}</Text>
+            <Text style={styles.metaRow}>{filteredAssets.length} asset{filteredAssets.length !== 1 ? 's' : ''}</Text>
+          </View>
+          <View style={styles.tableHeaderRow}>
+            <View style={styles.colMd}><Text style={styles.tableHeaderCell}>Title</Text></View>
+            <View style={styles.colSm}><Text style={styles.tableHeaderCell}>Type</Text></View>
+            <View style={styles.colSm}><Text style={styles.tableHeaderCell}>Owner</Text></View>
+            <View style={styles.colSm}><Text style={styles.tableHeaderCell}>Status</Text></View>
+            <View style={styles.colSm}><Text style={styles.tableHeaderCell}>Updated</Text></View>
+          </View>
+          {filteredAssets.length === 0 && !loading ? (
+            <View style={{ padding: 20, alignItems: 'center' }}>
+              <Text style={styles.metaRow}>
+                {assets.length === 0 ? 'No assets found. Upload content to get started.' : 'No assets match the current filter.'}
+              </Text>
+            </View>
+          ) : null}
+          {filteredAssets.map((asset) => {
+            const selected = selectedAssetId === asset.id;
+            const sc = statusColor(asset.processing_status);
+            return (
+              <Pressable
+                key={asset.id}
+                style={[styles.tableDataRow, selected && styles.tableDataRowSelectedStrong]}
+                onPress={() => setSelectedAssetId(asset.id)}
+              >
+                <View style={[styles.tableCell, styles.colMd]}>
+                  <Text style={styles.tablePrimary} numberOfLines={1}>{asset.title}</Text>
+                </View>
+                <View style={[styles.tableCell, styles.colSm]}>
+                  <Text style={styles.tableCellText} numberOfLines={1}>{asset.category}</Text>
+                </View>
+                <View style={[styles.tableCell, styles.colSm]}>
+                  <Text style={styles.tableCellText} numberOfLines={1}>{asset.owner_label}</Text>
+                </View>
+                <View style={[styles.tableCell, styles.colSm]}>
+                  <View style={{ backgroundColor: sc.bg, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start' }}>
+                    <Text style={{ color: sc.fg, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>{asset.processing_status}</Text>
+                  </View>
+                </View>
+                <View style={[styles.tableCell, styles.colSm]}>
+                  <Text style={styles.tableSecondary} numberOfLines={1}>{relDate(asset.updated_at || asset.created_at)}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Detail card */}
+        <View style={[styles.formCard, styles.usersOpsCard]}>
+          {selectedAsset ? (
+            <>
+              <View style={styles.formHeaderRow}>
+                <Text style={styles.formTitle}>Asset Detail</Text>
+                <Text style={styles.metaRow}>{selectedAsset.id.slice(0, 12)}…</Text>
+              </View>
+              <View style={styles.selectedUserSummaryCard}>
+                <Text style={styles.formTitle}>{selectedAsset.title}</Text>
+                <Text style={styles.metaRow}>Category: {selectedAsset.category} · Scope: {selectedAsset.scope}</Text>
+                {selectedAsset.content_type ? <Text style={styles.metaRow}>Content type: {selectedAsset.content_type}</Text> : null}
+                <Text style={styles.metaRow}>Owner: {selectedAsset.owner_label}</Text>
+                <Text style={styles.metaRow}>Processing: {selectedAsset.processing_status}</Text>
+                {selectedAsset.source_journey_title ? (
+                  <Text style={styles.metaRow}>Journey: {selectedAsset.source_journey_title}</Text>
+                ) : null}
+                <Text style={styles.metaRow}>Created: {relDate(selectedAsset.created_at)}</Text>
+                <Text style={styles.metaRow}>Updated: {relDate(selectedAsset.updated_at)}</Text>
+              </View>
+              <View style={styles.formActionsRow}>
+                {isUploads ? (
+                  <TouchableOpacity
+                    style={styles.primaryButton}
+                    onPress={() => void handleUploadFile()}
+                    disabled={uploadBusy}
+                  >
+                    <Text style={styles.primaryButtonText}>Upload Another</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  style={styles.smallGhostButton}
+                  onPress={() => onNavigate(isUploads ? 'coachingLibrary' : 'coachingJourneys')}
+                >
+                  <Text style={styles.smallGhostButtonText}>
+                    {isUploads ? 'Open Library' : 'Open Journeys'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.formHeaderRow}>
+                <Text style={styles.formTitle}>{isUploads ? 'Upload Info' : 'Collection Browser'}</Text>
+              </View>
+              {isUploads ? (
+                <Text style={styles.panelBody}>
+                  Select an asset from the list to view its details. Use the Upload button to add new images or videos to the coaching library.
+                </Text>
+              ) : (
+                <>
+                  <Text style={[styles.metaRow, { marginBottom: 8 }]}>{collections.length} collection{collections.length !== 1 ? 's' : ''}</Text>
+                  {collections.map((coll) => {
+                    const isActive = selectedCollectionId === coll.id;
+                    return (
+                      <Pressable
+                        key={coll.id}
+                        style={[
+                          {
+                            paddingVertical: 8,
+                            paddingHorizontal: 12,
+                            borderRadius: 8,
+                            marginBottom: 4,
+                            backgroundColor: isActive ? '#EFF6FF' : '#F8FAFC',
+                            borderWidth: 1,
+                            borderColor: isActive ? '#93C5FD' : '#E2E8F0',
+                          },
+                        ]}
+                        onPress={() => setSelectedCollectionId(coll.id)}
+                      >
+                        <Text style={{ fontWeight: isActive ? '700' : '500', color: '#1E293B', fontSize: 13 }}>{coll.name}</Text>
+                        <Text style={{ color: '#64748B', fontSize: 11 }}>{coll.asset_ids.length} asset{coll.asset_ids.length !== 1 ? 's' : ''} · {coll.ownership_scope}</Text>
+                      </Pressable>
+                    );
+                  })}
+                  {activeCollection ? (
+                    <View style={{ marginTop: 10 }}>
+                      <Text style={styles.formTitle}>{activeCollection.name}</Text>
+                      <Text style={styles.metaRow}>{activeCollection.asset_ids.length} asset{activeCollection.asset_ids.length !== 1 ? 's' : ''}</Text>
+                      {activeCollection.asset_ids.slice(0, 10).map((assetId) => {
+                        const a = assets.find((x) => x.id === assetId);
+                        return (
+                          <Pressable
+                            key={assetId}
+                            style={{ paddingVertical: 4, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}
+                            onPress={() => setSelectedAssetId(assetId)}
+                          >
+                            <Text style={{ fontSize: 12, color: '#334155' }}>{a?.title || assetId.slice(0, 12)}</Text>
+                            <Text style={{ fontSize: 10, color: '#94A3B8' }}>{a?.category || ''} · {a?.processing_status || ''}</Text>
+                          </Pressable>
+                        );
+                      })}
+                      {activeCollection.asset_ids.length > 10 ? (
+                        <Text style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>
+                          + {activeCollection.asset_ids.length - 10} more
+                        </Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </>
+              )}
+            </>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function AdminCoachingAuditPanel({
   effectiveRoles,
 }: {
@@ -5623,8 +6164,22 @@ export default function AdminShellScreen() {
                 ) : activeRoute.key === 'coachingAudit' ? (
                   <AdminCoachingAuditPanel effectiveRoles={effectiveRoles} />
                 ) : activeRoute.key === 'coachingUploads' ||
-                  activeRoute.key === 'coachingLibrary' ||
-                  activeRoute.key === 'coachingJourneys' ||
+                  activeRoute.key === 'coachingLibrary' ? (
+                  <AdminMediaLibraryPanel
+                    routeKey={activeRoute.key}
+                    effectiveRoles={effectiveRoles}
+                    accessToken={session?.access_token ?? ''}
+                    onNavigate={(next) => {
+                      const nextRoute = getAdminRouteByKey(next);
+                      setUnknownAdminPath(null);
+                      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.pathname !== nextRoute.path) {
+                        window.history.pushState({}, '', nextRoute.path);
+                        setLastNavPushPath(nextRoute.path);
+                      }
+                      setActiveRouteKey(next);
+                    }}
+                  />
+                ) : activeRoute.key === 'coachingJourneys' ||
                   activeRoute.key === 'coachingCohorts' ||
                   activeRoute.key === 'coachingChannels' ? (
                   <AdminCoachingPortalFoundationPanel

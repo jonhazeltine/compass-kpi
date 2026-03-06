@@ -98,6 +98,10 @@
 - Given a platform admin
 - When KPI value/weight settings are changed through `/admin/kpis/*`
 - Then subsequent projection calculations use the updated admin-defined configuration
+- Given a platform admin or entitled custom-KPI creator
+- When KPI icon metadata is changed through admin or custom-KPI flows
+- Then runtime KPI surfaces render from canonical icon metadata first (`brand_asset|vector_icon|emoji`)
+- And legacy KPIs without icon metadata continue to render through `icon_file` or heuristic fallback
 
 ### 7) Challenge Join and Progress Tracking
 - Given an active challenge with associated KPI IDs
@@ -665,6 +669,9 @@
 - Then create is blocked (`403`)
 - Given basic/pro/team/coach user attempts custom KPI create
 - Then create succeeds and KPI is owner-scoped (`created_by = caller`)
+- Given KPI icon metadata is present on system or custom KPI rows
+- When admin catalog or mobile dashboard/loggable surfaces render that KPI
+- Then the same icon source is used consistently across surfaces
 
 ### E14) Avatar Menu + Split Profile/Goals/Settings Routing
 - Given an authenticated user on any top-level tab (`comms`, `team/challenge`, `home`, `logs`, `coach`)
