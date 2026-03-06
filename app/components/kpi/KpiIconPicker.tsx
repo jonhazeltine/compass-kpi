@@ -4,25 +4,29 @@ import KpiIcon from './KpiIcon';
 import {
   defaultKpiIconDraft,
   getKpiBrandAssetOptions,
-  getKpiEmojiOptions,
   getKpiVectorIconOptions,
-  type KpiIconMetadata,
-  type KpiIconSource,
+  getKpiTypeIconTreatment,
+  type KpiAuthoringIconSource,
 } from '../../lib/kpiIcons';
 
-type IconDraft = Pick<KpiIconMetadata, 'icon_source' | 'icon_name' | 'icon_emoji' | 'icon_file'>;
+type IconDraft = {
+  icon_source?: KpiAuthoringIconSource | null;
+  icon_name?: string | null;
+  icon_emoji?: string | null;
+  icon_file?: string | null;
+};
 
 type Props = {
   value: IconDraft;
   onChange: (next: IconDraft) => void;
   title?: string;
   subtitle?: string;
+  kpiType?: string | null;
 };
 
-const SOURCE_OPTIONS: Array<{ key: KpiIconSource; label: string }> = [
-  { key: 'brand_asset', label: 'Brand Asset' },
-  { key: 'vector_icon', label: 'Vector' },
-  { key: 'emoji', label: 'Emoji' },
+const SOURCE_OPTIONS: Array<{ key: KpiAuthoringIconSource; label: string }> = [
+  { key: 'brand_asset', label: 'Brand' },
+  { key: 'vector_icon', label: 'Library' },
 ];
 
 export default function KpiIconPicker({
@@ -30,13 +34,14 @@ export default function KpiIconPicker({
   onChange,
   title = 'Icon',
   subtitle = 'Choose a shared icon source. Existing KPIs without metadata still fall back safely.',
+  kpiType,
 }: Props) {
-  const activeSource = value.icon_source ?? 'brand_asset';
+  const activeSource = value.icon_source === 'vector_icon' ? 'vector_icon' : 'brand_asset';
   const brandAssetOptions = getKpiBrandAssetOptions();
   const vectorIconOptions = getKpiVectorIconOptions();
-  const emojiOptions = getKpiEmojiOptions();
+  const treatment = getKpiTypeIconTreatment(kpiType);
 
-  const applySource = (source: KpiIconSource) => {
+  const applySource = (source: KpiAuthoringIconSource) => {
     if (source === activeSource) return;
     onChange(defaultKpiIconDraft(source));
   };
@@ -51,13 +56,15 @@ export default function KpiIconPicker({
         <View style={styles.previewWrap}>
           <KpiIcon
             kpi={{
+              type: kpiType ?? null,
               icon_source: value.icon_source ?? null,
               icon_name: value.icon_name ?? null,
               icon_emoji: value.icon_emoji ?? null,
               icon_file: value.icon_file ?? null,
             }}
             size={48}
-            backgroundColor="#F7FAFC"
+            backgroundColor={treatment.background}
+            color={treatment.foreground}
           />
         </View>
       </View>
@@ -95,9 +102,10 @@ export default function KpiIconPicker({
                   }
                 >
                   <KpiIcon
-                    kpi={{ icon_source: 'brand_asset', icon_name: option.key, icon_file: option.key }}
+                    kpi={{ type: kpiType ?? null, icon_source: 'brand_asset', icon_name: option.key, icon_file: option.key }}
                     size={40}
-                    backgroundColor="#F8FAFC"
+                    backgroundColor={treatment.background}
+                    color={treatment.foreground}
                   />
                   <Text style={styles.optionLabel} numberOfLines={2}>{option.label}</Text>
                 </TouchableOpacity>
@@ -122,38 +130,12 @@ export default function KpiIconPicker({
                   }
                 >
                   <KpiIcon
-                    kpi={{ icon_source: 'vector_icon', icon_name: option.name }}
+                    kpi={{ type: kpiType ?? null, icon_source: 'vector_icon', icon_name: option.name }}
                     size={40}
-                    backgroundColor="#F8FAFC"
+                    backgroundColor={treatment.background}
+                    color={treatment.foreground}
                   />
                   <Text style={styles.optionLabel} numberOfLines={2}>{option.label}</Text>
-                </TouchableOpacity>
-              );
-            })
-          : null}
-
-        {activeSource === 'emoji'
-          ? emojiOptions.map((emoji) => {
-              const selected = value.icon_emoji === emoji;
-              return (
-                <TouchableOpacity
-                  key={emoji}
-                  style={[styles.optionTile, styles.emojiTile, selected && styles.optionTileSelected]}
-                  onPress={() =>
-                    onChange({
-                      icon_source: 'emoji',
-                      icon_name: null,
-                      icon_emoji: emoji,
-                      icon_file: null,
-                    })
-                  }
-                >
-                  <KpiIcon
-                    kpi={{ icon_source: 'emoji', icon_emoji: emoji }}
-                    size={40}
-                    backgroundColor="#F8FAFC"
-                  />
-                  <Text style={styles.optionLabel}>{emoji}</Text>
                 </TouchableOpacity>
               );
             })
@@ -239,10 +221,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     backgroundColor: '#FFFFFF',
-  },
-  emojiTile: {
-    width: 72,
-    minHeight: 88,
   },
   optionTileSelected: {
     borderColor: '#2F5FE3',

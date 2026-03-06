@@ -1,6 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 
 export type KpiIconSource = 'brand_asset' | 'vector_icon' | 'emoji';
+export type KpiAuthoringIconSource = 'brand_asset' | 'vector_icon';
 export type KpiType = 'PC' | 'GP' | 'VP' | 'Actual' | 'Pipeline_Anchor' | 'Custom';
 
 export type KpiIconMetadata = {
@@ -15,8 +16,15 @@ export type KpiIconMetadata = {
 
 type KpiIconResolution =
   | { kind: 'brand_asset'; imageSource: ImageSourcePropType; resolvedSource: 'metadata' | 'icon_file' | 'legacy' }
-  | { kind: 'vector_icon'; iconName: string; resolvedSource: 'metadata' }
-  | { kind: 'emoji'; emoji: string; resolvedSource: 'metadata' | 'legacy' | 'default' };
+  | { kind: 'vector_icon'; iconName: string; resolvedSource: 'metadata' | 'legacy' | 'default' };
+
+const KPI_TYPE_ICON_TREATMENTS = {
+  PC: { background: '#e4f7ea', foreground: '#2f9f56' },
+  GP: { background: '#e5efff', foreground: '#2158d5' },
+  VP: { background: '#fff0e2', foreground: '#e38a1f' },
+  Custom: { background: '#f3e8ff', foreground: '#7a4cc8' },
+  default: { background: '#eceff3', foreground: '#48505f' },
+} as const;
 
 const KPI_BRAND_ASSET_SOURCES: Record<string, ImageSourcePropType> = {
   'pc_phone_call_logged_v1.png': require('../assets/figma/kpi_icon_bank/pc_phone_call_logged_v1.png'),
@@ -110,13 +118,6 @@ const VECTOR_ICON_OPTIONS = [
   { name: 'sparkles', label: 'Sparkles' },
 ] as const;
 
-const EMOJI_ICON_OPTIONS = [
-  '🧩', '⭐', '🎯', '📞', '📅', '👥', '🏠', '💬', '📈', '🏆', '📚', '💡', '🔥', '✨', '🚀', '🧠',
-  '❤️', '💪', '🌿', '☀️', '🧘', '🎥', '✉️', '🤝', '📌', '🔁', '🛠️', '✅', '📝', '📣',
-] as const;
-
-const CUSTOM_KPI_ICON_BANK = ['🧩', '⭐', '🎯', '🛠️', '📌', '🌀', '✨', '🧠'] as const;
-
 const BRAND_ASSET_OPTIONS = Object.keys(KPI_BRAND_ASSET_SOURCES)
   .sort((a, b) => a.localeCompare(b))
   .map((fileName) => ({
@@ -151,11 +152,15 @@ export function getKpiVectorIconOptions() {
   return VECTOR_ICON_OPTIONS;
 }
 
-export function getKpiEmojiOptions() {
-  return [...EMOJI_ICON_OPTIONS];
+export function getKpiTypeIconTreatment(type: KpiType | string | null | undefined) {
+  if (type === 'PC') return KPI_TYPE_ICON_TREATMENTS.PC;
+  if (type === 'GP') return KPI_TYPE_ICON_TREATMENTS.GP;
+  if (type === 'VP') return KPI_TYPE_ICON_TREATMENTS.VP;
+  if (type === 'Custom') return KPI_TYPE_ICON_TREATMENTS.Custom;
+  return KPI_TYPE_ICON_TREATMENTS.default;
 }
 
-export function defaultKpiIconDraft(source: KpiIconSource) {
+export function defaultKpiIconDraft(source: KpiAuthoringIconSource) {
   if (source === 'brand_asset') {
     return {
       icon_source: 'brand_asset' as const,
@@ -173,10 +178,10 @@ export function defaultKpiIconDraft(source: KpiIconSource) {
     };
   }
   return {
-    icon_source: 'emoji' as const,
-    icon_name: null,
-    icon_emoji: EMOJI_ICON_OPTIONS[0] ?? '⭐',
-    icon_file: null,
+    icon_source: 'brand_asset' as const,
+    icon_name: BRAND_ASSET_OPTIONS[0]?.key ?? null,
+    icon_emoji: null,
+    icon_file: BRAND_ASSET_OPTIONS[0]?.key ?? null,
   };
 }
 
@@ -186,9 +191,6 @@ export function resolveKpiIcon(metadata: KpiIconMetadata): KpiIconResolution {
   const iconEmoji = typeof metadata.icon_emoji === 'string' ? metadata.icon_emoji.trim() : '';
   const iconFile = typeof metadata.icon_file === 'string' ? metadata.icon_file.trim() : '';
 
-  if (iconSource === 'emoji' && iconEmoji) {
-    return { kind: 'emoji', emoji: iconEmoji, resolvedSource: 'metadata' };
-  }
   if (iconSource === 'vector_icon' && iconName) {
     return { kind: 'vector_icon', iconName, resolvedSource: 'metadata' };
   }
@@ -206,12 +208,16 @@ export function resolveKpiIcon(metadata: KpiIconMetadata): KpiIconResolution {
     return { kind: 'brand_asset', imageSource: legacyAsset, resolvedSource: 'legacy' };
   }
 
-  const legacyEmoji = resolveLegacyEmoji(metadata);
-  if (legacyEmoji) {
-    return { kind: 'emoji', emoji: legacyEmoji, resolvedSource: metadata.type === 'Custom' ? 'legacy' : 'default' };
+  const legacyVectorIcon = resolveLegacyVectorIcon(metadata, iconEmoji);
+  if (legacyVectorIcon) {
+    return {
+      kind: 'vector_icon',
+      iconName: legacyVectorIcon,
+      resolvedSource: iconSource === 'emoji' || iconEmoji ? 'legacy' : 'default',
+    };
   }
 
-  return { kind: 'emoji', emoji: '•', resolvedSource: 'default' };
+  return { kind: 'vector_icon', iconName: defaultVectorIconForType(metadata.type), resolvedSource: 'default' };
 }
 
 function resolveBrandAsset(rawName: string | null | undefined) {
@@ -273,37 +279,40 @@ function resolveLegacyBrandAsset(metadata: KpiIconMetadata) {
   return null;
 }
 
-function resolveLegacyEmoji(metadata: KpiIconMetadata) {
+function resolveLegacyVectorIcon(metadata: KpiIconMetadata, legacyEmoji?: string) {
   const name = String(metadata.name ?? '').toLowerCase();
   const type = String(metadata.type ?? '');
 
-  if (type === 'Custom') return customKpiEmoji(String(metadata.name || 'custom'));
-  if (name.includes('cold call') || name.includes('phone') || name.includes('sphere')) return '📞';
-  if (name.includes('appointment') || name.includes('meeting')) return '🤝';
-  if (name.includes('coffee') || name.includes('lunch')) return '☕';
-  if (name.includes('contract')) return '📄';
-  if (name.includes('listing')) return '🏠';
-  if (name.includes('buyer')) return '🧍';
-  if (name.includes('seller')) return '🪧';
-  if (name.includes('closing') || name.includes('deal closed') || name.includes('actual gci')) return '🏆';
-  if (name.includes('open house')) return '🏡';
-  if (name.includes('showing') || name.includes('tour')) return '🚪';
-  if (name.includes('mail') || name.includes('email')) return '✉️';
-  if (name.includes('social') || name.includes('post') || name.includes('content')) return '📣';
-  if (name.includes('referral')) return '🔁';
-  if (name.includes('follow')) return '🔄';
-  if (name.includes('video')) return '🎥';
-  if (name.includes('training') || name.includes('course') || name.includes('learn') || name.includes('coach')) return '📘';
-  if (name.includes('challenge')) return '🏁';
-  if (name.includes('health') || name.includes('fitness') || name.includes('workout')) return '💪';
-  if (name.includes('sleep')) return '😴';
-  if (name.includes('mindset') || name.includes('gratitude')) return '✨';
-  if (name.includes('family') || name.includes('relationship')) return '❤️';
+  if (name.includes('cold call') || name.includes('phone') || name.includes('sphere')) return 'phone-outline';
+  if (name.includes('appointment') || name.includes('meeting')) return 'calendar-check-outline';
+  if (name.includes('coffee') || name.includes('lunch')) return 'coffee-outline';
+  if (name.includes('contract')) return 'file-document-outline';
+  if (name.includes('listing')) return 'home-outline';
+  if (name.includes('buyer')) return 'account-outline';
+  if (name.includes('seller')) return 'account-tie-outline';
+  if (name.includes('closing') || name.includes('deal closed') || name.includes('actual gci')) return 'trophy-outline';
+  if (name.includes('open house')) return 'home-city-outline';
+  if (name.includes('showing') || name.includes('tour')) return 'door-open';
+  if (name.includes('mail') || name.includes('email')) return 'email-outline';
+  if (name.includes('social') || name.includes('post') || name.includes('content')) return 'bullhorn-outline';
+  if (name.includes('referral')) return 'account-switch-outline';
+  if (name.includes('follow')) return 'refresh';
+  if (name.includes('video')) return 'camera-outline';
+  if (name.includes('training') || name.includes('course') || name.includes('learn') || name.includes('coach')) {
+    return 'book-open-variant';
+  }
+  if (name.includes('challenge')) return 'flag-checkered';
+  if (name.includes('health') || name.includes('fitness') || name.includes('workout')) return 'run-fast';
+  if (name.includes('sleep')) return 'sleep';
+  if (name.includes('mindset') || name.includes('gratitude')) return 'sparkles';
+  if (name.includes('family') || name.includes('relationship')) return 'heart-outline';
 
-  if (type === 'PC') return '🟢';
-  if (type === 'GP') return '🔵';
-  if (type === 'VP') return '🟠';
-  return null;
+  if (legacyEmoji) {
+    const emojiFallback = vectorIconForLegacyEmoji(legacyEmoji);
+    if (emojiFallback) return emojiFallback;
+  }
+
+  return defaultVectorIconForType(type);
 }
 
 function canonicalSlugFromBrandAsset(fileName: string) {
@@ -325,15 +334,44 @@ function formatBrandAssetLabel(fileName: string) {
     .join(' ');
 }
 
-function hashString(input: string) {
-  let hash = 0;
-  for (let i = 0; i < input.length; i += 1) {
-    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
-  }
-  return hash;
+function vectorIconForLegacyEmoji(emoji: string) {
+  if (emoji.includes('📞')) return 'phone-outline';
+  if (emoji.includes('📅')) return 'calendar-check-outline';
+  if (emoji.includes('👥')) return 'account-group-outline';
+  if (emoji.includes('🏠')) return 'home-outline';
+  if (emoji.includes('💬')) return 'message-text-outline';
+  if (emoji.includes('📈')) return 'chart-line';
+  if (emoji.includes('🏆')) return 'trophy-outline';
+  if (emoji.includes('📚')) return 'book-open-variant';
+  if (emoji.includes('💡')) return 'lightbulb-outline';
+  if (emoji.includes('🔥')) return 'lightning-bolt-outline';
+  if (emoji.includes('✨')) return 'sparkles';
+  if (emoji.includes('🚀')) return 'rocket-launch-outline';
+  if (emoji.includes('🧠')) return 'brain';
+  if (emoji.includes('❤️')) return 'heart-outline';
+  if (emoji.includes('💪')) return 'run-fast';
+  if (emoji.includes('🌿')) return 'sprout-outline';
+  if (emoji.includes('☀️')) return 'weather-sunny';
+  if (emoji.includes('🧘')) return 'meditation';
+  if (emoji.includes('🎥')) return 'camera-outline';
+  if (emoji.includes('✉️')) return 'email-outline';
+  if (emoji.includes('🤝')) return 'handshake-outline';
+  if (emoji.includes('📌')) return 'map-marker-outline';
+  if (emoji.includes('🔁')) return 'refresh';
+  if (emoji.includes('🛠️')) return 'tools';
+  if (emoji.includes('✅')) return 'check-circle-outline';
+  if (emoji.includes('📝')) return 'note-text-outline';
+  if (emoji.includes('📣')) return 'bullhorn-outline';
+  if (emoji.includes('⭐')) return 'star-outline';
+  if (emoji.includes('🎯')) return 'bullseye-arrow';
+  if (emoji.includes('🧩')) return 'puzzle-outline';
+  return null;
 }
 
-function customKpiEmoji(name: string) {
-  const index = hashString(name || 'custom') % CUSTOM_KPI_ICON_BANK.length;
-  return CUSTOM_KPI_ICON_BANK[index];
+function defaultVectorIconForType(type: KpiType | string | null | undefined) {
+  if (type === 'PC') return 'calendar-check-outline';
+  if (type === 'GP') return 'chart-line';
+  if (type === 'VP') return 'heart-pulse';
+  if (type === 'Custom') return 'puzzle-outline';
+  return 'chart-box-outline';
 }

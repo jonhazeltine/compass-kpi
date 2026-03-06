@@ -423,7 +423,7 @@ These notes are additive contract guidance only. They do not introduce a new end
   - `activity`: engagement counters used for unlock display (`total_logs`, `active_days`)
   - `loggable_kpis`: active KPI catalog entries for mobile quick-log surfaces, including:
     - identity: `id`, `name`, `slug`, `type`
-    - icon metadata: `icon_source` (`brand_asset|vector_icon|emoji`), `icon_name`, `icon_emoji`, legacy `icon_file` fallback
+    - icon metadata: `icon_source` (`brand_asset|vector_icon`; legacy rows may still carry `emoji`), `icon_name`, legacy `icon_file` fallback, optional legacy `icon_emoji`
     - behavior: `requires_direct_value_input`
     - spec metadata: `pc_weight`, `ttc_definition`, `delay_days`, `hold_days`, `decay_days`, `gp_value`, `vp_value`
   - `chart`:
@@ -727,9 +727,9 @@ These notes are additive contract guidance only. They do not introduce a new end
   - Platform-admin-only access.
   - Delete route performs safe deactivation (`is_active=false`) for backward-safe behavior.
   - Additive KPI icon fields:
-    - `icon_source` (`brand_asset|vector_icon|emoji`)
+    - `icon_source` (`brand_asset|vector_icon`; runtime remains tolerant of legacy `emoji` rows during backfill)
     - `icon_name` (brand asset key or MaterialCommunityIcons name)
-    - `icon_emoji`
+    - `icon_emoji` is legacy-read-only compatibility metadata and should not be emitted by current authoring flows.
     - `icon_file` remains as legacy fallback and is still returned for backfill safety.
 - `GET /admin/challenge-templates`, `POST /admin/challenge-templates`, `PUT /admin/challenge-templates/{id}`, `DELETE /admin/challenge-templates/{id}`
   - Platform-admin-only access.
@@ -819,9 +819,9 @@ These notes are additive contract guidance only. They do not introduce a new end
   - `DELETE /api/custom-kpis/{id}`
   - ownership rule: system KPI `created_by IS NULL`, custom KPI `created_by = user.id`.
   - additive icon fields:
-    - `icon_source` (`brand_asset|vector_icon|emoji`)
+    - `icon_source` (`brand_asset|vector_icon`; runtime remains tolerant of legacy `emoji` rows during backfill)
     - `icon_name`
-    - `icon_emoji`
+    - `icon_emoji` is legacy-read-only compatibility metadata and should not be emitted by current authoring flows.
     - legacy `icon_file` echo for fallback compatibility.
 
 ## Error Model

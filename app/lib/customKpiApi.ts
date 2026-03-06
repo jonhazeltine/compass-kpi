@@ -19,9 +19,8 @@ export type CustomKpiRow = {
 export type CustomKpiWritePayload = {
   name: string;
   slug?: string;
-  icon_source?: 'brand_asset' | 'vector_icon' | 'emoji' | null;
+  icon_source?: 'brand_asset' | 'vector_icon' | null;
   icon_name?: string | null;
-  icon_emoji?: string | null;
   requires_direct_value_input?: boolean;
 };
 

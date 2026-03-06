@@ -53,7 +53,12 @@ import {
 } from '../lib/feedback';
 import { API_URL, DEV_TOOLS_ENABLED } from '../lib/supabase';
 import { createCustomKpi, fetchCustomKpis, updateCustomKpi, type CustomKpiRow } from '../lib/customKpiApi';
-import { normalizeKpiIdentifier, type KpiIconSource } from '../lib/kpiIcons';
+import {
+  getKpiTypeIconTreatment,
+  normalizeKpiIdentifier,
+  resolveKpiIcon,
+  type KpiAuthoringIconSource,
+} from '../lib/kpiIcons';
 import { colors, radii } from '../theme/tokens';
 import { buildDefaultChallengeTemplatesFromKpis } from './kpi-dashboard/defaultChallengeTemplates';
 
@@ -199,9 +204,8 @@ type CustomKpiDraft = {
   name: string;
   slug: string;
   requiresDirectValueInput: boolean;
-  iconSource?: KpiIconSource | null;
+  iconSource?: KpiAuthoringIconSource | null;
   iconName?: string | null;
-  iconEmoji?: string | null;
 };
 type ChallengeApiLeaderboardRow = {
   user_id: string;
@@ -1709,19 +1713,11 @@ function formatUsdAxis(valueK: number) {
 }
 
 function kpiTypeTint(type: DashboardPayload['loggable_kpis'][number]['type']) {
-  if (type === 'PC') return '#e4f7ea';
-  if (type === 'GP') return '#e5efff';
-  if (type === 'VP') return '#fff0e2';
-  if (type === 'Custom') return '#f3e8ff';
-  return '#eceff3';
+  return getKpiTypeIconTreatment(type).background;
 }
 
 function kpiTypeAccent(type: DashboardPayload['loggable_kpis'][number]['type']) {
-  if (type === 'PC') return '#2f9f56';
-  if (type === 'GP') return '#2158d5';
-  if (type === 'VP') return '#e38a1f';
-  if (type === 'Custom') return '#7a4cc8';
-  return '#48505f';
+  return getKpiTypeIconTreatment(type).foreground;
 }
 
 function kpiSortSlug(kpi: DashboardPayload['loggable_kpis'][number]) {
@@ -1764,7 +1760,7 @@ function compareKpisForSelectionOrder(
 }
 
 function renderKpiIcon(kpi: DashboardPayload['loggable_kpis'][number]) {
-  return <KpiIcon kpi={kpi} size={44} />;
+  return <KpiIcon kpi={kpi} size={44} backgroundColor="transparent" color={kpiTypeAccent(kpi.type)} />;
 }
 
 function sortSelectableKpis(
@@ -1812,19 +1808,18 @@ function emptyCustomKpiDraft(): CustomKpiDraft {
     requiresDirectValueInput: false,
     iconSource: null,
     iconName: null,
-    iconEmoji: null,
   };
 }
 
 function customKpiDraftFromRow(row: CustomKpiRow): CustomKpiDraft {
+  const resolvedIcon = resolveKpiIcon(row);
   return {
     id: row.id,
     name: row.name,
     slug: row.slug ?? '',
     requiresDirectValueInput: Boolean(row.requires_direct_value_input),
-    iconSource: row.icon_source ?? (row.icon_file ? 'brand_asset' : null),
-    iconName: row.icon_name ?? row.icon_file ?? null,
-    iconEmoji: row.icon_emoji ?? null,
+    iconSource: resolvedIcon.kind === 'vector_icon' ? 'vector_icon' : 'brand_asset',
+    iconName: resolvedIcon.kind === 'vector_icon' ? resolvedIcon.iconName : row.icon_name ?? row.icon_file ?? null,
   };
 }
 
@@ -5424,9 +5419,8 @@ export default function KPIDashboardScreen({
       name: string;
       slug: string;
       requires_direct_value_input: boolean;
-      icon_source?: KpiIconSource | null;
+      icon_source?: KpiAuthoringIconSource | null;
       icon_name?: string | null;
-      icon_emoji?: string | null;
     } = {
       name: customKpiDraft.name.trim(),
       slug,
@@ -5440,23 +5434,13 @@ export default function KPIDashboardScreen({
       }
       payload.icon_source = 'brand_asset';
       payload.icon_name = customKpiDraft.iconName.trim();
-      payload.icon_emoji = null;
     } else if (customKpiDraft.iconSource === 'vector_icon') {
       if (!customKpiDraft.iconName?.trim()) {
-        setCustomKpiError('Pick a vector icon.');
+        setCustomKpiError('Pick a library icon.');
         return;
       }
       payload.icon_source = 'vector_icon';
       payload.icon_name = customKpiDraft.iconName.trim();
-      payload.icon_emoji = null;
-    } else if (customKpiDraft.iconSource === 'emoji') {
-      if (!customKpiDraft.iconEmoji?.trim()) {
-        setCustomKpiError('Pick an emoji icon.');
-        return;
-      }
-      payload.icon_source = 'emoji';
-      payload.icon_name = null;
-      payload.icon_emoji = customKpiDraft.iconEmoji.trim();
     }
 
     setCustomKpiSaving(true);
@@ -16546,7 +16530,7 @@ export default function KPIDashboardScreen({
                       </View>
                     </View>
                     <Text numberOfLines={2} style={styles.drawerListMeta}>
-                      Add your own KPI with a brand asset, vector icon, or emoji.
+                      Add your own KPI with a brand asset or library icon.
                     </Text>
                   </View>
                   <View style={styles.drawerActionCol}>
@@ -16718,7 +16702,7 @@ export default function KPIDashboardScreen({
                 value={{
                   icon_source: customKpiDraft.iconSource ?? null,
                   icon_name: customKpiDraft.iconName ?? null,
-                  icon_emoji: customKpiDraft.iconEmoji ?? null,
+                  icon_emoji: null,
                   icon_file: customKpiDraft.iconSource === 'brand_asset' ? customKpiDraft.iconName ?? null : null,
                 }}
                 onChange={(next) =>
@@ -16726,9 +16710,9 @@ export default function KPIDashboardScreen({
                     ...prev,
                     iconSource: next.icon_source ?? null,
                     iconName: next.icon_name ?? null,
-                    iconEmoji: next.icon_emoji ?? null,
                   }))
                 }
+                kpiType="Custom"
                 subtitle="Choose the canonical icon metadata used by mobile KPI tiles and future catalog backfill."
               />
               {customKpiError ? <Text style={[styles.metaRow, styles.errorText]}>{customKpiError}</Text> : null}

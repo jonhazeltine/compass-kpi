@@ -1,7 +1,7 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { Image, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { resolveKpiIcon, type KpiIconMetadata } from '../../lib/kpiIcons';
+import { getKpiTypeIconTreatment, resolveKpiIcon, type KpiIconMetadata } from '../../lib/kpiIcons';
 
 type Props = {
   kpi: KpiIconMetadata;
@@ -9,25 +9,26 @@ type Props = {
   backgroundColor?: string;
   color?: string;
   style?: StyleProp<ViewStyle>;
-  emojiStyle?: StyleProp<TextStyle>;
 };
 
 export default function KpiIcon({
   kpi,
   size = 40,
-  backgroundColor = 'transparent',
-  color = '#243041',
+  backgroundColor,
+  color,
   style,
-  emojiStyle,
 }: Props) {
   const resolution = resolveKpiIcon(kpi);
+  const treatment = getKpiTypeIconTreatment(kpi.type);
+  const resolvedBackgroundColor = backgroundColor ?? treatment.background;
+  const resolvedColor = color ?? treatment.foreground;
   const wrapperStyle = [
     styles.wrapper,
     {
       width: size,
       height: size,
       borderRadius: Math.max(10, Math.round(size * 0.32)),
-      backgroundColor,
+      backgroundColor: resolvedBackgroundColor,
     },
     style,
   ];
@@ -35,8 +36,8 @@ export default function KpiIcon({
   if (resolution.kind === 'brand_asset') {
     return (
       <View style={wrapperStyle}>
-        <View style={[styles.imageClip, { borderRadius: Math.max(10, Math.round(size * 0.3)) }]}>
-          <Image source={resolution.imageSource} style={styles.image} resizeMode="cover" />
+        <View style={[styles.imageClip, { width: size * 0.72, height: size * 0.72, borderRadius: Math.max(10, Math.round(size * 0.24)) }]}>
+          <Image source={resolution.imageSource} style={styles.image} resizeMode="contain" />
         </View>
       </View>
     );
@@ -45,18 +46,15 @@ export default function KpiIcon({
   if (resolution.kind === 'vector_icon') {
     return (
       <View style={wrapperStyle}>
-        <MaterialCommunityIcons name={resolution.iconName as never} size={Math.max(16, size * 0.62)} color={color} />
+        <MaterialCommunityIcons
+          name={resolution.iconName as never}
+          size={Math.max(16, size * 0.58)}
+          color={resolvedColor}
+        />
       </View>
     );
   }
-
-  return (
-    <View style={wrapperStyle}>
-      <Text style={[styles.emoji, { color, fontSize: Math.max(16, size * 0.54) }, emojiStyle]}>
-        {resolution.emoji}
-      </Text>
-    </View>
-  );
+  return null;
 }
 
 const styles = StyleSheet.create({
@@ -66,16 +64,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   imageClip: {
-    width: '100%',
-    height: '100%',
     overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   image: {
     width: '100%',
     height: '100%',
-  },
-  emoji: {
-    fontWeight: '700',
-    textAlign: 'center',
   },
 });

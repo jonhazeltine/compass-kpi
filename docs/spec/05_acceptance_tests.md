@@ -100,8 +100,8 @@
 - Then subsequent projection calculations use the updated admin-defined configuration
 - Given a platform admin or entitled custom-KPI creator
 - When KPI icon metadata is changed through admin or custom-KPI flows
-- Then runtime KPI surfaces render from canonical icon metadata first (`brand_asset|vector_icon|emoji`)
-- And legacy KPIs without icon metadata continue to render through `icon_file` or heuristic fallback
+- Then runtime KPI surfaces render from canonical icon metadata first (`brand_asset|vector_icon`) with KPI-type-owned color treatment
+- And legacy KPIs without current metadata continue to render through `icon_file` or compatibility fallback without exposing emoji authoring in UI
 
 ### 7) Challenge Join and Progress Tracking
 - Given an active challenge with associated KPI IDs

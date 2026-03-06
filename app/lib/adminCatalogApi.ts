@@ -120,9 +120,8 @@ export type AdminKpiWritePayload = {
   name: string;
   type: 'PC' | 'GP' | 'VP' | 'Actual' | 'Pipeline_Anchor' | 'Custom';
   slug?: string;
-  icon_source?: 'brand_asset' | 'vector_icon' | 'emoji' | null;
+  icon_source?: 'brand_asset' | 'vector_icon' | null;
   icon_name?: string | null;
-  icon_emoji?: string | null;
   requires_direct_value_input?: boolean;
   pc_weight?: number | null;
   ttc_definition?: string | null;

@@ -67,6 +67,7 @@ import {
   getInitialAdminRouteKey,
   normalizeAdminRole,
 } from '../lib/adminAuthz';
+import { resolveKpiIcon } from '../lib/kpiIcons';
 import {
   ADMIN_NOT_FOUND_PATH,
   ADMIN_UNAUTHORIZED_PATH,
@@ -424,9 +425,8 @@ type KpiFormDraft = {
   name: string;
   slug: string;
   type: AdminKpiWritePayload['type'];
-  iconSource?: 'brand_asset' | 'vector_icon' | 'emoji' | null;
+  iconSource?: 'brand_asset' | 'vector_icon' | null;
   iconName?: string | null;
-  iconEmoji?: string | null;
   requiresDirectValueInput: boolean;
   isActive: boolean;
   pcWeight: string;
@@ -577,7 +577,6 @@ function emptyKpiDraft(): KpiFormDraft {
     type: 'Custom',
     iconSource: null,
     iconName: null,
-    iconEmoji: null,
     requiresDirectValueInput: false,
     isActive: true,
     pcWeight: '',
@@ -591,14 +590,14 @@ function emptyKpiDraft(): KpiFormDraft {
 }
 
 function kpiDraftFromRow(row: AdminKpiRow): KpiFormDraft {
+  const resolvedIcon = resolveKpiIcon(row);
   return {
     id: row.id,
     name: row.name,
     slug: row.slug ?? '',
     type: (row.type as KpiFormDraft['type']) ?? 'Custom',
-    iconSource: row.icon_source ?? (row.icon_file ? 'brand_asset' : null),
-    iconName: row.icon_name ?? row.icon_file ?? null,
-    iconEmoji: row.icon_emoji ?? null,
+    iconSource: resolvedIcon.kind === 'vector_icon' ? 'vector_icon' : 'brand_asset',
+    iconName: resolvedIcon.kind === 'vector_icon' ? resolvedIcon.iconName : row.icon_name ?? row.icon_file ?? null,
     requiresDirectValueInput: Boolean(row.requires_direct_value_input),
     isActive: row.is_active,
     pcWeight: row.pc_weight == null ? '' : String(row.pc_weight),
@@ -700,21 +699,14 @@ function buildKpiPayloadFromDraft(draft: KpiFormDraft): { payload?: AdminKpiWrit
     is_active: draft.isActive,
   };
   if (draft.slug.trim()) payload.slug = draft.slug.trim();
-  if (draft.iconSource === 'emoji') {
-    if (!draft.iconEmoji?.trim()) return { error: 'Emoji icon requires a selected emoji' };
-    payload.icon_source = 'emoji';
-    payload.icon_emoji = draft.iconEmoji.trim();
-    payload.icon_name = null;
-  } else if (draft.iconSource === 'vector_icon') {
+  if (draft.iconSource === 'vector_icon') {
     if (!draft.iconName?.trim()) return { error: 'Vector icon requires a selected icon' };
     payload.icon_source = 'vector_icon';
     payload.icon_name = draft.iconName.trim();
-    payload.icon_emoji = null;
   } else if (draft.iconSource === 'brand_asset') {
     if (!draft.iconName?.trim()) return { error: 'Brand asset icon requires a selected asset' };
     payload.icon_source = 'brand_asset';
     payload.icon_name = draft.iconName.trim();
-    payload.icon_emoji = null;
   }
 
   if (draft.type === 'PC') {
@@ -1052,7 +1044,6 @@ function AdminKpiCatalogPanel({
                   <KpiIcon
                     kpi={row}
                     size={36}
-                    backgroundColor="#F8FAFC"
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -1108,7 +1099,6 @@ function AdminKpiCatalogPanel({
               <KpiIcon
                 kpi={selectedRow}
                 size={42}
-                backgroundColor="#F8FAFC"
               />
               <View style={styles.inlineToggleRow}>
                 <View style={[styles.statusChip, { backgroundColor: '#F4F8FF', borderColor: '#D8E4FA' }]}>
@@ -1230,16 +1220,16 @@ function AdminKpiCatalogPanel({
               value={{
                 icon_source: draft.iconSource ?? null,
                 icon_name: draft.iconName ?? null,
-                icon_emoji: draft.iconEmoji ?? null,
+                icon_emoji: null,
                 icon_file: draft.iconSource === 'brand_asset' ? draft.iconName ?? null : null,
               }}
               onChange={(next) =>
                 onDraftChange({
                   iconSource: next.icon_source ?? null,
                   iconName: next.icon_name ?? null,
-                  iconEmoji: next.icon_emoji ?? null,
                 })
               }
+              kpiType={draft.type}
             />
           </View>
           {draft.type === 'PC' ? (
