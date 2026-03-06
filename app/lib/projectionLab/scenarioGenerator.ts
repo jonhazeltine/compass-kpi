@@ -17,6 +17,26 @@ import type {
   AgentProfile,
   ScenarioVolumeInput,
 } from './types';
+import type { AdminKpiRow } from '../adminCatalogApi';
+
+// ── Live Catalog Mapper ──────────────────────────────
+
+/** Convert a live AdminKpiRow from the DB catalog to a LabKpiDefinition. */
+export function adminKpiToLabDef(row: AdminKpiRow): LabKpiDefinition {
+  return {
+    kpi_id: row.id,
+    name: row.name,
+    unit: 'count',
+    weight_percent: row.pc_weight ?? 0,
+    ttc_definition: row.ttc_definition ?? null,
+    delay_days: row.delay_days ?? null,
+    hold_days: row.hold_days ?? null,
+    decay_days: row.decay_days ?? null,
+    gp_value: row.gp_value ?? 0,
+    vp_value: row.vp_value ?? 0,
+    direction: 'higher_is_better',
+  };
+}
 
 // ── Seeded PRNG (Mulberry32) ──────────────────────────
 
@@ -131,23 +151,23 @@ export function generateRealisticClosings(opts: {
 // ── Canonical KPI Templates (from production catalog) ──
 
 export const PC_KPI_TEMPLATES: Omit<LabKpiDefinition, 'kpi_id'>[] = [
-  { name: 'Phone Call Logged', unit: 'count', weight_percent: 0.025, ttc_definition: '90-120', delay_days: 90, hold_days: 30, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Sphere Call', unit: 'count', weight_percent: 0.04, ttc_definition: '60-90', delay_days: 60, hold_days: 30, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'FSBO/Expired Call', unit: 'count', weight_percent: 0.05, ttc_definition: '30-60', delay_days: 30, hold_days: 30, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Door Knock Logged', unit: 'count', weight_percent: 0.03, ttc_definition: '90-150', delay_days: 90, hold_days: 60, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Appointment Set (Buyer)', unit: 'count', weight_percent: 0.5, ttc_definition: '30-60', delay_days: 30, hold_days: 30, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Appointment Set (Seller)', unit: 'count', weight_percent: 0.5, ttc_definition: '30-60', delay_days: 30, hold_days: 30, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Coffee/Lunch with Sphere', unit: 'count', weight_percent: 0.1, ttc_definition: '90-150', delay_days: 90, hold_days: 60, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Conversations Held', unit: 'count', weight_percent: 0.1, ttc_definition: '90-150', delay_days: 90, hold_days: 60, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Listing Taken', unit: 'count', weight_percent: 7.0, ttc_definition: '30', delay_days: 0, hold_days: 30, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Buyer Contract Signed', unit: 'count', weight_percent: 5.0, ttc_definition: '30', delay_days: 0, hold_days: 30, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'New Client Logged', unit: 'count', weight_percent: 1.25, ttc_definition: '30-90', delay_days: 30, hold_days: 60, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Text/DM Conversation', unit: 'count', weight_percent: 0.01, ttc_definition: '90-120', delay_days: 90, hold_days: 30, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Open House Logged', unit: 'count', weight_percent: 0.2, ttc_definition: '60-120', delay_days: 60, hold_days: 60, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Seasonal Check-In Call', unit: 'count', weight_percent: 0.1, ttc_definition: '90-150', delay_days: 90, hold_days: 60, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Pop-By Delivered', unit: 'count', weight_percent: 0.08, ttc_definition: '90-150', delay_days: 90, hold_days: 60, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Holiday Card Sent', unit: 'count', weight_percent: 0.03, ttc_definition: '120-180', delay_days: 120, hold_days: 60, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
-  { name: 'Biz Post', unit: 'count', weight_percent: 0.02, ttc_definition: '120-180', delay_days: 120, hold_days: 60, decay_days: 180, gp_value: 1, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Phone Call Logged', unit: 'count', weight_percent: 0.025, ttc_definition: '90-120', delay_days: 90, hold_days: 30, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Sphere Call', unit: 'count', weight_percent: 0.04, ttc_definition: '60-90', delay_days: 60, hold_days: 30, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'FSBO/Expired Call', unit: 'count', weight_percent: 0.05, ttc_definition: '30-60', delay_days: 30, hold_days: 30, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Door Knock Logged', unit: 'count', weight_percent: 0.03, ttc_definition: '90-150', delay_days: 90, hold_days: 60, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Appointment Set (Buyer)', unit: 'count', weight_percent: 0.5, ttc_definition: '30-60', delay_days: 30, hold_days: 30, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Appointment Set (Seller)', unit: 'count', weight_percent: 0.5, ttc_definition: '30-60', delay_days: 30, hold_days: 30, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Coffee/Lunch with Sphere', unit: 'count', weight_percent: 0.1, ttc_definition: '90-150', delay_days: 90, hold_days: 60, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Conversations Held', unit: 'count', weight_percent: 0.1, ttc_definition: '90-150', delay_days: 90, hold_days: 60, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Listing Taken', unit: 'count', weight_percent: 7.0, ttc_definition: '30', delay_days: 0, hold_days: 30, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Buyer Contract Signed', unit: 'count', weight_percent: 5.0, ttc_definition: '30', delay_days: 0, hold_days: 30, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'New Client Logged', unit: 'count', weight_percent: 1.25, ttc_definition: '30-90', delay_days: 30, hold_days: 60, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Text/DM Conversation', unit: 'count', weight_percent: 0.01, ttc_definition: '90-120', delay_days: 90, hold_days: 30, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Open House Logged', unit: 'count', weight_percent: 0.2, ttc_definition: '60-120', delay_days: 60, hold_days: 60, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Seasonal Check-In Call', unit: 'count', weight_percent: 0.1, ttc_definition: '90-150', delay_days: 90, hold_days: 60, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Pop-By Delivered', unit: 'count', weight_percent: 0.08, ttc_definition: '90-150', delay_days: 90, hold_days: 60, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Holiday Card Sent', unit: 'count', weight_percent: 0.03, ttc_definition: '120-180', delay_days: 120, hold_days: 60, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
+  { name: 'Biz Post', unit: 'count', weight_percent: 0.02, ttc_definition: '120-180', delay_days: 120, hold_days: 60, decay_days: 180, gp_value: 0, vp_value: 0, direction: 'higher_is_better' },
 ];
 
 // ── Rebuild Log Stream from Annual Volumes ────────────
@@ -157,12 +177,12 @@ export const PC_KPI_TEMPLATES: Omit<LabKpiDefinition, 'kpi_id'>[] = [
 // KPI volumes in the edit view.
 
 export function rebuildLogStreamFromVolumes(opts: {
-  kpiAnnualVolume: Record<string, number>; // kpi_id → total events/year
+  kpiMonthlyVolume: Record<string, number>; // kpi_id → events/month (decimals ok, e.g. 0.5)
   kpiDefinitions: LabKpiDefinition[];
   userProfile: LabUserProfile;
   timeSpanMonths: number;
 }): LabLogEntry[] {
-  const { kpiAnnualVolume, kpiDefinitions, userProfile, timeSpanMonths } = opts;
+  const { kpiMonthlyVolume, kpiDefinitions, userProfile, timeSpanMonths } = opts;
   const kpiMap = new Map(kpiDefinitions.map((k) => [k.kpi_id, k]));
 
   const now = new Date();
@@ -181,12 +201,12 @@ export function rebuildLogStreamFromVolumes(opts: {
 
   const logStream: LabLogEntry[] = [];
 
-  for (const [kpiId, annualCount] of Object.entries(kpiAnnualVolume)) {
+  for (const [kpiId, monthlyCount] of Object.entries(kpiMonthlyVolume)) {
     const kpi = kpiMap.get(kpiId);
-    if (!kpi || annualCount <= 0) continue;
+    if (!kpi || monthlyCount <= 0) continue;
 
-    // Scale to time span
-    const totalEvents = Math.max(1, Math.round(annualCount * (timeSpanMonths / 12)));
+    // Total events = monthly rate × time span
+    const totalEvents = Math.max(1, Math.round(monthlyCount * timeSpanMonths));
     const intervalDays = totalDays / totalEvents;
 
     for (let i = 0; i < totalEvents; i++) {
@@ -221,10 +241,18 @@ export type ScenarioProfile = {
   name: string;
   description: string;
   kpiNames: string[];
+  /** Growth-point KPI names from GP catalog */
+  gpKpiNames: string[];
+  /** Vitality-point KPI names from VP catalog */
+  vpKpiNames: string[];
   avgPriceRange: [number, number];
   commissionRange: [number, number];
   logDaysSpan: number;
   eventsPerKpiRange: [number, number];
+  /** Event frequency range for GP KPIs (lower cadence than PC) */
+  gpEventsPerKpiRange: [number, number];
+  /** Event frequency range for VP KPIs (daily habits, higher cadence) */
+  vpEventsPerKpiRange: [number, number];
   includeActuals: boolean;
   agentName: string;
 };
@@ -235,10 +263,14 @@ export const SCENARIO_PROFILES: ScenarioProfile[] = [
     name: 'Listing-Heavy Agent',
     description: 'Experienced listing agent focused on FSBO/expired prospecting, seller appointments, and sphere nurturing. High price point, strong conversion pipeline.',
     kpiNames: ['FSBO/Expired Call', 'Appointment Set (Seller)', 'Listing Taken', 'Sphere Call', 'Open House Logged', 'Conversations Held'],
+    gpKpiNames: ['CMA Created (Practice or Live)', 'Listing Presentation Given', 'Listing Video Created', 'Market Stats Review (Weekly)'],
+    vpKpiNames: ['Exercise Session', 'Good Night of Sleep'],
     avgPriceRange: [450000, 750000],
     commissionRange: [0.025, 0.03],
     logDaysSpan: 180,
     eventsPerKpiRange: [8, 20],
+    gpEventsPerKpiRange: [3, 8],
+    vpEventsPerKpiRange: [12, 20],
     includeActuals: true,
     agentName: 'Sarah Mitchell',
   },
@@ -247,10 +279,14 @@ export const SCENARIO_PROFILES: ScenarioProfile[] = [
     name: 'Buyer Specialist',
     description: 'Agent primarily working with buyers — open houses, buyer appointments, door knocking, and client intake. Moderate price point market.',
     kpiNames: ['Appointment Set (Buyer)', 'Buyer Contract Signed', 'Open House Logged', 'Door Knock Logged', 'New Client Logged', 'Phone Call Logged'],
+    gpKpiNames: ['Buyer Consult Held', 'Script Practice Session', 'CRM Tag Applied'],
+    vpKpiNames: ['Exercise Session', 'Hydration Goal Met', 'Good Night of Sleep'],
     avgPriceRange: [250000, 450000],
     commissionRange: [0.025, 0.03],
     logDaysSpan: 180,
     eventsPerKpiRange: [10, 25],
+    gpEventsPerKpiRange: [3, 8],
+    vpEventsPerKpiRange: [10, 20],
     includeActuals: true,
     agentName: 'Marcus Chen',
   },
@@ -259,10 +295,14 @@ export const SCENARIO_PROFILES: ScenarioProfile[] = [
     name: 'Sphere-of-Influence Agent',
     description: 'Relationship-focused agent building business through sphere nurturing — calls, coffee meetings, pop-bys, seasonal outreach. Long TTC, high loyalty.',
     kpiNames: ['Sphere Call', 'Coffee/Lunch with Sphere', 'Pop-By Delivered', 'Seasonal Check-In Call', 'Holiday Card Sent', 'Conversations Held'],
+    gpKpiNames: ['Content Batch Created', 'Social Posts Shared', 'Database Segmented / Cleaned'],
+    vpKpiNames: ['Gratitude Entry', 'Good Night of Sleep', 'Social Connection (Non-work)'],
     avgPriceRange: [350000, 600000],
     commissionRange: [0.025, 0.035],
     logDaysSpan: 270,
     eventsPerKpiRange: [12, 30],
+    gpEventsPerKpiRange: [4, 10],
+    vpEventsPerKpiRange: [12, 22],
     includeActuals: true,
     agentName: 'Julie Reynolds',
   },
@@ -271,10 +311,14 @@ export const SCENARIO_PROFILES: ScenarioProfile[] = [
     name: 'New Agent (Ramp-Up)',
     description: 'Recently licensed agent in the first 90 days. Low volume, heavy on lead gen activities — calls, door knocks, texts. No closings yet.',
     kpiNames: ['Phone Call Logged', 'Door Knock Logged', 'Text/DM Conversation', 'Appointment Set (Buyer)', 'New Client Logged'],
+    gpKpiNames: ['Training Module Completed', 'Coaching Session Attended', 'Roleplay Session Completed', 'Script Practice Session', 'Objection Handling Reps Logged'],
+    vpKpiNames: ['Exercise Session', 'Good Night of Sleep', 'Gratitude Entry'],
     avgPriceRange: [200000, 350000],
     commissionRange: [0.02, 0.025],
     logDaysSpan: 90,
     eventsPerKpiRange: [3, 10],
+    gpEventsPerKpiRange: [4, 12],
+    vpEventsPerKpiRange: [10, 18],
     includeActuals: true,
     agentName: 'Tyler Brooks',
   },
@@ -283,10 +327,14 @@ export const SCENARIO_PROFILES: ScenarioProfile[] = [
     name: 'Top Producer (Full Pipeline)',
     description: 'High-volume agent tracking everything — listings, buyers, sphere, open houses, prospecting. Strong across all categories with actuals to calibrate against.',
     kpiNames: ['Listing Taken', 'Buyer Contract Signed', 'Appointment Set (Seller)', 'Appointment Set (Buyer)', 'FSBO/Expired Call', 'Sphere Call', 'Open House Logged', 'New Client Logged'],
+    gpKpiNames: ['Coaching Session Attended', 'Weekly Scorecard Review', 'Market Stats Review (Weekly)', 'CMA Created (Practice or Live)', 'Training Module Completed'],
+    vpKpiNames: ['Exercise Session', 'Good Night of Sleep', 'Hydration Goal Met', 'Steps Goal Met / Walk Completed'],
     avgPriceRange: [500000, 900000],
     commissionRange: [0.028, 0.035],
     logDaysSpan: 180,
     eventsPerKpiRange: [10, 30],
+    gpEventsPerKpiRange: [4, 10],
+    vpEventsPerKpiRange: [15, 25],
     includeActuals: true,
     agentName: 'Amanda Reeves',
   },
@@ -295,10 +343,14 @@ export const SCENARIO_PROFILES: ScenarioProfile[] = [
     name: 'Digital-First Agent',
     description: 'Agent focused on online lead gen — texts, DMs, social posting, and conversion to appointments. Lower-touch prospecting, modern workflow.',
     kpiNames: ['Text/DM Conversation', 'Biz Post', 'Phone Call Logged', 'Appointment Set (Buyer)', 'New Client Logged', 'Conversations Held'],
+    gpKpiNames: ['Instagram Post Shared', 'Facebook Post Shared', 'Content Batch Created', 'Social Posts Shared', 'Email Subscribers Added'],
+    vpKpiNames: ['Exercise Session', 'Good Night of Sleep'],
     avgPriceRange: [300000, 500000],
     commissionRange: [0.025, 0.03],
     logDaysSpan: 120,
     eventsPerKpiRange: [15, 40],
+    gpEventsPerKpiRange: [6, 15],
+    vpEventsPerKpiRange: [10, 18],
     includeActuals: true,
     agentName: 'Diego Vargas',
   },
@@ -307,10 +359,14 @@ export const SCENARIO_PROFILES: ScenarioProfile[] = [
     name: 'Inactive Agent (Decay Test)',
     description: 'Agent who was active 60+ days ago but has stopped logging. Tests GP/VP inactivity decay and confidence decline behavior.',
     kpiNames: ['Phone Call Logged', 'Sphere Call', 'Appointment Set (Buyer)', 'Listing Taken'],
+    gpKpiNames: [],
+    vpKpiNames: [],
     avgPriceRange: [300000, 500000],
     commissionRange: [0.025, 0.03],
     logDaysSpan: 180,
     eventsPerKpiRange: [4, 8],
+    gpEventsPerKpiRange: [0, 0],
+    vpEventsPerKpiRange: [0, 0],
     includeActuals: true,
     agentName: 'Kevin Park',
   },
@@ -324,8 +380,10 @@ export function generateScenarioFromProfile(input: {
   profile: ScenarioProfile;
   adminUser: string;
   seed?: number;
+  /** Live catalog from DB — used to resolve KPI names to full definitions */
+  catalogKpis?: AdminKpiRow[];
 }): LabScenario {
-  const { profile, adminUser, seed: overrideSeed } = input;
+  const { profile, adminUser, seed: overrideSeed, catalogKpis } = input;
   const seed = overrideSeed ?? Math.floor(Math.random() * 99999);
   const rng = mulberry32(seed);
 
@@ -341,14 +399,40 @@ export function generateScenarioFromProfile(input: {
     ),
   };
 
-  // Match KPIs from canonical catalog
-  const kpiDefinitions: LabKpiDefinition[] = profile.kpiNames
-    .map((name) => {
+  // Match KPIs from canonical catalog (PC + GP + VP)
+  const resolveName = (name: string, type: 'PC' | 'GP' | 'VP'): LabKpiDefinition | null => {
+    // Try live catalog first if available
+    if (catalogKpis?.length) {
+      const row = catalogKpis.find((r) => r.name === name && r.type === type && r.is_active);
+      if (row) return { ...adminKpiToLabDef(row), kpi_id: `lab-kpi-${seededId(rng)}` };
+    }
+    // Fallback to hardcoded PC templates
+    if (type === 'PC') {
       const tmpl = PC_KPI_TEMPLATES.find((t) => t.name === name);
-      if (!tmpl) return null;
-      return { ...tmpl, kpi_id: `lab-kpi-${seededId(rng)}` };
-    })
-    .filter((k): k is LabKpiDefinition => k !== null);
+      if (tmpl) return { ...tmpl, kpi_id: `lab-kpi-${seededId(rng)}` };
+    }
+    // Fallback: create a minimal GP/VP definition from the name
+    if (type === 'GP') {
+      return {
+        kpi_id: `lab-kpi-${seededId(rng)}`, name, unit: 'count',
+        weight_percent: 0, ttc_definition: null, delay_days: null, hold_days: null, decay_days: null,
+        gp_value: 1, vp_value: 0, direction: 'higher_is_better',
+      };
+    }
+    if (type === 'VP') {
+      return {
+        kpi_id: `lab-kpi-${seededId(rng)}`, name, unit: 'count',
+        weight_percent: 0, ttc_definition: null, delay_days: null, hold_days: null, decay_days: null,
+        gp_value: 0, vp_value: 1, direction: 'higher_is_better',
+      };
+    }
+    return null;
+  };
+
+  const pcDefs = profile.kpiNames.map((n) => resolveName(n, 'PC')).filter((k): k is LabKpiDefinition => k !== null);
+  const gpDefs = profile.gpKpiNames.map((n) => resolveName(n, 'GP')).filter((k): k is LabKpiDefinition => k !== null);
+  const vpDefs = profile.vpKpiNames.map((n) => resolveName(n, 'VP')).filter((k): k is LabKpiDefinition => k !== null);
+  const kpiDefinitions: LabKpiDefinition[] = [...pcDefs, ...gpDefs, ...vpDefs];
 
   // Generate log stream
   const baseDate = new Date();
@@ -361,9 +445,18 @@ export function generateScenarioFromProfile(input: {
     ? Math.floor(profile.logDaysSpan * 0.4)
     : profile.logDaysSpan;
 
+  // Determine event count range per KPI type
+  const getEventsRange = (kpi: LabKpiDefinition): [number, number] => {
+    if (kpi.gp_value > 0 && kpi.weight_percent === 0) return profile.gpEventsPerKpiRange;
+    if (kpi.vp_value > 0 && kpi.weight_percent === 0) return profile.vpEventsPerKpiRange;
+    return profile.eventsPerKpiRange;
+  };
+
   const logStream: LabLogEntry[] = [];
   for (const kpi of kpiDefinitions) {
-    const count = seededInt(rng, profile.eventsPerKpiRange[0], profile.eventsPerKpiRange[1]);
+    const evRange = getEventsRange(kpi);
+    if (evRange[0] === 0 && evRange[1] === 0) continue;
+    const count = seededInt(rng, evRange[0], evRange[1]);
     for (let j = 0; j < count; j++) {
       const dayOffset = seededInt(rng, 0, effectiveSpan);
       const quantity = seededInt(rng, 1, 3);
@@ -526,6 +619,8 @@ export function convertScenarioProfileToAgentProfile(sp: ScenarioProfile): Agent
     avg_price_point: Math.round((sp.avgPriceRange[0] + sp.avgPriceRange[1]) / 2),
     commission_rate: Number(((sp.commissionRange[0] + sp.commissionRange[1]) / 2).toFixed(4)),
     kpi_names: [...sp.kpiNames],
+    gp_kpi_names: [...sp.gpKpiNames],
+    vp_kpi_names: [...sp.vpKpiNames],
     include_actuals: sp.includeActuals,
     is_builtin: true,
     created_at: new Date().toISOString(),
@@ -548,8 +643,10 @@ export function generateScenarioFromVolume(input: {
   volumeInput: ScenarioVolumeInput;
   adminUser: string;
   seed?: number;
+  /** Live catalog from DB */
+  catalogKpis?: AdminKpiRow[];
 }): LabScenario {
-  const { profile, volumeInput, adminUser, seed: overrideSeed } = input;
+  const { profile, volumeInput, adminUser, seed: overrideSeed, catalogKpis } = input;
   const seed = overrideSeed ?? Math.floor(Math.random() * 99999);
 
   // We use a deterministic counter for IDs (no randomness in event placement)
@@ -567,13 +664,21 @@ export function generateScenarioFromVolume(input: {
     commission_rate: profile.commission_rate,
   };
 
-  // Map kpi_names → LabKpiDefinition[]
-  const kpiDefinitions: LabKpiDefinition[] = profile.kpi_names
-    .map((name) => {
-      const tmpl = PC_KPI_TEMPLATES.find((t) => t.name === name);
-      if (!tmpl) return null;
-      return { ...tmpl, kpi_id: `lab-kpi-${nextId()}` };
-    })
+  // Resolve a KPI name from live catalog or fallback templates
+  const resolveKpiName = (name: string): LabKpiDefinition | null => {
+    if (catalogKpis?.length) {
+      const row = catalogKpis.find((r) => r.name === name && r.is_active);
+      if (row) return { ...adminKpiToLabDef(row), kpi_id: `lab-kpi-${nextId()}` };
+    }
+    const tmpl = PC_KPI_TEMPLATES.find((t) => t.name === name);
+    if (tmpl) return { ...tmpl, kpi_id: `lab-kpi-${nextId()}` };
+    return null;
+  };
+
+  // Map all kpi_names (PC + GP + VP) → LabKpiDefinition[]
+  const allNames = [...profile.kpi_names, ...(profile.gp_kpi_names ?? []), ...(profile.vp_kpi_names ?? [])];
+  const kpiDefinitions: LabKpiDefinition[] = allNames
+    .map(resolveKpiName)
     .filter((k): k is LabKpiDefinition => k !== null);
 
   // Build kpi_id lookup by name for volume specs
@@ -655,13 +760,13 @@ export function generateScenarioFromVolume(input: {
     tags: ['volume-generated'],
     source_profile_id: profile.profile_id,
     volume_input: volumeInput,
-    // Store derived annual volumes for edit roundtripping
-    kpi_annual_volume: Object.fromEntries(
+    // Store per-month volumes for edit roundtripping (decimals preserved)
+    kpi_monthly_volume: Object.fromEntries(
       volumeInput.volume_specs
         .filter((v) => v.events_per_month > 0)
         .map((v) => {
           const kpi = kpiDefinitions.find((k) => k.name === v.kpi_name);
-          return [kpi?.kpi_id ?? v.kpi_name, v.events_per_month * 12];
+          return [kpi?.kpi_id ?? v.kpi_name, v.events_per_month];
         })
     ),
   };

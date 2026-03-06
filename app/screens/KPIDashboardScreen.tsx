@@ -8127,7 +8127,7 @@ export default function KPIDashboardScreen({
     [channelsApiRows, ensureStreamChannelSync, ensureStreamChannelToken]
   );
 
-  const fetchChannels = useCallback(async () => {
+  const fetchChannels = useCallback(async (): Promise<ChannelApiRow[]> => {
     const token = session?.access_token;
     if (!token) {
       setChannelsError('Sign in is required to view channels.');
@@ -8135,7 +8135,7 @@ export default function KPIDashboardScreen({
       setChannelsPackageVisibility(null);
       setChannelsNotificationItems([]);
       setChannelsNotificationSummary(null);
-      return;
+      return [];
     }
     setChannelsLoading(true);
     setChannelsError(null);
@@ -8163,7 +8163,7 @@ export default function KPIDashboardScreen({
               sourceLabel: 'channels:error',
             })
         );
-        return;
+        return [];
       }
       const rows = Array.isArray(body.channels) ? body.channels : [];
       const normalizedChannelNotifications = normalizeRuntimeNotificationItems(body.notification_items, 'channels');
@@ -8182,12 +8182,14 @@ export default function KPIDashboardScreen({
             sourceLabel: 'channels',
           })
       );
+      return rows;
     } catch (err) {
       setChannelsError(err instanceof Error ? err.message : 'Failed to load channels');
       setChannelsApiRows([]);
       setChannelsPackageVisibility(null);
       setChannelsNotificationItems([]);
       setChannelsNotificationSummary(null);
+      return [];
     } finally {
       setChannelsLoading(false);
     }
@@ -11797,69 +11799,85 @@ export default function KPIDashboardScreen({
                 null;
               const teamIdentityName = teamRosterName ?? 'Team';
               const openTeamCommsHandoff = (source: CoachingShellEntrySource) => {
-                setTeamCommsHandoffError(null);
-                const allChannelRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
-                const currentTeamContextIdRaw =
-                  resolveCurrentTeamContextId() ??
-                  teamPrimaryChallenge?.raw?.team_id ??
-                  teamChallengeRowsForSurface.find((item) => item.raw?.team_id)?.raw?.team_id ??
-                  null;
-                const currentTeamContextId = currentTeamContextIdRaw ? String(currentTeamContextIdRaw) : null;
-                const teamChannelsBase = allChannelRows.filter((row) => String(row.type ?? '').toLowerCase() === 'team');
-                const teamChannelsAccessible = teamChannelsBase.filter((row) => row.is_active !== false);
-                const teamChannels = teamChannelsAccessible.length > 0 ? teamChannelsAccessible : teamChannelsBase;
-                const scopedTeamChannel =
-                  currentTeamContextId != null
-                    ? teamChannels.find((row) => String(row.team_id ?? '') === currentTeamContextId) ?? null
-                    : null;
-                const resolvedTeamChannel = scopedTeamChannel ?? teamChannels[0] ?? null;
-                const broadcastAudienceLabel =
-                  source === 'team_leader_dashboard'
-                    ? String(resolvedTeamChannel?.name ?? coachingShellContext.broadcastAudienceLabel ?? teamIdentityName)
-                    : null;
+                const resolveTeamChannel = (rows: ChannelApiRow[], currentTeamContextId: string | null) => {
+                  const teamChannelsBase = rows.filter((row) => normalizeChannelTypeToScope(row.type) === 'team');
+                  const teamChannelsAccessible = teamChannelsBase.filter((row) => row.is_active !== false);
+                  const teamChannels = teamChannelsAccessible.length > 0 ? teamChannelsAccessible : teamChannelsBase;
+                  if (currentTeamContextId) {
+                    return (
+                      teamChannels.find((row) => String(row.team_id ?? '').trim() === currentTeamContextId) ??
+                      teamChannels[0] ??
+                      null
+                    );
+                  }
+                  return teamChannels[0] ?? null;
+                };
 
-                setActiveTab('comms');
-                setCommsHubPrimaryTab('channels');
-                setCommsHubScopeFilter('team');
-                setCommsHubSearchQuery('');
-                setChannelMessageSubmitError(null);
-                setBroadcastError(null);
+                void (async () => {
+                  setTeamCommsHandoffError(null);
+                  const currentTeamContextIdRaw =
+                    resolveCurrentTeamContextId() ??
+                    teamPrimaryChallenge?.raw?.team_id ??
+                    teamChallengeRowsForSurface.find((item) => item.raw?.team_id)?.raw?.team_id ??
+                    null;
+                  const currentTeamContextId = currentTeamContextIdRaw ? String(currentTeamContextIdRaw).trim() : null;
+                  let allChannelRows = Array.isArray(channelsApiRows) ? channelsApiRows : [];
+                  let resolvedTeamChannel = resolveTeamChannel(allChannelRows, currentTeamContextId);
 
-                if (resolvedTeamChannel) {
-                  const resolvedTeamChannelId = String(resolvedTeamChannel.id);
-                  const resolvedTeamChannelName = String(resolvedTeamChannel.name ?? 'Team Channel');
-                  setSelectedChannelId(resolvedTeamChannelId);
-                  setSelectedChannelName(resolvedTeamChannelName);
-                  openCoachingShell('channel_thread', {
+                  const shouldRefreshChannels =
+                    !Array.isArray(channelsApiRows) ||
+                    allChannelRows.length === 0 ||
+                    (currentTeamContextId != null && resolvedTeamChannel == null);
+                  if (shouldRefreshChannels) {
+                    allChannelRows = await fetchChannels();
+                    resolvedTeamChannel = resolveTeamChannel(allChannelRows, currentTeamContextId);
+                  }
+
+                  const resolvedTeamChannelName = String(resolvedTeamChannel?.name ?? 'Team Channel');
+                  const broadcastAudienceLabel =
+                    source === 'team_leader_dashboard'
+                      ? String(resolvedTeamChannel?.name ?? coachingShellContext.broadcastAudienceLabel ?? teamIdentityName)
+                      : null;
+
+                  setActiveTab('comms');
+                  setCommsHubPrimaryTab('channels');
+                  setCommsHubScopeFilter('team');
+                  setCommsHubSearchQuery('');
+                  setChannelMessageSubmitError(null);
+                  setBroadcastError(null);
+
+                  if (resolvedTeamChannel) {
+                    const resolvedTeamChannelId = String(resolvedTeamChannel.id);
+                    setSelectedChannelId(resolvedTeamChannelId);
+                    setSelectedChannelName(resolvedTeamChannelName);
+                    openCoachingShell('channel_thread', {
+                      source,
+                      preferredChannelScope: 'team',
+                      preferredChannelLabel: resolvedTeamChannelName,
+                      threadTitle: resolvedTeamChannelName,
+                      threadHeaderDisplayName: teamIdentityName,
+                      threadSub: 'Live team conversation.',
+                      broadcastAudienceLabel,
+                      broadcastRoleAllowed: source === 'team_leader_dashboard',
+                    });
+                    void fetchChannelMessages(resolvedTeamChannelId);
+                    return;
+                  }
+
+                  setSelectedChannelId(null);
+                  setSelectedChannelName(null);
+                  setTeamCommsHandoffError('Team channel unavailable. Contact admin to restore team chat.');
+                  openCoachingShell('inbox_channels', {
                     source,
                     preferredChannelScope: 'team',
-                    preferredChannelLabel: resolvedTeamChannelName,
-                    threadTitle: resolvedTeamChannelName,
-                    threadHeaderDisplayName: teamIdentityName,
-                    threadSub: 'Live team conversation.',
+                    preferredChannelLabel: 'Team',
+                    threadTitle: null,
+                    threadHeaderDisplayName: null,
+                    threadSub: 'Team channel unavailable. Contact admin to restore team chat.',
                     broadcastAudienceLabel,
                     broadcastRoleAllowed: source === 'team_leader_dashboard',
                   });
-                  void fetchChannelMessages(resolvedTeamChannelId);
-                  return;
-                }
-
-                setSelectedChannelId(null);
-                setSelectedChannelName(null);
-                setTeamCommsHandoffError('Team channel unavailable. Contact admin to restore team chat.');
-                openCoachingShell('inbox_channels', {
-                  source,
-                  preferredChannelScope: 'team',
-                  preferredChannelLabel: 'Team',
-                  threadTitle: null,
-                  threadHeaderDisplayName: null,
-                  threadSub: 'Team channel unavailable. Contact admin to restore team chat.',
-                  broadcastAudienceLabel,
-                  broadcastRoleAllowed: source === 'team_leader_dashboard',
-                });
-                if (!channelsLoading && !Array.isArray(channelsApiRows)) {
-                  void fetchChannels();
-                }
+                })();
               };
               const teamFocusSelectedRows = teamSurfaceKpis.filter((kpi) => teamFocusSelectedKpiIds.includes(String(kpi.id)));
               const teamFocusKpisForDisplay = teamFocusSelectedRows.length > 0 ? teamFocusSelectedRows : teamSurfaceKpis.slice(0, 4);

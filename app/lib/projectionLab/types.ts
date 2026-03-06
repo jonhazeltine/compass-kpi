@@ -15,6 +15,10 @@ export type AgentProfile = {
   avg_price_point: number;
   commission_rate: number;
   kpi_names: string[];
+  /** Growth-point KPI names (from GP catalog) */
+  gp_kpi_names: string[];
+  /** Vitality-point KPI names (from VP catalog) */
+  vp_kpi_names: string[];
   include_actuals: boolean;
   is_builtin: boolean;
   created_at: string;
@@ -94,8 +98,8 @@ export type LabScenario = {
   volume_input?: ScenarioVolumeInput;
   /** User-editable override: number of closed deals per year for actuals line */
   closed_deals_override?: number;
-  /** User-editable per-KPI annual volume overrides (kpi_id → events/year) */
-  kpi_annual_volume?: Record<string, number>;
+  /** User-editable per-KPI monthly volume (kpi_id → events/month, supports decimals e.g. 0.5) */
+  kpi_monthly_volume?: Record<string, number>;
 };
 
 // ── Runner Output ─────────────────────────────────────

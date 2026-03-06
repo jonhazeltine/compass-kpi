@@ -288,6 +288,7 @@ export default function CoachPortalScreen() {
   const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
   const [newJourneyName, setNewJourneyName] = useState('');
   const [journeyQuery, setJourneyQuery] = useState('');
+  const [journeyPickerOpen, setJourneyPickerOpen] = useState(false);
   const [seedPurgeConfirmOpen, setSeedPurgeConfirmOpen] = useState(false);
   const [seedPurgePending, setSeedPurgePending] = useState(false);
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
@@ -1603,7 +1604,7 @@ export default function CoachPortalScreen() {
                 {collections.length === 0 ? (
                   <View style={s.libraryEmptyState}>
                     <Text style={s.libraryEmptyTitle}>No library assets configured yet.</Text>
-                    <Text style={s.libraryEmptyBody}>Journeys and library assets are separate.</Text>
+                    <Text style={s.libraryEmptyBody}>Assets are managed via the admin panel's Content Uploads screen and published here.</Text>
                   </View>
                 ) : (
                   collections.map((collection) => {
@@ -1669,92 +1670,160 @@ export default function CoachPortalScreen() {
 
             {/* ── Builder Canvas ── */}
             <ScrollView style={s.canvas} contentContainerStyle={s.canvasInner} showsVerticalScrollIndicator>
-              {/* Journey selector */}
-              <View style={s.canvasSection}>
-                <View style={s.canvasSectionHeader}>
-                  <Text style={s.canvasSectionTitle}>Journeys</Text>
-                  <Text style={s.canvasSectionCount}>{journeys.length} total</Text>
+              {/* Journey picker — single-line trigger + dropdown overlay */}
+              <View style={{ position: 'relative' as any, zIndex: 20 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Pressable
+                    style={{
+                      flex: 1,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      borderWidth: 1,
+                      borderColor: journeyPickerOpen ? '#2563EB' : '#CBD5E1',
+                      borderRadius: 10,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      backgroundColor: '#FFFFFF',
+                      gap: 8,
+                    }}
+                    onPress={() => { setJourneyPickerOpen(!journeyPickerOpen); setJourneyQuery(''); }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      {selectedJourney ? (
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: '#0F172A' }} numberOfLines={1}>{selectedJourney.name}</Text>
+                      ) : (
+                        <Text style={{ fontSize: 14, color: '#94A3B8' }}>Select a journey…</Text>
+                      )}
+                    </View>
+                    <Text style={{ fontSize: 12, color: '#64748B' }}>{journeyPickerOpen ? '▴' : '▾'}</Text>
+                  </Pressable>
+                  {canComposeDraft && seedPlaceholderJourneys.length > 0 ? (
+                    <Pressable
+                      style={{ borderWidth: 1, borderColor: '#BFDBFE', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#EFF6FF' }}
+                      onPress={() => setSeedPurgeConfirmOpen(true)}
+                    >
+                      <Text style={{ color: '#1D4ED8', fontSize: 11, fontWeight: '700' }}>Purge Seeds</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
-                <View style={s.journeySelectorCard}>
-                  {selectedJourney ? (
-                    <View style={s.journeySelectorCurrent}>
-                      <Text style={s.journeySelectorCurrentName} numberOfLines={1}>{selectedJourney.name}</Text>
-                      <Text style={s.journeySelectorCurrentMeta}>{selectedJourney.audience} · {selectedJourney.lessons.length} lessons</Text>
+
+                {/* Dropdown overlay */}
+                {journeyPickerOpen ? (
+                  <>
+                    {/* Backdrop */}
+                    <Pressable
+                      style={{ position: 'fixed' as any, top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}
+                      onPress={() => setJourneyPickerOpen(false)}
+                    />
+                    <View
+                      style={{
+                        position: 'absolute' as any,
+                        top: '100%' as any,
+                        left: 0,
+                        right: 0,
+                        marginTop: 4,
+                        backgroundColor: '#FFFFFF',
+                        borderWidth: 1,
+                        borderColor: '#CBD5E1',
+                        borderRadius: 12,
+                        padding: 12,
+                        gap: 8,
+                        zIndex: 2,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 8 },
+                        shadowOpacity: 0.12,
+                        shadowRadius: 24,
+                        elevation: 12,
+                      }}
+                    >
+                      <TextInput
+                        value={journeyQuery}
+                        onChangeText={setJourneyQuery}
+                        placeholder="Search journeys..."
+                        placeholderTextColor="#94A3B8"
+                        style={s.journeySelectorSearch}
+                        autoFocus
+                      />
+                      <ScrollView style={{ maxHeight: 300 }} contentContainerStyle={{ gap: 6 }}>
+                        {filteredJourneys.length === 0 ? (
+                          <Text style={s.journeySelectorEmpty}>No journeys match search.</Text>
+                        ) : (
+                          filteredJourneys.map((journey) => {
+                            const selected = selectedJourney?.id === journey.id;
+                            return (
+                              <Pressable
+                                key={journey.id}
+                                style={[s.journeySelectorItem, selected && s.journeySelectorItemActive]}
+                                onPress={() => {
+                                  setSelectedJourneyId(journey.id);
+                                  setJourneyPickerOpen(false);
+                                }}
+                              >
+                                <View style={s.journeySelectorItemBody}>
+                                  <Text style={[s.journeySelectorItemTitle, selected && s.journeySelectorItemTitleActive]} numberOfLines={1}>
+                                    {journey.name}
+                                  </Text>
+                                  <Text style={s.journeySelectorItemMeta}>{journey.audience} · {journey.lessons.length} lessons</Text>
+                                </View>
+                                {canComposeDraft ? (
+                                  <Pressable
+                                    style={s.chipDeleteBtn}
+                                    onPress={(event: any) => {
+                                      event?.stopPropagation?.();
+                                      setConfirmDelete({ type: 'journey', id: journey.id, label: journey.name });
+                                    }}
+                                  >
+                                    <Text style={s.chipDeleteBtnText}>✕</Text>
+                                  </Pressable>
+                                ) : null}
+                              </Pressable>
+                            );
+                          })
+                        )}
+                      </ScrollView>
+                      {canComposeDraft ? (
+                        <View style={[s.inlineCreateRow, { marginTop: 4, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 10 }]}>
+                          <TextInput value={newJourneyName} onChangeText={setNewJourneyName} placeholder="New journey name..." placeholderTextColor="#94A3B8" style={s.inlineCreateInput} />
+                          <TouchableOpacity style={s.btnSecondary} onPress={() => { createJourney(); setJourneyPickerOpen(false); }}><Text style={s.btnSecondaryText}>+ Journey</Text></TouchableOpacity>
+                        </View>
+                      ) : null}
                     </View>
-                  ) : (
-                    <View style={s.journeySelectorCurrent}>
-                      <Text style={s.journeySelectorCurrentName}>No journeys yet</Text>
-                      <Text style={s.journeySelectorCurrentMeta}>Create your first journey below.</Text>
-                    </View>
-                  )}
-                  <View style={s.journeySelectorActions}>
+                  </>
+                ) : null}
+              </View>
+
+              {/* ── Selected journey header ── */}
+              {selectedJourney ? (
+                <View style={{
+                  backgroundColor: '#EFF6FF',
+                  borderWidth: 1,
+                  borderColor: '#BFDBFE',
+                  borderRadius: 12,
+                  padding: 16,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E40AF' }} numberOfLines={1}>{selectedJourney.name}</Text>
+                    <Text style={{ fontSize: 12, color: '#3B82F6' }}>{selectedJourney.audience} · {selectedJourney.lessons.length} lesson{selectedJourney.lessons.length === 1 ? '' : 's'}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {saveState === 'pending' ? <Text style={s.autoSaveHint}>Saving...</Text> : null}
+                    {saveState === 'saved' ? <Text style={s.autoSaveHint}>✓ Saved</Text> : null}
+                    {saveState === 'error' ? <Text style={s.autoSaveError}>{saveMessage}</Text> : null}
                     {canComposeDraft ? (
-                      <Pressable
-                        style={[s.journeySelectorBtn, seedPlaceholderJourneys.length === 0 && s.journeySelectorBtnDisabled]}
-                        disabled={seedPlaceholderJourneys.length === 0}
-                        onPress={() => setSeedPurgeConfirmOpen(true)}
-                      >
-                        <Text style={s.journeySelectorBtnText}>Purge Seed Placeholders</Text>
+                      <Pressable style={s.inlineAddLessonBtn} onPress={addLesson}>
+                        <Text style={s.inlineAddLessonBtnText}>+ Lesson</Text>
                       </Pressable>
                     ) : null}
                   </View>
                 </View>
-                <View style={s.journeySelectorPanel}>
-                  <TextInput
-                    value={journeyQuery}
-                    onChangeText={setJourneyQuery}
-                    placeholder="Search journeys..."
-                    placeholderTextColor="#94A3B8"
-                    style={s.journeySelectorSearch}
-                  />
-                  <ScrollView style={s.journeySelectorList} contentContainerStyle={s.journeySelectorListInner}>
-                    {filteredJourneys.length === 0 ? (
-                      <Text style={s.journeySelectorEmpty}>No journeys match search.</Text>
-                    ) : (
-                      filteredJourneys.map((journey) => {
-                        const selected = selectedJourney?.id === journey.id;
-                        return (
-                          <Pressable
-                            key={journey.id}
-                            style={[s.journeySelectorItem, selected && s.journeySelectorItemActive]}
-                            onPress={() => {
-                              setSelectedJourneyId(journey.id);
-                            }}
-                          >
-                            <View style={s.journeySelectorItemBody}>
-                              <Text style={[s.journeySelectorItemTitle, selected && s.journeySelectorItemTitleActive]} numberOfLines={1}>
-                                {journey.name}
-                              </Text>
-                              <Text style={s.journeySelectorItemMeta}>{journey.audience} · {journey.lessons.length} lessons</Text>
-                            </View>
-                            {canComposeDraft ? (
-                              <Pressable
-                                style={s.chipDeleteBtn}
-                                onPress={(event: any) => {
-                                  event?.stopPropagation?.();
-                                  setConfirmDelete({ type: 'journey', id: journey.id, label: journey.name });
-                                }}
-                              >
-                                <Text style={s.chipDeleteBtnText}>✕</Text>
-                              </Pressable>
-                            ) : null}
-                          </Pressable>
-                        );
-                      })
-                    )}
-                  </ScrollView>
+              ) : (
+                <View style={{ backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 20, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 14, color: '#64748B' }}>Select a journey above to view and edit its lessons.</Text>
                 </View>
-                {canComposeDraft && seedPlaceholderJourneys.length > 0 ? (
-                  <Text style={s.journeyPurgeHint}>{seedPlaceholderJourneys.length} seed placeholder journeys available to purge.</Text>
-                ) : null}
-                {/* Inline + Journey */}
-                {canComposeDraft ? (
-                  <View style={s.inlineCreateRow}>
-                    <TextInput value={newJourneyName} onChangeText={setNewJourneyName} placeholder="New journey name..." placeholderTextColor="#94A3B8" style={s.inlineCreateInput} />
-                    <TouchableOpacity style={s.btnSecondary} onPress={createJourney}><Text style={s.btnSecondaryText}>+ Journey</Text></TouchableOpacity>
-                  </View>
-                ) : null}
-              </View>
+              )}
 
               {!canComposeDraft ? (
                 <View style={s.deniedBanner}>
@@ -1766,17 +1835,6 @@ export default function CoachPortalScreen() {
 
               {/* Lessons */}
               <View style={s.milestoneList}>
-                {/* Inline + Lesson at top of journey + save status */}
-                {canComposeDraft && selectedJourney ? (
-                  <View style={s.lessonToolbarRow}>
-                    <Pressable style={s.inlineAddLessonBtn} onPress={addLesson}>
-                      <Text style={s.inlineAddLessonBtnText}>+ Lesson</Text>
-                    </Pressable>
-                    {saveState === 'pending' ? <Text style={s.autoSaveHint}>Saving...</Text> : null}
-                    {saveState === 'saved' ? <Text style={s.autoSaveHint}>✓ Saved</Text> : null}
-                    {saveState === 'error' ? <Text style={s.autoSaveError}>{saveMessage}</Text> : null}
-                  </View>
-                ) : null}
                 {selectedJourney?.lessons.map((lesson, lsIndex) => {
                   const isSelected = selectedLessonId === lesson.id;
                   const isHover = hoverLessonId === lesson.id;

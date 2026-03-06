@@ -22,7 +22,7 @@ export type {
   PcEvent,
   GpVpEngineSnapshot,
 } from './engine';
-export { generateScenario, generateScenarioFromProfile, generateScenarioFromVolume, convertScenarioProfileToAgentProfile, generateRealisticClosings, rebuildLogStreamFromVolumes, ALGORITHM_VERSION, SCENARIO_PROFILES, PC_KPI_TEMPLATES, BUILTIN_AGENT_PROFILES } from './scenarioGenerator';
+export { generateScenario, generateScenarioFromProfile, generateScenarioFromVolume, convertScenarioProfileToAgentProfile, generateRealisticClosings, rebuildLogStreamFromVolumes, adminKpiToLabDef, ALGORITHM_VERSION, SCENARIO_PROFILES, PC_KPI_TEMPLATES, BUILTIN_AGENT_PROFILES } from './scenarioGenerator';
 export type { ScenarioProfile } from './scenarioGenerator';
 export { executeRun, computeCalibrationMetrics, compareRuns, computePerKpiSeries, buildProjectedIncomeSeries, buildActualBaselineSeries, computeRollingAverage, scenarioToPcEvents } from './runner';
 export type { KpiMonthlySeries } from './runner';

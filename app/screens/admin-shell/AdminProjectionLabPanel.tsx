@@ -14,7 +14,6 @@ import {
   generateScenarioFromProfile,
   generateScenarioFromVolume,
   SCENARIO_PROFILES,
-  PC_KPI_TEMPLATES,
   BUILTIN_AGENT_PROFILES,
   executeRun,
   compareRuns,
@@ -30,6 +29,7 @@ import {
   captureGoldenSnapshot,
   removeGoldenScenario,
 } from '../../lib/projectionLab';
+import { adminKpiToLabDef } from '../../lib/projectionLab/scenarioGenerator';
 import type {
   LabScenario,
   LabView,
@@ -46,8 +46,15 @@ import type {
   KpiVolumeSpec,
   ScenarioVolumeInput,
 } from '../../lib/projectionLab';
+import type { AdminKpiRow } from '../../lib/adminCatalogApi';
 
-export default function AdminProjectionLabPanel({ adminUser }: { adminUser: string }) {
+export default function AdminProjectionLabPanel({
+  adminUser,
+  catalogKpis,
+}: {
+  adminUser: string;
+  catalogKpis: AdminKpiRow[];
+}) {
   const [labView, setLabView] = useState<LabView>('scenario_list');
   const [scenarios, setScenarios] = useState<LabScenario[]>([]);
   const [runs, setRuns] = useState<RunBundle[]>([]);
@@ -98,7 +105,7 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
   // Auto-generate all profile scenarios and run them on first mount
   useEffect(() => {
     const initial = SCENARIO_PROFILES.map((profile) =>
-      generateScenarioFromProfile({ profile, adminUser })
+      generateScenarioFromProfile({ profile, adminUser, catalogKpis })
     );
     setScenarios(initial);
     const initialRuns = initial.map((scenario) => executeRun({ scenario, adminUser }));
@@ -128,7 +135,8 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
   const [editKpiDefs, setEditKpiDefs] = useState<LabKpiDefinition[]>([]);
   const [editAddKpiOpen, setEditAddKpiOpen] = useState(false);
   const [editClosedDeals, setEditClosedDeals] = useState('');
-  const [editKpiAnnualVolume, setEditKpiAnnualVolume] = useState<Record<string, string>>({});
+  const [editKpiMonthlyVolume, setEditKpiMonthlyVolume] = useState<Record<string, string>>({});
+  const [editTimeSpan, setEditTimeSpan] = useState('6');
 
   // Profile state
   const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>(() => [...BUILTIN_AGENT_PROFILES]);
@@ -138,6 +146,8 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
   const [profileFormPrice, setProfileFormPrice] = useState('');
   const [profileFormCommission, setProfileFormCommission] = useState('');
   const [profileFormKpis, setProfileFormKpis] = useState<string[]>([]);
+  const [profileFormGpKpis, setProfileFormGpKpis] = useState<string[]>([]);
+  const [profileFormVpKpis, setProfileFormVpKpis] = useState<string[]>([]);
   const [profileFormActuals, setProfileFormActuals] = useState(false);
   const [profileFormDesc, setProfileFormDesc] = useState('');
 
@@ -147,6 +157,23 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
   const [createTimeSpan, setCreateTimeSpan] = useState('6');
   const [createActuals, setCreateActuals] = useState(false);
   const [createStep, setCreateStep] = useState<'pick_profile' | 'volume_spec'>('pick_profile');
+
+  // ── Live catalog groups ──
+  const { pcTemplates, gpTemplates, vpTemplates, allTemplates } = useMemo(() => {
+    const active = catalogKpis.filter((k) => k.is_active);
+    return {
+      pcTemplates: active.filter((k) => k.type === 'PC'),
+      gpTemplates: active.filter((k) => k.type === 'GP'),
+      vpTemplates: active.filter((k) => k.type === 'VP'),
+      allTemplates: active,
+    };
+  }, [catalogKpis]);
+
+  // Derive LabKpiDefinition arrays from live catalog for use in scenario edit
+  const pcTemplateDefs = useMemo(() => pcTemplates.map(adminKpiToLabDef), [pcTemplates]);
+  const gpTemplateDefs = useMemo(() => gpTemplates.map(adminKpiToLabDef), [gpTemplates]);
+  const vpTemplateDefs = useMemo(() => vpTemplates.map(adminKpiToLabDef), [vpTemplates]);
+  const allTemplateDefs = useMemo(() => allTemplates.map(adminKpiToLabDef), [allTemplates]);
 
   // Chart colors
   const CHART_COLORS = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16', '#F97316'];
@@ -162,23 +189,28 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
     setEditKpiDefs([...scenario.kpi_definitions]);
     setEditAddKpiOpen(false);
     setEditClosedDeals(scenario.closed_deals_override?.toString() ?? '');
-    // Initialize per-KPI annual volume from scenario or derive from log_stream
+    // Load time span from volume input or default to 6
+    setEditTimeSpan((scenario.volume_input?.time_span_months ?? 6).toString());
+    // Initialize per-KPI monthly volume from scenario or derive from log_stream
     const kpiVolMap: Record<string, string> = {};
-    if (scenario.kpi_annual_volume) {
-      for (const [kId, v] of Object.entries(scenario.kpi_annual_volume)) {
+    if (scenario.kpi_monthly_volume) {
+      for (const [kId, v] of Object.entries(scenario.kpi_monthly_volume)) {
         kpiVolMap[kId] = v.toString();
       }
     } else {
-      // Derive: count events per KPI in the log stream, annualize from time span
+      // Derive: count events per KPI in the log stream, convert to per-month
+      const timeSpan = scenario.volume_input?.time_span_months ?? 6;
       const kpiCounts = new Map<string, number>();
       for (const log of scenario.log_stream) {
         kpiCounts.set(log.kpi_id, (kpiCounts.get(log.kpi_id) ?? 0) + log.quantity);
       }
       for (const [kId, count] of kpiCounts) {
-        kpiVolMap[kId] = count.toString();
+        const perMonth = count / timeSpan;
+        // Show clean decimals: 10 → "10", 0.5 → "0.5", 0.333 → "0.33"
+        kpiVolMap[kId] = perMonth === Math.round(perMonth) ? perMonth.toString() : perMonth.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
       }
     }
-    setEditKpiAnnualVolume(kpiVolMap);
+    setEditKpiMonthlyVolume(kpiVolMap);
     setLabView('scenario_edit');
   };
 
@@ -193,24 +225,26 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
       commission_rate: commRate,
     };
 
-    // Parse per-KPI annual volumes
-    const kpiAnnualVolume: Record<string, number> = {};
+    // Parse per-KPI monthly volumes (decimal-safe)
+    const kpiMonthlyVolume: Record<string, number> = {};
     let hasVolumeOverrides = false;
-    for (const [kId, v] of Object.entries(editKpiAnnualVolume)) {
-      const n = parseInt(v) || 0;
+    for (const [kId, v] of Object.entries(editKpiMonthlyVolume)) {
+      const n = parseFloat(v) || 0;
       if (n > 0) {
-        kpiAnnualVolume[kId] = n;
+        kpiMonthlyVolume[kId] = n;
         hasVolumeOverrides = true;
       }
     }
 
+    const timeSpanMonths = parseInt(editTimeSpan) || 6;
+
     // Rebuild log stream from KPI volumes if overrides present
     const logStream = hasVolumeOverrides
       ? rebuildLogStreamFromVolumes({
-          kpiAnnualVolume,
+          kpiMonthlyVolume,
           kpiDefinitions: editKpiDefs,
           userProfile,
-          timeSpanMonths: selectedScenario.volume_input?.time_span_months ?? 6,
+          timeSpanMonths,
         })
       : editLogStream;
 
@@ -246,7 +280,10 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
       log_stream: logStream,
       actual_closings: actualClosings,
       closed_deals_override: closedDealsOverride,
-      kpi_annual_volume: hasVolumeOverrides ? kpiAnnualVolume : undefined,
+      kpi_monthly_volume: hasVolumeOverrides ? kpiMonthlyVolume : undefined,
+      volume_input: selectedScenario.volume_input
+        ? { ...selectedScenario.volume_input, time_span_months: timeSpanMonths }
+        : { profile_id: selectedScenario.source_profile_id ?? '', volume_specs: [], time_span_months: timeSpanMonths, include_actuals: selectedScenario.actual_closings.length > 0 },
     };
     setScenarios((prev) => prev.map((s) => (s.scenario_id === updated.scenario_id ? updated : s)));
     setSelectedScenario(updated);
@@ -312,6 +349,8 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
     setProfileFormPrice('350000');
     setProfileFormCommission('2.75');
     setProfileFormKpis([]);
+    setProfileFormGpKpis([]);
+    setProfileFormVpKpis([]);
     setProfileFormActuals(false);
     setProfileFormDesc('');
   };
@@ -323,6 +362,8 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
     setProfileFormPrice(profile.avg_price_point.toString());
     setProfileFormCommission((profile.commission_rate * 100).toFixed(2));
     setProfileFormKpis([...profile.kpi_names]);
+    setProfileFormGpKpis([...(profile.gp_kpi_names ?? [])]);
+    setProfileFormVpKpis([...(profile.vp_kpi_names ?? [])]);
     setProfileFormActuals(profile.include_actuals);
     setProfileFormDesc(profile.description);
     setLabView('profile_edit');
@@ -337,8 +378,10 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
       avg_price_point: parseFloat(profileFormPrice) || 350000,
       commission_rate: (parseFloat(profileFormCommission) || 2.75) / 100,
       kpi_names: profileFormKpis,
+      gp_kpi_names: profileFormGpKpis,
+      vp_kpi_names: profileFormVpKpis,
       include_actuals: profileFormActuals,
-      is_builtin: false,
+      is_builtin: isNew ? false : selectedProfile!.is_builtin,
       created_at: isNew ? new Date().toISOString() : selectedProfile!.created_at,
     };
     if (isNew) {
@@ -374,8 +417,9 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
 
   const handleStartVolumeCreate = (profile: AgentProfile) => {
     setCreateProfileId(profile.profile_id);
+    const allKpiNames = [...profile.kpi_names, ...(profile.gp_kpi_names ?? []), ...(profile.vp_kpi_names ?? [])];
     setCreateVolumeSpecs(
-      profile.kpi_names.map((name) => ({ kpi_name: name, events_per_month: 10 }))
+      allKpiNames.map((name) => ({ kpi_name: name, events_per_month: 10 }))
     );
     setCreateTimeSpan('6');
     setCreateActuals(profile.include_actuals);
@@ -392,7 +436,7 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
       time_span_months: parseInt(createTimeSpan) || 6,
       include_actuals: createActuals,
     };
-    const scenario = generateScenarioFromVolume({ profile, volumeInput, adminUser });
+    const scenario = generateScenarioFromVolume({ profile, volumeInput, adminUser, catalogKpis });
     setScenarios((prev) => [scenario, ...prev]);
     const run = executeRun({ scenario, adminUser });
     setRuns((prev) => [run, ...prev]);
@@ -404,7 +448,7 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
   };
 
   const handleCreateFromProfile = (profile: ScenarioProfile) => {
-    const scenario = generateScenarioFromProfile({ profile, adminUser });
+    const scenario = generateScenarioFromProfile({ profile, adminUser, catalogKpis });
     setScenarios((prev) => [scenario, ...prev]);
     // Auto-run and add to chart
     const run = executeRun({ scenario, adminUser });
@@ -510,16 +554,17 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
     const plotW = CHART_W - PAD.left - PAD.right;
     const plotH = CHART_H - PAD.top - PAD.bottom;
 
-    // Collect all month labels from first run (all runs share same 12 months)
-    const monthLabels = chartRuns[0]?.future_projected_12m.map((p) =>
-      p.month_start.slice(0, 7)
-    ) ?? [];
+    // Chart shows 6 months (numeric tables still use full 12m data)
+    const CHART_MONTHS = 6;
+    const monthLabels = (chartRuns[0]?.future_projected_12m ?? [])
+      .slice(0, CHART_MONTHS)
+      .map((p) => p.month_start.slice(0, 7));
     const monthCount = monthLabels.length || 1;
 
     // Build actual baseline + rolling avg series per run
     type ChartLineDef = {
       runId: string;
-      type: 'projection' | 'actual' | 'rollingAvg';
+      type: 'projection' | 'projectionGhost' | 'actual' | 'rollingAvg' | 'preBoost';
       d: string;
       color: string;
       strokeWidth: number;
@@ -528,18 +573,50 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
     };
 
     // Build per-scenario series: projected income, actual baseline, rolling avg
+    // All series sliced to CHART_MONTHS for the chart (full 12m data still used by tables)
     const projIncomeMap: Record<string, MonthlySeriesPoint[]> = {};
+    const rawDecayMap: Record<string, MonthlySeriesPoint[]> = {};
+    const ghostStartMap: Record<string, number> = {}; // index where ghost kicks in
     const actualSeriesMap: Record<string, MonthlySeriesPoint[]> = {};
     const rollingSeriesMap: Record<string, MonthlySeriesPoint[]> = {};
+    const preBoostMap: Record<string, MonthlySeriesPoint[]> = {};
     for (const run of chartRuns) {
       const scenario = scenarios.find((s) => s.scenario_id === run.scenario_id);
       // Use cadence-projected values (sustained) with fallback to raw PC (decaying)
-      projIncomeMap[run.run_id] = run.cadence_projected_12m ?? run.future_projected_12m;
+      projIncomeMap[run.run_id] = (run.cadence_projected_12m ?? run.future_projected_12m).slice(0, CHART_MONTHS);
+      rawDecayMap[run.run_id] = run.future_projected_12m.slice(0, CHART_MONTHS);
+
+      // Find ghost crossover: where raw decay drops below 50% of cadence value
+      // That's where synthetic events become the dominant contributor
+      if (run.cadence_projected_12m) {
+        const raw = run.future_projected_12m;
+        const cad = run.cadence_projected_12m;
+        let crossover = CHART_MONTHS; // default: no ghost (all solid)
+        for (let i = 0; i < CHART_MONTHS && i < raw.length && i < cad.length; i++) {
+          if (cad[i].value > 0 && raw[i].value < cad[i].value * 0.5) {
+            crossover = i;
+            break;
+          }
+        }
+        ghostStartMap[run.run_id] = crossover;
+      } else {
+        ghostStartMap[run.run_id] = CHART_MONTHS; // no cadence data = all solid
+      }
+
       // Actual baseline — cumulative closing GCI
       if (scenario && scenario.actual_closings.length > 0) {
-        const actual = buildActualBaselineSeries(scenario.actual_closings, run.future_projected_12m);
+        const actual = buildActualBaselineSeries(scenario.actual_closings, run.future_projected_12m).slice(0, CHART_MONTHS);
         actualSeriesMap[run.run_id] = actual;
-        rollingSeriesMap[run.run_id] = computeRollingAverage(actual, 2);
+        rollingSeriesMap[run.run_id] = computeRollingAverage(actual, 2).slice(0, CHART_MONTHS);
+      }
+
+      // Pre-boost reference: divide out the GP/VP bump factor to show raw projection
+      if (run.gp_vp.total_bump_percent > 0) {
+        const factor = 1 + run.gp_vp.total_bump_percent;
+        preBoostMap[run.run_id] = projIncomeMap[run.run_id].map((p) => ({
+          month_start: p.month_start,
+          value: Number((p.value / factor).toFixed(2)),
+        }));
       }
     }
 
@@ -570,9 +647,14 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
     const yStep = maxVal / yTickCount;
     const yTicks = Array.from({ length: yTickCount + 1 }, (_, i) => i * yStep);
 
-    // Helper: series → SVG path
-    const seriesToPath = (series: MonthlySeriesPoint[]): string => {
-      const pts = series.map((pt, i) => {
+    // Helper: series → SVG path (full series or a slice by index range)
+    const seriesToPath = (series: MonthlySeriesPoint[], startIdx?: number, endIdx?: number): string => {
+      const from = startIdx ?? 0;
+      const to = endIdx ?? series.length;
+      const slice = series.slice(from, to);
+      if (slice.length === 0) return '';
+      const pts = slice.map((pt, si) => {
+        const i = from + si; // original index for x positioning
         const x = PAD.left + (i / (monthCount - 1)) * plotW;
         const y = PAD.top + plotH - (pt.value / maxVal) * plotH;
         return `${x},${y}`;
@@ -586,7 +668,15 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
       const color = CHART_COLORS[runIdx % CHART_COLORS.length];
       const vis = chartVisibility[run.run_id] ?? { projection: true, actual: false, rollingAvg: false };
 
-      // Rolling avg (render first = behind others)
+      // Pre-boost reference (render first = furthest behind)
+      if (vis.projection && preBoostMap[run.run_id]) {
+        chartLines.push({
+          runId: run.run_id, type: 'preBoost',
+          d: seriesToPath(preBoostMap[run.run_id]),
+          color, strokeWidth: 1.5, opacity: 0.2, dash: '3,3',
+        });
+      }
+      // Rolling avg (render behind main lines)
       if (vis.rollingAvg && rollingSeriesMap[run.run_id]) {
         chartLines.push({
           runId: run.run_id, type: 'rollingAvg',
@@ -602,13 +692,35 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
           color, strokeWidth: 2, opacity: 0.6, dash: '6,4',
         });
       }
-      // Projection — cumulative projected income (solid, on top)
+      // Projection — split into solid (real events) + ghost (synthetic sustain)
       if (vis.projection && projIncomeMap[run.run_id]) {
-        chartLines.push({
-          runId: run.run_id, type: 'projection',
-          d: seriesToPath(projIncomeMap[run.run_id]),
-          color, strokeWidth: 2.5, opacity: 1.0,
-        });
+        const series = projIncomeMap[run.run_id];
+        const ghostAt = ghostStartMap[run.run_id] ?? series.length;
+
+        if (ghostAt > 0) {
+          // Solid segment: months 0 through ghostAt (inclusive end point for connection)
+          const solidEnd = Math.min(ghostAt + 1, series.length);
+          const solidD = seriesToPath(series, 0, solidEnd);
+          if (solidD) {
+            chartLines.push({
+              runId: run.run_id, type: 'projection',
+              d: solidD,
+              color, strokeWidth: 2.5, opacity: 1.0,
+            });
+          }
+        }
+
+        if (ghostAt < series.length) {
+          // Ghost segment: from ghostAt onward (overlaps 1 point for seamless join)
+          const ghostD = seriesToPath(series, ghostAt);
+          if (ghostD) {
+            chartLines.push({
+              runId: run.run_id, type: 'projectionGhost',
+              d: ghostD,
+              color, strokeWidth: 2.5, opacity: 0.35,
+            });
+          }
+        }
       }
     });
 
@@ -675,18 +787,23 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
               if (!lastPt) return null;
               const x = PAD.left + ((monthCount - 1) / (monthCount - 1)) * plotW;
               const y = PAD.top + plotH - (lastPt.value / maxVal) * plotH;
+              const isGhostEnd = (ghostStartMap[run.run_id] ?? projSeries.length) < projSeries.length;
               return (
-                <Circle key={`dot-${run.run_id}`} cx={x} cy={y} r={4} fill={CHART_COLORS[runIdx % CHART_COLORS.length]} />
+                <Circle key={`dot-${run.run_id}`} cx={x} cy={y} r={4} fill={CHART_COLORS[runIdx % CHART_COLORS.length]} fillOpacity={isGhostEnd ? 0.4 : 1} />
               );
             })}
           </Svg>
         </ScrollView>
 
         {/* Chart Key */}
-        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 20, marginTop: 10, paddingVertical: 6, borderTopWidth: 1, borderColor: '#F1F5F9' }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 10, paddingVertical: 6, borderTopWidth: 1, borderColor: '#F1F5F9', flexWrap: 'wrap' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={{ width: 24, height: 2.5, backgroundColor: '#64748B', borderRadius: 1 }} />
             <Text style={{ fontSize: 10, color: '#64748B' }}>Projection</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 24, height: 2.5, backgroundColor: '#64748B', borderRadius: 1, opacity: 0.35 }} />
+            <Text style={{ fontSize: 10, color: '#64748B' }}>Cadence (projected)</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={{ width: 24, height: 0, borderTopWidth: 2, borderColor: '#64748B', borderStyle: 'dashed' }} />
@@ -695,6 +812,10 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={{ width: 24, height: 3.5, backgroundColor: '#64748B', borderRadius: 2, opacity: 0.35 }} />
             <Text style={{ fontSize: 10, color: '#64748B' }}>Rolling Avg</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 24, height: 0, borderTopWidth: 1.5, borderColor: '#64748B', borderStyle: 'dashed', opacity: 0.2 }} />
+            <Text style={{ fontSize: 10, color: '#64748B' }}>Pre-boost</Text>
           </View>
         </View>
 
@@ -748,6 +869,24 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
                   <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: '#1E293B' }}>
                     {run.scenarioName}
                   </Text>
+                  {/* Boost badge */}
+                  {run.gp_vp.total_bump_percent > 0 ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                      <View style={{ backgroundColor: '#F0FDF4', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1, borderWidth: 1, borderColor: '#BBF7D0' }}>
+                        <Text style={{ fontSize: 8, fontWeight: '700', color: '#166534' }}>
+                          GP T{run.gp_vp.gp_tier} · VP T{run.gp_vp.vp_tier} → +{(run.gp_vp.total_bump_percent * 100).toFixed(1)}%
+                        </Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                      <View style={{ backgroundColor: '#F8FAFC', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                        <Text style={{ fontSize: 8, fontWeight: '600', color: '#94A3B8' }}>
+                          T1 / T1 · no boost
+                        </Text>
+                      </View>
+                    </View>
+                  )}
                 </View>
                 <View style={{ flex: 1 }}>
                   {/* Column headers */}
@@ -986,11 +1125,11 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
               <TextInput
                 value={spec.events_per_month.toString()}
                 onChangeText={(v) => {
-                  const val = parseInt(v) || 0;
+                  const val = parseFloat(v) || 0;
                   setCreateVolumeSpecs((prev) => prev.map((s, i) => i === idx ? { ...s, events_per_month: val } : s));
                 }}
-                keyboardType="numeric"
-                style={{ width: 60, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, fontSize: 13, textAlign: 'center', backgroundColor: '#FFF' }}
+                keyboardType="decimal-pad"
+                style={{ width: 70, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, fontSize: 13, textAlign: 'center', backgroundColor: '#FFF' }}
               />
               <Text style={{ fontSize: 11, color: '#94A3B8' }}>/mo</Text>
             </View>
@@ -1105,12 +1244,7 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
         <Pressable
           key={profile.profile_id}
           onPress={() => {
-            if (profile.is_builtin) {
-              setSelectedProfile(profile);
-              // Read-only for built-in, but allow duplicate
-            } else {
-              handleProfileFormStartEdit(profile);
-            }
+            handleProfileFormStartEdit(profile);
           }}
           style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, padding: 14 }}
         >
@@ -1145,6 +1279,12 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
             >
               <Text style={{ fontSize: 11, color: '#2563EB', fontWeight: '600' }}>→ Create Scenario</Text>
             </Pressable>
+            <Pressable
+              onPress={(e) => { e.stopPropagation?.(); handleProfileFormStartEdit(profile); }}
+              style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, backgroundColor: '#F1F5F9' }}
+            >
+              <Text style={{ fontSize: 11, color: '#475569', fontWeight: '600' }}>Edit</Text>
+            </Pressable>
             {profile.is_builtin ? (
               <Pressable
                 onPress={(e) => { e.stopPropagation?.(); handleDuplicateProfile(profile); }}
@@ -1152,14 +1292,7 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
               >
                 <Text style={{ fontSize: 11, color: '#475569', fontWeight: '600' }}>Duplicate</Text>
               </Pressable>
-            ) : (
-              <Pressable
-                onPress={(e) => { e.stopPropagation?.(); handleProfileFormStartEdit(profile); }}
-                style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, backgroundColor: '#F1F5F9' }}
-              >
-                <Text style={{ fontSize: 11, color: '#475569', fontWeight: '600' }}>Edit</Text>
-              </Pressable>
-            )}
+            ) : null}
           </View>
         </Pressable>
       ))}
@@ -1239,11 +1372,11 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
         <Text style={{ fontSize: 13, color: '#475569' }}>Include actual closings by default</Text>
       </Pressable>
 
-      {/* KPI picker */}
+      {/* Pipeline Contribution (PC) KPI picker */}
       <View>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>KPIs Tracked ({profileFormKpis.length})</Text>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 }}>Pipeline Contribution KPIs ({profileFormKpis.length})</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {PC_KPI_TEMPLATES.map((t) => {
+          {pcTemplates.map((t) => {
             const selected = profileFormKpis.includes(t.name);
             return (
               <Pressable
@@ -1254,10 +1387,7 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
                   );
                 }}
                 style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  borderRadius: 6,
-                  borderWidth: 1,
+                  paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1,
                   borderColor: selected ? '#3B82F6' : '#CBD5E1',
                   backgroundColor: selected ? '#EFF6FF' : '#FFF',
                 }}
@@ -1266,6 +1396,63 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
               </Pressable>
             );
           })}
+          {pcTemplates.length === 0 ? <Text style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>No PC KPIs in catalog</Text> : null}
+        </View>
+      </View>
+
+      {/* Growth (GP) KPI picker */}
+      <View>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: '#166534', marginBottom: 6 }}>Growth Point KPIs ({profileFormGpKpis.length})</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {gpTemplates.map((t) => {
+            const selected = profileFormGpKpis.includes(t.name);
+            return (
+              <Pressable
+                key={t.name}
+                onPress={() => {
+                  setProfileFormGpKpis((prev) =>
+                    selected ? prev.filter((n) => n !== t.name) : [...prev, t.name]
+                  );
+                }}
+                style={{
+                  paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1,
+                  borderColor: selected ? '#16A34A' : '#D1FAE5',
+                  backgroundColor: selected ? '#F0FDF4' : '#FFF',
+                }}
+              >
+                <Text style={{ fontSize: 11, color: selected ? '#166534' : '#64748B', fontWeight: selected ? '600' : '400' }}>{t.name}</Text>
+              </Pressable>
+            );
+          })}
+          {gpTemplates.length === 0 ? <Text style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>No GP KPIs in catalog</Text> : null}
+        </View>
+      </View>
+
+      {/* Vitality (VP) KPI picker */}
+      <View>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: '#6B21A8', marginBottom: 6 }}>Vitality Point KPIs ({profileFormVpKpis.length})</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {vpTemplates.map((t) => {
+            const selected = profileFormVpKpis.includes(t.name);
+            return (
+              <Pressable
+                key={t.name}
+                onPress={() => {
+                  setProfileFormVpKpis((prev) =>
+                    selected ? prev.filter((n) => n !== t.name) : [...prev, t.name]
+                  );
+                }}
+                style={{
+                  paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1,
+                  borderColor: selected ? '#9333EA' : '#F3E8FF',
+                  backgroundColor: selected ? '#FAF5FF' : '#FFF',
+                }}
+              >
+                <Text style={{ fontSize: 11, color: selected ? '#6B21A8' : '#64748B', fontWeight: selected ? '600' : '400' }}>{t.name}</Text>
+              </Pressable>
+            );
+          })}
+          {vpTemplates.length === 0 ? <Text style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>No VP KPIs in catalog</Text> : null}
         </View>
       </View>
 
@@ -1289,14 +1476,70 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
     </View>
   );
 
+  // ── Helper: single KPI row for scenario edit view ──
+
+  const renderEditKpiRow = (k: LabKpiDefinition) => {
+    const isGp = k.gp_value > 0;
+    const isVp = k.vp_value > 0;
+    const typeLabel = isGp ? `GP: ${k.gp_value} pts` : isVp ? `VP: ${k.vp_value} pts` : `Weight: ${k.weight_percent}%`;
+    const borderColor = isGp ? '#D1FAE5' : isVp ? '#F3E8FF' : '#E2E8F0';
+    return (
+      <View key={k.kpi_id} style={{ backgroundColor: '#FFF', borderRadius: 6, padding: 10, borderWidth: 1, borderColor, gap: 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B' }}>{k.name}</Text>
+            <Text style={{ fontSize: 10, color: '#64748B' }}>
+              {typeLabel}{!isGp && !isVp ? ` · TTC: ${k.ttc_definition ?? 'none'} · Delay: ${k.delay_days ?? 0}d · Hold: ${k.hold_days ?? 0}d` : ''}
+            </Text>
+          </View>
+          <Pressable onPress={() => handleRemoveKpiFromEdit(k.kpi_id)} style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#FEF2F2', borderRadius: 4 }}>
+            <Text style={{ fontSize: 10, color: '#DC2626', fontWeight: '600' }}>✕</Text>
+          </Pressable>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
+          <Text style={{ fontSize: 11, color: '#64748B' }}>Events/mo:</Text>
+          <TextInput
+            value={editKpiMonthlyVolume[k.kpi_id] ?? ''}
+            onChangeText={(v) => setEditKpiMonthlyVolume((prev) => ({ ...prev, [k.kpi_id]: v }))}
+            keyboardType="decimal-pad"
+            placeholder="0"
+            placeholderTextColor="#CBD5E1"
+            style={{ width: 70, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, fontSize: 12, textAlign: 'center', color: '#1E293B' }}
+          />
+          <Text style={{ fontSize: 10, color: '#94A3B8' }}>/mo</Text>
+          {(() => {
+            const monthlyVol = parseFloat(editKpiMonthlyVolume[k.kpi_id] ?? '0') || 0;
+            if (monthlyVol <= 0) return null;
+            const months = parseInt(editTimeSpan) || 6;
+            const totalEvents = monthlyVol * months;
+            if (isGp) return <Text style={{ fontSize: 10, color: '#16A34A' }}>→ {(k.gp_value * totalEvents).toFixed(0)} GP/{months}mo</Text>;
+            if (isVp) return <Text style={{ fontSize: 10, color: '#9333EA' }}>→ {(k.vp_value * totalEvents).toFixed(0)} VP/{months}mo</Text>;
+            const pp = parseFloat(editPricePoint) || 0;
+            const cr = (parseFloat(editCommission) || 0) / 100;
+            const pcPerEvent = pp * cr * (k.weight_percent / 100);
+            return <Text style={{ fontSize: 10, color: '#94A3B8' }}>→ PC: ${(pcPerEvent * totalEvents).toLocaleString(undefined, { maximumFractionDigits: 0 })}/{months}mo</Text>;
+          })()}
+        </View>
+      </View>
+    );
+  };
+
   // ── Sub-view: Scenario Edit ──
 
   const renderScenarioEdit = () => {
     if (!selectedScenario) return <Text style={{ color: '#94A3B8' }}>No scenario selected</Text>;
     const kpiNameMap = new Map(editKpiDefs.map((k) => [k.kpi_id, k.name]));
-    const availableTemplates = PC_KPI_TEMPLATES.filter(
+    const availableTemplates = allTemplateDefs.filter(
       (t) => !editKpiDefs.some((k) => k.name === t.name)
     );
+    // Group available templates by type for the Add KPI dropdown
+    const availablePC = availableTemplates.filter((t) => t.weight_percent > 0 && t.gp_value === 0 && t.vp_value === 0);
+    const availableGP = availableTemplates.filter((t) => t.gp_value > 0);
+    const availableVP = availableTemplates.filter((t) => t.vp_value > 0);
+    // Group current KPIs by type
+    const editPcKpis = editKpiDefs.filter((k) => k.weight_percent > 0 && k.gp_value === 0 && k.vp_value === 0);
+    const editGpKpis = editKpiDefs.filter((k) => k.gp_value > 0);
+    const editVpKpis = editKpiDefs.filter((k) => k.vp_value > 0);
 
     return (
       <View style={{ gap: 16 }}>
@@ -1377,7 +1620,24 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
           </View>
         </View>
 
-        {/* KPI Definitions + Annual Volume */}
+        {/* Time Span */}
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14, gap: 8 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#334155' }}>Time Span</Text>
+          <Text style={{ fontSize: 11, color: '#64748B' }}>
+            How many months of KPI activity to simulate. Events are distributed evenly across this window.
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <TextInput
+              value={editTimeSpan}
+              onChangeText={setEditTimeSpan}
+              keyboardType="numeric"
+              style={{ width: 60, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, textAlign: 'center', color: '#1E293B' }}
+            />
+            <Text style={{ fontSize: 13, color: '#475569' }}>months</Text>
+          </View>
+        </View>
+
+        {/* KPI Definitions + Monthly Volume */}
         <View style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 14, gap: 10 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={{ fontSize: 13, fontWeight: '700', color: '#334155' }}>KPIs ({editKpiDefs.length})</Text>
@@ -1386,20 +1646,29 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
             </Pressable>
           </View>
 
-          {/* Add KPI dropdown */}
+          {/* Add KPI dropdown — grouped by type */}
           {editAddKpiOpen && availableTemplates.length > 0 ? (
-            <View style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, maxHeight: 200, overflow: 'hidden' }}>
-              <ScrollView nestedScrollEnabled style={{ maxHeight: 200 }}>
-                {availableTemplates.map((t) => (
-                  <Pressable
-                    key={t.name}
-                    onPress={() => handleAddKpiToEdit(t)}
-                    style={{ padding: 10, borderBottomWidth: 1, borderColor: '#F1F5F9' }}
-                  >
+            <View style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, maxHeight: 280, overflow: 'hidden' }}>
+              <ScrollView nestedScrollEnabled style={{ maxHeight: 280 }}>
+                {availablePC.length > 0 ? <Text style={{ fontSize: 10, fontWeight: '700', color: '#3B82F6', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 2 }}>Pipeline Contribution</Text> : null}
+                {availablePC.map((t) => (
+                  <Pressable key={t.name} onPress={() => handleAddKpiToEdit(t)} style={{ padding: 10, borderBottomWidth: 1, borderColor: '#F1F5F9' }}>
                     <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B' }}>{t.name}</Text>
-                    <Text style={{ fontSize: 10, color: '#64748B' }}>
-                      Weight: {t.weight_percent}% · TTC: {t.ttc_definition ?? 'none'} · Delay: {t.delay_days ?? 0}d · Hold: {t.hold_days ?? 0}d
-                    </Text>
+                    <Text style={{ fontSize: 10, color: '#64748B' }}>Weight: {t.weight_percent}% · TTC: {t.ttc_definition ?? 'none'} · Delay: {t.delay_days ?? 0}d</Text>
+                  </Pressable>
+                ))}
+                {availableGP.length > 0 ? <Text style={{ fontSize: 10, fontWeight: '700', color: '#16A34A', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 2 }}>Growth Points</Text> : null}
+                {availableGP.map((t) => (
+                  <Pressable key={t.name} onPress={() => handleAddKpiToEdit(t)} style={{ padding: 10, borderBottomWidth: 1, borderColor: '#F1F5F9' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B' }}>{t.name}</Text>
+                    <Text style={{ fontSize: 10, color: '#166534' }}>GP: {t.gp_value} pts/event</Text>
+                  </Pressable>
+                ))}
+                {availableVP.length > 0 ? <Text style={{ fontSize: 10, fontWeight: '700', color: '#9333EA', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 2 }}>Vitality Points</Text> : null}
+                {availableVP.map((t) => (
+                  <Pressable key={t.name} onPress={() => handleAddKpiToEdit(t)} style={{ padding: 10, borderBottomWidth: 1, borderColor: '#F1F5F9' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B' }}>{t.name}</Text>
+                    <Text style={{ fontSize: 10, color: '#6B21A8' }}>VP: {t.vp_value} pts/event</Text>
                   </Pressable>
                 ))}
               </ScrollView>
@@ -1408,42 +1677,25 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
             <Text style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>All available KPI templates already added</Text>
           ) : null}
 
-          {/* Current KPIs with annual volume */}
-          {editKpiDefs.map((k) => (
-            <View key={k.kpi_id} style={{ backgroundColor: '#FFF', borderRadius: 6, padding: 10, borderWidth: 1, borderColor: '#E2E8F0', gap: 6 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#1E293B' }}>{k.name}</Text>
-                  <Text style={{ fontSize: 10, color: '#64748B' }}>
-                    Weight: {k.weight_percent}% · TTC: {k.ttc_definition ?? 'none'} · GP: {k.gp_value} · VP: {k.vp_value}
-                  </Text>
-                </View>
-                <Pressable onPress={() => handleRemoveKpiFromEdit(k.kpi_id)} style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#FEF2F2', borderRadius: 4 }}>
-                  <Text style={{ fontSize: 10, color: '#DC2626', fontWeight: '600' }}>✕</Text>
-                </Pressable>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
-                <Text style={{ fontSize: 11, color: '#64748B' }}>Annual events:</Text>
-                <TextInput
-                  value={editKpiAnnualVolume[k.kpi_id] ?? ''}
-                  onChangeText={(v) => setEditKpiAnnualVolume((prev) => ({ ...prev, [k.kpi_id]: v }))}
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor="#CBD5E1"
-                  style={{ width: 60, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, fontSize: 12, textAlign: 'center', color: '#1E293B' }}
-                />
-                <Text style={{ fontSize: 10, color: '#94A3B8' }}>/yr</Text>
-                {(() => {
-                  const vol = parseInt(editKpiAnnualVolume[k.kpi_id] ?? '0') || 0;
-                  if (vol <= 0) return null;
-                  const pp = parseFloat(editPricePoint) || 0;
-                  const cr = (parseFloat(editCommission) || 0) / 100;
-                  const pcPerEvent = pp * cr * (k.weight_percent / 100);
-                  return <Text style={{ fontSize: 10, color: '#94A3B8' }}>→ PC: ${(pcPerEvent * vol).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr</Text>;
-                })()}
-              </View>
+          {/* Current KPIs grouped by type */}
+          {editPcKpis.length > 0 ? (
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#3B82F6' }}>Pipeline Contribution ({editPcKpis.length})</Text>
+              {editPcKpis.map((k) => renderEditKpiRow(k))}
             </View>
-          ))}
+          ) : null}
+          {editGpKpis.length > 0 ? (
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#16A34A' }}>Growth Points ({editGpKpis.length})</Text>
+              {editGpKpis.map((k) => renderEditKpiRow(k))}
+            </View>
+          ) : null}
+          {editVpKpis.length > 0 ? (
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#9333EA' }}>Vitality Points ({editVpKpis.length})</Text>
+              {editVpKpis.map((k) => renderEditKpiRow(k))}
+            </View>
+          ) : null}
         </View>
 
         {/* Event Stream (Log Entries) */}
@@ -1581,21 +1833,24 @@ export default function AdminProjectionLabPanel({ adminUser }: { adminUser: stri
         </View>
 
         {/* Actuals / Volume Summary */}
-        {(s.closed_deals_override || s.kpi_annual_volume) ? (
+        {(s.closed_deals_override || s.kpi_monthly_volume) ? (
           <View style={{ backgroundColor: '#F0FDF4', borderRadius: 8, padding: 14, borderWidth: 1, borderColor: '#BBF7D0' }}>
             {s.closed_deals_override ? (
               <Text style={{ fontSize: 12, color: '#16A34A', fontWeight: '600', marginBottom: 4 }}>
                 Closed Deals: {s.closed_deals_override}/yr · {s.actual_closings.length} closings generated
               </Text>
             ) : null}
-            {s.kpi_annual_volume ? (
+            {s.volume_input ? (
+              <Text style={{ fontSize: 11, color: '#475569', fontWeight: '600', marginBottom: 4 }}>Time span: {s.volume_input.time_span_months} months</Text>
+            ) : null}
+            {s.kpi_monthly_volume ? (
               <View style={{ gap: 2 }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: '#334155' }}>KPI Volumes (annual):</Text>
-                {Object.entries(s.kpi_annual_volume).map(([kId, vol]) => {
+                <Text style={{ fontSize: 11, fontWeight: '600', color: '#334155' }}>KPI Volumes (per month):</Text>
+                {Object.entries(s.kpi_monthly_volume).map(([kId, vol]) => {
                   const kpi = s.kpi_definitions.find((k) => k.kpi_id === kId);
                   return (
                     <Text key={kId} style={{ fontSize: 11, color: '#64748B' }}>
-                      {kpi?.name ?? kId}: {vol}/yr
+                      {kpi?.name ?? kId}: {vol}/mo
                     </Text>
                   );
                 })}

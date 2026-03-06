@@ -862,10 +862,11 @@ function AdminKpiCatalogPanel({
   saveError: string | null;
   successMessage: string | null;
 }) {
-  type KpiSortKey = 'kpi' | 'type' | 'pc_weight' | 'range' | 'ttc' | 'decay' | 'status' | 'updated';
+  type KpiSortKey = 'kpi' | 'type' | 'pc_weight' | 'gp_value' | 'vp_value' | 'range' | 'ttc' | 'decay' | 'status' | 'updated';
   const [visibleRowCount, setVisibleRowCount] = useState(24);
   const [sortKey, setSortKey] = useState<KpiSortKey>('updated');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [isCreating, setIsCreating] = useState(false);
   const editing = Boolean(draft.id);
   const selectedRowId = draft.id ?? null;
   const hasActiveFilters = Boolean(searchQuery.trim() || statusFilter !== 'all' || typeFilter !== 'all');
@@ -898,6 +899,12 @@ function AdminKpiCatalogPanel({
           break;
         case 'pc_weight':
           result = compareNumbers(a.pc_weight ?? Number.NEGATIVE_INFINITY, b.pc_weight ?? Number.NEGATIVE_INFINITY);
+          break;
+        case 'gp_value':
+          result = compareNumbers(a.gp_value ?? Number.NEGATIVE_INFINITY, b.gp_value ?? Number.NEGATIVE_INFINITY);
+          break;
+        case 'vp_value':
+          result = compareNumbers(a.vp_value ?? Number.NEGATIVE_INFINITY, b.vp_value ?? Number.NEGATIVE_INFINITY);
           break;
         case 'range':
           result = compareStrings(formatKpiRange(a), formatKpiRange(b)) || compareStrings(a.name, b.name);
@@ -955,7 +962,7 @@ function AdminKpiCatalogPanel({
       <View style={styles.listPanel}>
         <View style={styles.listPanelHeader}>
           <Text style={styles.listPanelTitle}>KPI Catalog</Text>
-          <TouchableOpacity style={styles.listPanelCreateBtn} onPress={onResetDraft}>
+          <TouchableOpacity style={styles.listPanelCreateBtn} onPress={() => { setIsCreating(true); onResetDraft(); }}>
             <Text style={styles.listPanelCreateBtnText}>+ New</Text>
           </TouchableOpacity>
         </View>
@@ -982,8 +989,24 @@ function AdminKpiCatalogPanel({
             );
           })}
         </View>
+        <View style={[styles.listFilterRow, { flexWrap: 'wrap', gap: 4, marginTop: 2 }]}>
+          {(['all', 'PC', 'GP', 'VP', 'Actual', 'Pipeline_Anchor', 'Custom'] as const).map((value) => {
+            const sel = typeFilter === value;
+            return (
+              <Pressable
+                key={value}
+                onPress={() => onTypeFilterChange(value as typeof typeFilter)}
+                style={[styles.listFilterPill, sel && styles.listFilterPillSelected]}
+              >
+                <Text style={[styles.listFilterPillText, sel && styles.listFilterPillTextSelected]}>
+                  {value === 'all' ? 'All Types' : value === 'Pipeline_Anchor' ? 'Anchor' : value}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
         <Text style={styles.listCountText}>
-          {filteredRows.length} of {rows.length}{typeFilter !== 'all' ? ` (${typeFilter})` : ''}
+          {filteredRows.length} of {rows.length}{typeFilter !== 'all' ? ` · ${typeFilter}` : ''}
         </Text>
         {loading ? <Text style={styles.listCountText}>Loading...</Text> : null}
         {error ? <Text style={[styles.listCountText, styles.errorText]}>Error: {error}</Text> : null}
@@ -994,7 +1017,7 @@ function AdminKpiCatalogPanel({
               <Pressable
                 key={row.id}
                 style={[styles.listRow, isSelected && styles.listRowSelected]}
-                onPress={() => onSelectRow(row)}
+                onPress={() => { setIsCreating(false); onSelectRow(row); }}
                 accessibilityRole="button"
               >
                 <Text style={[styles.listRowTitle, isSelected && styles.listRowTitleSelected]} numberOfLines={1}>{row.name}</Text>
@@ -1017,22 +1040,26 @@ function AdminKpiCatalogPanel({
           ) : null}
         </ScrollView>
       </View>
-      {/* Right panel: detail/edit form */}
+      {/* Right panel: detail/edit form + reference table — single scroll */}
       <View style={[styles.detailPanel, { padding: 0 }]}>
-        {!editing && !draft.name ? (
-          <View style={[styles.detailEmptyState, { padding: 20 }]}>
-            <Text style={styles.detailEmptyTitle}>Select a KPI</Text>
-            <Text style={styles.detailEmptySubtitle}>Choose from the list to view or edit, or tap + New.</Text>
-          </View>
-        ) : (
-      <View style={{ flex: 1 }}>
-      <ScrollView style={{ maxHeight: '45%' }} contentContainerStyle={[styles.detailScrollInner, { padding: 20, paddingBottom: 8 }]}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }}>
+        {(editing || isCreating) ? (
+      <View style={{ padding: 20, paddingBottom: 8 }}>
       <View style={styles.formCard}>
         <View style={styles.formHeaderRow}>
-          <Text style={styles.formTitle}>{editing ? 'Edit KPI' : 'Create KPI'}</Text>
-          <TouchableOpacity style={styles.smallGhostButton} onPress={onResetDraft}>
-            <Text style={styles.smallGhostButtonText}>{editing ? 'New KPI' : 'Clear'}</Text>
-          </TouchableOpacity>
+          <Text style={styles.formTitle}>{editing ? 'Edit KPI' : 'Create New KPI'}</Text>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <TouchableOpacity style={styles.smallGhostButton} onPress={() => { setIsCreating(true); onResetDraft(); }}>
+              <Text style={styles.smallGhostButtonText}>{editing ? 'New KPI' : 'Clear'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.smallGhostButton, { paddingHorizontal: 8 }]}
+              onPress={() => { setIsCreating(false); onResetDraft(); }}
+              accessibilityLabel="Close form"
+            >
+              <Text style={[styles.smallGhostButtonText, { fontSize: 16 }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         {selectedRow ? (
           <View style={styles.selectedUserSummaryCard}>
@@ -1093,7 +1120,13 @@ function AdminKpiCatalogPanel({
         <View style={styles.formGrid}>
           <View style={styles.formField}>
             <Text style={styles.formLabel}>Name</Text>
-            <TextInput value={draft.name} onChangeText={(name) => onDraftChange({ name })} style={styles.input} />
+            <TextInput value={draft.name} onChangeText={(name) => {
+              const patch: Partial<typeof draft> = { name };
+              if (!editing) {
+                patch.slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+              }
+              onDraftChange(patch);
+            }} style={styles.input} />
           </View>
           <View style={styles.formField}>
             <Text style={styles.formLabel}>Slug</Text>
@@ -1264,73 +1297,85 @@ function AdminKpiCatalogPanel({
           ) : null}
         </View>
       </View>
-      </ScrollView>
-      {/* ── Sortable reference table (independent scroll) ── */}
-      <View style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 12 }}>
-        <View style={[styles.formCard, { flex: 1 }]}>
+      </View>
+        ) : (
+          <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
+            <Text style={styles.detailEmptySubtitle}>Select a KPI to edit, or tap + New to create.</Text>
+          </View>
+        )}
+      {/* ── Sortable reference table (always visible) ── */}
+      <View style={{ paddingHorizontal: 20, paddingBottom: 12 }}>
+        <View style={styles.formCard}>
         <View style={styles.formHeaderRow}>
           <Text style={styles.summaryLabel}>KPI Reference Table</Text>
           <Text style={styles.metaRow}>{sortedFilteredRows.length} items{hasActiveFilters ? ` (${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'})` : ''}</Text>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator>
-          <View>
-            <View style={styles.tableHeaderRow}>
-              <Pressable style={styles.colWide} onPress={() => onSortHeaderPress('kpi')}>
-                <Text style={[styles.tableHeaderCell, sortKey === 'kpi' && styles.tableHeaderCellActive]}>{kpiSortLabel('kpi', 'KPI')}</Text>
-              </Pressable>
-              <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('type')}>
-                <Text style={[styles.tableHeaderCell, sortKey === 'type' && styles.tableHeaderCellActive]}>{kpiSortLabel('type', 'Type')}</Text>
-              </Pressable>
-              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('pc_weight')}>
-                <Text style={[styles.tableHeaderCell, sortKey === 'pc_weight' && styles.tableHeaderCellActive]}>{kpiSortLabel('pc_weight', 'Weight')}</Text>
-              </Pressable>
-              <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('range')}>
-                <Text style={[styles.tableHeaderCell, sortKey === 'range' && styles.tableHeaderCellActive]}>{kpiSortLabel('range', 'Range')}</Text>
-              </Pressable>
-              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('ttc')}>
-                <Text style={[styles.tableHeaderCell, sortKey === 'ttc' && styles.tableHeaderCellActive]}>{kpiSortLabel('ttc', 'TTC')}</Text>
-              </Pressable>
-              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('decay')}>
-                <Text style={[styles.tableHeaderCell, sortKey === 'decay' && styles.tableHeaderCellActive]}>{kpiSortLabel('decay', 'Decay')}</Text>
-              </Pressable>
-              <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('status')}>
-                <Text style={[styles.tableHeaderCell, sortKey === 'status' && styles.tableHeaderCellActive]}>{kpiSortLabel('status', 'Status')}</Text>
-              </Pressable>
-              <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('updated')}>
-                <Text style={[styles.tableHeaderCell, sortKey === 'updated' && styles.tableHeaderCellActive]}>{kpiSortLabel('updated', 'Updated')}</Text>
-              </Pressable>
-            </View>
-            {visibleRows.map((row) => {
-              const isSelected = selectedRowId === row.id;
-              return (
-                <Pressable
-                  key={row.id}
-                  style={[styles.tableDataRow, isSelected && styles.tableDataRowSelectedStrong]}
-                  onPress={() => onSelectRow(row)}
-                  accessibilityRole="button"
-                >
-                  <View style={styles.colWide}><Text style={styles.tableCell} numberOfLines={1}>{row.name}</Text></View>
-                  <View style={styles.colMd}><Text style={styles.tableCell}>{row.type}</Text></View>
-                  <View style={styles.colSm}><Text style={styles.tableCell}>{row.pc_weight != null ? String(row.pc_weight) : '—'}</Text></View>
-                  <View style={styles.colMd}><Text style={styles.tableCell}>{formatKpiRange(row)}</Text></View>
-                  <View style={styles.colSm}><Text style={styles.tableCell}>{row.ttc_days != null ? `${row.ttc_days}d` : '—'}</Text></View>
-                  <View style={styles.colSm}><Text style={styles.tableCell}>{row.decay_days != null ? `${row.decay_days}d` : '—'}</Text></View>
-                  <View style={styles.colSm}><Text style={[styles.tableCell, { color: row.is_active ? '#16A34A' : '#DC2626' }]}>{row.is_active ? 'Active' : 'Inactive'}</Text></View>
-                  <View style={styles.colMd}><Text style={styles.tableCell}>{row.updated_at ? formatDateTimeShort(row.updated_at) : '—'}</Text></View>
+          <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ flexGrow: 1 }}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.tableHeaderRow}>
+                <Pressable style={styles.colWide} onPress={() => onSortHeaderPress('kpi')}>
+                  <Text style={[styles.tableHeaderCell, sortKey === 'kpi' && styles.tableHeaderCellActive]}>{kpiSortLabel('kpi', 'KPI')}</Text>
                 </Pressable>
-              );
-            })}
-            {sortedFilteredRows.length > visibleRowCount ? (
-              <TouchableOpacity style={styles.listShowMore} onPress={() => setVisibleRowCount((prev) => prev + 24)}>
-                <Text style={styles.listShowMoreText}>Show more ({sortedFilteredRows.length - visibleRowCount})</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </ScrollView>
+                <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('type')}>
+                  <Text style={[styles.tableHeaderCell, sortKey === 'type' && styles.tableHeaderCellActive]}>{kpiSortLabel('type', 'Type')}</Text>
+                </Pressable>
+                <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('pc_weight')}>
+                  <Text style={[styles.tableHeaderCell, sortKey === 'pc_weight' && styles.tableHeaderCellActive]}>{kpiSortLabel('pc_weight', 'Weight')}</Text>
+                </Pressable>
+                <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('gp_value')}>
+                  <Text style={[styles.tableHeaderCell, sortKey === 'gp_value' && styles.tableHeaderCellActive]}>{kpiSortLabel('gp_value', 'GP Val')}</Text>
+                </Pressable>
+                <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('vp_value')}>
+                  <Text style={[styles.tableHeaderCell, sortKey === 'vp_value' && styles.tableHeaderCellActive]}>{kpiSortLabel('vp_value', 'VP Val')}</Text>
+                </Pressable>
+                <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('range')}>
+                  <Text style={[styles.tableHeaderCell, sortKey === 'range' && styles.tableHeaderCellActive]}>{kpiSortLabel('range', 'Range')}</Text>
+                </Pressable>
+                <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('ttc')}>
+                  <Text style={[styles.tableHeaderCell, sortKey === 'ttc' && styles.tableHeaderCellActive]}>{kpiSortLabel('ttc', 'TTC')}</Text>
+                </Pressable>
+                <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('decay')}>
+                  <Text style={[styles.tableHeaderCell, sortKey === 'decay' && styles.tableHeaderCellActive]}>{kpiSortLabel('decay', 'Decay')}</Text>
+                </Pressable>
+                <Pressable style={styles.colSm} onPress={() => onSortHeaderPress('status')}>
+                  <Text style={[styles.tableHeaderCell, sortKey === 'status' && styles.tableHeaderCellActive]}>{kpiSortLabel('status', 'Status')}</Text>
+                </Pressable>
+                <Pressable style={styles.colMd} onPress={() => onSortHeaderPress('updated')}>
+                  <Text style={[styles.tableHeaderCell, sortKey === 'updated' && styles.tableHeaderCellActive]}>{kpiSortLabel('updated', 'Updated')}</Text>
+                </Pressable>
+              </View>
+              {visibleRows.map((row) => {
+                const isSelected = selectedRowId === row.id;
+                return (
+                  <Pressable
+                    key={row.id}
+                    style={[styles.tableDataRow, isSelected && styles.tableDataRowSelectedStrong]}
+                    onPress={() => { setIsCreating(false); onSelectRow(row); }}
+                    accessibilityRole="button"
+                  >
+                    <View style={styles.colWide}><Text style={styles.tableCell} numberOfLines={1}>{row.name}</Text></View>
+                    <View style={styles.colMd}><Text style={styles.tableCell}>{row.type}</Text></View>
+                    <View style={styles.colSm}><Text style={styles.tableCell}>{row.pc_weight != null ? String(row.pc_weight) : '—'}</Text></View>
+                    <View style={styles.colSm}><Text style={styles.tableCell}>{row.gp_value != null ? String(row.gp_value) : '—'}</Text></View>
+                    <View style={styles.colSm}><Text style={styles.tableCell}>{row.vp_value != null ? String(row.vp_value) : '—'}</Text></View>
+                    <View style={styles.colMd}><Text style={styles.tableCell}>{formatKpiRange(row)}</Text></View>
+                    <View style={styles.colSm}><Text style={styles.tableCell}>{row.ttc_days != null ? `${row.ttc_days}d` : '—'}</Text></View>
+                    <View style={styles.colSm}><Text style={styles.tableCell}>{row.decay_days != null ? `${row.decay_days}d` : '—'}</Text></View>
+                    <View style={styles.colSm}><Text style={[styles.tableCell, { color: row.is_active ? '#16A34A' : '#DC2626' }]}>{row.is_active ? 'Active' : 'Inactive'}</Text></View>
+                    <View style={styles.colMd}><Text style={styles.tableCell}>{row.updated_at ? formatDateTimeShort(row.updated_at) : '—'}</Text></View>
+                  </Pressable>
+                );
+              })}
+              {sortedFilteredRows.length > visibleRowCount ? (
+                <TouchableOpacity style={styles.listShowMore} onPress={() => setVisibleRowCount((prev) => prev + 24)}>
+                  <Text style={styles.listShowMoreText}>Show more ({sortedFilteredRows.length - visibleRowCount})</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </ScrollView>
         </View>
       </View>
-      </View>
-        )}
+      </ScrollView>
       </View>
     </View>
   );
@@ -5273,7 +5318,11 @@ export default function AdminShellScreen() {
         <View style={[styles.contentColumn, showCoachPortalExperience && styles.contentColumnCoach]}>
           <ScrollView
             style={styles.contentScroll}
-            contentContainerStyle={styles.contentScrollInner}
+            contentContainerStyle={[
+              styles.contentScrollInner,
+              (activeRoute.key === 'kpis' || activeRoute.key === 'challengeTemplates' || activeRoute.key === 'projectionLab') && { flex: 1 },
+            ]}
+            scrollEnabled={activeRoute.key !== 'kpis' && activeRoute.key !== 'challengeTemplates' && activeRoute.key !== 'projectionLab'}
             showsVerticalScrollIndicator
           >
             {showCoachPortalExperience ? (
@@ -5389,7 +5438,7 @@ export default function AdminShellScreen() {
               </View>
             ) : null}
 
-            <View style={styles.content}>
+            <View style={[styles.content, (activeRoute.key === 'kpis' || activeRoute.key === 'challengeTemplates' || activeRoute.key === 'projectionLab') && { flex: 1 }]}>
               <AdminRouteGuard
                 route={activeRoute}
                 rolesOverride={effectiveRoles}
@@ -5592,7 +5641,7 @@ export default function AdminShellScreen() {
                     }}
                   />
                 ) : activeRoute.key === 'projectionLab' ? (
-                  <AdminProjectionLabPanel adminUser={session?.user?.email ?? 'admin'} />
+                  <AdminProjectionLabPanel adminUser={session?.user?.email ?? 'admin'} catalogKpis={kpiRows} />
                 ) : (
                   <PlaceholderScreen route={activeRoute} rolesLabel={rolesLabel} />
                 )}
