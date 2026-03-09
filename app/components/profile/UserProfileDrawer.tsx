@@ -499,6 +499,15 @@ export default function UserProfileDrawer({
                 </View>
 
                 <View style={styles.primaryActionRow}>
+                  {isSelfProfile ? (
+                    <TouchableOpacity
+                      style={styles.secondaryActionBtn}
+                      onPress={() => setIdentityEditorOpen((prev) => !prev)}
+                    >
+                      <MaterialCommunityIcons name="account-edit-outline" size={16} color="#2158d5" />
+                      <Text style={styles.secondaryActionText}>{identityEditorOpen ? "Hide Editor" : "Edit Profile"}</Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <TouchableOpacity style={styles.messageBtn} onPress={onMessage}>
                     <MaterialCommunityIcons name="message-text-outline" size={16} color="#ffffff" />
                     <Text style={styles.messageBtnText}>Message</Text>

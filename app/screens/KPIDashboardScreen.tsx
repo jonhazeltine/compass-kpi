@@ -339,6 +339,7 @@ type TeamFlowScreen =
   | 'pipeline'
   | 'team_challenges';
 type TeamLogContextSource = 'team_leader_member_detail';
+const SELF_PROFILE_DRAWER_ID = '__self_profile__';
 type TeamLogContext = {
   member_id: string;
   member_name: string;
@@ -5294,6 +5295,13 @@ export default function KPIDashboardScreen({
   };
 
   const handleOpenProfileFromAvatar = () => {
+    if (selfProfileDrawerMember) {
+      setActiveTab('team');
+      setViewMode('log');
+      setTeamFlowScreen('dashboard');
+      setTeamProfileMemberId(selfProfileDrawerMember.id);
+      return;
+    }
     if (onOpenUserMenu) {
       onOpenUserMenu();
       return;
@@ -6251,6 +6259,51 @@ export default function KPIDashboardScreen({
       };
     });
   }, [teamRosterMembers]);
+  const selfProfileDrawerMember = useMemo<TeamDirectoryMember | null>(() => {
+    const sessionUserId = String(session?.user?.id ?? '').trim();
+    if (!sessionUserId) return null;
+    const rosterMatch = teamMemberDirectory.find((member) => String(member.userId ?? '').trim() === sessionUserId);
+    if (rosterMatch) return rosterMatch;
+    const fullName =
+      String(
+        session?.user?.user_metadata?.full_name ??
+          session?.user?.user_metadata?.name ??
+          session?.user?.user_metadata?.first_name ??
+          ''
+      ).trim() || 'Your Profile';
+    const avatarPresetId =
+      String(session?.user?.user_metadata?.avatar_preset_id ?? '').trim() || null;
+    const avatarUrl =
+      typeof session?.user?.user_metadata?.avatar_url === 'string' &&
+      /^https?:\/\//i.test(session.user.user_metadata.avatar_url)
+        ? session.user.user_metadata.avatar_url
+        : null;
+    const roleLabel =
+      currentUserTeamRoleFromRoster === 'leader'
+        ? 'Team Lead'
+        : teamPersonaVariant === 'leader'
+          ? 'Team Lead'
+          : 'Member';
+    return {
+      id: SELF_PROFILE_DRAWER_ID,
+      userId: sessionUserId,
+      name: fullName,
+      metric: '0%',
+      sub: String(session?.user?.email ?? '').trim() || 'Email unavailable',
+      roleLabel,
+      avatarTone: toneForAvatarPreset(avatarPresetId, '#dbeafe'),
+      avatarPresetId,
+      avatarUrl,
+      email: String(session?.user?.email ?? '').trim() || 'Email unavailable',
+      phone: '(000) 000-0000',
+      coachingGoals: [],
+      kpiGoals: [],
+      cohorts: [],
+      journeys: [],
+      onboardingKpiGoals: {},
+      profileKpiGoals: {},
+    };
+  }, [currentUserTeamRoleFromRoster, session?.user?.email, session?.user?.id, session?.user?.user_metadata, teamMemberDirectory, teamPersonaVariant]);
   const challengeSelected =
     challengeListItems.find((item) => item.id === challengeSelectedId) ?? challengeListItems[0];
   const challengeScopedKpis = useMemo(
@@ -11930,7 +11983,9 @@ export default function KPIDashboardScreen({
                       )
                     )
                   : 0;
-              const selectedTeamProfile = teamMembers.find((row) => row.id === teamProfileMemberId) ?? null;
+              const selectedTeamProfile =
+                teamMembers.find((row) => row.id === teamProfileMemberId) ??
+                (teamProfileMemberId === SELF_PROFILE_DRAWER_ID ? selfProfileDrawerMember : null);
               const openTeamDirectThread = async (member: (typeof teamMembers)[number], source: CoachingShellEntrySource) => {
                 const sessionUserId = String(session?.user?.id ?? '').trim();
                 const resolvedTargetUserIdRaw = member.userId ?? (await resolveTeamMemberUserId(member));
