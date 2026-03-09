@@ -25,6 +25,33 @@ import {
   type AdminChallengeTemplatePayload,
   validateAdminChallengeTemplatePayload,
 } from "./services/adminChallengeTemplateValidation";
+import {
+  buildChannelMessageReadModel,
+  buildLinkedTaskRights,
+  buildTaskAssignmentRef,
+  buildTaskMessageBody,
+  canAuthorCoachTask,
+  canMutateLinkedTask,
+  normalizeTaskStatus,
+  parseTaskAssignmentRef,
+  serializeChannelMessageBody,
+  type ChannelMessagePayload,
+  type LinkedTaskType,
+  validateChannelMessagePayload,
+} from "./services/channelMessageTasks";
+import {
+  canHostLiveSession as canHostLiveSessionSvc,
+  resolveLiveProviderMode as resolveLiveProviderModeSvc,
+  validateLiveSessionCreatePayload as validateLiveSessionCreatePayloadSvc,
+  validateLiveSessionJoinTokenPayload as validateLiveSessionJoinTokenPayloadSvc,
+  createSession as createLiveSessionService,
+  refreshSession as refreshLiveSessionService,
+  issueJoinToken as issueJoinTokenService,
+  endSession as endLiveSessionService,
+  getLiveSession,
+  getIdempotentSession,
+  buildSessionResponse,
+} from "./services/muxLiveService";
 
 dotenv.config();
 
@@ -182,15 +209,6 @@ type ChannelCreatePayload = {
   team_id?: string;
   context_id?: string;
   member_user_ids?: string[];
-};
-
-type ChannelMessagePayload = {
-  body?: string;
-  message_type?: "message" | "media_attachment";
-  media_attachment?: {
-    media_id: string;
-    caption?: string;
-  };
 };
 
 type MarkSeenPayload = {
@@ -5363,7 +5381,7 @@ app.post("/api/coaching/media/live-sessions", async (req, res) => {
       return errorEnvelopeResponse(res, auth.status, "unauthenticated", auth.error, req.headers["x-request-id"]);
     }
 
-    const payloadCheck = validateLiveSessionCreatePayload(req.body);
+    const payloadCheck = validateLiveSessionCreatePayloadSvc(req.body);
     if (!payloadCheck.ok) {
       return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
     }
@@ -5380,76 +5398,22 @@ app.post("/api/coaching/media/live-sessions", async (req, res) => {
 
     const roleResult = await getUserRoleForScope(auth.user.id);
     if (!roleResult.ok) return res.status(roleResult.status).json({ error: roleResult.error });
-    if (!canHostLiveSession(roleResult.role)) {
+    if (!canHostLiveSessionSvc(roleResult.role)) {
       return errorEnvelopeResponse(
-        res,
-        403,
-        "unauthorized_scope",
+        res, 403, "unauthorized_scope",
         "Caller role does not have live session host scope for this channel",
         req.headers["x-request-id"]
       );
     }
 
-    const idempotencyLookup = `${auth.user.id}::${payload.idempotency_key}`;
-    const existingSessionId = liveSessionByIdempotencyKey.get(idempotencyLookup);
-    if (existingSessionId) {
-      const existing = liveSessionStore.get(existingSessionId);
-      if (existing) {
-        return res.status(200).json({
-          session: existing,
-          idempotent_replay: true,
-          provider: existing.provider,
-          host_url: existing.host_url,
-          join_url: existing.join_url,
-          live_url: existing.live_url,
-        });
-      }
+    const result = await createLiveSessionService({ userId: auth.user.id, payload });
+    if (!result.ok) {
+      return errorEnvelopeResponse(res, result.status, "create_failed", result.error, req.headers["x-request-id"]);
     }
-
-    if (resolveLiveProviderMode() === "unavailable") {
-      return errorEnvelopeResponse(
-        res,
-        503,
-        "provider_unavailable",
-        "Mux live provider is unavailable",
-        req.headers["x-request-id"]
-      );
-    }
-
-    const nowIso = new Date().toISOString();
-    const startsAt = payload.starts_at ?? nowIso;
-    const status: LiveSessionStatus = new Date(startsAt).getTime() > Date.now() ? "scheduled" : "live";
-    const sessionId = `live_${crypto.randomUUID()}`;
-    const launchUrls = buildLiveSessionLaunchUrls({
-      sessionId,
-      channelId: payload.channel_id,
-      role: "host",
-    });
-    const record: LiveSessionRecord = {
-      session_id: sessionId,
-      channel_id: payload.channel_id,
-      title: payload.title,
-      status,
-      host_user_id: auth.user.id,
-      provider: "mux_live",
-      host_url: launchUrls.host_url,
-      join_url: launchUrls.join_url,
-      live_url: launchUrls.live_url,
-      started_at: startsAt,
-      ends_at: payload.ends_at ?? null,
-      created_at: nowIso,
-      updated_at: nowIso,
-    };
-
-    liveSessionStore.set(record.session_id, record);
-    liveSessionByIdempotencyKey.set(idempotencyLookup, record.session_id);
-    return res.status(201).json({
-      session: record,
-      idempotent_replay: false,
-      provider: record.provider,
-      host_url: record.host_url,
-      join_url: record.join_url,
-      live_url: record.live_url,
+    return res.status(result.idempotent_replay ? 200 : 201).json({
+      ...buildSessionResponse(result.session, true),
+      idempotent_replay: result.idempotent_replay,
+      caller_role: "host",
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -5469,7 +5433,7 @@ app.get("/api/coaching/media/live-sessions/:id", async (req, res) => {
     if (!sessionId) {
       return errorEnvelopeResponse(res, 422, "invalid_request", "session id is required", req.headers["x-request-id"]);
     }
-    const session = liveSessionStore.get(sessionId);
+    const session = await refreshLiveSessionService(sessionId);
     if (!session) {
       return errorEnvelopeResponse(res, 404, "not_found", "Live session not found", req.headers["x-request-id"]);
     }
@@ -5483,12 +5447,10 @@ app.get("/api/coaching/media/live-sessions/:id", async (req, res) => {
       return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
     }
 
+    const callerIsHost = session.host_user_id === auth.user.id;
     return res.json({
-      session,
-      provider: session.provider,
-      host_url: session.host_url,
-      join_url: session.join_url,
-      live_url: session.live_url,
+      ...buildSessionResponse(session, callerIsHost),
+      caller_role: callerIsHost ? "host" : "viewer",
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -5508,7 +5470,7 @@ app.post("/api/coaching/media/live-sessions/:id/join-token", async (req, res) =>
     if (!sessionId) {
       return errorEnvelopeResponse(res, 422, "invalid_request", "session id is required", req.headers["x-request-id"]);
     }
-    const session = liveSessionStore.get(sessionId);
+    const session = getLiveSession(sessionId);
     if (!session) {
       return errorEnvelopeResponse(res, 404, "not_found", "Live session not found", req.headers["x-request-id"]);
     }
@@ -5525,54 +5487,30 @@ app.post("/api/coaching/media/live-sessions/:id/join-token", async (req, res) =>
       return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
     }
 
-    const payloadCheck = validateLiveSessionJoinTokenPayload(req.body);
+    const payloadCheck = validateLiveSessionJoinTokenPayloadSvc(req.body);
     if (!payloadCheck.ok) {
       return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
     }
-    if (resolveLiveProviderMode() === "unavailable") {
+    if (resolveLiveProviderModeSvc() === "unavailable") {
       return errorEnvelopeResponse(
-        res,
-        503,
-        "provider_unavailable",
+        res, 503, "provider_unavailable",
         "Mux live provider is unavailable",
         req.headers["x-request-id"]
       );
     }
-    const requestedRole = payloadCheck.payload.role ?? "participant";
-    const role: "host" | "participant" | "viewer" = session.host_user_id === auth.user.id ? "host" : requestedRole;
-    const issuedAtMs = Date.now();
-    const ttlSeconds = Math.max(60, Math.min(3600, toNumberOrZero(process.env.LIVE_SESSION_JOIN_TOKEN_TTL_SECONDS ?? 900) || 900));
-    const token = issueLiveSessionJoinToken({
-      sessionId,
-      channelId: session.channel_id,
+    const requestedRole = payloadCheck.payload.role ?? "viewer";
+    const result = issueJoinTokenService({
+      session,
       userId: auth.user.id,
-      role,
-      issuedAtMs,
-      ttlSeconds,
+      requestedRole,
+      ttlSeconds: 3600,
     });
 
-    const sessionUpdate: LiveSessionRecord = {
-      ...session,
-      status: session.status === "scheduled" ? "live" : session.status,
-      ...buildLiveSessionLaunchUrls({
-        sessionId,
-        channelId: session.channel_id,
-        role,
-        token,
-      }),
-      updated_at: new Date().toISOString(),
-    };
-    liveSessionStore.set(sessionId, sessionUpdate);
-
     return res.json({
-      session: sessionUpdate,
-      role,
-      token,
-      token_expires_at: new Date(issuedAtMs + ttlSeconds * 1000).toISOString(),
-      provider: sessionUpdate.provider,
-      host_url: sessionUpdate.host_url,
-      join_url: sessionUpdate.join_url,
-      live_url: sessionUpdate.live_url,
+      ...buildSessionResponse(result.session, result.role === "host"),
+      caller_role: result.role,
+      token: result.token,
+      token_expires_at: result.tokenExpiresAt,
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -5592,26 +5530,22 @@ app.post("/api/coaching/media/live-sessions/:id/end", async (req, res) => {
     if (!sessionId) {
       return errorEnvelopeResponse(res, 422, "invalid_request", "session id is required", req.headers["x-request-id"]);
     }
-    const session = liveSessionStore.get(sessionId);
+    const session = getLiveSession(sessionId);
     if (!session) {
       return errorEnvelopeResponse(res, 404, "not_found", "Live session not found", req.headers["x-request-id"]);
     }
 
     const roleResult = await getUserRoleForScope(auth.user.id);
     if (!roleResult.ok) return res.status(roleResult.status).json({ error: roleResult.error });
-    const adminLike = roleResult.role === "admin" || roleResult.role === "super_admin";
-    if (!adminLike && session.host_user_id !== auth.user.id) {
+    if (!canHostLiveSessionSvc(roleResult.role) && session.host_user_id !== auth.user.id) {
       return errorEnvelopeResponse(res, 403, "unauthorized_scope", "Only the host or admin can end this live session", req.headers["x-request-id"]);
     }
 
-    const ended: LiveSessionRecord = {
-      ...session,
-      status: "ended",
-      ends_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    liveSessionStore.set(sessionId, ended);
-    return res.json({ session: ended });
+    const result = await endLiveSessionService(sessionId);
+    if (!result.ok) {
+      return errorEnvelopeResponse(res, 500, "end_failed", result.error, req.headers["x-request-id"]);
+    }
+    return res.json(buildSessionResponse(result.session, false));
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/coaching/media/live-sessions/:id/end", err);
@@ -10744,58 +10678,6 @@ function validateChannelSyncPayload(body: unknown):
   };
 }
 
-function validateChannelMessagePayload(body: unknown):
-  | { ok: true; payload: ChannelMessagePayload }
-  | { ok: false; status: number; error: string } {
-  if (!body || typeof body !== "object") {
-    return { ok: false, status: 400, error: "Body must be a JSON object" };
-  }
-  const candidate = body as Partial<ChannelMessagePayload>;
-  const messageType = candidate.message_type ?? "message";
-  if (messageType !== "message" && messageType !== "media_attachment") {
-    return { ok: false, status: 422, error: "message_type must be one of: message, media_attachment" };
-  }
-
-  const bodyTextRaw = typeof candidate.body === "string" ? candidate.body.trim() : "";
-  if (messageType === "message") {
-    if (!bodyTextRaw) {
-      return { ok: false, status: 422, error: "body is required" };
-    }
-    if (bodyTextRaw.length > 4000) {
-      return { ok: false, status: 422, error: "body is too long (max 4000 chars)" };
-    }
-    return { ok: true, payload: { body: bodyTextRaw, message_type: "message" } };
-  }
-
-  if (!isRecord(candidate.media_attachment)) {
-    return { ok: false, status: 422, error: "media_attachment is required when message_type=media_attachment" };
-  }
-  if (typeof candidate.media_attachment.media_id !== "string" || !candidate.media_attachment.media_id.trim()) {
-    return { ok: false, status: 422, error: "media_attachment.media_id is required" };
-  }
-  const captionRaw =
-    typeof candidate.media_attachment.caption === "string" ? candidate.media_attachment.caption.trim() : undefined;
-  if (captionRaw && captionRaw.length > 4000) {
-    return { ok: false, status: 422, error: "media_attachment.caption is too long (max 4000 chars)" };
-  }
-  if (bodyTextRaw && bodyTextRaw.length > 4000) {
-    return { ok: false, status: 422, error: "body is too long (max 4000 chars)" };
-  }
-
-  const normalizedText = bodyTextRaw || captionRaw || "Shared media attachment";
-  return {
-    ok: true,
-    payload: {
-      body: normalizedText,
-      message_type: "media_attachment",
-      media_attachment: {
-        media_id: candidate.media_attachment.media_id.trim(),
-        ...(captionRaw ? { caption: captionRaw } : {}),
-      },
-    },
-  };
-}
-
 function validateMarkSeenPayload(body: unknown):
   | { ok: true; payload: MarkSeenPayload }
   | { ok: false; status: number; error: string } {
@@ -10807,111 +10689,6 @@ function validateMarkSeenPayload(body: unknown):
     return { ok: false, status: 422, error: "channel_id is required" };
   }
   return { ok: true, payload: { channel_id: candidate.channel_id } };
-}
-
-function serializeChannelMessageBody(payload: ChannelMessagePayload & {
-  lifecycle?: {
-    processing_status: MuxLifecycleStatus;
-    playback_ready: boolean;
-  };
-  file_url?: string;
-  content_type?: string;
-}): string {
-  const text = payload.body?.trim() || "";
-  if (payload.message_type !== "media_attachment" || !payload.media_attachment) {
-    return text;
-  }
-  return JSON.stringify({
-    text,
-    media_attachment: payload.media_attachment,
-    lifecycle: payload.lifecycle ?? null,
-    ...(payload.file_url ? { file_url: payload.file_url } : {}),
-    ...(payload.content_type ? { content_type: payload.content_type } : {}),
-  });
-}
-
-function buildChannelMessageReadModel(row: {
-  id?: unknown;
-  channel_id?: unknown;
-  sender_user_id?: unknown;
-  body?: unknown;
-  message_type?: unknown;
-  created_at?: unknown;
-}): {
-  id: string;
-  channel_id: string;
-  sender_user_id: string;
-  body: string;
-  message_type: string;
-  created_at: string | null;
-  media_attachment?: {
-    media_id: string;
-    caption?: string;
-    lifecycle?: {
-      processing_status: MuxLifecycleStatus;
-      playback_ready: boolean;
-    } | null;
-  };
-} {
-  const base = {
-    id: String(row.id ?? ""),
-    channel_id: String(row.channel_id ?? ""),
-    sender_user_id: String(row.sender_user_id ?? ""),
-    body: typeof row.body === "string" ? row.body : "",
-    message_type: String(row.message_type ?? "message"),
-    created_at: typeof row.created_at === "string" ? row.created_at : null,
-  };
-
-  let parsed: Record<string, unknown> | null = null;
-  if (typeof row.body === "string" && row.body.trim().startsWith("{")) {
-    try {
-      const json = JSON.parse(row.body) as unknown;
-      if (isRecord(json)) parsed = json;
-    } catch {
-      parsed = null;
-    }
-  }
-  const isAttachmentByType = base.message_type === "media_attachment";
-  const attachmentPayload = parsed && isRecord(parsed.media_attachment) ? parsed.media_attachment : null;
-  const isAttachmentByPayload = Boolean(attachmentPayload?.media_id);
-  if (!isAttachmentByType && !isAttachmentByPayload) {
-    return base;
-  }
-
-  if (!parsed || !attachmentPayload) {
-    return {
-      ...base,
-      message_type: "media_attachment",
-      media_attachment: {
-        media_id: "",
-      },
-    };
-  }
-
-  const lifecycleRaw = isRecord(parsed.lifecycle) ? parsed.lifecycle : null;
-  const lifecycle =
-    lifecycleRaw &&
-    typeof lifecycleRaw.processing_status === "string" &&
-    typeof lifecycleRaw.playback_ready === "boolean"
-      ? {
-          processing_status: normalizeMuxLifecycleStatus(lifecycleRaw.processing_status),
-          playback_ready: lifecycleRaw.playback_ready,
-        }
-      : null;
-
-  const text = typeof parsed.text === "string" ? parsed.text : base.body;
-  return {
-    ...base,
-    message_type: "media_attachment",
-    body: text,
-    media_attachment: {
-      media_id: typeof attachmentPayload.media_id === "string" ? attachmentPayload.media_id : "",
-      ...(typeof attachmentPayload.caption === "string" ? { caption: attachmentPayload.caption } : {}),
-      ...(lifecycle ? { lifecycle } : {}),
-      ...(typeof parsed.file_url === "string" && parsed.file_url ? { file_url: parsed.file_url } : {}),
-      ...(typeof parsed.content_type === "string" && parsed.content_type ? { content_type: parsed.content_type } : {}),
-    },
-  };
 }
 
 function validatePushTokenPayload(body: unknown):
@@ -11703,64 +11480,7 @@ function validateCoachingMediaPlaybackTokenPayload(body: unknown):
   };
 }
 
-function validateLiveSessionCreatePayload(body: unknown):
-  | { ok: true; payload: LiveSessionCreatePayload }
-  | { ok: false; status: number; error: string } {
-  if (!isRecord(body)) return { ok: false, status: 400, error: "Body must be a JSON object" };
-  const channelId = typeof body.channel_id === "string" ? body.channel_id.trim() : "";
-  const title = typeof body.title === "string" ? body.title.trim() : "";
-  const idempotencyKey = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
-  if (!channelId) return { ok: false, status: 422, error: "channel_id is required" };
-  if (!title) return { ok: false, status: 422, error: "title is required" };
-  if (!idempotencyKey) return { ok: false, status: 422, error: "idempotency_key is required" };
-  if (title.length > 120) return { ok: false, status: 422, error: "title is too long (max 120 chars)" };
-
-  const startsAtRaw = typeof body.starts_at === "string" && body.starts_at.trim() ? body.starts_at.trim() : undefined;
-  let startsAt: string | undefined;
-  if (startsAtRaw) {
-    const parsed = new Date(startsAtRaw);
-    if (Number.isNaN(parsed.getTime())) {
-      return { ok: false, status: 422, error: "starts_at must be a valid ISO timestamp when provided" };
-    }
-    startsAt = parsed.toISOString();
-  }
-  const endsAtRaw = typeof body.ends_at === "string" && body.ends_at.trim() ? body.ends_at.trim() : undefined;
-  let endsAt: string | undefined;
-  if (endsAtRaw) {
-    const parsed = new Date(endsAtRaw);
-    if (Number.isNaN(parsed.getTime())) {
-      return { ok: false, status: 422, error: "ends_at must be a valid ISO timestamp when provided" };
-    }
-    endsAt = parsed.toISOString();
-  }
-  if (startsAt && endsAt && new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
-    return { ok: false, status: 422, error: "ends_at must be later than starts_at" };
-  }
-  return {
-    ok: true,
-    payload: {
-      channel_id: channelId,
-      title,
-      starts_at: startsAt,
-      ends_at: endsAt,
-      idempotency_key: idempotencyKey,
-    },
-  };
-}
-
-function validateLiveSessionJoinTokenPayload(body: unknown):
-  | { ok: true; payload: LiveSessionJoinTokenPayload }
-  | { ok: false; status: number; error: string } {
-  if (body === undefined || body === null) {
-    return { ok: true, payload: {} };
-  }
-  if (!isRecord(body)) return { ok: false, status: 400, error: "Body must be a JSON object" };
-  const role = body.role;
-  if (role !== undefined && role !== "host" && role !== "participant" && role !== "viewer") {
-    return { ok: false, status: 422, error: "role must be one of: host, participant, viewer" };
-  }
-  return { ok: true, payload: { role: role as LiveSessionJoinTokenPayload["role"] } };
-}
+// validateLiveSessionCreatePayload, validateLiveSessionJoinTokenPayload → services/muxLiveService.ts
 
 async function canAccessMuxMediaForRole(
   userId: string,
@@ -11980,57 +11700,7 @@ async function emitMuxLifecycleChannelMessage(media: MuxMediaSessionRecord, prov
   await fanOutUnreadCounters(media.channel_id, media.owner_user_id);
 }
 
-function canHostLiveSession(role: string): boolean {
-  return role === "admin" || role === "super_admin" || role === "coach" || role === "team_leader" || role === "challenge_sponsor";
-}
-
-function resolveLiveProviderMode(): "mock" | "unavailable" {
-  const raw = String(process.env.MUX_LIVE_PROVIDER_MODE ?? process.env.MUX_PROVIDER_MODE ?? "mock").trim().toLowerCase();
-  if (raw === "down" || raw === "unavailable" || raw === "disabled" || raw === "off") return "unavailable";
-  return "mock";
-}
-
-function buildLiveSessionLaunchUrls(input: {
-  sessionId: string;
-  channelId: string;
-  role: "host" | "participant" | "viewer";
-  token?: string;
-}): { host_url: string; join_url: string; live_url: string } {
-  const baseRaw = String(process.env.MUX_LIVE_BASE_URL ?? "https://mock.mux.local/live").trim();
-  const base = baseRaw.endsWith("/") ? baseRaw.slice(0, -1) : baseRaw;
-  const liveUrl = `${base}/${encodeURIComponent(input.sessionId)}`;
-  const hostUrl = `${liveUrl}?channel_id=${encodeURIComponent(input.channelId)}&role=host`;
-  const joinParams = new URLSearchParams({
-    channel_id: input.channelId,
-    role: input.role,
-  });
-  if (input.token) joinParams.set("token", input.token);
-  return {
-    host_url: hostUrl,
-    join_url: `${liveUrl}?${joinParams.toString()}`,
-    live_url: liveUrl,
-  };
-}
-
-function issueLiveSessionJoinToken(input: {
-  sessionId: string;
-  channelId: string;
-  userId: string;
-  role: "host" | "participant" | "viewer";
-  issuedAtMs: number;
-  ttlSeconds: number;
-}): string {
-  const payload = {
-    provider: "compass_live",
-    session_id: input.sessionId,
-    channel_id: input.channelId,
-    user_id: input.userId,
-    role: input.role,
-    issued_at: new Date(input.issuedAtMs).toISOString(),
-    expires_at: new Date(input.issuedAtMs + input.ttlSeconds * 1000).toISOString(),
-  };
-  return Buffer.from(JSON.stringify(payload)).toString("base64url");
-}
+// canHostLiveSession, resolveLiveProviderMode, buildLiveSessionLaunchUrls, issueLiveSessionJoinToken → services/muxLiveService.ts
 
 function resolveRequestId(requestIdHeader?: string | string[]): string {
   if (typeof requestIdHeader === "string" && requestIdHeader.trim()) {

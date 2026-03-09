@@ -25,6 +25,7 @@ import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
 import LottieSlot from '../components/LottieSlot';
 import { CommsHub } from '../components/comms';
 import type { ChannelRow as CommsChannelRow } from '../components/comms';
+import type { LinkedTaskCard, ThreadSendPayload } from '../components/comms/messageLinkedTasks';
 import DeveloperToolsModal from '../components/dev/DeveloperToolsModal';
 import { KpiIcon, KpiIconPicker } from '../components/kpi';
 import ReportsTabV2 from '../components/reports/ReportsTabV2';
@@ -791,6 +792,8 @@ type ChannelMessageRow = {
   channel_id: string;
   sender_user_id?: string | null;
   body: string;
+  message_kind?: 'text' | 'personal_task' | 'coach_task' | string;
+  linked_task_card?: LinkedTaskCard | null;
   message_type?: 'message' | 'broadcast' | 'media_attachment' | string;
   created_at?: string | null;
   package_visibility?: RuntimePackageVisibilityOutcome | null;
@@ -887,13 +890,18 @@ type LiveSessionRecord = {
 type LiveSessionResponse = {
   session?: LiveSessionRecord;
   idempotent_replay?: boolean;
-  role?: 'host' | 'participant' | 'viewer';
+  role?: 'host' | 'viewer';
+  caller_role?: 'host' | 'viewer';
   token?: string;
   token_expires_at?: string;
   provider?: string;
+  provider_mode?: 'mock' | 'mux' | 'unavailable';
   host_url?: string;
   join_url?: string;
   live_url?: string;
+  stream_key?: string;
+  rtmp_url?: string;
+  playback_url?: string;
   error?: string | { code?: string; message?: string; request_id?: string };
 };
 
@@ -2567,6 +2575,11 @@ export default function KPIDashboardScreen({
   const [liveSessionBusy, setLiveSessionBusy] = useState(false);
   const [liveSessionStatus, setLiveSessionStatus] = useState<string | null>(null);
   const [activeLiveSession, setActiveLiveSession] = useState<LiveSessionRecord | null>(null);
+  const [liveCallerRole, setLiveCallerRole] = useState<'host' | 'viewer' | null>(null);
+  const [liveStreamKey, setLiveStreamKey] = useState<string | null>(null);
+  const [liveRtmpUrl, setLiveRtmpUrl] = useState<string | null>(null);
+  const [livePlaybackUrl, setLivePlaybackUrl] = useState<string | null>(null);
+  const [liveProviderMode, setLiveProviderMode] = useState<'mock' | 'mux' | 'unavailable' | null>(null);
   const commsClientSessionIdRef = useRef(
     `mobile_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
   );
@@ -8265,6 +8278,9 @@ export default function KPIDashboardScreen({
         bodyOverride?: string;
         messageType?: 'message' | 'media_attachment';
         mediaAttachment?: { media_id: string; caption?: string };
+        messageKind?: 'text' | 'personal_task' | 'coach_task';
+        taskAction?: 'create' | 'update' | 'complete';
+        taskCardDraft?: ThreadSendPayload['task_card_draft'];
       }
     ) => {
       const token = session?.access_token;
@@ -8300,7 +8316,12 @@ export default function KPIDashboardScreen({
                   caption: options?.mediaAttachment?.caption ?? undefined,
                 },
               }
-            : { body: bodyText };
+            : {
+                ...(bodyText ? { body: bodyText } : {}),
+                ...(options?.messageKind ? { message_kind: options.messageKind } : {}),
+                ...(options?.taskAction ? { task_action: options.taskAction } : {}),
+                ...(options?.taskCardDraft ? { task_card_draft: options.taskCardDraft } : {}),
+              };
         const response = await fetch(`${API_URL}/api/channels/${encodeURIComponent(channelId)}/messages`, {
           method: 'POST',
           headers: {
@@ -8531,26 +8552,27 @@ export default function KPIDashboardScreen({
     [coachingShellContext.selectedJourneyId, coachingShellContext.selectedLessonId, session?.access_token]
   );
 
+  /** Apply Mux live-session response fields to local state */
+  const applyLiveSessionResponse = useCallback((payload: LiveSessionResponse) => {
+    if (payload.session) setActiveLiveSession(payload.session);
+    setLiveCallerRole(payload.caller_role ?? payload.role ?? null);
+    setLiveStreamKey(payload.stream_key ?? null);
+    setLiveRtmpUrl(payload.rtmp_url ?? null);
+    setLivePlaybackUrl(payload.playback_url ?? null);
+    if (payload.provider_mode) setLiveProviderMode(payload.provider_mode);
+  }, []);
+
   const startLiveSession = useCallback(
     async (channelId: string | null) => {
       const token = session?.access_token;
-      if (!token) {
-        setLiveSessionStatus('Sign in is required for live sessions (401).');
-        return;
-      }
-      if (!channelId) {
-        setLiveSessionStatus('Select a channel before starting a live session.');
-        return;
-      }
+      if (!token) { setLiveSessionStatus('Sign in is required for live sessions (401).'); return; }
+      if (!channelId) { setLiveSessionStatus('Select a channel before starting a live session.'); return; }
       setLiveSessionBusy(true);
       setLiveSessionStatus('Starting live session…');
       try {
         const response = await fetch(`${API_URL}/api/coaching/media/live-sessions`, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             channel_id: channelId,
             title: `Live Session ${new Date().toLocaleTimeString()}`,
@@ -8559,54 +8581,29 @@ export default function KPIDashboardScreen({
         });
         const payload = (await response.json().catch(() => ({}))) as LiveSessionResponse;
         if (!response.ok) {
-          const fallback = `Live session start failed (${response.status})`;
-          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback)));
+          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, `Live session start failed (${response.status})`)));
           return;
         }
-        if (payload.session) {
-          setActiveLiveSession(payload.session);
-          const openUrlCandidate =
-            (typeof payload.host_url === 'string' && payload.host_url.trim()) ||
-            (typeof payload.join_url === 'string' && payload.join_url.trim()) ||
-            (typeof payload.live_url === 'string' && payload.live_url.trim()) ||
-            null;
-          if (openUrlCandidate) {
-            const canOpen = await Linking.canOpenURL(openUrlCandidate);
-            if (canOpen) {
-              await Linking.openURL(openUrlCandidate);
-              setLiveSessionStatus(`Live session active: ${payload.session.session_id} (${payload.session.status}).`);
-            } else {
-              setLiveSessionStatus(
-                `Live session active: ${payload.session.session_id}. Room URL could not be opened on this device.`
-              );
-            }
-          } else {
-            setLiveSessionStatus(
-              `Live session active: ${payload.session.session_id} (${payload.session.status}). Launch URL unavailable for this provider session.`
-            );
-          }
-        }
+        applyLiveSessionResponse(payload);
+        const sid = payload.session?.session_id ?? '?';
+        const s = payload.session?.status ?? '?';
+        const mode = payload.provider_mode ?? 'unknown';
+        setLiveSessionStatus(`Live session active: ${sid} (${s}) [${mode}].`);
       } catch (err) {
         setLiveSessionStatus(err instanceof Error ? err.message : 'Live session start failed.');
       } finally {
         setLiveSessionBusy(false);
       }
     },
-    [session?.access_token]
+    [session?.access_token, applyLiveSessionResponse]
   );
 
   const refreshLiveSession = useCallback(
     async () => {
       const token = session?.access_token;
       const sessionId = activeLiveSession?.session_id ?? null;
-      if (!token) {
-        setLiveSessionStatus('Sign in is required to refresh live session state (401).');
-        return;
-      }
-      if (!sessionId) {
-        setLiveSessionStatus('No live session id available to refresh.');
-        return;
-      }
+      if (!token) { setLiveSessionStatus('Sign in is required to refresh live session state (401).'); return; }
+      if (!sessionId) { setLiveSessionStatus('No live session id available to refresh.'); return; }
       setLiveSessionBusy(true);
       try {
         const response = await fetch(`${API_URL}/api/coaching/media/live-sessions/${encodeURIComponent(sessionId)}`, {
@@ -8614,93 +8611,41 @@ export default function KPIDashboardScreen({
         });
         const payload = (await response.json().catch(() => ({}))) as LiveSessionResponse;
         if (!response.ok) {
-          const fallback = `Live session refresh failed (${response.status})`;
-          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback)));
+          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, `Live session refresh failed (${response.status})`)));
           return;
         }
-        if (payload.session) {
-          setActiveLiveSession(payload.session);
-          setLiveSessionStatus(`Live session refreshed: ${payload.session.session_id} (${payload.session.status}).`);
-        }
+        applyLiveSessionResponse(payload);
+        setLiveSessionStatus(`Live session refreshed: ${payload.session?.session_id ?? sessionId} (${payload.session?.status ?? '?'}).`);
       } catch (err) {
         setLiveSessionStatus(err instanceof Error ? err.message : 'Live session refresh failed.');
       } finally {
         setLiveSessionBusy(false);
       }
     },
-    [activeLiveSession?.session_id, session?.access_token]
+    [activeLiveSession?.session_id, session?.access_token, applyLiveSessionResponse]
   );
 
-  const joinLiveSession = useCallback(
+  /** Watch live stream — opens HLS playback URL for viewers */
+  const watchLiveStream = useCallback(
     async () => {
-      const token = session?.access_token;
-      const sessionId = activeLiveSession?.session_id ?? null;
-      if (!token) {
-        setLiveSessionStatus('Sign in is required to join live sessions (401).');
-        return;
-      }
-      if (!sessionId) {
-        setLiveSessionStatus('No active live session available to join.');
-        return;
-      }
-      setLiveSessionBusy(true);
+      if (!livePlaybackUrl) { setLiveSessionStatus('Playback URL not available yet. Try refreshing.'); return; }
       try {
-        const response = await fetch(`${API_URL}/api/coaching/media/live-sessions/${encodeURIComponent(sessionId)}/join-token`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ role: 'participant' }),
-        });
-        const payload = (await response.json().catch(() => ({}))) as LiveSessionResponse;
-        if (!response.ok) {
-          const fallback = `Live session join failed (${response.status})`;
-          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback)));
-          return;
-        }
-        if (payload.session) setActiveLiveSession(payload.session);
-        const openUrlCandidate =
-          (typeof payload.join_url === 'string' && payload.join_url.trim()) ||
-          (typeof payload.host_url === 'string' && payload.host_url.trim()) ||
-          (typeof payload.live_url === 'string' && payload.live_url.trim()) ||
-          null;
-        if (openUrlCandidate) {
-          const canOpen = await Linking.canOpenURL(openUrlCandidate);
-          if (canOpen) {
-            await Linking.openURL(openUrlCandidate);
-            setLiveSessionStatus('Live session opened.');
-          } else {
-            setLiveSessionStatus('Live session URL could not be opened on this device.');
-          }
-          return;
-        }
-        setLiveSessionStatus(
-          payload.token
-            ? `Join token issued (expires ${payload.token_expires_at ?? 'soon'}). Launch URL unavailable for this provider session.`
-            : 'Joined live session.'
-        );
+        const canOpen = await Linking.canOpenURL(livePlaybackUrl);
+        if (canOpen) { await Linking.openURL(livePlaybackUrl); setLiveSessionStatus('Opened live stream playback.'); }
+        else { setLiveSessionStatus(`Playback URL could not be opened on this device: ${livePlaybackUrl}`); }
       } catch (err) {
-        setLiveSessionStatus(err instanceof Error ? err.message : 'Live session join failed.');
-      } finally {
-        setLiveSessionBusy(false);
+        setLiveSessionStatus(err instanceof Error ? err.message : 'Failed to open live stream.');
       }
     },
-    [activeLiveSession?.session_id, session?.access_token]
+    [livePlaybackUrl]
   );
 
   const endLiveSession = useCallback(
     async () => {
       const token = session?.access_token;
       const sessionId = activeLiveSession?.session_id ?? null;
-      if (!token) {
-        setLiveSessionStatus('Sign in is required to end live sessions (401).');
-        return;
-      }
-      if (!sessionId) {
-        setLiveSessionStatus('No active live session available to end.');
-        return;
-      }
+      if (!token) { setLiveSessionStatus('Sign in is required to end live sessions (401).'); return; }
+      if (!sessionId) { setLiveSessionStatus('No active live session available to end.'); return; }
       setLiveSessionBusy(true);
       try {
         const response = await fetch(`${API_URL}/api/coaching/media/live-sessions/${encodeURIComponent(sessionId)}/end`, {
@@ -8709,11 +8654,14 @@ export default function KPIDashboardScreen({
         });
         const payload = (await response.json().catch(() => ({}))) as LiveSessionResponse;
         if (!response.ok) {
-          const fallback = `Live session end failed (${response.status})`;
-          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback)));
+          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, `Live session end failed (${response.status})`)));
           return;
         }
         if (payload.session) setActiveLiveSession(payload.session);
+        setLiveStreamKey(null);
+        setLiveRtmpUrl(null);
+        setLivePlaybackUrl(null);
+        setLiveCallerRole(null);
         setLiveSessionStatus('Live session ended.');
       } catch (err) {
         setLiveSessionStatus(err instanceof Error ? err.message : 'Live session end failed.');
@@ -14451,7 +14399,14 @@ export default function KPIDashboardScreen({
                     messageSubmitError={channelMessageSubmitError}
                     onSendMessage={(payload) => {
                       if (selectedChannelResolvedId) {
-                        void sendChannelMessage(selectedChannelResolvedId, { bodyOverride: payload.body });
+                        void sendChannelMessage(selectedChannelResolvedId, {
+                          bodyOverride: payload.body,
+                          messageType: payload.message_type,
+                          mediaAttachment: payload.media_attachment,
+                          messageKind: payload.message_kind,
+                          taskAction: payload.task_action,
+                          taskCardDraft: payload.task_card_draft,
+                        });
                       }
                     }}
                     onRefreshMessages={() => {
@@ -14479,8 +14434,6 @@ export default function KPIDashboardScreen({
                     }
                     onRequestMediaUpload={() => void requestMediaUploadUrl(selectedChannelResolvedId)}
                     onSendLatestMediaAttachment={() => void sendLatestMediaAttachment(selectedChannelResolvedId)}
-                    onPickMediaFile={(file) => void handlePickMediaFile(selectedChannelResolvedId, file)}
-                    pendingMediaUpload={pendingMediaUpload}
                     mediaUploadBusy={mediaUploadBusy}
                     mediaUploadStatus={mediaUploadStatus}
                     liveSessionBusy={liveSessionBusy}
@@ -14488,9 +14441,13 @@ export default function KPIDashboardScreen({
                     canHostLiveSession={
                       isCoachRuntimeOperator || (effectiveTeamPersonaVariant === 'leader' && !isChallengeSponsorRuntime)
                     }
+                    liveCallerRole={liveCallerRole}
+                    livePlaybackUrl={livePlaybackUrl}
+                    liveStreamKey={liveStreamKey}
+                    liveProviderMode={liveProviderMode}
                     onStartLiveSession={() => void startLiveSession(selectedChannelResolvedId)}
                     onRefreshLiveSession={() => void refreshLiveSession()}
-                    onJoinLiveSession={() => void joinLiveSession()}
+                    onWatchLiveStream={() => void watchLiveStream()}
                     onEndLiveSession={() => void endLiveSession()}
                     composerBottomInset={commsComposerBottomInset}
                     broadcastDraft={broadcastDraft}

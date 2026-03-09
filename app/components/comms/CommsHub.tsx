@@ -28,6 +28,14 @@ import {
   commsAvatarSize,
   channelScopeVisual,
 } from './commsTokens';
+import {
+  buildLegacyTaskStatusMap,
+  parseThreadMessage,
+  resolveThreadSendPayload,
+  type LinkedTaskCard,
+  type MediaAttachment,
+  type ThreadSendPayload,
+} from './messageLinkedTasks';
 
 /* ================================================================
    TYPES
@@ -60,13 +68,12 @@ export interface MessageRow {
   sender_user_id?: string | null;
   sender_name?: string | null;
   body: string;
-  message_type?: 'message' | 'broadcast' | string;
+  message_kind?: 'text' | 'personal_task' | 'coach_task' | string;
+  linked_task_card?: LinkedTaskCard | null;
+  media_attachment?: MediaAttachment;
+  message_type?: 'message' | 'broadcast' | 'media_attachment' | string;
   created_at?: string | null;
 }
-
-type ThreadSendPayload = {
-  body: string;
-};
 
 export interface FallbackChannelRow {
   scope: string;
@@ -144,9 +151,13 @@ export interface CommsHubProps {
   liveSessionBusy: boolean;
   liveSessionStatus: string | null;
   canHostLiveSession: boolean;
+  liveCallerRole: 'host' | 'viewer' | null;
+  livePlaybackUrl: string | null;
+  liveStreamKey: string | null;
+  liveProviderMode: 'mock' | 'mux' | 'unavailable' | null;
   onStartLiveSession: () => void;
   onRefreshLiveSession: () => void;
-  onJoinLiveSession: () => void;
+  onWatchLiveStream: () => void;
   onEndLiveSession: () => void;
   composerBottomInset?: number;
 
@@ -170,76 +181,6 @@ export interface CommsHubProps {
   fmtDate: (iso: string | null | undefined) => string;
 }
 
-type ParsedAttachment = { name: string; kind: string };
-type ParsedTaskCard = { taskId: string; title: string; owner: string | null; due: string | null; status: string };
-type ParsedTaskUpdate = { taskId: string; status: string; note: string | null };
-
-const META_RE = /(\w+)="([^"]*)"/g;
-const ATTACH_MARKER = '[attach]';
-const TASK_CARD_MARKER = '[task-card]';
-const TASK_UPDATE_MARKER = '[task-update]';
-
-function parseMeta(line: string) {
-  const out: Record<string, string> = {};
-  let m: RegExpExecArray | null;
-  while ((m = META_RE.exec(line))) {
-    out[m[1]] = m[2];
-  }
-  return out;
-}
-
-function encodeMeta(value: string) {
-  return String(value).replace(/"/g, "'");
-}
-
-function parseThreadMessage(body: string) {
-  const lines = String(body ?? '').split('\n');
-  const textParts: string[] = [];
-  const attachments: ParsedAttachment[] = [];
-  let taskCard: ParsedTaskCard | null = null;
-  let taskUpdate: ParsedTaskUpdate | null = null;
-
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-    if (line.startsWith(ATTACH_MARKER)) {
-      const meta = parseMeta(line);
-      attachments.push({
-        name: meta.name ?? 'Attachment',
-        kind: meta.kind ?? 'file',
-      });
-      continue;
-    }
-    if (line.startsWith(TASK_CARD_MARKER)) {
-      const meta = parseMeta(line);
-      taskCard = {
-        taskId: meta.task_id ?? `task-${Math.random().toString(36).slice(2, 8)}`,
-        title: meta.title ?? 'Task',
-        owner: meta.owner ?? null,
-        due: meta.due ?? null,
-        status: meta.status ?? 'open',
-      };
-      continue;
-    }
-    if (line.startsWith(TASK_UPDATE_MARKER)) {
-      const meta = parseMeta(line);
-      taskUpdate = {
-        taskId: meta.task_id ?? '',
-        status: meta.status ?? 'open',
-        note: meta.note ?? null,
-      };
-      continue;
-    }
-    textParts.push(raw);
-  }
-
-  return {
-    text: textParts.join('\n').trim(),
-    attachments,
-    taskCard,
-    taskUpdate,
-  };
-}
 
 /* ================================================================
    MAIN COMPONENT
@@ -753,9 +694,10 @@ function ThreadView(props: CommsHubProps) {
     messageSubmitting, messageSubmitError,
     onSendMessage, onRefreshMessages, onOpenAiAssist, onOpenBroadcast,
     onRequestMediaUpload, onSendLatestMediaAttachment, mediaUploadBusy, mediaUploadStatus,
-    liveSessionBusy, liveSessionStatus, canHostLiveSession, onStartLiveSession, onRefreshLiveSession, onJoinLiveSession, onEndLiveSession,
+    liveSessionBusy, liveSessionStatus, canHostLiveSession, liveCallerRole, livePlaybackUrl, liveStreamKey, liveProviderMode,
+    onStartLiveSession, onRefreshLiveSession, onWatchLiveStream, onEndLiveSession,
     composerBottomInset,
-    gateBlocksActions, fmtTime, personaVariant, roleCanBroadcast,
+    gateBlocksActions, fmtTime, fmtDate, personaVariant, roleCanBroadcast,
   } = props;
 
   const scrollRef = useRef<ScrollView>(null);
@@ -763,24 +705,13 @@ function ThreadView(props: CommsHubProps) {
   const [composerPanel, setComposerPanel] = useState<'none' | 'tools' | 'attach' | 'media' | 'live'>('none');
   const [slashHintError, setSlashHintError] = useState<string | null>(null);
 
-  const canUseTaskCommands = personaVariant === 'coach' || personaVariant === 'team_leader';
+  const canUseTaskCommands = personaVariant !== 'sponsor';
   const showSlashMenu = messageDraft.trim().startsWith('/');
   const parsedMessages = useMemo(
-    () => messages.map((msg) => ({ msg, parsed: parseThreadMessage(msg.body) })),
+    () => messages.map((msg) => ({ msg, parsed: parseThreadMessage(msg) })),
     [messages]
   );
-  const taskStatusMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const row of parsedMessages) {
-      if (row.parsed.taskCard) {
-        map.set(row.parsed.taskCard.taskId, row.parsed.taskCard.status || 'open');
-      }
-      if (row.parsed.taskUpdate?.taskId) {
-        map.set(row.parsed.taskUpdate.taskId, row.parsed.taskUpdate.status || 'open');
-      }
-    }
-    return map;
-  }, [parsedMessages]);
+  const taskStatusMap = useMemo(() => buildLegacyTaskStatusMap(parsedMessages), [parsedMessages]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -845,79 +776,29 @@ function ThreadView(props: CommsHubProps) {
 
   const handleSend = () => {
     if (gateBlocksActions || messageSubmitting || !selectedChannelId) return;
-    const trimmed = messageDraft.trim();
-    let encodedBody = trimmed;
-
-    if (trimmed.startsWith('/')) {
-      if (trimmed.startsWith('/broadcast')) {
-        if (roleCanBroadcast) {
-          onOpenBroadcast();
-          onChangeMessageDraft('');
-          setSlashHintError(null);
-          return;
-        }
-        setSlashHintError('Broadcast command is not available for this role.');
-        return;
-      }
-
-      if (trimmed.startsWith('/task-update')) {
-        if (!canUseTaskCommands) {
-          setSlashHintError('Task update commands are not available for this role.');
-          return;
-        }
-        const raw = trimmed.replace('/task-update', '').trim();
-        const [left, right] = raw.split('|').map((v) => v.trim());
-        const [taskId, statusRaw] = left.split(/\s+/);
-        const status = String(statusRaw ?? '').toLowerCase();
-        if (!taskId || !['open', 'done', 'blocked'].includes(status)) {
-          setSlashHintError('Use: /task-update task_id done|open|blocked | optional note');
-          return;
-        }
-        encodedBody = `${TASK_UPDATE_MARKER} task_id="${encodeMeta(taskId)}" status="${encodeMeta(status)}"${
-          right ? ` note="${encodeMeta(right)}"` : ''
-        }`;
-      } else if (trimmed.startsWith('/task')) {
-        if (!canUseTaskCommands) {
-          setSlashHintError('Task commands are not available for this role.');
-          return;
-        }
-        const raw = trimmed.replace('/task', '').trim();
-        const [titleRaw, ownerRaw, dueRaw] = raw.split('|').map((v) => v.trim());
-        if (!titleRaw) {
-          setSlashHintError('Use: /task title | owner | due YYYY-MM-DD');
-          return;
-        }
-        const taskId = `task-${Date.now().toString(36).slice(-6)}`;
-        encodedBody = `${TASK_CARD_MARKER} task_id="${taskId}" title="${encodeMeta(titleRaw)}"${
-          ownerRaw ? ` owner="${encodeMeta(ownerRaw)}"` : ''
-        }${dueRaw ? ` due="${encodeMeta(dueRaw)}"` : ''} status="open"`;
-      } else if (trimmed.startsWith('/help')) {
-        const help = canUseTaskCommands
-          ? `/task, /task-update${roleCanBroadcast ? ', /broadcast' : ''}`
-          : roleCanBroadcast
-            ? '/broadcast'
-            : 'No slash commands available for your role';
-        encodedBody = help;
-      } else {
-        setSlashHintError('Unknown command. Use /help.');
-        return;
-      }
+    const resolved = resolveThreadSendPayload({
+      draft: messageDraft,
+      personaVariant,
+      currentUserId,
+      selectedChannelName,
+      directory: props.fallbackDms.map((row) => ({ id: row.id, name: row.name, role: row.role })),
+      messages,
+      pendingAttachments: pendingAttachments.map((attachment) => ({ name: attachment.name, kind: attachment.kind })),
+      roleCanBroadcast,
+    });
+    if (resolved.action === 'open_broadcast') {
+      onOpenBroadcast();
+      onChangeMessageDraft('');
+      setSlashHintError(null);
+      return;
     }
-
-    if (pendingAttachments.length > 0) {
-      const attachmentLines = pendingAttachments.map(
-        (att) => `${ATTACH_MARKER} name="${encodeMeta(att.name)}" kind="${encodeMeta(att.kind)}"`
-      );
-      encodedBody = `${encodedBody || 'Attachment'}\n${attachmentLines.join('\n')}`;
-    }
-
-    if (!encodedBody.trim()) {
-      setSlashHintError('Enter a message, slash command, or attachment.');
+    if (resolved.action === 'error' || !resolved.payload) {
+      setSlashHintError(resolved.error ?? 'Unable to send message.');
       return;
     }
 
     setSlashHintError(null);
-    onSendMessage({ body: encodedBody });
+    onSendMessage(resolved.payload);
     onChangeMessageDraft('');
     setPendingAttachments([]);
     setComposerPanel('none');
@@ -954,7 +835,9 @@ function ThreadView(props: CommsHubProps) {
             const startsGroup = !prev || String(prev.sender_user_id ?? '') !== String(msg.sender_user_id ?? '');
             const senderLabel = msg.sender_name || (isMine ? 'You' : 'Member');
             const time = fmtTime(msg.created_at);
-            const taskCardStatus = parsed.taskCard ? taskStatusMap.get(parsed.taskCard.taskId) ?? parsed.taskCard.status : null;
+            const legacyTaskCardStatus = parsed.legacyTaskCard
+              ? taskStatusMap.get(parsed.legacyTaskCard.taskId) ?? parsed.legacyTaskCard.status
+              : null;
 
             return (
               <View
@@ -996,26 +879,49 @@ function ThreadView(props: CommsHubProps) {
                       {parsed.text}
                     </Text>
                   ) : null}
-                  {parsed.taskCard ? (
+                  {parsed.linkedTaskCard ? (
+                    <View style={st.taskCard}>
+                      <View style={st.taskCardHead}>
+                        <Text style={st.taskCardTitle}>
+                          {parsed.linkedTaskCard.task_type === 'coach_task' ? 'Coach Task' : 'Personal Task'}
+                        </Text>
+                        <Text style={st.taskCardStatus}>{String(parsed.linkedTaskCard.status ?? 'pending').replace('_', ' ').toUpperCase()}</Text>
+                      </View>
+                      <Text style={st.taskCardBody}>{parsed.linkedTaskCard.title}</Text>
+                      {parsed.linkedTaskCard.description ? (
+                        <Text style={st.taskCardMeta}>{parsed.linkedTaskCard.description}</Text>
+                      ) : null}
+                      <View style={st.taskCardMetaRow}>
+                        {parsed.linkedTaskCard.assignee?.display_name ? (
+                          <Text style={st.taskCardMeta}>Owner: {parsed.linkedTaskCard.assignee.display_name}</Text>
+                        ) : null}
+                        {parsed.linkedTaskCard.due_at ? (
+                          <Text style={st.taskCardMeta}>Due: {fmtDate(parsed.linkedTaskCard.due_at)}</Text>
+                        ) : null}
+                      </View>
+                      <Text style={st.taskCardId}>#{parsed.linkedTaskCard.task_id}</Text>
+                    </View>
+                  ) : null}
+                  {parsed.legacyTaskCard ? (
                     <View style={st.taskCard}>
                       <View style={st.taskCardHead}>
                         <Text style={st.taskCardTitle}>Task</Text>
-                        <Text style={st.taskCardStatus}>{String(taskCardStatus ?? 'open').toUpperCase()}</Text>
+                        <Text style={st.taskCardStatus}>{String(legacyTaskCardStatus ?? 'open').toUpperCase()}</Text>
                       </View>
-                      <Text style={st.taskCardBody}>{parsed.taskCard.title}</Text>
+                      <Text style={st.taskCardBody}>{parsed.legacyTaskCard.title}</Text>
                       <View style={st.taskCardMetaRow}>
-                        {parsed.taskCard.owner ? <Text style={st.taskCardMeta}>Owner: {parsed.taskCard.owner}</Text> : null}
-                        {parsed.taskCard.due ? <Text style={st.taskCardMeta}>Due: {parsed.taskCard.due}</Text> : null}
+                        {parsed.legacyTaskCard.owner ? <Text style={st.taskCardMeta}>Owner: {parsed.legacyTaskCard.owner}</Text> : null}
+                        {parsed.legacyTaskCard.due ? <Text style={st.taskCardMeta}>Due: {parsed.legacyTaskCard.due}</Text> : null}
                       </View>
-                      <Text style={st.taskCardId}>#{parsed.taskCard.taskId}</Text>
+                      <Text style={st.taskCardId}>#{parsed.legacyTaskCard.taskId}</Text>
                     </View>
                   ) : null}
-                  {parsed.taskUpdate ? (
+                  {parsed.legacyTaskUpdate ? (
                     <View style={st.taskUpdateCard}>
                       <Text style={st.taskUpdateText}>
-                        Task #{parsed.taskUpdate.taskId}: {parsed.taskUpdate.status.toUpperCase()}
+                        Task #{parsed.legacyTaskUpdate.taskId}: {parsed.legacyTaskUpdate.status.toUpperCase()}
                       </Text>
-                      {parsed.taskUpdate.note ? <Text style={st.taskUpdateNote}>{parsed.taskUpdate.note}</Text> : null}
+                      {parsed.legacyTaskUpdate.note ? <Text style={st.taskUpdateNote}>{parsed.legacyTaskUpdate.note}</Text> : null}
                     </View>
                   ) : null}
                   {parsed.attachments.length > 0 ? (
@@ -1217,18 +1123,48 @@ function ThreadView(props: CommsHubProps) {
           </View>
         ) : null}
 
-        {/* ── Live Session sub-panel ── */}
+        {/* ── Live Session sub-panel (host/viewer) ── */}
         {composerPanel === 'live' ? (
           <View style={st.composerSubPanelWrap}>
-            <Text style={st.composerSubPanelTitle}>Live Session</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={st.composerSubPanelTitle}>
+                {liveCallerRole === 'host' ? 'Live Broadcast (Host)' : liveCallerRole === 'viewer' ? 'Live Broadcast' : 'Live Session'}
+              </Text>
+              {liveProviderMode === 'mux' ? (
+                <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, backgroundColor: '#dbeafe' }}>
+                  <Text style={{ fontSize: 9, fontWeight: '600', color: '#64748b' }}>Mux</Text>
+                </View>
+              ) : liveProviderMode === 'mock' ? (
+                <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, backgroundColor: '#fef3c7' }}>
+                  <Text style={{ fontSize: 9, fontWeight: '600', color: '#64748b' }}>Mock</Text>
+                </View>
+              ) : null}
+            </View>
+            {liveCallerRole === 'host' && liveStreamKey ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#f8fafc', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: '#64748b' }}>Stream Key:</Text>
+                <Text style={{ fontSize: 10, fontFamily: 'monospace', color: '#334155' }}>{liveStreamKey.slice(0, 6)}…{liveStreamKey.slice(-4)}</Text>
+              </View>
+            ) : null}
             <View style={st.composerSubPanelBtnRow}>
-              <Pressable
-                style={[st.composerSubPanelBtn, (!canHostLiveSession || gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
-                disabled={!canHostLiveSession || gateBlocksActions || liveSessionBusy || !selectedChannelId}
-                onPress={onStartLiveSession}
-              >
-                <Text style={st.composerSubPanelBtnText}>Start</Text>
-              </Pressable>
+              {canHostLiveSession ? (
+                <Pressable
+                  style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
+                  disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
+                  onPress={onStartLiveSession}
+                >
+                  <Text style={st.composerSubPanelBtnText}>Start</Text>
+                </Pressable>
+              ) : null}
+              {!canHostLiveSession || liveCallerRole === 'viewer' ? (
+                <Pressable
+                  style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !livePlaybackUrl) && st.composerSubPanelBtnDisabled]}
+                  disabled={gateBlocksActions || liveSessionBusy || !livePlaybackUrl}
+                  onPress={onWatchLiveStream}
+                >
+                  <Text style={st.composerSubPanelBtnText}>{livePlaybackUrl ? '▶ Watch' : 'Watch'}</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
                 disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
@@ -1236,20 +1172,15 @@ function ThreadView(props: CommsHubProps) {
               >
                 <Text style={st.composerSubPanelBtnText}>Refresh</Text>
               </Pressable>
-              <Pressable
-                style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
-                disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
-                onPress={onJoinLiveSession}
-              >
-                <Text style={st.composerSubPanelBtnText}>Join</Text>
-              </Pressable>
-              <Pressable
-                style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
-                disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
-                onPress={onEndLiveSession}
-              >
-                <Text style={st.composerSubPanelBtnText}>End</Text>
-              </Pressable>
+              {canHostLiveSession ? (
+                <Pressable
+                  style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
+                  disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
+                  onPress={onEndLiveSession}
+                >
+                  <Text style={st.composerSubPanelBtnText}>End</Text>
+                </Pressable>
+              ) : null}
             </View>
             <Text style={st.composerSubPanelStatus}>{liveSessionStatus ?? 'No live session action yet.'}</Text>
           </View>
