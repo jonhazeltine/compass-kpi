@@ -20,11 +20,13 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
 import LottieSlot from '../components/LottieSlot';
 import { CommsHub } from '../components/comms';
 import type { ChannelRow as CommsChannelRow } from '../components/comms';
+import { useBottomNavAnimation } from '../components/comms/useBottomNavAnimation';
 import type { LinkedTaskCard, ThreadSendPayload } from '../components/comms/messageLinkedTasks';
 import DeveloperToolsModal from '../components/dev/DeveloperToolsModal';
 import { KpiIcon, KpiIconPicker } from '../components/kpi';
@@ -804,6 +806,7 @@ type ChannelMessageRow = {
     caption?: string;
     lifecycle?: { processing_status: string; playback_ready: boolean } | null;
     file_url?: string;
+    playback_id?: string;
     content_type?: string;
   };
 };
@@ -2570,8 +2573,23 @@ export default function KPIDashboardScreen({
   const [mediaUploadStatus, setMediaUploadStatus] = useState<string | null>(null);
   const [latestMediaId, setLatestMediaId] = useState<string | null>(null);
   const [latestMediaFileName, setLatestMediaFileName] = useState<string | null>(null);
-  type PendingMediaUpload = { fileName: string; progress: number; mediaId: string | null; status: 'picking' | 'uploading' | 'processing' | 'ready' | 'error'; error?: string };
+  type PendingMediaUpload = {
+    fileName: string;
+    progress: number;
+    mediaId: string | null;
+    status: 'picking' | 'uploading' | 'processing' | 'ready' | 'error';
+    error?: string;
+    uri?: string;
+    contentType?: string;
+    thumbnailUri?: string;
+    sent?: boolean;
+  };
   const [pendingMediaUpload, setPendingMediaUpload] = useState<PendingMediaUpload | null>(null);
+  const [localMediaPreviewById, setLocalMediaPreviewById] = useState<Record<string, {
+    uri?: string;
+    thumbnailUri?: string;
+    contentType?: string;
+  }>>({});
   const [liveSessionBusy, setLiveSessionBusy] = useState(false);
   const [liveSessionStatus, setLiveSessionStatus] = useState<string | null>(null);
   const [activeLiveSession, setActiveLiveSession] = useState<LiveSessionRecord | null>(null);
@@ -2713,10 +2731,14 @@ export default function KPIDashboardScreen({
   const bottomNavLift = Math.max(8, Math.round(insets.bottom * 0.24));
   const bottomNavPadBottom = Math.max(8, Math.round(insets.bottom * 0.45));
   const contentBottomPad = 132 + Math.max(12, insets.bottom);
-  // Pin CommsHub above the floating bottom-nav pill: measured nav height + lift + LOG overshoot (30) + gap (6)
-  const commsComposerBottomInset = bottomNavLayoutHeight > 0
-    ? bottomNavLift + bottomNavLayoutHeight + 36
-    : bottomNavLift + bottomNavPadBottom + 96; // fallback before first onLayout
+  const isCommsThreadMode = coachingShellScreen === 'channel_thread';
+  const bottomNavAnimation = useBottomNavAnimation({
+    isThreadMode: isCommsThreadMode,
+    navLayoutHeight: bottomNavLayoutHeight,
+    navLift: bottomNavLift,
+    navPadBottom: bottomNavPadBottom,
+  });
+  const commsComposerBottomInset = bottomNavAnimation.composerBottomInset;
   const bottomTabTheme = isDarkMode
     ? {
         activeFg: '#CFE0FF',
@@ -8271,6 +8293,22 @@ export default function KPIDashboardScreen({
     [bootstrapCommsStreamForSurface, fetchChannels, selectedChannelId, selectedChannelName, session?.access_token]
   );
 
+  useEffect(() => {
+    if (!selectedChannelId) return;
+    const hasPendingVideo =
+      Boolean(pendingMediaUpload?.mediaId) ||
+      (channelMessages ?? []).some((row) => {
+        const status = String(row.media_attachment?.lifecycle?.processing_status ?? '');
+        const contentType = String(row.media_attachment?.content_type ?? '');
+        return contentType.startsWith('video/') && ['queued_for_upload', 'uploaded', 'processing'].includes(status);
+      });
+    if (!hasPendingVideo) return;
+    const interval = setInterval(() => {
+      void fetchChannelMessages(selectedChannelId, { markSeen: false });
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [channelMessages, fetchChannelMessages, pendingMediaUpload?.mediaId, selectedChannelId]);
+
   const sendChannelMessage = useCallback(
     async (
       channelId: string,
@@ -8288,19 +8326,19 @@ export default function KPIDashboardScreen({
       const messageType = options?.messageType ?? 'message';
       if (!token) {
         setChannelMessageSubmitError('Sign in is required to send messages.');
-        return;
+        return false;
       }
       if (!channelId) {
         setChannelMessageSubmitError('Select a channel before sending.');
-        return;
+        return false;
       }
       if (messageType === 'message' && !bodyText) {
         setChannelMessageSubmitError('Message body is required.');
-        return;
+        return false;
       }
       if (messageType === 'media_attachment' && !options?.mediaAttachment?.media_id) {
         setChannelMessageSubmitError('Select media before sending attachment.');
-        return;
+        return false;
       }
       setChannelMessageSubmitting(true);
       setChannelMessageSubmitError(null);
@@ -8336,12 +8374,14 @@ export default function KPIDashboardScreen({
           setChannelMessageSubmitError(
             mapCommsHttpError(response.status, getApiErrorMessage(payload, fallback))
           );
-          return;
+          return false;
         }
         setChannelMessageDraft('');
         await fetchChannelMessages(channelId, { markSeen: false });
+        return true;
       } catch (err) {
         setChannelMessageSubmitError(err instanceof Error ? err.message : 'Failed to send message');
+        return false;
       } finally {
         setChannelMessageSubmitting(false);
       }
@@ -8463,13 +8503,13 @@ export default function KPIDashboardScreen({
     async (channelId: string | null) => {
       if (!channelId) {
         setMediaUploadStatus('Select a channel before sending media attachment.');
-        return;
+        return false;
       }
       if (!latestMediaId) {
         setMediaUploadStatus('Request upload URL first to create a media attachment id.');
-        return;
+        return false;
       }
-      await sendChannelMessage(channelId, {
+      const sent = await sendChannelMessage(channelId, {
         messageType: 'media_attachment',
         bodyOverride: latestMediaFileName ? `Media: ${latestMediaFileName}` : 'Media attachment',
         mediaAttachment: {
@@ -8477,18 +8517,95 @@ export default function KPIDashboardScreen({
           caption: latestMediaFileName ?? undefined,
         },
       });
-      setMediaUploadStatus(`Attachment sent to thread with media id ${latestMediaId}.`);
+      if (sent) {
+        setMediaUploadStatus(`Attachment sent to thread with media id ${latestMediaId}.`);
+        setPendingMediaUpload((prev) => (prev ? { ...prev, sent: true } : null));
+        setLatestMediaId(null);
+        setLatestMediaFileName(null);
+      }
+      return sent;
     },
     [latestMediaFileName, latestMediaId, sendChannelMessage]
+  );
+
+  const resolveMediaPlaybackUrl = useCallback(
+    async (mediaId: string) => {
+      const token = session?.access_token;
+      if (!token || !mediaId) return null;
+      try {
+        const response = await fetch(`${API_URL}/api/coaching/media/playback-token`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            media_id: mediaId,
+            viewer_context: 'member',
+          }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as { token?: string; playback_id?: string };
+        if (!response.ok || !payload.playback_id) return null;
+        return payload.token
+          ? `https://stream.mux.com/${payload.playback_id}.m3u8?token=${encodeURIComponent(payload.token)}`
+          : `https://stream.mux.com/${payload.playback_id}.m3u8`;
+      } catch {
+        return null;
+      }
+    },
+    [session?.access_token]
   );
 
   /** Real file-picker → upload URL → PUT to Mux → mark ready */
   const handlePickMediaFile = useCallback(
     async (channelId: string | null, file: { name: string; type: string; size: number; uri: string }) => {
       const token = session?.access_token;
-      if (!token) { setPendingMediaUpload({ fileName: file.name, progress: 0, mediaId: null, status: 'error', error: 'Sign in required.' }); return; }
-      if (!channelId) { setPendingMediaUpload({ fileName: file.name, progress: 0, mediaId: null, status: 'error', error: 'Select a channel first.' }); return; }
-      setPendingMediaUpload({ fileName: file.name, progress: 0, mediaId: null, status: 'uploading' });
+      let thumbnailUri = file.type.startsWith('image/') ? file.uri : undefined;
+      if (file.type.startsWith('video/')) {
+        try {
+          const thumbnail = await VideoThumbnails.getThumbnailAsync(file.uri, {
+            time: 0,
+          });
+          thumbnailUri = thumbnail.uri;
+        } catch {
+          thumbnailUri = undefined;
+        }
+      }
+      if (!token) {
+        setPendingMediaUpload({
+          fileName: file.name,
+          progress: 0,
+          mediaId: null,
+          status: 'error',
+          error: 'Sign in required.',
+          uri: file.uri,
+          contentType: file.type,
+          thumbnailUri,
+        });
+        return;
+      }
+      if (!channelId) {
+        setPendingMediaUpload({
+          fileName: file.name,
+          progress: 0,
+          mediaId: null,
+          status: 'error',
+          error: 'Select a channel first.',
+          uri: file.uri,
+          contentType: file.type,
+          thumbnailUri,
+        });
+        return;
+      }
+      setPendingMediaUpload({
+        fileName: file.name,
+        progress: 0,
+        mediaId: null,
+        status: 'uploading',
+        uri: file.uri,
+        contentType: file.type,
+        thumbnailUri,
+      });
       setMediaUploadBusy(true);
       try {
         // 1) Get upload URL from backend
@@ -8516,10 +8633,17 @@ export default function KPIDashboardScreen({
         }
         const mediaId = String(urlPayload.media_id);
         setPendingMediaUpload((p) => p ? { ...p, mediaId, progress: 0.1 } : null);
+        setLocalMediaPreviewById((prev) => ({
+          ...prev,
+          [mediaId]: {
+            uri: file.uri,
+            thumbnailUri,
+            contentType: file.type,
+          },
+        }));
 
         // 2) Upload the file to provider's upload URL (Supabase Storage for images, Mux for videos)
         const isImageUpload = (file.type || '').startsWith('image/');
-        const fileUrl = typeof urlPayload.file_url === 'string' ? urlPayload.file_url : null;
         const blob = await fetch(file.uri).then((r) => r.blob());
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -8540,7 +8664,16 @@ export default function KPIDashboardScreen({
         // 3) Mark ready
         setLatestMediaId(mediaId);
         setLatestMediaFileName(file.name);
-        setPendingMediaUpload({ fileName: file.name, progress: 1, mediaId, status: 'ready' });
+        setPendingMediaUpload({
+          fileName: file.name,
+          progress: 1,
+          mediaId,
+          status: 'ready',
+          uri: file.uri,
+          contentType: file.type,
+          thumbnailUri,
+          sent: false,
+        });
         setMediaUploadStatus(`Uploaded ${file.name}. Media id: ${mediaId}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Upload failed.';
@@ -14432,8 +14565,24 @@ export default function KPIDashboardScreen({
                         }
                       )
                     }
-                    onRequestMediaUpload={() => void requestMediaUploadUrl(selectedChannelResolvedId)}
                     onSendLatestMediaAttachment={() => void sendLatestMediaAttachment(selectedChannelResolvedId)}
+                    resolveMediaPlaybackUrl={resolveMediaPlaybackUrl}
+                    pendingMediaUpload={pendingMediaUpload}
+                    localMediaPreviewById={localMediaPreviewById}
+                    onPickMediaFile={(file) => void handlePickMediaFile(selectedChannelResolvedId, file)}
+                    onCancelMediaUpload={() => {
+                      if (pendingMediaUpload?.mediaId) {
+                        setLocalMediaPreviewById((prev) => {
+                          const next = { ...prev };
+                          delete next[pendingMediaUpload.mediaId!];
+                          return next;
+                        });
+                      }
+                      setPendingMediaUpload(null);
+                      setLatestMediaId(null);
+                      setLatestMediaFileName(null);
+                      setMediaUploadStatus(null);
+                    }}
                     mediaUploadBusy={mediaUploadBusy}
                     mediaUploadStatus={mediaUploadStatus}
                     liveSessionBusy={liveSessionBusy}
@@ -16123,8 +16272,13 @@ export default function KPIDashboardScreen({
         </View>
       ) : null}
 
-      <View
-        style={[styles.bottomNav, { paddingBottom: bottomNavPadBottom, bottom: bottomNavLift }]}
+      <Animated.View
+        style={[
+          styles.bottomNav,
+          { paddingBottom: bottomNavPadBottom, bottom: bottomNavLift },
+          bottomNavAnimation.animatedStyle,
+        ]}
+        pointerEvents={bottomNavAnimation.isNavHidden ? 'none' : 'auto'}
         onLayout={(e) => setBottomNavLayoutHeight(e.nativeEvent.layout.height)}
       >
         {bottomTabOrder.map((tab) => {
@@ -16195,7 +16349,7 @@ export default function KPIDashboardScreen({
             </TouchableOpacity>
           );
         })}
-      </View>
+      </Animated.View>
 
       <PaywallModal
         visible={paywallVisible}

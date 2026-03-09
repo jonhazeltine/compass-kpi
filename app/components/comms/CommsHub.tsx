@@ -12,7 +12,11 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Image,
+  Keyboard,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -36,6 +40,10 @@ import {
   type MediaAttachment,
   type ThreadSendPayload,
 } from './messageLinkedTasks';
+import LiveThreadCard from './LiveThreadCard';
+import ThreadComposer from './ThreadComposer';
+import type { PickedFile } from './useThreadPickers';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
 /* ================================================================
    TYPES
@@ -144,8 +152,25 @@ export interface CommsHubProps {
   onSendMessage: (payload: ThreadSendPayload) => void;
   onRefreshMessages: () => void;
   onOpenAiAssist: (host: string) => void;
-  onRequestMediaUpload: () => void;
   onSendLatestMediaAttachment: () => void;
+  resolveMediaPlaybackUrl?: (mediaId: string) => Promise<string | null>;
+  pendingMediaUpload?: {
+    fileName: string;
+    progress: number;
+    status: 'picking' | 'uploading' | 'processing' | 'ready' | 'error';
+    error?: string;
+    uri?: string;
+    contentType?: string;
+    thumbnailUri?: string;
+    sent?: boolean;
+  } | null;
+  localMediaPreviewById?: Record<string, {
+    uri?: string;
+    thumbnailUri?: string;
+    contentType?: string;
+  }>;
+  onPickMediaFile?: (file: PickedFile) => void;
+  onCancelMediaUpload: () => void;
   mediaUploadBusy: boolean;
   mediaUploadStatus: string | null;
   liveSessionBusy: boolean;
@@ -189,6 +214,43 @@ export interface CommsHubProps {
 export default function CommsHub(props: CommsHubProps) {
   const { screen, composerBottomInset, primaryTab } = props;
   const showBroadcastPanel = primaryTab === 'broadcast' || screen === 'coach_broadcast_compose';
+  const threadEnterAnim = useRef(new Animated.Value(screen === 'channel_thread' ? 1 : 0)).current;
+  const [threadOverlayVisible, setThreadOverlayVisible] = useState(screen === 'channel_thread');
+  const latestThreadPropsRef = useRef<CommsHubProps>(props);
+  if (screen === 'channel_thread') latestThreadPropsRef.current = props;
+
+  useEffect(() => {
+    if (screen === 'channel_thread') {
+      setThreadOverlayVisible(true);
+      Animated.timing(threadEnterAnim, {
+        toValue: 1,
+        duration: 260,
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+    if (threadOverlayVisible) {
+      Animated.timing(threadEnterAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) setThreadOverlayVisible(false);
+      });
+    }
+  }, [screen, threadEnterAnim, threadOverlayVisible]);
+
+  const threadAnimatedStyle = {
+    opacity: threadEnterAnim,
+    transform: [
+      {
+        translateX: threadEnterAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [32, 0],
+        }),
+      },
+    ],
+  };
 
   return (
     <View style={[st.root, composerBottomInset ? { paddingBottom: composerBottomInset } : undefined]}>
@@ -198,16 +260,20 @@ export default function CommsHub(props: CommsHubProps) {
       {/* ─── Tab strip (hidden during thread & broadcast compose) ─── */}
       <CommsTabs {...props} />
 
-      {/* ─── View router ─── */}
-      {screen === 'channel_thread' ? (
-        <ThreadView key={props.selectedChannelId ?? 'thread'} {...props} />
-      ) : showBroadcastPanel ? (
-        /* Broadcast compose lives inside the same comms shell for parity with Channels */
-        <BroadcastCompose {...props} />
-      ) : (
-        /* inbox/inbox_channels and any other screen → full channel list */
-        <ChannelList {...props} />
-      )}
+      <View style={st.sceneViewport}>
+        {screen !== 'channel_thread' ? (
+          showBroadcastPanel ? (
+            <BroadcastCompose {...props} />
+          ) : (
+            <ChannelList {...props} />
+          )
+        ) : null}
+        {threadOverlayVisible ? (
+          <Animated.View style={[st.threadSceneOverlay, threadAnimatedStyle]}>
+            <ThreadView key={latestThreadPropsRef.current.selectedChannelId ?? 'thread'} {...latestThreadPropsRef.current} />
+          </Animated.View>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -693,20 +759,25 @@ function ThreadView(props: CommsHubProps) {
     messageDraft, onChangeMessageDraft,
     messageSubmitting, messageSubmitError,
     onSendMessage, onRefreshMessages, onOpenAiAssist, onOpenBroadcast,
-    onRequestMediaUpload, onSendLatestMediaAttachment, mediaUploadBusy, mediaUploadStatus,
+    onSendLatestMediaAttachment, resolveMediaPlaybackUrl, pendingMediaUpload, onPickMediaFile, onCancelMediaUpload, mediaUploadBusy, mediaUploadStatus,
+    localMediaPreviewById = {},
     liveSessionBusy, liveSessionStatus, canHostLiveSession, liveCallerRole, livePlaybackUrl, liveStreamKey, liveProviderMode,
     onStartLiveSession, onRefreshLiveSession, onWatchLiveStream, onEndLiveSession,
-    composerBottomInset,
+    composerBottomInset = 0,
     gateBlocksActions, fmtTime, fmtDate, personaVariant, roleCanBroadcast,
   } = props;
 
   const scrollRef = useRef<ScrollView>(null);
-  const [pendingAttachments, setPendingAttachments] = useState<Array<{ id: string; name: string; kind: string }>>([]);
-  const [composerPanel, setComposerPanel] = useState<'none' | 'tools' | 'attach' | 'media' | 'live'>('none');
   const [slashHintError, setSlashHintError] = useState<string | null>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [composerHeight, setComposerHeight] = useState(96);
 
   const canUseTaskCommands = personaVariant !== 'sponsor';
   const showSlashMenu = messageDraft.trim().startsWith('/');
+  const threadDockInset = keyboardVisible
+    ? keyboardHeight + composerHeight + 20
+    : composerHeight + composerBottomInset + 20;
   const parsedMessages = useMemo(
     () => messages.map((msg) => ({ msg, parsed: parseThreadMessage(msg) })),
     [messages]
@@ -719,6 +790,31 @@ function ThreadView(props: CommsHubProps) {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     }
   }, [messages.length]);
+
+  useEffect(() => {
+    if (!keyboardVisible) return;
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [keyboardVisible]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardVisible(true);
+      setKeyboardHeight(Math.max(0, event.endCoordinates?.height ?? 0));
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const slashItems = useMemo(() => {
     const roleScoped = [
@@ -734,19 +830,6 @@ function ThreadView(props: CommsHubProps) {
     const query = messageDraft.trim().toLowerCase();
     return roleScoped.filter((item) => item.command.toLowerCase().startsWith(query));
   }, [canUseTaskCommands, messageDraft, roleCanBroadcast]);
-
-  const onPickAttachment = (kind: 'image' | 'doc' | 'link') => {
-    const id = `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const suffix = Math.random().toString(36).slice(2, 5).toUpperCase();
-    const name =
-      kind === 'image'
-        ? `Photo-${suffix}.png`
-        : kind === 'doc'
-          ? `Brief-${suffix}.pdf`
-          : `Reference-${suffix}.url`;
-    setPendingAttachments((prev) => [...prev, { id, name, kind }]);
-    setComposerPanel('none');
-  };
 
   const onSlashInsert = (command: string) => {
     if (command === '/task') {
@@ -783,7 +866,7 @@ function ThreadView(props: CommsHubProps) {
       selectedChannelName,
       directory: props.fallbackDms.map((row) => ({ id: row.id, name: row.name, role: row.role })),
       messages,
-      pendingAttachments: pendingAttachments.map((attachment) => ({ name: attachment.name, kind: attachment.kind })),
+      pendingAttachments: [],
       roleCanBroadcast,
     });
     if (resolved.action === 'open_broadcast') {
@@ -800,17 +883,39 @@ function ThreadView(props: CommsHubProps) {
     setSlashHintError(null);
     onSendMessage(resolved.payload);
     onChangeMessageDraft('');
-    setPendingAttachments([]);
-    setComposerPanel('none');
+  };
+
+  const liveCardStatus = liveSessionStatus
+    ?? (liveCallerRole === 'host'
+      ? 'Broadcast ready to start'
+      : liveCallerRole === 'viewer'
+        ? 'Broadcast available to watch'
+        : null);
+  const showLiveCard = Boolean(
+    liveCardStatus
+      || livePlaybackUrl
+      || liveStreamKey
+      || liveSessionBusy
+  );
+
+  const openAttachmentUrl = async (url: string | null | undefined) => {
+    if (!url) return;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      // noop; attachment remains visible even if URL open fails
+    }
   };
 
   return (
     <View style={st.threadRoot}>
-      {/* Messages area */}
       <ScrollView
         ref={scrollRef}
         style={st.threadScroll}
-        contentContainerStyle={st.threadScrollInner}
+        contentContainerStyle={[
+          st.threadScrollInner,
+          { paddingBottom: 12 + threadDockInset },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         {messagesLoading && parsedMessages.length === 0 ? (
@@ -838,7 +943,25 @@ function ThreadView(props: CommsHubProps) {
             const legacyTaskCardStatus = parsed.legacyTaskCard
               ? taskStatusMap.get(parsed.legacyTaskCard.taskId) ?? parsed.legacyTaskCard.status
               : null;
+            const mediaCaption = String(parsed.mediaAttachment?.caption ?? '').trim();
+            const mediaAutoNamed = /^media attachment$/i.test(parsed.text)
+              || /^media:\s/i.test(parsed.text)
+              || /^[a-f0-9-]{20,}\.(png|jpe?g|gif|webp|heic)$/i.test(mediaCaption)
+              || /^capture-\d+\.(mp4|mov)$/i.test(mediaCaption);
+            const showMessageText = Boolean(parsed.text) && !(parsed.mediaAttachment && mediaAutoNamed);
+            const isStructuredMediaBubble = Boolean(parsed.mediaAttachment);
+            const mediaTitle =
+              !mediaAutoNamed && mediaCaption
+                ? mediaCaption
+                : parsed.mediaAttachment?.content_type?.startsWith('video/')
+                  ? 'Video'
+                  : parsed.mediaAttachment?.content_type?.startsWith('image/')
+                    ? ''
+                    : 'Attachment';
 
+            const localPreview = parsed.mediaAttachment?.media_id
+              ? localMediaPreviewById[parsed.mediaAttachment.media_id] ?? null
+              : null;
             return (
               <View
                 key={msg.id}
@@ -857,15 +980,16 @@ function ThreadView(props: CommsHubProps) {
                 <View
                   style={[
                     st.bubble,
-                    isMine
+                    isStructuredMediaBubble && st.bubbleMedia,
+                    !isStructuredMediaBubble && isMine
                       ? st.bubbleSent
-                      : isBroadcast
+                      : !isStructuredMediaBubble && isBroadcast
                         ? st.bubbleBroadcast
                         : st.bubbleReceived,
                     !startsGroup && st.bubbleFollow,
                   ]}
                 >
-                  {parsed.text ? (
+                  {showMessageText ? (
                     <Text
                       style={[
                         st.bubbleText,
@@ -935,6 +1059,65 @@ function ThreadView(props: CommsHubProps) {
                       ))}
                     </View>
                   ) : null}
+                  {parsed.mediaAttachment ? (
+                    <View
+                      style={st.mediaAttachmentCard}
+                    >
+                      {(parsed.mediaAttachment.file_url || localPreview?.thumbnailUri || localPreview?.uri) && parsed.mediaAttachment.content_type?.startsWith('image/') ? (
+                        <View style={st.inlineImageWrap}>
+                          <Image
+                            source={{ uri: parsed.mediaAttachment.file_url || localPreview?.thumbnailUri || localPreview?.uri }}
+                            style={st.mediaAttachmentPreview}
+                            resizeMode="cover"
+                          />
+                        </View>
+                      ) : parsed.mediaAttachment.content_type?.startsWith('video/') ? (
+                        <InlineVideoAttachment
+                          media={parsed.mediaAttachment}
+                          resolvePlaybackUrl={resolveMediaPlaybackUrl}
+                          localPreviewUri={localPreview?.thumbnailUri || localPreview?.uri || null}
+                        />
+                      ) : (
+                        <Pressable
+                          style={st.mediaAttachmentPreviewFallback}
+                          disabled={!parsed.mediaAttachment.file_url}
+                          onPress={() => void openAttachmentUrl(parsed.mediaAttachment?.file_url)}
+                        >
+                          <Text style={st.mediaAttachmentPreviewFallbackIcon}>
+                            {parsed.mediaAttachment.content_type?.startsWith('video/')
+                              ? '▶'
+                              : parsed.mediaAttachment.content_type?.startsWith('image/')
+                                ? '🖼'
+                                : '📄'}
+                          </Text>
+                        </Pressable>
+                      )}
+                      {!parsed.mediaAttachment.content_type?.startsWith('image/')
+                        && !parsed.mediaAttachment.content_type?.startsWith('video/') ? (
+                        <View style={st.mediaAttachmentBody}>
+                          <View style={st.mediaAttachmentMetaRow}>
+                            {mediaTitle ? (
+                              <Text style={st.mediaAttachmentTitle} numberOfLines={1}>
+                                {mediaTitle}
+                              </Text>
+                            ) : <View style={st.mediaAttachmentSpacer} />}
+                            <Text style={st.mediaAttachmentState}>
+                              {parsed.mediaAttachment.lifecycle?.processing_status
+                                ? String(parsed.mediaAttachment.lifecycle.processing_status).replace(/_/g, ' ')
+                                : parsed.mediaAttachment.file_url
+                                  ? 'ready'
+                                  : 'file'}
+                            </Text>
+                          </View>
+                          <Text style={st.mediaAttachmentSub}>
+                            {parsed.mediaAttachment.file_url
+                              ? 'Tap to open'
+                              : 'Attachment uploaded'}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
                   {isBroadcast ? (
                     <View style={st.broadcastTag}>
                       <Text style={st.broadcastTagText}>Broadcast</Text>
@@ -960,232 +1143,191 @@ function ThreadView(props: CommsHubProps) {
             </Text>
           </View>
         )}
+        {showLiveCard ? (
+          <LiveThreadCard
+            status={liveCardStatus}
+            canHost={canHostLiveSession}
+            callerRole={liveCallerRole}
+            playbackUrl={livePlaybackUrl}
+            streamKey={liveStreamKey}
+            providerMode={liveProviderMode}
+            busy={liveSessionBusy}
+            gateBlocksActions={gateBlocksActions}
+            onWatch={onWatchLiveStream}
+            onEnd={onEndLiveSession}
+            onRefresh={canHostLiveSession && !liveCallerRole ? onStartLiveSession : onRefreshLiveSession}
+          />
+        ) : null}
       </ScrollView>
-
-      {/* ── Modern slim composer (iMessage-style) ── */}
-      <View style={st.composer}>
-        {/* Error bar — only when error */}
-        {messageSubmitError || slashHintError ? (
-          <View style={st.composerError}>
-            <Text style={st.composerErrorText}>{messageSubmitError ?? slashHintError}</Text>
-          </View>
-        ) : null}
-
-        {/* Pending attachments — only when present */}
-        {pendingAttachments.length > 0 ? (
-          <View style={st.pendingAttachmentRow}>
-            {pendingAttachments.map((att) => (
-              <Pressable
-                key={att.id}
-                style={st.pendingAttachmentChip}
-                onPress={() => setPendingAttachments((prev) => prev.filter((x) => x.id !== att.id))}
-              >
-                <Text style={st.pendingAttachmentChipText}>
-                  {att.kind === 'image' ? '🖼' : att.kind === 'doc' ? '📄' : '🔗'} {att.name} ×
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-
-        {/* Active status toast — only when media/live busy */}
-        {(mediaUploadBusy || liveSessionBusy) ? (
-          <View style={st.composerStatusToast}>
-            <Text style={st.composerStatusText}>
-              {mediaUploadBusy ? (mediaUploadStatus ?? 'Uploading…') : (liveSessionStatus ?? 'Working…')}
-            </Text>
-          </View>
-        ) : null}
-
-        {/* Slash menu — only when "/" typed */}
-        {showSlashMenu ? (
-          <View style={st.slashMenu}>
-            {slashItems.length > 0 ? (
-              slashItems.map((item) => (
-                <Pressable key={item.command} style={st.slashItem} onPress={() => onSlashInsert(item.command)}>
-                  <Text style={st.slashCmd}>{item.command}</Text>
-                  <Text style={st.slashHelp}>{item.help}</Text>
-                </Pressable>
-              ))
-            ) : (
-              <Text style={st.slashEmpty}>No available commands for this role.</Text>
-            )}
-          </View>
-        ) : null}
-
-        {/* ── Primary input row: [⊕] [TextInput] [Send] ── */}
-        <View style={st.composerInputRow}>
-          <Pressable
-            style={[st.composerPlusBtn, composerPanel !== 'none' && st.composerPlusBtnActive]}
-            onPress={() => setComposerPanel((prev) => prev !== 'none' ? 'none' : 'tools')}
-            disabled={gateBlocksActions}
-          >
-            <Text style={[st.composerPlusBtnText, composerPanel !== 'none' && st.composerPlusBtnTextActive]}>
-              {composerPanel !== 'none' ? '×' : '+'}
-            </Text>
-          </Pressable>
-          <View style={st.composerInputWrap}>
-            <TextInput
-              value={messageDraft}
-              onChangeText={onChangeMessageDraft}
-              placeholder="Write a message…"
-              placeholderTextColor={C.textTertiary}
-              multiline
-              style={st.composerInput}
-              editable={!gateBlocksActions && !messageSubmitting}
-            />
-          </View>
-          <Pressable
-            style={[
-              st.composerSendBtn,
-              (!selectedChannelId || messageSubmitting || gateBlocksActions || (!messageDraft.trim() && pendingAttachments.length === 0))
-                && st.composerSendBtnDisabled,
-            ]}
-            disabled={!selectedChannelId || messageSubmitting || gateBlocksActions || (!messageDraft.trim() && pendingAttachments.length === 0)}
-            onPress={handleSend}
-          >
-            <Text style={st.composerSendBtnText}>
-              {messageSubmitting ? '…' : '➤'}
-            </Text>
-          </Pressable>
+      {(messageSubmitError || slashHintError) ? (
+        <View style={st.composerError}>
+          <Text style={st.composerErrorText}>{messageSubmitError ?? slashHintError}</Text>
         </View>
-
-        {/* ── Tools grid (tap ⊕ to reveal) ── */}
-        {composerPanel === 'tools' ? (
-          <View style={st.composerToolsGrid}>
-            <Pressable style={st.composerToolBtn} onPress={() => setComposerPanel('attach')}>
-              <Text style={st.composerToolIcon}>📎</Text>
-              <Text style={st.composerToolLabel}>Attach</Text>
-            </Pressable>
-            <Pressable
-              style={[st.composerToolBtn, gateBlocksActions && st.composerToolBtnDisabled]}
-              disabled={gateBlocksActions}
-              onPress={() => { onOpenAiAssist('channel_thread'); setComposerPanel('none'); }}
-            >
-              <Text style={st.composerToolIcon}>✨</Text>
-              <Text style={st.composerToolLabel}>AI Draft</Text>
-            </Pressable>
-            <Pressable style={st.composerToolBtn} onPress={() => setComposerPanel('media')}>
-              <Text style={st.composerToolIcon}>🎥</Text>
-              <Text style={st.composerToolLabel}>Media</Text>
-            </Pressable>
-            <Pressable style={st.composerToolBtn} onPress={() => setComposerPanel('live')}>
-              <Text style={st.composerToolIcon}>📡</Text>
-              <Text style={st.composerToolLabel}>Live</Text>
-            </Pressable>
-            <Pressable
-              style={[st.composerToolBtn, messageSubmitting && st.composerToolBtnDisabled]}
-              disabled={messageSubmitting}
-              onPress={() => { onRefreshMessages(); setComposerPanel('none'); }}
-            >
-              <Text style={st.composerToolIcon}>↻</Text>
-              <Text style={st.composerToolLabel}>Refresh</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {/* ── Attach sub-panel ── */}
-        {composerPanel === 'attach' ? (
-          <View style={st.composerSubPanel}>
-            <Pressable style={st.composerSubPanelItem} onPress={() => onPickAttachment('image')}>
-              <Text style={st.composerSubPanelItemText}>🖼 Photo</Text>
-            </Pressable>
-            <Pressable style={st.composerSubPanelItem} onPress={() => onPickAttachment('doc')}>
-              <Text style={st.composerSubPanelItemText}>📄 Document</Text>
-            </Pressable>
-            <Pressable style={st.composerSubPanelItem} onPress={() => onPickAttachment('link')}>
-              <Text style={st.composerSubPanelItemText}>🔗 Link</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {/* ── Media sub-panel ── */}
-        {composerPanel === 'media' ? (
-          <View style={st.composerSubPanelWrap}>
-            <Text style={st.composerSubPanelTitle}>Mux Media</Text>
-            <View style={st.composerSubPanelBtnRow}>
-              <Pressable
-                style={[st.composerSubPanelBtn, (gateBlocksActions || mediaUploadBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
-                disabled={gateBlocksActions || mediaUploadBusy || !selectedChannelId}
-                onPress={onRequestMediaUpload}
-              >
-                <Text style={st.composerSubPanelBtnText}>{mediaUploadBusy ? 'Working…' : 'Get Upload URL'}</Text>
+      ) : null}
+      {showSlashMenu ? (
+        <View style={st.slashMenu}>
+          {slashItems.length > 0 ? (
+            slashItems.map((item) => (
+              <Pressable key={item.command} style={st.slashItem} onPress={() => onSlashInsert(item.command)}>
+                <Text style={st.slashCmd}>{item.command}</Text>
+                <Text style={st.slashHelp}>{item.help}</Text>
               </Pressable>
-              <Pressable
-                style={[st.composerSubPanelBtn, (gateBlocksActions || mediaUploadBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
-                disabled={gateBlocksActions || mediaUploadBusy || !selectedChannelId}
-                onPress={onSendLatestMediaAttachment}
-              >
-                <Text style={st.composerSubPanelBtnText}>Send Attachment</Text>
-              </Pressable>
-            </View>
-            <Text style={st.composerSubPanelStatus}>{mediaUploadStatus ?? 'No media action yet.'}</Text>
-          </View>
-        ) : null}
-
-        {/* ── Live Session sub-panel (host/viewer) ── */}
-        {composerPanel === 'live' ? (
-          <View style={st.composerSubPanelWrap}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={st.composerSubPanelTitle}>
-                {liveCallerRole === 'host' ? 'Live Broadcast (Host)' : liveCallerRole === 'viewer' ? 'Live Broadcast' : 'Live Session'}
-              </Text>
-              {liveProviderMode === 'mux' ? (
-                <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, backgroundColor: '#dbeafe' }}>
-                  <Text style={{ fontSize: 9, fontWeight: '600', color: '#64748b' }}>Mux</Text>
-                </View>
-              ) : liveProviderMode === 'mock' ? (
-                <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, backgroundColor: '#fef3c7' }}>
-                  <Text style={{ fontSize: 9, fontWeight: '600', color: '#64748b' }}>Mock</Text>
-                </View>
-              ) : null}
-            </View>
-            {liveCallerRole === 'host' && liveStreamKey ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#f8fafc', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', color: '#64748b' }}>Stream Key:</Text>
-                <Text style={{ fontSize: 10, fontFamily: 'monospace', color: '#334155' }}>{liveStreamKey.slice(0, 6)}…{liveStreamKey.slice(-4)}</Text>
-              </View>
-            ) : null}
-            <View style={st.composerSubPanelBtnRow}>
-              {canHostLiveSession ? (
-                <Pressable
-                  style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
-                  disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
-                  onPress={onStartLiveSession}
-                >
-                  <Text style={st.composerSubPanelBtnText}>Start</Text>
-                </Pressable>
-              ) : null}
-              {!canHostLiveSession || liveCallerRole === 'viewer' ? (
-                <Pressable
-                  style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !livePlaybackUrl) && st.composerSubPanelBtnDisabled]}
-                  disabled={gateBlocksActions || liveSessionBusy || !livePlaybackUrl}
-                  onPress={onWatchLiveStream}
-                >
-                  <Text style={st.composerSubPanelBtnText}>{livePlaybackUrl ? '▶ Watch' : 'Watch'}</Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
-                disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
-                onPress={onRefreshLiveSession}
-              >
-                <Text style={st.composerSubPanelBtnText}>Refresh</Text>
-              </Pressable>
-              {canHostLiveSession ? (
-                <Pressable
-                  style={[st.composerSubPanelBtn, (gateBlocksActions || liveSessionBusy || !selectedChannelId) && st.composerSubPanelBtnDisabled]}
-                  disabled={gateBlocksActions || liveSessionBusy || !selectedChannelId}
-                  onPress={onEndLiveSession}
-                >
-                  <Text style={st.composerSubPanelBtnText}>End</Text>
-                </Pressable>
-              ) : null}
-            </View>
-            <Text style={st.composerSubPanelStatus}>{liveSessionStatus ?? 'No live session action yet.'}</Text>
-          </View>
+            ))
+          ) : (
+            <Text style={st.slashEmpty}>No available commands for this role.</Text>
+          )}
+        </View>
+      ) : null}
+      {(mediaUploadBusy || liveSessionBusy) ? (
+        <View style={st.composerStatusToast}>
+          <Text style={st.composerStatusText}>
+            {mediaUploadBusy ? (mediaUploadStatus ?? 'Uploading…') : (liveSessionStatus ?? 'Working…')}
+          </Text>
+        </View>
+      ) : null}
+      <View
+        style={[
+          st.threadDock,
+          keyboardVisible && Platform.OS === 'ios' ? { bottom: Math.max(0, keyboardHeight) } : null,
+        ]}
+      >
+      {!keyboardVisible ? (
+      <View style={st.threadUtilityRow}>
+        <Pressable
+          style={[st.threadUtilityPill, gateBlocksActions && st.threadUtilityPillDisabled]}
+          disabled={gateBlocksActions}
+          onPress={() => onOpenAiAssist('channel_thread')}
+        >
+          <Text style={st.threadUtilityPillText}>AI Draft</Text>
+        </Pressable>
+        <Pressable
+          style={[st.threadUtilityPill, messageSubmitting && st.threadUtilityPillDisabled]}
+          disabled={messageSubmitting}
+          onPress={onRefreshMessages}
+        >
+          <Text style={st.threadUtilityPillText}>Refresh</Text>
+        </Pressable>
+        {roleCanBroadcast ? (
+          <Pressable
+            style={[st.threadUtilityPill, gateBlocksActions && st.threadUtilityPillDisabled]}
+            disabled={gateBlocksActions}
+            onPress={onOpenBroadcast}
+          >
+            <Text style={st.threadUtilityPillText}>Broadcast</Text>
+          </Pressable>
         ) : null}
       </View>
+      ) : null}
+      <ThreadComposer
+        messageDraft={messageDraft}
+        onChangeMessageDraft={onChangeMessageDraft}
+        onSend={handleSend}
+        sendDisabled={!selectedChannelId}
+        messageSubmitting={messageSubmitting}
+        pendingUpload={pendingMediaUpload ?? null}
+        onSendUploadedMedia={onSendLatestMediaAttachment}
+        onCancelUpload={onCancelMediaUpload}
+        gateBlocksActions={gateBlocksActions}
+        onPickMediaFile={onPickMediaFile}
+        onStartLiveSession={onStartLiveSession}
+        bottomInset={composerBottomInset}
+        keyboardVisible={keyboardVisible}
+        onLayout={setComposerHeight}
+      />
+      </View>
+    </View>
+  );
+}
+
+function InlineVideoAttachment(props: {
+  media: MediaAttachment;
+  resolvePlaybackUrl?: (mediaId: string) => Promise<string | null>;
+  localPreviewUri?: string | null;
+}) {
+  const { media, resolvePlaybackUrl, localPreviewUri } = props;
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [showPlayer, setShowPlayer] = useState(false);
+  const posterUrl = media.playback_id ? `https://image.mux.com/${media.playback_id}/thumbnail.jpg?time=0` : null;
+  const directVideoUrl = media.file_url && media.content_type?.startsWith('video/') ? media.file_url : null;
+  const directPlaybackUrl = media.playback_id ? `https://stream.mux.com/${media.playback_id}.m3u8` : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (directVideoUrl) {
+      setResolvedUrl(directVideoUrl);
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (directPlaybackUrl) {
+      setResolvedUrl(directPlaybackUrl);
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (!media.media_id || !resolvePlaybackUrl || !media.lifecycle?.playback_ready) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    setLoading(true);
+    void resolvePlaybackUrl(media.media_id)
+      .then((url) => {
+        if (!cancelled) setResolvedUrl(url);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [directPlaybackUrl, directVideoUrl, media.lifecycle?.playback_ready, media.media_id, resolvePlaybackUrl]);
+
+  const player = useVideoPlayer(resolvedUrl, (instance) => {
+    instance.loop = false;
+  });
+
+  useEffect(() => {
+    if (!showPlayer || !resolvedUrl) return;
+    try {
+      player.play();
+    } catch {
+      // Keep the inline player mounted even if autoplay fails.
+    }
+  }, [player, resolvedUrl, showPlayer]);
+
+  return (
+    <View style={st.inlineVideoWrap}>
+      {showPlayer && resolvedUrl ? (
+        <VideoView
+          player={player}
+          style={st.mediaAttachmentPreview}
+          nativeControls
+          contentFit="cover"
+        />
+      ) : posterUrl || localPreviewUri ? (
+        <Pressable style={st.mediaAttachmentPreviewFallback} onPress={() => resolvedUrl ? setShowPlayer(true) : undefined}>
+          <Image source={{ uri: posterUrl || localPreviewUri! }} style={st.mediaAttachmentPreview} resizeMode="cover" />
+          <View style={st.videoPlayOverlay}>
+            <Text style={st.videoPlayOverlayIcon}>▶</Text>
+          </View>
+        </Pressable>
+      ) : (
+        <View style={st.mediaAttachmentPreviewFallback}>
+          <Text style={st.mediaAttachmentPreviewFallbackIcon}>▶</Text>
+        </View>
+      )}
+      {media.lifecycle?.processing_status
+      && !['ready', 'uploaded', 'queued_for_upload'].includes(media.lifecycle.processing_status) ? (
+        <View style={st.mediaStatusBadge}>
+          <Text style={st.mediaStatusBadgeText}>
+            {loading
+              ? 'LOADING'
+              : String(media.lifecycle.processing_status).replace(/_/g, ' ').toUpperCase()}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1315,6 +1457,17 @@ const st = StyleSheet.create({
     backgroundColor: C.pageBg,
     gap: 0,
     overflow: 'hidden',
+  },
+  sceneViewport: {
+    flex: 1,
+    position: 'relative',
+  },
+  threadScene: {
+    flex: 1,
+  },
+  threadSceneOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: C.pageBg,
   },
 
   /* ─── top bar ─── */
@@ -1605,6 +1758,13 @@ const st = StyleSheet.create({
   threadRoot: {
     flex: 1,
   },
+  threadDock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: C.pageBg,
+  },
   threadScroll: {
     flex: 1,
     backgroundColor: C.pageBg,
@@ -1660,6 +1820,11 @@ const st = StyleSheet.create({
     paddingHorizontal: S.bubblePadH,
     paddingVertical: S.bubblePadV,
     maxWidth: '100%',
+  },
+  bubbleMedia: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   bubbleSent: {
     backgroundColor: C.bubbleSent,
@@ -1789,6 +1954,97 @@ const st = StyleSheet.create({
     color: C.textSecondary,
     fontWeight: '600',
   },
+  mediaAttachmentCard: {
+    marginTop: 8,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#dbe3ef',
+    overflow: 'hidden',
+  },
+  mediaAttachmentPreview: {
+    width: '100%' as any,
+    aspectRatio: 16 / 9,
+    backgroundColor: '#e2e8f0',
+  },
+  inlineImageWrap: {
+    position: 'relative',
+  },
+  inlineVideoWrap: {
+    position: 'relative',
+  },
+  mediaAttachmentPreviewFallback: {
+    width: '100%' as any,
+    aspectRatio: 16 / 9,
+    backgroundColor: '#e8eef8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mediaAttachmentPreviewFallbackIcon: {
+    fontSize: 28,
+    color: '#1d4ed8',
+  },
+  videoPlayOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.18)',
+  },
+  videoPlayOverlayIcon: {
+    fontSize: 34,
+    color: '#ffffff',
+    textShadowColor: 'rgba(0, 0, 0, 0.24)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  mediaAttachmentBody: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+  },
+  mediaAttachmentSpacer: {
+    flex: 1,
+  },
+  mediaStatusBadge: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15, 23, 42, 0.68)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  mediaStatusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  mediaAttachmentMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  mediaAttachmentTitle: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#223047',
+  },
+  mediaAttachmentState: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+  },
+  mediaAttachmentSub: {
+    fontSize: 12,
+    color: '#64748b',
+  },
 
   /* ─── modern slim composer (iMessage-style) ─── */
   composer: {
@@ -1820,6 +2076,28 @@ const st = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#1d4ed8',
+  },
+  threadUtilityRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+    backgroundColor: C.pageBg,
+  },
+  threadUtilityPill: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#e8eef8',
+  },
+  threadUtilityPillDisabled: {
+    opacity: 0.45,
+  },
+  threadUtilityPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#31568d',
   },
   pendingAttachmentRow: {
     flexDirection: 'row',

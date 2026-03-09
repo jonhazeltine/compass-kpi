@@ -17,6 +17,8 @@ const pcTimingEngine_1 = require("./engines/pcTimingEngine");
 const dealAttributionEngine_1 = require("./engines/dealAttributionEngine");
 const userCalibrationEngine_1 = require("./engines/userCalibrationEngine");
 const adminChallengeTemplateValidation_1 = require("./services/adminChallengeTemplateValidation");
+const channelMessageTasks_1 = require("./services/channelMessageTasks");
+const muxLiveService_1 = require("./services/muxLiveService");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = Number(process.env.PORT) || 4000;
@@ -43,10 +45,44 @@ const muxMediaByUploadId = new Map();
 const muxMediaByProviderUploadId = new Map();
 const muxMediaByProviderAssetId = new Map();
 const muxMediaChannelByMediaId = new Map();
-const muxProcessedWebhookEventIds = new Set();
+const muxProcessedWebhookEventIds = new Map(); // eventId → timestamp
+const MUX_WEBHOOK_DEDUP_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const MUX_WEBHOOK_DEDUP_MAX_SIZE = 10000;
+function trackMuxWebhookEvent(eventId) {
+    // Periodic cleanup: evict entries older than TTL and cap total size
+    if (muxProcessedWebhookEventIds.size > MUX_WEBHOOK_DEDUP_MAX_SIZE) {
+        const cutoff = Date.now() - MUX_WEBHOOK_DEDUP_TTL_MS;
+        for (const [key, ts] of muxProcessedWebhookEventIds) {
+            if (ts < cutoff)
+                muxProcessedWebhookEventIds.delete(key);
+        }
+        // If still over limit, drop oldest half
+        if (muxProcessedWebhookEventIds.size > MUX_WEBHOOK_DEDUP_MAX_SIZE) {
+            const entries = Array.from(muxProcessedWebhookEventIds.entries()).sort((a, b) => a[1] - b[1]);
+            const half = Math.floor(entries.length / 2);
+            for (let i = 0; i < half; i++)
+                muxProcessedWebhookEventIds.delete(entries[i][0]);
+        }
+    }
+    if (muxProcessedWebhookEventIds.has(eventId))
+        return true; // duplicate
+    muxProcessedWebhookEventIds.set(eventId, Date.now());
+    return false; // new event
+}
 const streamChannelSyncStates = new Map();
 const liveSessionStore = new Map();
 const liveSessionByIdempotencyKey = new Map();
+const KPI_CATALOG_SELECT_FULL = "id,name,slug,type,created_by,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,is_active,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value";
+const KPI_CATALOG_SELECT_LEGACY = "id,name,slug,type,icon_file,requires_direct_value_input,is_active,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value";
+async function runKpiCatalogSelectWithCompat(executor) {
+    const fullResult = await executor(KPI_CATALOG_SELECT_FULL);
+    if (!fullResult.error)
+        return fullResult;
+    const legacyResult = await executor(KPI_CATALOG_SELECT_LEGACY);
+    if (!legacyResult.error)
+        return legacyResult;
+    return fullResult;
+}
 function emptyNotificationClassCounts() {
     return {
         coaching_assignment_published: 0,
@@ -1148,14 +1184,15 @@ app.get("/dashboard", async (req, res) => {
         }
         const safeLogs = logs ?? [];
         const now = new Date();
-        const { data: kpiCatalogRows, error: kpiCatalogError } = await dataClient
-            .from("kpis")
-            .select("id,name,slug,type,requires_direct_value_input,is_active,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value")
-            .eq("is_active", true);
+        const { data: kpiCatalogRows, error: kpiCatalogError } = await runKpiCatalogSelectWithCompat((selectClause) => dataClient.from("kpis").select(selectClause).eq("is_active", true));
         if (kpiCatalogError) {
             return handleSupabaseError(res, "Failed to fetch dashboard KPI catalog", kpiCatalogError);
         }
-        const safeKpiCatalog = kpiCatalogRows ?? [];
+        const safeKpiCatalog = (kpiCatalogRows ?? []).filter((row) => {
+            if (String(row.type ?? "") !== "Custom")
+                return true;
+            return String(row.created_by ?? "") === auth.user.id;
+        });
         const kpiById = new Map(safeKpiCatalog.map((row) => [
             String(row.id),
             {
@@ -1163,6 +1200,10 @@ app.get("/dashboard", async (req, res) => {
                 type: String(row.type),
                 name: String(row.name ?? ""),
                 slug: String(row.slug ?? ""),
+                icon_source: (row.icon_source ?? null),
+                icon_name: String(row.icon_name ?? ""),
+                icon_emoji: String(row.icon_emoji ?? ""),
+                icon_file: String(row.icon_file ?? ""),
                 requires_direct_value_input: Boolean(row.requires_direct_value_input),
                 pc_weight: row.pc_weight,
                 ttc_days: row.ttc_days,
@@ -1386,6 +1427,10 @@ app.get("/dashboard", async (req, res) => {
                 name: String(row.name ?? ""),
                 slug: String(row.slug ?? ""),
                 type: String(row.type),
+                icon_source: (row.icon_source ?? null),
+                icon_name: String(row.icon_name ?? ""),
+                icon_emoji: String(row.icon_emoji ?? ""),
+                icon_file: String(row.icon_file ?? ""),
                 requires_direct_value_input: Boolean(row.requires_direct_value_input),
                 pc_weight: toNumberOrZero(row.pc_weight),
                 ttc_definition: String(row.ttc_definition ?? ""),
@@ -2114,7 +2159,7 @@ app.get("/api/channels/:id/messages", async (req, res) => {
         }
         const { data: messages, error: messagesError } = await dataClient
             .from("channel_messages")
-            .select("id,channel_id,sender_user_id,body,message_type,created_at")
+            .select("id,channel_id,sender_user_id,body,message_type,message_kind,assignment_ref,created_at")
             .eq("channel_id", channelId)
             .order("created_at", { ascending: true })
             .limit(500);
@@ -2125,7 +2170,33 @@ app.get("/api/channels/:id/messages", async (req, res) => {
             channel,
             messages: (messages ?? []),
         });
-        const messageReadModels = (messages ?? []).map((row) => buildChannelMessageReadModel(row));
+        const messageReadModels = await Promise.all((messages ?? []).map(async (row) => {
+            const readModel = (0, channelMessageTasks_1.buildChannelMessageReadModel)(row, { userId: auth.user.id, role: roleScopeCheck.result.role });
+            const mediaId = String(readModel.media_attachment?.media_id ?? "").trim();
+            if (!mediaId)
+                return readModel;
+            const currentMedia = await getMuxMediaRecord(mediaId);
+            if (!currentMedia)
+                return readModel;
+            const refreshedMedia = await refreshMuxMediaRecordFromProvider(currentMedia);
+            return {
+                ...readModel,
+                media_attachment: {
+                    ...readModel.media_attachment,
+                    lifecycle: {
+                        processing_status: refreshedMedia.processing_status,
+                        playback_ready: refreshedMedia.playback_ready,
+                    },
+                    ...(refreshedMedia.provider === "supabase_storage" && refreshedMedia.playback_id
+                        ? { file_url: refreshedMedia.playback_id }
+                        : {}),
+                    ...(refreshedMedia.provider === "mux" && refreshedMedia.playback_id
+                        ? { playback_id: refreshedMedia.playback_id }
+                        : {}),
+                    ...(refreshedMedia.content_type ? { content_type: refreshedMedia.content_type } : {}),
+                },
+            };
+        }));
         const syncState = streamChannelSyncStates.get(channelId);
         const channelWithProviderState = {
             ...channel,
@@ -2167,7 +2238,7 @@ app.post("/api/channels/:id/messages", async (req, res) => {
         const channelId = req.params.id;
         if (!channelId)
             return res.status(422).json({ error: "channel id is required" });
-        const payloadCheck = validateChannelMessagePayload(req.body);
+        const payloadCheck = (0, channelMessageTasks_1.validateChannelMessagePayload)(req.body);
         if (!payloadCheck.ok)
             return res.status(payloadCheck.status).json({ error: payloadCheck.error });
         const membership = await checkChannelMembership(channelId, auth.user.id);
@@ -2183,6 +2254,112 @@ app.post("/api/channels/:id/messages", async (req, res) => {
         }
         let serializedBody = payloadCheck.payload.body ?? "";
         let messageType = payloadCheck.payload.message_type ?? "message";
+        let messageKind = payloadCheck.payload.message_kind ?? "text";
+        let assignmentRef = null;
+        if (messageKind === "personal_task" || messageKind === "coach_task") {
+            const taskDraft = payloadCheck.payload.task_card_draft;
+            const taskAction = payloadCheck.payload.task_action;
+            const nowIso = new Date().toISOString();
+            if (taskAction === "create") {
+                const assigneeId = String(taskDraft.assignee_id ?? "").trim();
+                if (messageKind === "personal_task" && assigneeId !== auth.user.id) {
+                    return res.status(403).json({ error: "personal_task can only be created for the caller" });
+                }
+                if (messageKind === "coach_task" && !(0, channelMessageTasks_1.canAuthorCoachTask)(roleScopeCheck.result.role)) {
+                    return res.status(403).json({ error: "coach_task authoring requires coach-scope role" });
+                }
+                const assigneeLookup = await resolveChannelMemberDisplayName(channelId, assigneeId);
+                if (!assigneeLookup.ok)
+                    return res.status(assigneeLookup.status).json({ error: assigneeLookup.error });
+                const title = String(taskDraft.title ?? "").trim() || "Task";
+                const description = taskDraft.description ?? null;
+                const dueAt = taskDraft.due_at ?? null;
+                const status = (0, channelMessageTasks_1.normalizeTaskStatus)(taskDraft.status);
+                const taskId = crypto_1.default.randomUUID();
+                serializedBody = (0, channelMessageTasks_1.buildTaskMessageBody)({
+                    taskAction: "create",
+                    title,
+                    description,
+                    note: payloadCheck.payload.body ?? null,
+                });
+                assignmentRef = (0, channelMessageTasks_1.buildTaskAssignmentRef)({
+                    taskId,
+                    taskType: messageKind,
+                    title,
+                    description,
+                    status,
+                    dueAt,
+                    assigneeId,
+                    assigneeName: assigneeLookup.displayName ?? "Member",
+                    createdById: auth.user.id,
+                    createdByRole: roleScopeCheck.result.role,
+                    channelId,
+                    createdAt: nowIso,
+                });
+            }
+            else {
+                const taskId = String(taskDraft.task_id ?? "").trim();
+                const latestTask = await loadLatestTaskRefForChannel(channelId, taskId);
+                if (!latestTask.ok)
+                    return res.status(latestTask.status).json({ error: latestTask.error });
+                if (!latestTask.event) {
+                    return res.status(404).json({ error: "Task not found in thread history" });
+                }
+                const currentTask = latestTask.event.assignment_ref;
+                if (currentTask.task_type !== messageKind) {
+                    return res.status(409).json({ error: "task_id does not match message_kind" });
+                }
+                const nextTitle = taskDraft.title !== undefined ? String(taskDraft.title).trim() || currentTask.title : currentTask.title;
+                const nextDescription = taskDraft.description !== undefined ? taskDraft.description ?? null : currentTask.description;
+                const nextDueAt = taskDraft.due_at !== undefined ? taskDraft.due_at ?? null : currentTask.due_at;
+                const nextAssigneeId = taskDraft.assignee_id !== undefined ? String(taskDraft.assignee_id).trim() || null : currentTask.assignee_id;
+                const nextStatus = payloadCheck.payload.task_action === "complete"
+                    ? "completed"
+                    : (0, channelMessageTasks_1.normalizeTaskStatus)(taskDraft.status ?? currentTask.status);
+                const mutationCheck = (0, channelMessageTasks_1.canMutateLinkedTask)({
+                    taskType: currentTask.task_type,
+                    action: taskAction,
+                    actorUserId: auth.user.id,
+                    actorRole: roleScopeCheck.result.role,
+                    assigneeId: currentTask.assignee_id,
+                    proposedAssigneeId: nextAssigneeId,
+                    proposedTitle: nextTitle,
+                    proposedDescription: nextDescription,
+                    proposedDueAt: nextDueAt,
+                    currentTitle: currentTask.title,
+                    currentDescription: currentTask.description,
+                    currentDueAt: currentTask.due_at,
+                });
+                if (!mutationCheck.allowed) {
+                    return res.status(403).json({ error: mutationCheck.reason ?? "Task mutation not permitted" });
+                }
+                const assigneeLookup = nextAssigneeId
+                    ? await resolveChannelMemberDisplayName(channelId, nextAssigneeId)
+                    : { ok: true, displayName: null };
+                if (!assigneeLookup.ok)
+                    return res.status(assigneeLookup.status).json({ error: assigneeLookup.error });
+                serializedBody = (0, channelMessageTasks_1.buildTaskMessageBody)({
+                    taskAction,
+                    title: nextTitle,
+                    description: nextDescription,
+                    note: payloadCheck.payload.body ?? null,
+                });
+                assignmentRef = (0, channelMessageTasks_1.buildTaskAssignmentRef)({
+                    taskId: currentTask.id,
+                    taskType: currentTask.task_type,
+                    title: nextTitle,
+                    description: nextDescription,
+                    status: nextStatus,
+                    dueAt: nextDueAt,
+                    assigneeId: nextAssigneeId,
+                    assigneeName: assigneeLookup.displayName ?? currentTask.assignee_name ?? "Member",
+                    createdById: currentTask.created_by ?? auth.user.id,
+                    createdByRole: currentTask.created_by_role ?? roleScopeCheck.result.role,
+                    channelId,
+                    createdAt: nowIso,
+                });
+            }
+        }
         if (messageType === "media_attachment") {
             const mediaId = payloadCheck.payload.media_attachment?.media_id ?? "";
             const media = await getMuxMediaRecord(mediaId);
@@ -2209,21 +2386,26 @@ app.post("/api/channels/:id/messages", async (req, res) => {
                 };
                 await upsertMuxMediaRecord(reboundMedia);
             }
-            serializedBody = serializeChannelMessageBody({
+            serializedBody = (0, channelMessageTasks_1.serializeChannelMessageBody)({
                 ...payloadCheck.payload,
                 message_type: "media_attachment",
                 lifecycle: {
                     processing_status: media.processing_status,
                     playback_ready: media.playback_ready,
                 },
+                file_url: media.provider === "supabase_storage" && media.playback_id ? media.playback_id : undefined,
+                playback_id: media.provider === "mux" && media.playback_id ? media.playback_id : undefined,
+                content_type: media.content_type ?? undefined,
             });
         }
         else {
             messageType = "message";
-            serializedBody = serializeChannelMessageBody({
-                body: payloadCheck.payload.body,
-                message_type: "message",
-            });
+            if (messageKind === "text") {
+                serializedBody = (0, channelMessageTasks_1.serializeChannelMessageBody)({
+                    body: payloadCheck.payload.body,
+                    message_type: "message",
+                });
+            }
         }
         const { data: message, error: messageError } = await dataClient
             .from("channel_messages")
@@ -2232,14 +2414,16 @@ app.post("/api/channels/:id/messages", async (req, res) => {
             sender_user_id: auth.user.id,
             body: serializedBody,
             message_type: messageType === "media_attachment" ? "message" : messageType,
+            message_kind: messageKind,
+            assignment_ref: assignmentRef,
         })
-            .select("id,channel_id,sender_user_id,body,message_type,created_at")
+            .select("id,channel_id,sender_user_id,body,message_type,message_kind,assignment_ref,created_at")
             .single();
         if (messageError) {
             return handleSupabaseError(res, "Failed to create message", messageError);
         }
         await fanOutUnreadCounters(channelId, auth.user.id);
-        const messageReadModel = buildChannelMessageReadModel(message);
+        const messageReadModel = (0, channelMessageTasks_1.buildChannelMessageReadModel)(message, { userId: auth.user.id, role: roleScopeCheck.result.role });
         return res.status(201).json({ message: messageReadModel });
     }
     catch (err) {
@@ -2341,11 +2525,14 @@ app.post("/api/channels/:id/broadcast", async (req, res) => {
         const channelId = req.params.id;
         if (!channelId)
             return res.status(422).json({ error: "channel id is required" });
-        const payloadCheck = validateChannelMessagePayload(req.body);
+        const payloadCheck = (0, channelMessageTasks_1.validateChannelMessagePayload)(req.body);
         if (!payloadCheck.ok)
             return res.status(payloadCheck.status).json({ error: payloadCheck.error });
         if ((payloadCheck.payload.message_type ?? "message") !== "message") {
             return res.status(422).json({ error: "broadcast endpoint supports text message payloads only" });
+        }
+        if ((payloadCheck.payload.message_kind ?? "text") !== "text" || payloadCheck.payload.task_action) {
+            return res.status(422).json({ error: "broadcast endpoint does not accept task-linked message payloads" });
         }
         const permission = await canBroadcastToChannel(channelId, auth.user.id);
         if (!permission.ok)
@@ -2372,8 +2559,9 @@ app.post("/api/channels/:id/broadcast", async (req, res) => {
             sender_user_id: auth.user.id,
             body: payloadCheck.payload.body,
             message_type: "broadcast",
+            message_kind: "text",
         })
-            .select("id,channel_id,sender_user_id,body,message_type,created_at")
+            .select("id,channel_id,sender_user_id,body,message_type,message_kind,assignment_ref,created_at")
             .single();
         if (messageError) {
             return handleSupabaseError(res, "Failed to create broadcast message", messageError);
@@ -2388,7 +2576,12 @@ app.post("/api/channels/:id/broadcast", async (req, res) => {
             return handleSupabaseError(res, "Failed to write broadcast audit log", logError);
         }
         await fanOutUnreadCounters(channelId, auth.user.id);
-        return res.status(201).json({ broadcast: message });
+        return res.status(201).json({
+            broadcast: (0, channelMessageTasks_1.buildChannelMessageReadModel)(message, {
+                userId: auth.user.id,
+                role: null,
+            }),
+        });
     }
     catch (err) {
         // eslint-disable-next-line no-console
@@ -3768,7 +3961,7 @@ app.get("/api/coaching/library/assets", async (req, res) => {
                 return null;
             const filename = String(row.filename ?? "").trim();
             const contentType = String(row.content_type ?? "").toLowerCase();
-            const category = contentType.startsWith("video/") ? "Video" : contentType.includes("pdf") ? "Guide" : "Resource";
+            const category = contentType.startsWith("video/") ? "Video" : contentType.startsWith("image/") ? "Image" : contentType.includes("pdf") ? "Guide" : "Resource";
             const ownership_scope = isMine ? "mine" : inTeamScope ? "team" : "global";
             return {
                 id: mediaId,
@@ -3784,6 +3977,7 @@ app.get("/api/coaching/library/assets", async (req, res) => {
                 requested_scope: scope,
                 source_journey_id: journeyId || null,
                 source_journey_title: journeyScope?.title ?? null,
+                content_type: contentType || null,
                 processing_status: String(row.processing_status ?? "unknown"),
                 created_at: String(row.created_at ?? ""),
                 updated_at: String(row.updated_at ?? ""),
@@ -3903,6 +4097,186 @@ app.post("/api/coaching/lessons/:id/progress", async (req, res) => {
         // eslint-disable-next-line no-console
         console.error("Error in POST /api/coaching/lessons/:id/progress", err);
         return res.status(500).json({ error: "Internal server error" });
+    }
+});
+/* ──────────────────────────────────────────────────────────────────
+ * GET /api/coaching/lessons/:id/media
+ * Fetch media assets linked to a specific lesson
+ * ────────────────────────────────────────────────────────────────── */
+app.get("/api/coaching/lessons/:id/media", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok)
+            return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+        if (!dataClient)
+            return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+        const lessonId = req.params.id;
+        if (!lessonId)
+            return errorEnvelopeResponse(res, 422, "missing_param", "lesson id is required", req.headers["x-request-id"]);
+        /* Verify lesson exists */
+        const { data: lesson, error: lessonError } = await dataClient
+            .from("lessons")
+            .select("id,milestone_id")
+            .eq("id", lessonId)
+            .single();
+        if (lessonError)
+            return errorEnvelopeResponse(res, 404, "not_found", "Lesson not found", req.headers["x-request-id"]);
+        /* Verify user has access to the lesson's journey (team-scoped or platform admin) */
+        const { data: milestone } = await dataClient
+            .from("milestones")
+            .select("journey_id")
+            .eq("id", String(lesson.milestone_id))
+            .single();
+        if (milestone) {
+            const { data: journey } = await dataClient
+                .from("journeys")
+                .select("team_id")
+                .eq("id", String(milestone.journey_id))
+                .single();
+            const scopedTeamId = String(journey?.team_id ?? "");
+            if (scopedTeamId) {
+                const platformAdmin = await isPlatformAdmin(auth.user.id);
+                if (!platformAdmin) {
+                    const membership = await checkTeamMembership(scopedTeamId, auth.user.id);
+                    if (!membership.ok || !membership.member) {
+                        return errorEnvelopeResponse(res, 403, "scope_denied", "You do not have access to this lesson", req.headers["x-request-id"]);
+                    }
+                }
+            }
+        }
+        /* Fetch media assets linked to this lesson */
+        const { data: mediaRows, error: mediaError } = await dataClient
+            .from("coaching_media_assets")
+            .select("media_id,filename,content_type,processing_status,playback_ready,playback_id,provider,created_at,updated_at")
+            .eq("lesson_id", lessonId)
+            .not("processing_status", "eq", "deleted")
+            .order("created_at", { ascending: true });
+        if (mediaError && !isRecoverableAssignmentSourceGap(mediaError)) {
+            return errorEnvelopeResponse(res, 500, "media_fetch_failed", "Failed to fetch lesson media", req.headers["x-request-id"]);
+        }
+        const rows = isRecoverableAssignmentSourceGap(mediaError) ? [] : mediaRows ?? [];
+        const assets = rows.map((row) => {
+            const contentType = String(row.content_type ?? "").toLowerCase();
+            const provider = String(row.provider ?? "mux");
+            const playbackId = String(row.playback_id ?? "");
+            let fileUrl = null;
+            if (provider === "supabase_storage" && playbackId) {
+                fileUrl = playbackId; // For supabase_storage, playback_id holds the public URL
+            }
+            return {
+                media_id: String(row.media_id ?? ""),
+                filename: String(row.filename ?? ""),
+                content_type: contentType,
+                category: contentType.startsWith("video/") ? "Video" : contentType.startsWith("image/") ? "Image" : "Resource",
+                processing_status: String(row.processing_status ?? "unknown"),
+                playback_ready: Boolean(row.playback_ready),
+                playback_id: provider === "mux" ? playbackId || null : null,
+                file_url: fileUrl,
+                provider,
+                created_at: String(row.created_at ?? ""),
+                updated_at: String(row.updated_at ?? ""),
+            };
+        });
+        return res.json({ lesson_id: lessonId, media: assets });
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Error in GET /api/coaching/lessons/:id/media", err);
+        return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+    }
+});
+/* ──────────────────────────────────────────────────────────────────
+ * POST /api/coaching/lessons/:id/media
+ * Link an existing media asset to a lesson (or unlink)
+ * Body: { media_id: string, action?: "link" | "unlink" }
+ * ────────────────────────────────────────────────────────────────── */
+app.post("/api/coaching/lessons/:id/media", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok)
+            return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+        if (!dataClient)
+            return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+        const lessonId = req.params.id;
+        if (!lessonId)
+            return errorEnvelopeResponse(res, 422, "missing_param", "lesson id is required", req.headers["x-request-id"]);
+        const body = req.body;
+        const mediaId = typeof body.media_id === "string" ? body.media_id.trim() : "";
+        const action = typeof body.action === "string" && body.action === "unlink" ? "unlink" : "link";
+        if (!mediaId)
+            return errorEnvelopeResponse(res, 422, "missing_param", "media_id is required", req.headers["x-request-id"]);
+        /* Check coaching access - require elevated role */
+        const accessResult = await getCoachingAccessContext(auth.user.id, {
+            superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]),
+            authUser: auth.user,
+        });
+        if (!accessResult.ok)
+            return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+        const access = accessResult.context;
+        if (!access.canAuthorGlobal && access.leaderTeamIds.size === 0) {
+            return errorEnvelopeResponse(res, 403, "insufficient_role", "You need coach or team leader access to manage lesson media", req.headers["x-request-id"]);
+        }
+        /* Verify lesson exists */
+        const { data: lesson, error: lessonError } = await dataClient
+            .from("lessons")
+            .select("id,milestone_id")
+            .eq("id", lessonId)
+            .single();
+        if (lessonError)
+            return errorEnvelopeResponse(res, 404, "not_found", "Lesson not found", req.headers["x-request-id"]);
+        /* Team-scoped authorization: non-global authors must belong to the journey's team */
+        if (!access.canAuthorGlobal && access.leaderTeamIds.size > 0) {
+            const milestoneId = String(lesson.milestone_id ?? "");
+            if (milestoneId) {
+                const { data: milestone } = await dataClient
+                    .from("milestones").select("journey_id")
+                    .eq("id", milestoneId).single();
+                if (milestone) {
+                    const { data: journey } = await dataClient
+                        .from("journeys").select("team_id")
+                        .eq("id", String(milestone.journey_id ?? "")).single();
+                    const teamId = String(journey?.team_id ?? "");
+                    if (teamId && !access.leaderTeamIds.has(teamId)) {
+                        return errorEnvelopeResponse(res, 403, "scope_denied", "You do not lead the team that owns this lesson's journey", req.headers["x-request-id"]);
+                    }
+                }
+            }
+        }
+        /* Verify media asset exists and is not deleted */
+        const { data: media, error: mediaError } = await dataClient
+            .from("coaching_media_assets")
+            .select("media_id,processing_status")
+            .eq("media_id", mediaId)
+            .single();
+        if (mediaError)
+            return errorEnvelopeResponse(res, 404, "not_found", "Media asset not found", req.headers["x-request-id"]);
+        if (String(media.processing_status ?? "") === "deleted") {
+            return errorEnvelopeResponse(res, 409, "media_deleted", "Cannot link a deleted media asset", req.headers["x-request-id"]);
+        }
+        if (action === "link") {
+            const { error: updateError } = await dataClient
+                .from("coaching_media_assets")
+                .update({ lesson_id: lessonId, updated_at: new Date().toISOString() })
+                .eq("media_id", mediaId);
+            if (updateError)
+                return errorEnvelopeResponse(res, 500, "update_failed", "Failed to link media to lesson", req.headers["x-request-id"]);
+            return res.json({ linked: true, media_id: mediaId, lesson_id: lessonId });
+        }
+        else {
+            const { error: updateError } = await dataClient
+                .from("coaching_media_assets")
+                .update({ lesson_id: null, updated_at: new Date().toISOString() })
+                .eq("media_id", mediaId)
+                .eq("lesson_id", lessonId);
+            if (updateError)
+                return errorEnvelopeResponse(res, 500, "update_failed", "Failed to unlink media from lesson", req.headers["x-request-id"]);
+            return res.json({ linked: false, media_id: mediaId, lesson_id: lessonId });
+        }
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Error in POST /api/coaching/lessons/:id/media", err);
+        return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
     }
 });
 app.get("/api/coaching/progress", async (req, res) => {
@@ -4047,6 +4421,7 @@ app.post("/api/coaching/media/upload-url", async (req, res) => {
         const roleCheck = await canAccessMuxMediaForRole(auth.user.id, "upload", {
             journeyId: payload.journey_id ?? null,
             lessonId: payload.lesson_id ?? null,
+            channelId: payload.channel_id ?? null,
         });
         if (!roleCheck.ok) {
             return errorEnvelopeResponse(res, roleCheck.status, "provider_unavailable", roleCheck.error, req.headers["x-request-id"]);
@@ -4070,6 +4445,65 @@ app.post("/api/coaching/media/upload-url", async (req, res) => {
         const now = new Date();
         const uploadId = `upl_${crypto_1.default.randomUUID()}`;
         const mediaId = uploadId;
+        const isImage = payload.content_type.startsWith("image/");
+        if (isImage) {
+            // ── Image upload: Supabase Storage signed URL ──
+            if (!dataClient) {
+                return errorEnvelopeResponse(res, 503, "provider_unavailable", "Storage provider not configured", req.headers["x-request-id"]);
+            }
+            const mediaBucket = (process.env.COACHING_MEDIA_BUCKET ?? "coaching-media").trim() || "coaching-media";
+            const extMap = { "image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp", "image/heic": ".heic", "image/heif": ".heif" };
+            const ext = extMap[payload.content_type] ?? ".jpg";
+            const storagePath = `chat-media/${auth.user.id}/${Date.now()}-${crypto_1.default.randomUUID()}${ext}`;
+            const { data: signedUpload, error: signedUploadError } = await dataClient.storage
+                .from(mediaBucket)
+                .createSignedUploadUrl(storagePath);
+            if (signedUploadError || !signedUpload?.signedUrl) {
+                return errorEnvelopeResponse(res, 503, "provider_unavailable", "Failed to create signed upload URL for image", req.headers["x-request-id"]);
+            }
+            const publicUrlResult = dataClient.storage.from(mediaBucket).getPublicUrl(storagePath);
+            const fileUrl = publicUrlResult.data?.publicUrl ?? null;
+            const record = {
+                media_id: mediaId,
+                upload_id: uploadId,
+                provider: "supabase_storage",
+                owner_user_id: auth.user.id,
+                journey_id: payload.journey_id ?? null,
+                lesson_id: payload.lesson_id ?? null,
+                channel_id: payload.channel_id ?? null,
+                filename: payload.filename,
+                content_type: payload.content_type,
+                content_length_bytes: payload.content_length_bytes,
+                provider_upload_id: storagePath,
+                provider_asset_id: fileUrl,
+                playback_id: fileUrl,
+                upload_url: signedUpload.signedUrl,
+                upload_url_expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                processing_status: "ready",
+                playback_ready: true,
+                last_provider_event_at: now.toISOString(),
+                last_provider_event_id: null,
+                provider_error_code: null,
+                verification_status: "verified",
+                created_at: now.toISOString(),
+                updated_at: now.toISOString(),
+            };
+            await upsertMuxMediaRecord(record);
+            return res.status(201).json({
+                upload_id: record.upload_id,
+                media_id: record.media_id,
+                provider: record.provider,
+                provider_upload_id: record.provider_upload_id,
+                upload_url: signedUpload.signedUrl,
+                upload_url_expires_at: record.upload_url_expires_at,
+                file_url: fileUrl,
+                lifecycle: {
+                    processing_status: record.processing_status,
+                    playback_ready: record.playback_ready,
+                },
+            });
+        }
+        // ── Video upload: Mux direct upload ──
         const providerCreate = await createMuxUploadSession({
             uploadId,
             ownerUserId: auth.user.id,
@@ -4142,10 +4576,11 @@ app.post("/api/coaching/media/playback-token", async (req, res) => {
         if (!media) {
             return errorEnvelopeResponse(res, 404, "media_not_found", "Media asset not found", req.headers["x-request-id"]);
         }
+        const refreshedMedia = await refreshMuxMediaRecordFromProvider(media);
         const roleCheck = await canAccessMuxMediaForRole(auth.user.id, "playback", {
-            journeyId: media.journey_id,
-            lessonId: media.lesson_id,
-            ownerUserId: media.owner_user_id,
+            journeyId: refreshedMedia.journey_id,
+            lessonId: refreshedMedia.lesson_id,
+            ownerUserId: refreshedMedia.owner_user_id,
             viewerContext: payload.viewer_context,
         });
         if (!roleCheck.ok) {
@@ -4154,26 +4589,16 @@ app.post("/api/coaching/media/playback-token", async (req, res) => {
         if (!roleCheck.allowed) {
             return errorEnvelopeResponse(res, 403, "unauthorized_scope", "Caller role does not have media playback scope for this context", req.headers["x-request-id"]);
         }
-        if (media.processing_status === "deleted") {
+        if (refreshedMedia.processing_status === "deleted") {
             return errorEnvelopeResponse(res, 409, "media_deleted", "Media has been deleted", req.headers["x-request-id"]);
         }
-        if (!media.playback_ready || media.processing_status !== "ready" || !media.playback_id) {
+        if (!refreshedMedia.playback_ready || refreshedMedia.processing_status !== "ready" || !refreshedMedia.playback_id) {
             return errorEnvelopeResponse(res, 409, "media_not_ready", "Media is not ready for playback", req.headers["x-request-id"]);
         }
-        const ttlSeconds = 15 * 60;
-        const issuedAtMs = Date.now();
-        const tokenExpiresAt = new Date(issuedAtMs + ttlSeconds * 1000).toISOString();
-        const token = signMuxPlaybackToken({
-            mediaId: media.media_id,
-            playbackId: media.playback_id,
-            subjectUserId: auth.user.id,
-            viewerContext: payload.viewer_context ?? inferViewerContextFromRole(roleCheck.role),
-            tokenExpiresAt,
-        });
         return res.json({
-            token,
-            token_expires_at: tokenExpiresAt,
-            playback_id: media.playback_id,
+            token: null,
+            token_expires_at: null,
+            playback_id: refreshedMedia.playback_id,
             policy: {
                 watermark_required: false,
                 allow_download: false,
@@ -4192,7 +4617,7 @@ app.post("/api/coaching/media/live-sessions", async (req, res) => {
         if (!auth.ok) {
             return errorEnvelopeResponse(res, auth.status, "unauthenticated", auth.error, req.headers["x-request-id"]);
         }
-        const payloadCheck = validateLiveSessionCreatePayload(req.body);
+        const payloadCheck = (0, muxLiveService_1.validateLiveSessionCreatePayload)(req.body);
         if (!payloadCheck.ok) {
             return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
         }
@@ -4211,60 +4636,17 @@ app.post("/api/coaching/media/live-sessions", async (req, res) => {
         const roleResult = await getUserRoleForScope(auth.user.id);
         if (!roleResult.ok)
             return res.status(roleResult.status).json({ error: roleResult.error });
-        if (!canHostLiveSession(roleResult.role)) {
+        if (!(0, muxLiveService_1.canHostLiveSession)(roleResult.role)) {
             return errorEnvelopeResponse(res, 403, "unauthorized_scope", "Caller role does not have live session host scope for this channel", req.headers["x-request-id"]);
         }
-        const idempotencyLookup = `${auth.user.id}::${payload.idempotency_key}`;
-        const existingSessionId = liveSessionByIdempotencyKey.get(idempotencyLookup);
-        if (existingSessionId) {
-            const existing = liveSessionStore.get(existingSessionId);
-            if (existing) {
-                return res.status(200).json({
-                    session: existing,
-                    idempotent_replay: true,
-                    provider: existing.provider,
-                    host_url: existing.host_url,
-                    join_url: existing.join_url,
-                    live_url: existing.live_url,
-                });
-            }
+        const result = await (0, muxLiveService_1.createSession)({ userId: auth.user.id, payload });
+        if (!result.ok) {
+            return errorEnvelopeResponse(res, result.status, "create_failed", result.error, req.headers["x-request-id"]);
         }
-        if (resolveLiveProviderMode() === "unavailable") {
-            return errorEnvelopeResponse(res, 503, "provider_unavailable", "Mux live provider is unavailable", req.headers["x-request-id"]);
-        }
-        const nowIso = new Date().toISOString();
-        const startsAt = payload.starts_at ?? nowIso;
-        const status = new Date(startsAt).getTime() > Date.now() ? "scheduled" : "live";
-        const sessionId = `live_${crypto_1.default.randomUUID()}`;
-        const launchUrls = buildLiveSessionLaunchUrls({
-            sessionId,
-            channelId: payload.channel_id,
-            role: "host",
-        });
-        const record = {
-            session_id: sessionId,
-            channel_id: payload.channel_id,
-            title: payload.title,
-            status,
-            host_user_id: auth.user.id,
-            provider: "mux_live",
-            host_url: launchUrls.host_url,
-            join_url: launchUrls.join_url,
-            live_url: launchUrls.live_url,
-            started_at: startsAt,
-            ends_at: payload.ends_at ?? null,
-            created_at: nowIso,
-            updated_at: nowIso,
-        };
-        liveSessionStore.set(record.session_id, record);
-        liveSessionByIdempotencyKey.set(idempotencyLookup, record.session_id);
-        return res.status(201).json({
-            session: record,
-            idempotent_replay: false,
-            provider: record.provider,
-            host_url: record.host_url,
-            join_url: record.join_url,
-            live_url: record.live_url,
+        return res.status(result.idempotent_replay ? 200 : 201).json({
+            ...(0, muxLiveService_1.buildSessionResponse)(result.session, true),
+            idempotent_replay: result.idempotent_replay,
+            caller_role: "host",
         });
     }
     catch (err) {
@@ -4283,7 +4665,7 @@ app.get("/api/coaching/media/live-sessions/:id", async (req, res) => {
         if (!sessionId) {
             return errorEnvelopeResponse(res, 422, "invalid_request", "session id is required", req.headers["x-request-id"]);
         }
-        const session = liveSessionStore.get(sessionId);
+        const session = await (0, muxLiveService_1.refreshSession)(sessionId);
         if (!session) {
             return errorEnvelopeResponse(res, 404, "not_found", "Live session not found", req.headers["x-request-id"]);
         }
@@ -4298,12 +4680,10 @@ app.get("/api/coaching/media/live-sessions/:id", async (req, res) => {
         if (!roleScopeCheck.result.allowed) {
             return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
         }
+        const callerIsHost = session.host_user_id === auth.user.id;
         return res.json({
-            session,
-            provider: session.provider,
-            host_url: session.host_url,
-            join_url: session.join_url,
-            live_url: session.live_url,
+            ...(0, muxLiveService_1.buildSessionResponse)(session, callerIsHost),
+            caller_role: callerIsHost ? "host" : "viewer",
         });
     }
     catch (err) {
@@ -4322,7 +4702,7 @@ app.post("/api/coaching/media/live-sessions/:id/join-token", async (req, res) =>
         if (!sessionId) {
             return errorEnvelopeResponse(res, 422, "invalid_request", "session id is required", req.headers["x-request-id"]);
         }
-        const session = liveSessionStore.get(sessionId);
+        const session = (0, muxLiveService_1.getLiveSession)(sessionId);
         if (!session) {
             return errorEnvelopeResponse(res, 404, "not_found", "Live session not found", req.headers["x-request-id"]);
         }
@@ -4340,46 +4720,25 @@ app.post("/api/coaching/media/live-sessions/:id/join-token", async (req, res) =>
         if (!roleScopeCheck.result.allowed) {
             return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
         }
-        const payloadCheck = validateLiveSessionJoinTokenPayload(req.body);
+        const payloadCheck = (0, muxLiveService_1.validateLiveSessionJoinTokenPayload)(req.body);
         if (!payloadCheck.ok) {
             return errorEnvelopeResponse(res, payloadCheck.status, "invalid_request", payloadCheck.error, req.headers["x-request-id"]);
         }
-        if (resolveLiveProviderMode() === "unavailable") {
+        if ((0, muxLiveService_1.resolveLiveProviderMode)() === "unavailable") {
             return errorEnvelopeResponse(res, 503, "provider_unavailable", "Mux live provider is unavailable", req.headers["x-request-id"]);
         }
-        const requestedRole = payloadCheck.payload.role ?? "participant";
-        const role = session.host_user_id === auth.user.id ? "host" : requestedRole;
-        const issuedAtMs = Date.now();
-        const ttlSeconds = Math.max(60, Math.min(3600, toNumberOrZero(process.env.LIVE_SESSION_JOIN_TOKEN_TTL_SECONDS ?? 900) || 900));
-        const token = issueLiveSessionJoinToken({
-            sessionId,
-            channelId: session.channel_id,
+        const requestedRole = payloadCheck.payload.role ?? "viewer";
+        const result = (0, muxLiveService_1.issueJoinToken)({
+            session,
             userId: auth.user.id,
-            role,
-            issuedAtMs,
-            ttlSeconds,
+            requestedRole,
+            ttlSeconds: 3600,
         });
-        const sessionUpdate = {
-            ...session,
-            status: session.status === "scheduled" ? "live" : session.status,
-            ...buildLiveSessionLaunchUrls({
-                sessionId,
-                channelId: session.channel_id,
-                role,
-                token,
-            }),
-            updated_at: new Date().toISOString(),
-        };
-        liveSessionStore.set(sessionId, sessionUpdate);
         return res.json({
-            session: sessionUpdate,
-            role,
-            token,
-            token_expires_at: new Date(issuedAtMs + ttlSeconds * 1000).toISOString(),
-            provider: sessionUpdate.provider,
-            host_url: sessionUpdate.host_url,
-            join_url: sessionUpdate.join_url,
-            live_url: sessionUpdate.live_url,
+            ...(0, muxLiveService_1.buildSessionResponse)(result.session, result.role === "host"),
+            caller_role: result.role,
+            token: result.token,
+            token_expires_at: result.tokenExpiresAt,
         });
     }
     catch (err) {
@@ -4398,25 +4757,21 @@ app.post("/api/coaching/media/live-sessions/:id/end", async (req, res) => {
         if (!sessionId) {
             return errorEnvelopeResponse(res, 422, "invalid_request", "session id is required", req.headers["x-request-id"]);
         }
-        const session = liveSessionStore.get(sessionId);
+        const session = (0, muxLiveService_1.getLiveSession)(sessionId);
         if (!session) {
             return errorEnvelopeResponse(res, 404, "not_found", "Live session not found", req.headers["x-request-id"]);
         }
         const roleResult = await getUserRoleForScope(auth.user.id);
         if (!roleResult.ok)
             return res.status(roleResult.status).json({ error: roleResult.error });
-        const adminLike = roleResult.role === "admin" || roleResult.role === "super_admin";
-        if (!adminLike && session.host_user_id !== auth.user.id) {
+        if (!(0, muxLiveService_1.canHostLiveSession)(roleResult.role) && session.host_user_id !== auth.user.id) {
             return errorEnvelopeResponse(res, 403, "unauthorized_scope", "Only the host or admin can end this live session", req.headers["x-request-id"]);
         }
-        const ended = {
-            ...session,
-            status: "ended",
-            ends_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-        };
-        liveSessionStore.set(sessionId, ended);
-        return res.json({ session: ended });
+        const result = await (0, muxLiveService_1.endSession)(sessionId);
+        if (!result.ok) {
+            return errorEnvelopeResponse(res, 500, "end_failed", result.error, req.headers["x-request-id"]);
+        }
+        return res.json((0, muxLiveService_1.buildSessionResponse)(result.session, false));
     }
     catch (err) {
         // eslint-disable-next-line no-console
@@ -4440,7 +4795,7 @@ app.post("/api/webhooks/mux", async (req, res) => {
         if (!event.ok) {
             return errorEnvelopeResponse(res, 422, "invalid_payload", event.error, req.headers["x-request-id"]);
         }
-        if (muxProcessedWebhookEventIds.has(event.eventId)) {
+        if (trackMuxWebhookEvent(event.eventId)) {
             return res.status(200).json({
                 verification_status: "duplicate_ignored",
                 event_id: event.eventId,
@@ -4448,7 +4803,6 @@ app.post("/api/webhooks/mux", async (req, res) => {
         }
         const transition = mapMuxWebhookEventToTransition(event.eventType);
         if (!transition) {
-            muxProcessedWebhookEventIds.add(event.eventId);
             return res.status(202).json({
                 verification_status: "verified",
                 event_id: event.eventId,
@@ -4458,7 +4812,6 @@ app.post("/api/webhooks/mux", async (req, res) => {
         }
         const targetMedia = await resolveMuxMediaFromWebhookEvent(event.object);
         if (!targetMedia) {
-            muxProcessedWebhookEventIds.add(event.eventId);
             return res.status(202).json({
                 verification_status: "verified",
                 event_id: event.eventId,
@@ -4484,7 +4837,6 @@ app.post("/api/webhooks/mux", async (req, res) => {
         if (applied.applied && updated.channel_id) {
             await emitMuxLifecycleChannelMessage(updated, event.eventType);
         }
-        muxProcessedWebhookEventIds.add(event.eventId);
         return res.status(200).json({
             verification_status: "verified",
             event_id: event.eventId,
@@ -4783,13 +5135,14 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
         }
         const seenMessageLinkedTaskIds = new Set();
         for (const m of taskMsgRows ?? []) {
-            const ref = m.assignment_ref ?? {};
+            const ref = (0, channelMessageTasks_1.parseTaskAssignmentRef)(m.assignment_ref);
+            if (!ref)
+                continue;
             const assigneeId = ref.assignee_id ?? null;
             // Only include tasks assigned to or created by this user
             if (assigneeId !== userId && ref.created_by !== userId)
                 continue;
             const taskType = m.message_kind === "coach_task" ? "coach_task" : "personal_task";
-            const isAssignee = assigneeId === userId;
             const taskId = ref.id ?? m.id;
             // Keep latest state only (rows are sorted newest->oldest).
             if (seenMessageLinkedTaskIds.has(taskId))
@@ -4800,11 +5153,12 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
                 return res.status(roleScopeCheck.status).json({ error: roleScopeCheck.error });
             if (!roleScopeCheck.result.allowed)
                 continue;
-            const role = roleScopeCheck.result.role;
-            const canManageCoachTask = taskType === "coach_task" && (role === "coach" || role === "team_leader" || role === "admin" || role === "super_admin");
-            const canEditFields = !isAssignee && canManageCoachTask;
-            const canUpdateStatus = taskType === "personal_task" ? isAssignee : (isAssignee || canManageCoachTask);
-            const canMarkComplete = canUpdateStatus;
+            const rights = (0, channelMessageTasks_1.buildLinkedTaskRights)({
+                taskType,
+                viewerUserId: userId,
+                viewerRole: roleScopeCheck.result.role,
+                assigneeId,
+            });
             const sourceMessageId = ref.source_message_id ?? m.id;
             const lastThreadEventAt = ref.last_thread_event_at ?? m.created_at ?? null;
             assignments.push({
@@ -4820,12 +5174,7 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
                 source_message_id: sourceMessageId,
                 last_thread_event_at: lastThreadEventAt,
                 thread_read_state: "unknown",
-                rights: {
-                    can_edit_fields: canEditFields,
-                    can_update_status: canUpdateStatus,
-                    can_mark_complete: canMarkComplete,
-                    can_reassign: canEditFields,
-                },
+                rights,
             });
         }
         // Sort: due_at asc (nulls last), then created_at desc
@@ -7089,13 +7438,13 @@ app.get("/api/custom-kpis", async (req, res) => {
         if (!dataClient)
             return res.status(500).json({ error: "Supabase data client not configured" });
         await ensureUserRow(auth.user.id);
-        const { data: rows, error } = await dataClient
+        const { data: rows, error } = await runKpiCatalogSelectWithCompat((selectClause) => dataClient
             .from("kpis")
-            .select("id,name,slug,type,requires_direct_value_input,is_active,created_by,created_at,updated_at")
+            .select(selectClause)
             .eq("type", "Custom")
             .eq("created_by", auth.user.id)
             .eq("is_active", true)
-            .order("created_at", { ascending: true });
+            .order("created_at", { ascending: true }));
         if (error)
             return handleSupabaseError(res, "Failed to fetch custom KPIs", error);
         return res.json({ custom_kpis: rows ?? [] });
@@ -7116,6 +7465,9 @@ app.post("/api/custom-kpis", async (req, res) => {
         if (!isRecord(req.body) || typeof req.body.name !== "string" || !req.body.name.trim()) {
             return res.status(422).json({ error: "name is required" });
         }
+        const iconPayload = validateKpiIconPayload(req.body);
+        if (!iconPayload.ok)
+            return res.status(iconPayload.status).json({ error: iconPayload.error });
         await ensureUserRow(auth.user.id);
         const { data: userRow, error: userError } = await dataClient
             .from("users")
@@ -7140,11 +7492,12 @@ app.post("/api/custom-kpis", async (req, res) => {
             name,
             slug,
             type: "Custom",
+            ...iconPayload.payload,
             requires_direct_value_input: requiresDirect,
             is_active: true,
             created_by: auth.user.id,
         })
-            .select("id,name,slug,type,requires_direct_value_input,is_active,created_by,created_at,updated_at")
+            .select("id,name,slug,type,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,is_active,created_by,created_at,updated_at")
             .single();
         if (error)
             return handleSupabaseError(res, "Failed to create custom KPI", error);
@@ -7187,6 +7540,10 @@ app.put("/api/custom-kpis/:id", async (req, res) => {
         if (req.body.requires_direct_value_input !== undefined) {
             patch.requires_direct_value_input = Boolean(req.body.requires_direct_value_input);
         }
+        const iconPatch = validateKpiIconPayload(req.body);
+        if (!iconPatch.ok)
+            return res.status(iconPatch.status).json({ error: iconPatch.error });
+        Object.assign(patch, iconPatch.payload);
         if (Object.keys(patch).length === 1) {
             return res.status(422).json({ error: "At least one mutable field is required" });
         }
@@ -7196,7 +7553,7 @@ app.put("/api/custom-kpis/:id", async (req, res) => {
             .eq("id", customKpiId)
             .eq("created_by", auth.user.id)
             .eq("type", "Custom")
-            .select("id,name,slug,type,requires_direct_value_input,is_active,created_by,created_at,updated_at")
+            .select("id,name,slug,type,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,is_active,created_by,created_at,updated_at")
             .single();
         if (error)
             return handleSupabaseError(res, "Failed to update custom KPI", error);
@@ -7243,10 +7600,7 @@ app.get("/admin/kpis", async (req, res) => {
             return res.status(500).json({ error: "Supabase data client not configured" });
         if (!(await isPlatformAdmin(auth.user.id)))
             return res.status(403).json({ error: "Admin access required" });
-        const { data, error } = await dataClient
-            .from("kpis")
-            .select("id,name,slug,type,requires_direct_value_input,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value,is_active,created_at,updated_at")
-            .order("created_at", { ascending: true });
+        const { data, error } = await runKpiCatalogSelectWithCompat((selectClause) => dataClient.from("kpis").select(selectClause).order("created_at", { ascending: true }));
         if (error)
             return handleSupabaseError(res, "Failed to fetch KPI catalog", error);
         return res.json({ kpis: data ?? [] });
@@ -7272,7 +7626,7 @@ app.post("/admin/kpis", async (req, res) => {
         const { data, error } = await dataClient
             .from("kpis")
             .insert(payloadCheck.payload)
-            .select("id,name,slug,type,requires_direct_value_input,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value,is_active,created_at,updated_at")
+            .select("id,name,slug,type,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value,is_active,created_at,updated_at")
             .single();
         if (error)
             return handleSupabaseError(res, "Failed to create KPI", error);
@@ -7304,7 +7658,7 @@ app.put("/admin/kpis/:id", async (req, res) => {
             .from("kpis")
             .update({ ...payloadCheck.payload, updated_at: new Date().toISOString() })
             .eq("id", kpiId)
-            .select("id,name,slug,type,requires_direct_value_input,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value,is_active,created_at,updated_at")
+            .select("id,name,slug,type,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value,is_active,created_at,updated_at")
             .single();
         if (error)
             return handleSupabaseError(res, "Failed to update KPI", error);
@@ -9141,51 +9495,6 @@ function validateChannelSyncPayload(body) {
         },
     };
 }
-function validateChannelMessagePayload(body) {
-    if (!body || typeof body !== "object") {
-        return { ok: false, status: 400, error: "Body must be a JSON object" };
-    }
-    const candidate = body;
-    const messageType = candidate.message_type ?? "message";
-    if (messageType !== "message" && messageType !== "media_attachment") {
-        return { ok: false, status: 422, error: "message_type must be one of: message, media_attachment" };
-    }
-    const bodyTextRaw = typeof candidate.body === "string" ? candidate.body.trim() : "";
-    if (messageType === "message") {
-        if (!bodyTextRaw) {
-            return { ok: false, status: 422, error: "body is required" };
-        }
-        if (bodyTextRaw.length > 4000) {
-            return { ok: false, status: 422, error: "body is too long (max 4000 chars)" };
-        }
-        return { ok: true, payload: { body: bodyTextRaw, message_type: "message" } };
-    }
-    if (!isRecord(candidate.media_attachment)) {
-        return { ok: false, status: 422, error: "media_attachment is required when message_type=media_attachment" };
-    }
-    if (typeof candidate.media_attachment.media_id !== "string" || !candidate.media_attachment.media_id.trim()) {
-        return { ok: false, status: 422, error: "media_attachment.media_id is required" };
-    }
-    const captionRaw = typeof candidate.media_attachment.caption === "string" ? candidate.media_attachment.caption.trim() : undefined;
-    if (captionRaw && captionRaw.length > 4000) {
-        return { ok: false, status: 422, error: "media_attachment.caption is too long (max 4000 chars)" };
-    }
-    if (bodyTextRaw && bodyTextRaw.length > 4000) {
-        return { ok: false, status: 422, error: "body is too long (max 4000 chars)" };
-    }
-    const normalizedText = bodyTextRaw || captionRaw || "Shared media attachment";
-    return {
-        ok: true,
-        payload: {
-            body: normalizedText,
-            message_type: "media_attachment",
-            media_attachment: {
-                media_id: candidate.media_attachment.media_id.trim(),
-                ...(captionRaw ? { caption: captionRaw } : {}),
-            },
-        },
-    };
-}
 function validateMarkSeenPayload(body) {
     if (!body || typeof body !== "object") {
         return { ok: false, status: 400, error: "Body must be a JSON object" };
@@ -9195,73 +9504,6 @@ function validateMarkSeenPayload(body) {
         return { ok: false, status: 422, error: "channel_id is required" };
     }
     return { ok: true, payload: { channel_id: candidate.channel_id } };
-}
-function serializeChannelMessageBody(payload) {
-    const text = payload.body?.trim() || "";
-    if (payload.message_type !== "media_attachment" || !payload.media_attachment) {
-        return text;
-    }
-    return JSON.stringify({
-        text,
-        media_attachment: payload.media_attachment,
-        lifecycle: payload.lifecycle ?? null,
-    });
-}
-function buildChannelMessageReadModel(row) {
-    const base = {
-        id: String(row.id ?? ""),
-        channel_id: String(row.channel_id ?? ""),
-        sender_user_id: String(row.sender_user_id ?? ""),
-        body: typeof row.body === "string" ? row.body : "",
-        message_type: String(row.message_type ?? "message"),
-        created_at: typeof row.created_at === "string" ? row.created_at : null,
-    };
-    let parsed = null;
-    if (typeof row.body === "string" && row.body.trim().startsWith("{")) {
-        try {
-            const json = JSON.parse(row.body);
-            if (isRecord(json))
-                parsed = json;
-        }
-        catch {
-            parsed = null;
-        }
-    }
-    const isAttachmentByType = base.message_type === "media_attachment";
-    const attachmentPayload = parsed && isRecord(parsed.media_attachment) ? parsed.media_attachment : null;
-    const isAttachmentByPayload = Boolean(attachmentPayload?.media_id);
-    if (!isAttachmentByType && !isAttachmentByPayload) {
-        return base;
-    }
-    if (!parsed || !attachmentPayload) {
-        return {
-            ...base,
-            message_type: "media_attachment",
-            media_attachment: {
-                media_id: "",
-            },
-        };
-    }
-    const lifecycleRaw = isRecord(parsed.lifecycle) ? parsed.lifecycle : null;
-    const lifecycle = lifecycleRaw &&
-        typeof lifecycleRaw.processing_status === "string" &&
-        typeof lifecycleRaw.playback_ready === "boolean"
-        ? {
-            processing_status: normalizeMuxLifecycleStatus(lifecycleRaw.processing_status),
-            playback_ready: lifecycleRaw.playback_ready,
-        }
-        : null;
-    const text = typeof parsed.text === "string" ? parsed.text : base.body;
-    return {
-        ...base,
-        message_type: "media_attachment",
-        body: text,
-        media_attachment: {
-            media_id: typeof attachmentPayload.media_id === "string" ? attachmentPayload.media_id : "",
-            ...(typeof attachmentPayload.caption === "string" ? { caption: attachmentPayload.caption } : {}),
-            ...(lifecycle ? { lifecycle } : {}),
-        },
-    };
 }
 function validatePushTokenPayload(body) {
     if (!body || typeof body !== "object") {
@@ -9486,6 +9728,10 @@ function validateAdminKpiPayload(body, requireNameAndType) {
             return { ok: false, status: 422, error: "slug must contain at least one alphanumeric character" };
         }
     }
+    const iconPayload = validateKpiIconPayload(candidate);
+    if (!iconPayload.ok)
+        return iconPayload;
+    Object.assign(payload, iconPayload.payload);
     if (candidate.type !== undefined) {
         const type = candidate.type;
         const allowed = ["PC", "GP", "VP", "Actual", "Pipeline_Anchor", "Custom"];
@@ -9595,6 +9841,56 @@ function validateAdminKpiPayload(body, requireNameAndType) {
         payload.vp_value = null;
     }
     return { ok: true, payload };
+}
+function validateKpiIconPayload(candidate) {
+    const hasIconFields = candidate.icon_source !== undefined || candidate.icon_name !== undefined || candidate.icon_emoji !== undefined;
+    if (!hasIconFields) {
+        return { ok: true, payload: {} };
+    }
+    if (candidate.icon_source === null) {
+        return {
+            ok: true,
+            payload: { icon_source: null, icon_name: null, icon_emoji: null, icon_file: null },
+        };
+    }
+    if (typeof candidate.icon_source !== "string" || !candidate.icon_source.trim()) {
+        return { ok: false, status: 422, error: "icon_source must be one of: brand_asset, vector_icon, emoji" };
+    }
+    const iconSource = candidate.icon_source.trim();
+    if (!["brand_asset", "vector_icon", "emoji"].includes(iconSource)) {
+        return { ok: false, status: 422, error: "icon_source must be one of: brand_asset, vector_icon, emoji" };
+    }
+    if (iconSource === "emoji") {
+        if (typeof candidate.icon_emoji !== "string" || !candidate.icon_emoji.trim()) {
+            return { ok: false, status: 422, error: "icon_emoji is required when icon_source=emoji" };
+        }
+        return {
+            ok: true,
+            payload: {
+                icon_source: "emoji",
+                icon_name: null,
+                icon_emoji: candidate.icon_emoji.trim(),
+                icon_file: null,
+            },
+        };
+    }
+    if (typeof candidate.icon_name !== "string" || !candidate.icon_name.trim()) {
+        return {
+            ok: false,
+            status: 422,
+            error: `icon_name is required when icon_source=${iconSource}`,
+        };
+    }
+    const iconName = candidate.icon_name.trim();
+    return {
+        ok: true,
+        payload: {
+            icon_source: iconSource,
+            icon_name: iconName,
+            icon_emoji: null,
+            icon_file: iconSource === "brand_asset" ? iconName : null,
+        },
+    };
 }
 function validateCoachingJourneyCreatePayload(body) {
     if (!isRecord(body))
@@ -9837,8 +10133,12 @@ function validateCoachingMediaUploadUrlPayload(body) {
     const channelId = typeof candidate.channel_id === "string" && candidate.channel_id.trim()
         ? candidate.channel_id.trim()
         : undefined;
-    if ((journeyId && lessonId) || (!journeyId && !lessonId)) {
-        return { ok: false, status: 422, error: "Exactly one of journey_id or lesson_id is required" };
+    if (journeyId && lessonId) {
+        return { ok: false, status: 422, error: "Provide at most one of journey_id or lesson_id (not both)" };
+    }
+    // Chat media: neither journey_id nor lesson_id — channel_id is the context
+    if (!journeyId && !lessonId && !channelId) {
+        return { ok: false, status: 422, error: "At least one of journey_id, lesson_id, or channel_id is required" };
     }
     if (typeof candidate.filename !== "string" || !candidate.filename.trim()) {
         return { ok: false, status: 422, error: "filename is required" };
@@ -9847,16 +10147,22 @@ function validateCoachingMediaUploadUrlPayload(body) {
         return { ok: false, status: 422, error: "content_type is required" };
     }
     const contentType = candidate.content_type.trim().toLowerCase();
-    const allowedTypes = new Set(["video/mp4", "video/quicktime", "video/webm", "video/x-matroska"]);
+    const allowedTypes = new Set([
+        "video/mp4", "video/quicktime", "video/webm", "video/x-matroska",
+        "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif",
+    ]);
     if (!allowedTypes.has(contentType)) {
         return { ok: false, status: 415, error: "content_type is not supported" };
     }
     if (typeof candidate.content_length_bytes !== "number" || !Number.isFinite(candidate.content_length_bytes) || candidate.content_length_bytes <= 0) {
         return { ok: false, status: 422, error: "content_length_bytes must be a positive number" };
     }
-    const maxBytes = Number(process.env.MUX_UPLOAD_MAX_BYTES ?? 250000000);
+    const isImageType = contentType.startsWith("image/");
+    const maxVideoBytes = Number(process.env.MUX_UPLOAD_MAX_BYTES ?? 250000000);
+    const maxImageBytes = Number(process.env.IMAGE_UPLOAD_MAX_BYTES ?? 50000000); // 50MB for images
+    const maxBytes = isImageType ? maxImageBytes : maxVideoBytes;
     if (candidate.content_length_bytes > maxBytes) {
-        return { ok: false, status: 413, error: "content_length_bytes exceeds upload limit" };
+        return { ok: false, status: 413, error: `File size exceeds the ${isImageType ? 'image' : 'video'} upload limit (${Math.round(maxBytes / 1000000)}MB)` };
     }
     if (typeof candidate.idempotency_key !== "string" || !candidate.idempotency_key.trim()) {
         return { ok: false, status: 422, error: "idempotency_key is required" };
@@ -9897,64 +10203,7 @@ function validateCoachingMediaPlaybackTokenPayload(body) {
         },
     };
 }
-function validateLiveSessionCreatePayload(body) {
-    if (!isRecord(body))
-        return { ok: false, status: 400, error: "Body must be a JSON object" };
-    const channelId = typeof body.channel_id === "string" ? body.channel_id.trim() : "";
-    const title = typeof body.title === "string" ? body.title.trim() : "";
-    const idempotencyKey = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
-    if (!channelId)
-        return { ok: false, status: 422, error: "channel_id is required" };
-    if (!title)
-        return { ok: false, status: 422, error: "title is required" };
-    if (!idempotencyKey)
-        return { ok: false, status: 422, error: "idempotency_key is required" };
-    if (title.length > 120)
-        return { ok: false, status: 422, error: "title is too long (max 120 chars)" };
-    const startsAtRaw = typeof body.starts_at === "string" && body.starts_at.trim() ? body.starts_at.trim() : undefined;
-    let startsAt;
-    if (startsAtRaw) {
-        const parsed = new Date(startsAtRaw);
-        if (Number.isNaN(parsed.getTime())) {
-            return { ok: false, status: 422, error: "starts_at must be a valid ISO timestamp when provided" };
-        }
-        startsAt = parsed.toISOString();
-    }
-    const endsAtRaw = typeof body.ends_at === "string" && body.ends_at.trim() ? body.ends_at.trim() : undefined;
-    let endsAt;
-    if (endsAtRaw) {
-        const parsed = new Date(endsAtRaw);
-        if (Number.isNaN(parsed.getTime())) {
-            return { ok: false, status: 422, error: "ends_at must be a valid ISO timestamp when provided" };
-        }
-        endsAt = parsed.toISOString();
-    }
-    if (startsAt && endsAt && new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
-        return { ok: false, status: 422, error: "ends_at must be later than starts_at" };
-    }
-    return {
-        ok: true,
-        payload: {
-            channel_id: channelId,
-            title,
-            starts_at: startsAt,
-            ends_at: endsAt,
-            idempotency_key: idempotencyKey,
-        },
-    };
-}
-function validateLiveSessionJoinTokenPayload(body) {
-    if (body === undefined || body === null) {
-        return { ok: true, payload: {} };
-    }
-    if (!isRecord(body))
-        return { ok: false, status: 400, error: "Body must be a JSON object" };
-    const role = body.role;
-    if (role !== undefined && role !== "host" && role !== "participant" && role !== "viewer") {
-        return { ok: false, status: 422, error: "role must be one of: host, participant, viewer" };
-    }
-    return { ok: true, payload: { role: role } };
-}
+// validateLiveSessionCreatePayload, validateLiveSessionJoinTokenPayload → services/muxLiveService.ts
 async function canAccessMuxMediaForRole(userId, action, context) {
     const roleResult = await getUserRoleScopeForActor(userId);
     if (!roleResult.ok)
@@ -9969,10 +10218,23 @@ async function canAccessMuxMediaForRole(userId, action, context) {
     if (allowRole) {
         return { ok: true, allowed: true, role };
     }
+    // Chat media: any authenticated user can upload when context is channel-only
+    // (no journey/lesson — this is a message attachment, not library content)
+    if (action === "upload" && context.channelId && !context.journeyId && !context.lessonId) {
+        return { ok: true, allowed: true, role };
+    }
     if (action === "playback" && context.ownerUserId && context.ownerUserId === userId) {
         return { ok: true, allowed: true, role };
     }
-    if (action === "playback" && context.viewerContext === "member" && role === "agent") {
+    // Agent playback: allowed only when media is scoped to a channel or lesson the agent belongs to
+    if (action === "playback" && context.viewerContext === "member" && (role === "agent" || role === "member")) {
+        // Channel-scoped media (chat attachment) — always accessible to any authenticated user
+        if (context.channelId)
+            return { ok: true, allowed: true, role };
+        // Lesson-scoped or journey-scoped media — accessible (details verified by caller)
+        if (context.lessonId || context.journeyId)
+            return { ok: true, allowed: true, role };
+        // Fallback: allow playback for any member viewer context (backward compat)
         return { ok: true, allowed: true, role };
     }
     return { ok: true, allowed: false, role };
@@ -10135,44 +10397,7 @@ async function emitMuxLifecycleChannelMessage(media, providerEventType) {
     }
     await fanOutUnreadCounters(media.channel_id, media.owner_user_id);
 }
-function canHostLiveSession(role) {
-    return role === "admin" || role === "super_admin" || role === "coach" || role === "team_leader" || role === "challenge_sponsor";
-}
-function resolveLiveProviderMode() {
-    const raw = String(process.env.MUX_LIVE_PROVIDER_MODE ?? process.env.MUX_PROVIDER_MODE ?? "mock").trim().toLowerCase();
-    if (raw === "down" || raw === "unavailable" || raw === "disabled" || raw === "off")
-        return "unavailable";
-    return "mock";
-}
-function buildLiveSessionLaunchUrls(input) {
-    const baseRaw = String(process.env.MUX_LIVE_BASE_URL ?? "https://mock.mux.local/live").trim();
-    const base = baseRaw.endsWith("/") ? baseRaw.slice(0, -1) : baseRaw;
-    const liveUrl = `${base}/${encodeURIComponent(input.sessionId)}`;
-    const hostUrl = `${liveUrl}?channel_id=${encodeURIComponent(input.channelId)}&role=host`;
-    const joinParams = new URLSearchParams({
-        channel_id: input.channelId,
-        role: input.role,
-    });
-    if (input.token)
-        joinParams.set("token", input.token);
-    return {
-        host_url: hostUrl,
-        join_url: `${liveUrl}?${joinParams.toString()}`,
-        live_url: liveUrl,
-    };
-}
-function issueLiveSessionJoinToken(input) {
-    const payload = {
-        provider: "compass_live",
-        session_id: input.sessionId,
-        channel_id: input.channelId,
-        user_id: input.userId,
-        role: input.role,
-        issued_at: new Date(input.issuedAtMs).toISOString(),
-        expires_at: new Date(input.issuedAtMs + input.ttlSeconds * 1000).toISOString(),
-    };
-    return Buffer.from(JSON.stringify(payload)).toString("base64url");
-}
+// canHostLiveSession, resolveLiveProviderMode, buildLiveSessionLaunchUrls, issueLiveSessionJoinToken → services/muxLiveService.ts
 function resolveRequestId(requestIdHeader) {
     if (typeof requestIdHeader === "string" && requestIdHeader.trim()) {
         return requestIdHeader.trim();
@@ -10313,7 +10538,7 @@ async function createMuxUploadSession(input) {
                 body: JSON.stringify({
                     cors_origin: process.env.MUX_UPLOAD_CORS_ORIGIN ?? "*",
                     new_asset_settings: {
-                        playback_policy: ["signed"],
+                        playback_policy: ["public"],
                         passthrough: input.uploadId,
                         mp4_support: "none",
                         meta: {
@@ -10358,6 +10583,130 @@ async function createMuxUploadSession(input) {
         uploadUrl: `https://mock.mux.local/uploads/${providerUploadId}`,
         uploadUrlExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     };
+}
+async function fetchMuxUploadDetails(providerUploadId) {
+    const tokenId = process.env.MUX_TOKEN_ID;
+    const tokenSecret = process.env.MUX_TOKEN_SECRET;
+    const forcedMock = String(process.env.MUX_PROVIDER_MODE ?? "").toLowerCase() === "mock";
+    if (forcedMock || !tokenId || !tokenSecret || !providerUploadId)
+        return { ok: false };
+    try {
+        const response = await fetch(`https://api.mux.com/video/v1/uploads/${encodeURIComponent(providerUploadId)}`, {
+            headers: {
+                authorization: `Basic ${Buffer.from(`${tokenId}:${tokenSecret}`).toString("base64")}`,
+            },
+        });
+        if (!response.ok)
+            return { ok: false };
+        const payload = await response.json();
+        const data = payload.data;
+        return {
+            ok: true,
+            assetId: typeof data?.asset_id === "string" && data.asset_id ? data.asset_id : null,
+            status: typeof data?.status === "string" ? data.status : null,
+        };
+    }
+    catch {
+        return { ok: false };
+    }
+}
+async function fetchMuxAssetDetails(providerAssetId) {
+    const tokenId = process.env.MUX_TOKEN_ID;
+    const tokenSecret = process.env.MUX_TOKEN_SECRET;
+    const forcedMock = String(process.env.MUX_PROVIDER_MODE ?? "").toLowerCase() === "mock";
+    if (forcedMock || !tokenId || !tokenSecret || !providerAssetId)
+        return { ok: false };
+    try {
+        const response = await fetch(`https://api.mux.com/video/v1/assets/${encodeURIComponent(providerAssetId)}`, {
+            headers: {
+                authorization: `Basic ${Buffer.from(`${tokenId}:${tokenSecret}`).toString("base64")}`,
+            },
+        });
+        if (!response.ok)
+            return { ok: false };
+        const payload = await response.json();
+        const data = payload.data;
+        const firstPlaybackId = Array.isArray(data?.playback_ids)
+            ? data?.playback_ids.find((row) => typeof row?.id === "string" && row.id)
+            : null;
+        return {
+            ok: true,
+            status: typeof data?.status === "string" ? data.status : null,
+            playbackId: typeof firstPlaybackId?.id === "string" ? firstPlaybackId.id : null,
+        };
+    }
+    catch {
+        return { ok: false };
+    }
+}
+async function refreshMuxMediaRecordFromProvider(record) {
+    if (record.provider !== "mux")
+        return record;
+    if (record.processing_status === "ready" || record.processing_status === "failed" || record.processing_status === "deleted") {
+        return record;
+    }
+    let next = { ...record };
+    let changed = false;
+    const nowIso = new Date().toISOString();
+    const uploadDetails = await fetchMuxUploadDetails(record.provider_upload_id);
+    if (uploadDetails.ok) {
+        if (uploadDetails.assetId && uploadDetails.assetId !== next.provider_asset_id) {
+            next.provider_asset_id = uploadDetails.assetId;
+            changed = true;
+        }
+        const uploadStatus = String(uploadDetails.status ?? "").toLowerCase();
+        if (uploadStatus.includes("error") || uploadStatus === "cancelled") {
+            if (next.processing_status !== "failed") {
+                next.processing_status = "failed";
+                changed = true;
+            }
+        }
+        else if (uploadDetails.assetId && next.processing_status === "queued_for_upload") {
+            next.processing_status = "uploaded";
+            changed = true;
+        }
+    }
+    if (next.provider_asset_id) {
+        const assetDetails = await fetchMuxAssetDetails(next.provider_asset_id);
+        if (assetDetails.ok) {
+            const assetStatus = String(assetDetails.status ?? "").toLowerCase();
+            if (assetDetails.playbackId && assetDetails.playbackId !== next.playback_id) {
+                next.playback_id = assetDetails.playbackId;
+                changed = true;
+            }
+            if (assetStatus === "ready") {
+                if (next.processing_status !== "ready" || !next.playback_ready) {
+                    next.processing_status = "ready";
+                    next.playback_ready = true;
+                    changed = true;
+                }
+            }
+            else if (assetStatus === "errored") {
+                if (next.processing_status !== "failed") {
+                    next.processing_status = "failed";
+                    next.playback_ready = false;
+                    changed = true;
+                }
+            }
+            else {
+                const nextStatus = next.processing_status === "queued_for_upload" ? "uploaded" : "processing";
+                if (next.processing_status !== nextStatus || next.playback_ready) {
+                    next.processing_status = nextStatus;
+                    next.playback_ready = false;
+                    changed = true;
+                }
+            }
+        }
+    }
+    if (!changed)
+        return record;
+    next = {
+        ...next,
+        last_provider_event_at: nowIso,
+        updated_at: nowIso,
+    };
+    await upsertMuxMediaRecord(next);
+    return next;
 }
 function signMuxPlaybackToken(input) {
     const secret = process.env.MUX_PLAYBACK_TOKEN_SECRET || process.env.MUX_WEBHOOK_SECRET || "mux-dev-secret";
@@ -11638,6 +11987,66 @@ async function canBroadcastToChannel(channelId, userId) {
         };
     }
     return { ok: true, allowed: false };
+}
+async function resolveChannelMemberDisplayName(channelId, userId) {
+    if (!dataClient) {
+        return { ok: false, status: 500, error: "Supabase data client not configured" };
+    }
+    const membership = await checkChannelMembership(channelId, userId);
+    if (!membership.ok)
+        return membership;
+    if (!membership.member) {
+        return { ok: false, status: 422, error: "task assignee must be a channel member" };
+    }
+    const { data, error } = await dataClient
+        .from("users")
+        .select("full_name")
+        .eq("id", userId)
+        .maybeSingle();
+    if (error) {
+        return { ok: false, status: 500, error: "Failed to load task assignee profile" };
+    }
+    return {
+        ok: true,
+        displayName: typeof data?.full_name === "string"
+            ? String(data.full_name).trim() || null
+            : null,
+    };
+}
+async function loadLatestTaskRefForChannel(channelId, taskId) {
+    if (!dataClient) {
+        return { ok: false, status: 500, error: "Supabase data client not configured" };
+    }
+    const { data, error } = await dataClient
+        .from("channel_messages")
+        .select("id,message_kind,assignment_ref,created_at")
+        .eq("channel_id", channelId)
+        .in("message_kind", ["coach_task", "personal_task"])
+        .order("created_at", { ascending: false })
+        .limit(500);
+    if (error) {
+        return { ok: false, status: 500, error: "Failed to load task thread history" };
+    }
+    for (const row of data ?? []) {
+        const assignmentRef = (0, channelMessageTasks_1.parseTaskAssignmentRef)(row.assignment_ref);
+        if (!assignmentRef || assignmentRef.id !== taskId)
+            continue;
+        const messageKind = row.message_kind;
+        if (messageKind !== "coach_task" && messageKind !== "personal_task")
+            continue;
+        return {
+            ok: true,
+            event: {
+                message_id: String(row.id ?? ""),
+                message_kind: messageKind,
+                created_at: typeof row.created_at === "string"
+                    ? String(row.created_at)
+                    : null,
+                assignment_ref: assignmentRef,
+            },
+        };
+    }
+    return { ok: true, event: null };
 }
 async function evaluateRoleScopeForChannel(userId, channelId, options = {}) {
     if (!dataClient) {

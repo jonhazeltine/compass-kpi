@@ -3,16 +3,16 @@
  *
  * Replaces the legacy multi-panel (tools / attach / media / live) system in ThreadView
  * with a streamlined add-sheet that reveals three actions:
- *   1. Photo / Video — native image picker (iOS/Android) or web file input
- *   2. File          — native document picker (iOS/Android) or noop on web
- *   3. Go Live       — starts a live session card in the thread
+ *   1. Photo / Video — library picker
+ *   2. Camera        — native capture
+ *   3. File          — document picker
+ *   4. Go Live       — starts a live session card in the thread
  *
  * KeyboardAvoidingView lives in the PARENT (CommsHub ThreadView) wrapping
  * the entire scroll+composer region, so the whole chat lifts above the keyboard.
  */
 import React, { useRef, useState, useCallback } from 'react';
 import {
-  ActionSheetIOS,
   Alert,
   Image,
   Platform,
@@ -22,6 +22,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   commsColors as C,
   commsRadii as R,
@@ -67,6 +68,8 @@ export interface ThreadComposerProps {
 
   /* ── layout ── */
   bottomInset?: number;
+  keyboardVisible?: boolean;
+  onLayout?: (height: number) => void;
 }
 
 /* ================================================================
@@ -78,13 +81,14 @@ export default function ThreadComposer(props: ThreadComposerProps) {
     messageDraft, onChangeMessageDraft, onSend, sendDisabled, messageSubmitting,
     pendingUpload, onSendUploadedMedia, onCancelUpload,
     gateBlocksActions, onPickMediaFile, onStartLiveSession,
-    bottomInset = 0,
+    bottomInset = 0, keyboardVisible = false, onLayout,
   } = props;
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [mediaSending, setMediaSending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pickers = useThreadPickers();
+  const insets = useSafeAreaInsets();
 
   // Reset mediaSending when upload clears
   React.useEffect(() => {
@@ -94,40 +98,34 @@ export default function ThreadComposer(props: ThreadComposerProps) {
   const toggleSheet = useCallback(() => setSheetOpen((v) => !v), []);
   const closeSheet = useCallback(() => setSheetOpen(false), []);
 
-  /** Attach — ActionSheet with Photo Library + Files choices */
-  const handleAttach = useCallback(() => {
+  /** Photo / Video — library picker */
+  const handlePhotoVideo = useCallback(() => {
     closeSheet();
     if (Platform.OS === 'web' && fileInputRef.current) {
       fileInputRef.current.click();
       return;
     }
-    const pickPhoto = async () => {
+    void (async () => {
       const file = await pickers.pickPhotoVideo();
       if (file && onPickMediaFile) onPickMediaFile(file);
-    };
-    const pickFile = async () => {
-      const file = await pickers.pickDocument();
-      if (file && onPickMediaFile) onPickMediaFile(file);
-    };
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: ['Cancel', 'Photo Library', 'Files'], cancelButtonIndex: 0 },
-        (idx) => { if (idx === 1) void pickPhoto(); else if (idx === 2) void pickFile(); },
-      );
-    } else {
-      Alert.alert('Attach', 'Choose a source', [
-        { text: 'Photo Library', onPress: () => void pickPhoto() },
-        { text: 'Files', onPress: () => void pickFile() },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-    }
+    })();
   }, [closeSheet, pickers, onPickMediaFile]);
 
-  /** Camera — launch native camera for photo/video capture */
+  /** Camera — launch capture directly */
   const handleCamera = useCallback(async () => {
     closeSheet();
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web') {
+      Alert.alert('Not available', 'Camera capture is not available in this web preview.');
+      return;
+    }
     const file = await pickers.launchCamera();
+    if (file && onPickMediaFile) onPickMediaFile(file);
+  }, [closeSheet, pickers, onPickMediaFile]);
+
+  /** File — launch document picker */
+  const handleFile = useCallback(async () => {
+    closeSheet();
+    const file = await pickers.pickDocument();
     if (file && onPickMediaFile) onPickMediaFile(file);
   }, [closeSheet, pickers, onPickMediaFile]);
 
@@ -149,20 +147,27 @@ export default function ThreadComposer(props: ThreadComposerProps) {
   const canSend = !sendDisabled && !messageSubmitting && !gateBlocksActions && messageDraft.trim().length > 0;
 
   return (
-    <View style={[st.root, bottomInset > 0 && { paddingBottom: bottomInset }]}>
+    <View
+      style={[st.root, { paddingBottom: Math.max(12, insets.bottom + 8) + bottomInset }]}
+      onLayout={(event) => onLayout?.(event.nativeEvent.layout.height)}
+    >
       {/* ── Upload progress banner ── */}
       {pendingUpload && !pendingUpload.sent ? (() => {
         const isMedia = (pendingUpload.contentType?.startsWith('image/') || pendingUpload.contentType?.startsWith('video/')) && pendingUpload.uri;
+        const compactUpload = keyboardVisible;
         return (
-          <View style={st.uploadBanner}>
+          <View style={[st.uploadBanner, compactUpload && st.uploadBannerCompact]}>
             {/* ✕ dismiss */}
             <Pressable style={st.uploadDismiss} onPress={onCancelUpload} hitSlop={8}>
               <Text style={st.uploadDismissText}>✕</Text>
             </Pressable>
-            {isMedia ? (
+            {isMedia && !compactUpload ? (
               <Image source={{ uri: pendingUpload.thumbnailUri || pendingUpload.uri }} style={st.uploadPreview} resizeMode="cover" />
             ) : (
               <View style={st.uploadRow}>
+                {isMedia && (pendingUpload.thumbnailUri || pendingUpload.uri) ? (
+                  <Image source={{ uri: pendingUpload.thumbnailUri || pendingUpload.uri }} style={st.uploadPreviewCompact} resizeMode="cover" />
+                ) : null}
                 <Text style={st.uploadIcon}>
                   {pendingUpload.status === 'uploading' ? '⬆' : pendingUpload.status === 'ready' ? '✓' : pendingUpload.status === 'error' ? '✗' : '⏳'}
                 </Text>
@@ -203,25 +208,33 @@ export default function ThreadComposer(props: ThreadComposerProps) {
           <Pressable
             style={[st.actionMenuItem, gateBlocksActions && st.actionMenuItemDisabled]}
             disabled={gateBlocksActions}
-            onPress={handleAttach}
+            onPress={handlePhotoVideo}
           >
-            <Text style={st.actionMenuIcon}>📎</Text>
-            <Text style={st.actionMenuLabel}>Attach</Text>
+            <Text style={st.actionMenuIcon}>◫</Text>
+            <Text style={st.actionMenuLabel}>Photo / Video</Text>
           </Pressable>
           <Pressable
             style={[st.actionMenuItem, gateBlocksActions && st.actionMenuItemDisabled]}
             disabled={gateBlocksActions}
             onPress={handleCamera}
           >
-            <Text style={st.actionMenuIcon}>📷</Text>
+            <Text style={st.actionMenuIcon}>◌</Text>
             <Text style={st.actionMenuLabel}>Camera</Text>
+          </Pressable>
+          <Pressable
+            style={[st.actionMenuItem, gateBlocksActions && st.actionMenuItemDisabled]}
+            disabled={gateBlocksActions}
+            onPress={handleFile}
+          >
+            <Text style={st.actionMenuIcon}>▤</Text>
+            <Text style={st.actionMenuLabel}>File</Text>
           </Pressable>
           <Pressable
             style={[st.actionMenuItem, gateBlocksActions && st.actionMenuItemDisabled]}
             disabled={gateBlocksActions}
             onPress={handleGoLive}
           >
-            <Text style={st.actionMenuIcon}>📡</Text>
+            <Text style={st.actionMenuIcon}>◉</Text>
             <Text style={st.actionMenuLabel}>Go Live</Text>
           </Pressable>
         </View>
@@ -403,6 +416,10 @@ const st = StyleSheet.create({
     gap: 6,
     overflow: 'hidden',
   },
+  uploadBannerCompact: {
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
   uploadDismiss: {
     position: 'absolute',
     top: 4,
@@ -424,6 +441,12 @@ const st = StyleSheet.create({
   uploadPreview: {
     width: '100%' as any,
     aspectRatio: 4 / 3,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+  },
+  uploadPreviewCompact: {
+    width: 44,
+    height: 44,
     borderRadius: 8,
     backgroundColor: '#F1F5F9',
   },

@@ -33,6 +33,7 @@ export type MediaAttachment = {
   caption?: string;
   lifecycle?: { processing_status: string; playback_ready: boolean } | null;
   file_url?: string;
+  playback_id?: string;
   content_type?: string;
 };
 

@@ -82,6 +82,7 @@ export type ChannelMessageReadModel = {
       playback_ready: boolean;
     } | null;
     file_url?: string;
+    playback_id?: string;
     content_type?: string;
   };
 };
@@ -340,6 +341,7 @@ export function serializeChannelMessageBody(payload: ChannelMessagePayload & {
     playback_ready: boolean;
   };
   file_url?: string;
+  playback_id?: string;
   content_type?: string;
 }): string {
   const text = payload.body?.trim() || "";
@@ -351,6 +353,7 @@ export function serializeChannelMessageBody(payload: ChannelMessagePayload & {
     media_attachment: payload.media_attachment,
     lifecycle: payload.lifecycle ?? null,
     ...(payload.file_url ? { file_url: payload.file_url } : {}),
+    ...(payload.playback_id ? { playback_id: payload.playback_id } : {}),
     ...(payload.content_type ? { content_type: payload.content_type } : {}),
   });
 }
@@ -526,6 +529,7 @@ export function buildChannelMessageReadModel(row: {
       ...(typeof attachmentPayload.caption === "string" ? { caption: attachmentPayload.caption } : {}),
       ...(lifecycle ? { lifecycle } : {}),
       ...(typeof parsed.file_url === "string" && parsed.file_url ? { file_url: parsed.file_url } : {}),
+      ...(typeof parsed.playback_id === "string" && parsed.playback_id ? { playback_id: parsed.playback_id } : {}),
       ...(typeof parsed.content_type === "string" && parsed.content_type ? { content_type: parsed.content_type } : {}),
     },
   };

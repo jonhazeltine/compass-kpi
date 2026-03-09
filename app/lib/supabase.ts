@@ -128,16 +128,22 @@ const getExpoHostIp = (): string | null => {
   return host || null;
 };
 
+const DEV_LAN_FALLBACK_IP = '192.168.86.32';
+
 const resolveApiUrl = (): string => {
   const raw = String(extra.apiUrl ?? process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000');
   const usesLocalhost =
     raw.includes('://localhost:') || raw.includes('://127.0.0.1:') || raw.startsWith('http://localhost') || raw.startsWith('http://127.0.0.1');
   if (!usesLocalhost) return raw;
-  // iOS simulator and web browsers can reach host services on localhost directly; do not rewrite to LAN IP.
-  if (Platform.OS === 'ios' || Platform.OS === 'web') return raw;
-  const expoHostIp = getExpoHostIp();
-  if (!expoHostIp) return raw;
-  return raw.replace('://localhost', `://${expoHostIp}`).replace('://127.0.0.1', `://${expoHostIp}`);
+  // Web browsers and iOS *simulator* can reach host services on localhost directly.
+  // Physical iOS devices (Constants.isDevice === true) cannot — rewrite to LAN IP just like Android.
+  if (Platform.OS === 'web') return raw;
+  if (Platform.OS === 'ios' && !Constants.isDevice) return raw;
+  const expoHostIp = getExpoHostIp() ?? DEV_LAN_FALLBACK_IP;
+  const resolved = raw.replace('://localhost', `://${expoHostIp}`).replace('://127.0.0.1', `://${expoHostIp}`);
+  // eslint-disable-next-line no-console
+  console.log(`[API_URL] platform=${Platform.OS} isDevice=${Constants.isDevice} expoHost=${getExpoHostIp()} → ${resolved}`);
+  return resolved;
 };
 
 export const API_URL = resolveApiUrl();

@@ -114,6 +114,23 @@ const liveSessionByIdempotencyKey = new Map<string, string>();
 type KPIType = "PC" | "GP" | "VP" | "Actual" | "Pipeline_Anchor" | "Custom";
 type KpiIconSource = "brand_asset" | "vector_icon" | "emoji";
 
+const KPI_CATALOG_SELECT_FULL =
+  "id,name,slug,type,created_by,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,is_active,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value";
+const KPI_CATALOG_SELECT_LEGACY =
+  "id,name,slug,type,icon_file,requires_direct_value_input,is_active,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value";
+
+async function runKpiCatalogSelectWithCompat(
+  executor: (selectClause: string) => PromiseLike<{ data: any[] | null; error: any | null }> | { data: any[] | null; error: any | null }
+): Promise<{ data: any[] | null; error: any | null }> {
+  const fullResult = await executor(KPI_CATALOG_SELECT_FULL);
+  if (!fullResult.error) return fullResult;
+
+  const legacyResult = await executor(KPI_CATALOG_SELECT_LEGACY);
+  if (!legacyResult.error) return legacyResult;
+
+  return fullResult;
+}
+
 type AuthUser = {
   id: string;
   email?: string;
@@ -1916,10 +1933,9 @@ app.get("/dashboard", async (req, res) => {
     const safeLogs = logs ?? [];
     const now = new Date();
 
-    const { data: kpiCatalogRows, error: kpiCatalogError } = await dataClient
-      .from("kpis")
-      .select("id,name,slug,type,created_by,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,is_active,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value")
-      .eq("is_active", true);
+    const { data: kpiCatalogRows, error: kpiCatalogError } = await runKpiCatalogSelectWithCompat((selectClause) =>
+      dataClient.from("kpis").select(selectClause).eq("is_active", true)
+    );
 
     if (kpiCatalogError) {
       return handleSupabaseError(res, "Failed to fetch dashboard KPI catalog", kpiCatalogError);
@@ -3044,8 +3060,8 @@ app.get("/api/channels/:id/messages", async (req, res) => {
       channel,
       messages: (messages ?? []) as Array<{ id?: unknown; channel_id?: unknown; body?: unknown; message_type?: unknown; created_at?: unknown }>,
     });
-    const messageReadModels = (messages ?? []).map((row) =>
-      buildChannelMessageReadModel(
+    const messageReadModels = await Promise.all((messages ?? []).map(async (row) => {
+      const readModel = buildChannelMessageReadModel(
         row as {
           id?: unknown;
           channel_id?: unknown;
@@ -3057,8 +3073,30 @@ app.get("/api/channels/:id/messages", async (req, res) => {
           created_at?: unknown;
         },
         { userId: auth.user.id, role: roleScopeCheck.result.role }
-      )
-    );
+      );
+      const mediaId = String(readModel.media_attachment?.media_id ?? "").trim();
+      if (!mediaId) return readModel;
+      const currentMedia = await getMuxMediaRecord(mediaId);
+      if (!currentMedia) return readModel;
+      const refreshedMedia = await refreshMuxMediaRecordFromProvider(currentMedia);
+      return {
+        ...readModel,
+        media_attachment: {
+          ...readModel.media_attachment,
+          lifecycle: {
+            processing_status: refreshedMedia.processing_status,
+            playback_ready: refreshedMedia.playback_ready,
+          },
+          ...(refreshedMedia.provider === "supabase_storage" && refreshedMedia.playback_id
+            ? { file_url: refreshedMedia.playback_id }
+            : {}),
+          ...(refreshedMedia.provider === "mux" && refreshedMedia.playback_id
+            ? { playback_id: refreshedMedia.playback_id }
+            : {}),
+          ...(refreshedMedia.content_type ? { content_type: refreshedMedia.content_type } : {}),
+        },
+      };
+    }));
     const syncState = streamChannelSyncStates.get(channelId);
     const channelWithProviderState = {
       ...channel,
@@ -3261,6 +3299,7 @@ app.post("/api/channels/:id/messages", async (req, res) => {
           playback_ready: media.playback_ready,
         },
         file_url: media.provider === "supabase_storage" && media.playback_id ? media.playback_id : undefined,
+        playback_id: media.provider === "mux" && media.playback_id ? media.playback_id : undefined,
         content_type: media.content_type ?? undefined,
       });
     } else {
@@ -5467,11 +5506,12 @@ app.post("/api/coaching/media/playback-token", async (req, res) => {
     if (!media) {
       return errorEnvelopeResponse(res, 404, "media_not_found", "Media asset not found", req.headers["x-request-id"]);
     }
+    const refreshedMedia = await refreshMuxMediaRecordFromProvider(media);
 
     const roleCheck = await canAccessMuxMediaForRole(auth.user.id, "playback", {
-      journeyId: media.journey_id,
-      lessonId: media.lesson_id,
-      ownerUserId: media.owner_user_id,
+      journeyId: refreshedMedia.journey_id,
+      lessonId: refreshedMedia.lesson_id,
+      ownerUserId: refreshedMedia.owner_user_id,
       viewerContext: payload.viewer_context,
     });
     if (!roleCheck.ok) {
@@ -5487,28 +5527,17 @@ app.post("/api/coaching/media/playback-token", async (req, res) => {
       );
     }
 
-    if (media.processing_status === "deleted") {
+    if (refreshedMedia.processing_status === "deleted") {
       return errorEnvelopeResponse(res, 409, "media_deleted", "Media has been deleted", req.headers["x-request-id"]);
     }
-    if (!media.playback_ready || media.processing_status !== "ready" || !media.playback_id) {
+    if (!refreshedMedia.playback_ready || refreshedMedia.processing_status !== "ready" || !refreshedMedia.playback_id) {
       return errorEnvelopeResponse(res, 409, "media_not_ready", "Media is not ready for playback", req.headers["x-request-id"]);
     }
 
-    const ttlSeconds = 15 * 60;
-    const issuedAtMs = Date.now();
-    const tokenExpiresAt = new Date(issuedAtMs + ttlSeconds * 1000).toISOString();
-    const token = signMuxPlaybackToken({
-      mediaId: media.media_id,
-      playbackId: media.playback_id,
-      subjectUserId: auth.user.id,
-      viewerContext: payload.viewer_context ?? inferViewerContextFromRole(roleCheck.role),
-      tokenExpiresAt,
-    });
-
     return res.json({
-      token,
-      token_expires_at: tokenExpiresAt,
-      playback_id: media.playback_id,
+      token: null,
+      token_expires_at: null,
+      playback_id: refreshedMedia.playback_id,
       policy: {
         watermark_required: false,
         allow_download: false,
@@ -8645,13 +8674,15 @@ app.get("/api/custom-kpis", async (req, res) => {
     if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
 
     await ensureUserRow(auth.user.id);
-    const { data: rows, error } = await dataClient
-      .from("kpis")
-      .select("id,name,slug,type,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,is_active,created_by,created_at,updated_at")
-      .eq("type", "Custom")
-      .eq("created_by", auth.user.id)
-      .eq("is_active", true)
-      .order("created_at", { ascending: true });
+    const { data: rows, error } = await runKpiCatalogSelectWithCompat((selectClause) =>
+      dataClient
+        .from("kpis")
+        .select(selectClause)
+        .eq("type", "Custom")
+        .eq("created_by", auth.user.id)
+        .eq("is_active", true)
+        .order("created_at", { ascending: true })
+    );
     if (error) return handleSupabaseError(res, "Failed to fetch custom KPIs", error);
     return res.json({ custom_kpis: rows ?? [] });
   } catch (err) {
@@ -8794,10 +8825,9 @@ app.get("/admin/kpis", async (req, res) => {
     if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
     if (!(await isPlatformAdmin(auth.user.id))) return res.status(403).json({ error: "Admin access required" });
 
-    const { data, error } = await dataClient
-      .from("kpis")
-      .select("id,name,slug,type,icon_source,icon_name,icon_emoji,icon_file,requires_direct_value_input,pc_weight,ttc_days,ttc_definition,delay_days,hold_days,decay_days,gp_value,vp_value,is_active,created_at,updated_at")
-      .order("created_at", { ascending: true });
+    const { data, error } = await runKpiCatalogSelectWithCompat((selectClause) =>
+      dataClient.from("kpis").select(selectClause).order("created_at", { ascending: true })
+    );
     if (error) return handleSupabaseError(res, "Failed to fetch KPI catalog", error);
     return res.json({ kpis: data ?? [] });
   } catch (err) {
@@ -12054,7 +12084,7 @@ async function createMuxUploadSession(input: {
         body: JSON.stringify({
           cors_origin: process.env.MUX_UPLOAD_CORS_ORIGIN ?? "*",
           new_asset_settings: {
-            playback_policy: ["signed"],
+            playback_policy: ["public"],
             passthrough: input.uploadId,
             mp4_support: "none",
             meta: {
@@ -12099,6 +12129,139 @@ async function createMuxUploadSession(input: {
     uploadUrl: `https://mock.mux.local/uploads/${providerUploadId}`,
     uploadUrlExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   };
+}
+
+async function fetchMuxUploadDetails(providerUploadId: string): Promise<{
+  ok: true;
+  assetId: string | null;
+  status: string | null;
+} | { ok: false }> {
+  const tokenId = process.env.MUX_TOKEN_ID;
+  const tokenSecret = process.env.MUX_TOKEN_SECRET;
+  const forcedMock = String(process.env.MUX_PROVIDER_MODE ?? "").toLowerCase() === "mock";
+  if (forcedMock || !tokenId || !tokenSecret || !providerUploadId) return { ok: false };
+  try {
+    const response = await fetch(`https://api.mux.com/video/v1/uploads/${encodeURIComponent(providerUploadId)}`, {
+      headers: {
+        authorization: `Basic ${Buffer.from(`${tokenId}:${tokenSecret}`).toString("base64")}`,
+      },
+    });
+    if (!response.ok) return { ok: false };
+    const payload = await response.json();
+    const data = (payload as { data?: { asset_id?: unknown; status?: unknown } }).data;
+    return {
+      ok: true,
+      assetId: typeof data?.asset_id === "string" && data.asset_id ? data.asset_id : null,
+      status: typeof data?.status === "string" ? data.status : null,
+    };
+  } catch {
+    return { ok: false };
+  }
+}
+
+async function fetchMuxAssetDetails(providerAssetId: string): Promise<{
+  ok: true;
+  status: string | null;
+  playbackId: string | null;
+} | { ok: false }> {
+  const tokenId = process.env.MUX_TOKEN_ID;
+  const tokenSecret = process.env.MUX_TOKEN_SECRET;
+  const forcedMock = String(process.env.MUX_PROVIDER_MODE ?? "").toLowerCase() === "mock";
+  if (forcedMock || !tokenId || !tokenSecret || !providerAssetId) return { ok: false };
+  try {
+    const response = await fetch(`https://api.mux.com/video/v1/assets/${encodeURIComponent(providerAssetId)}`, {
+      headers: {
+        authorization: `Basic ${Buffer.from(`${tokenId}:${tokenSecret}`).toString("base64")}`,
+      },
+    });
+    if (!response.ok) return { ok: false };
+    const payload = await response.json();
+    const data = (payload as {
+      data?: {
+        status?: unknown;
+        playback_ids?: Array<{ id?: unknown }>;
+      };
+    }).data;
+    const firstPlaybackId = Array.isArray(data?.playback_ids)
+      ? data?.playback_ids.find((row) => typeof row?.id === "string" && row.id)
+      : null;
+    return {
+      ok: true,
+      status: typeof data?.status === "string" ? data.status : null,
+      playbackId: typeof firstPlaybackId?.id === "string" ? firstPlaybackId.id : null,
+    };
+  } catch {
+    return { ok: false };
+  }
+}
+
+async function refreshMuxMediaRecordFromProvider(record: MuxMediaSessionRecord): Promise<MuxMediaSessionRecord> {
+  if (record.provider !== "mux") return record;
+  if (record.processing_status === "ready" || record.processing_status === "failed" || record.processing_status === "deleted") {
+    return record;
+  }
+
+  let next = { ...record };
+  let changed = false;
+  const nowIso = new Date().toISOString();
+
+  const uploadDetails = await fetchMuxUploadDetails(record.provider_upload_id);
+  if (uploadDetails.ok) {
+    if (uploadDetails.assetId && uploadDetails.assetId !== next.provider_asset_id) {
+      next.provider_asset_id = uploadDetails.assetId;
+      changed = true;
+    }
+    const uploadStatus = String(uploadDetails.status ?? "").toLowerCase();
+    if (uploadStatus.includes("error") || uploadStatus === "cancelled") {
+      if (next.processing_status !== "failed") {
+        next.processing_status = "failed";
+        changed = true;
+      }
+    } else if (uploadDetails.assetId && next.processing_status === "queued_for_upload") {
+      next.processing_status = "uploaded";
+      changed = true;
+    }
+  }
+
+  if (next.provider_asset_id) {
+    const assetDetails = await fetchMuxAssetDetails(next.provider_asset_id);
+    if (assetDetails.ok) {
+      const assetStatus = String(assetDetails.status ?? "").toLowerCase();
+      if (assetDetails.playbackId && assetDetails.playbackId !== next.playback_id) {
+        next.playback_id = assetDetails.playbackId;
+        changed = true;
+      }
+      if (assetStatus === "ready") {
+        if (next.processing_status !== "ready" || !next.playback_ready) {
+          next.processing_status = "ready";
+          next.playback_ready = true;
+          changed = true;
+        }
+      } else if (assetStatus === "errored") {
+        if (next.processing_status !== "failed") {
+          next.processing_status = "failed";
+          next.playback_ready = false;
+          changed = true;
+        }
+      } else {
+        const nextStatus = next.processing_status === "queued_for_upload" ? "uploaded" : "processing";
+        if (next.processing_status !== nextStatus || next.playback_ready) {
+          next.processing_status = nextStatus;
+          next.playback_ready = false;
+          changed = true;
+        }
+      }
+    }
+  }
+
+  if (!changed) return record;
+  next = {
+    ...next,
+    last_provider_event_at: nowIso,
+    updated_at: nowIso,
+  };
+  await upsertMuxMediaRecord(next);
+  return next;
 }
 
 function signMuxPlaybackToken(input: {
