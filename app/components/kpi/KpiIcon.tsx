@@ -36,7 +36,7 @@ export default function KpiIcon({
   if (resolution.kind === 'brand_asset') {
     return (
       <View style={wrapperStyle}>
-        <View style={[styles.imageClip, { width: size * 0.72, height: size * 0.72, borderRadius: Math.max(10, Math.round(size * 0.24)) }]}>
+        <View style={[styles.imageClip, { width: size * 0.96, height: size * 0.96, borderRadius: Math.max(10, Math.round(size * 0.24)) }]}>
           <Image source={resolution.imageSource} style={styles.image} resizeMode="contain" />
         </View>
       </View>
@@ -48,7 +48,7 @@ export default function KpiIcon({
       <View style={wrapperStyle}>
         <MaterialCommunityIcons
           name={resolution.iconName as never}
-          size={Math.max(16, size * 0.58)}
+          size={Math.max(16, size * 0.9)}
           color={resolvedColor}
         />
       </View>

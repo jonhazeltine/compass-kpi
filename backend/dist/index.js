@@ -18,6 +18,7 @@ const dealAttributionEngine_1 = require("./engines/dealAttributionEngine");
 const userCalibrationEngine_1 = require("./engines/userCalibrationEngine");
 const adminChallengeTemplateValidation_1 = require("./services/adminChallengeTemplateValidation");
 const channelMessageTasks_1 = require("./services/channelMessageTasks");
+const profileAssignments_1 = require("./services/profileAssignments");
 const muxLiveService_1 = require("./services/muxLiveService");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -2256,6 +2257,7 @@ app.post("/api/channels/:id/messages", async (req, res) => {
         let messageType = payloadCheck.payload.message_type ?? "message";
         let messageKind = payloadCheck.payload.message_kind ?? "text";
         let assignmentRef = null;
+        let taskMutationTargetMessageId = null;
         if (messageKind === "personal_task" || messageKind === "coach_task") {
             const taskDraft = payloadCheck.payload.task_card_draft;
             const taskAction = payloadCheck.payload.task_action;
@@ -2306,6 +2308,7 @@ app.post("/api/channels/:id/messages", async (req, res) => {
                     return res.status(404).json({ error: "Task not found in thread history" });
                 }
                 const currentTask = latestTask.event.assignment_ref;
+                const sourceMessageId = currentTask.source_message_id ?? latestTask.event.message_id;
                 if (currentTask.task_type !== messageKind) {
                     return res.status(409).json({ error: "task_id does not match message_kind" });
                 }
@@ -2338,12 +2341,19 @@ app.post("/api/channels/:id/messages", async (req, res) => {
                     : { ok: true, displayName: null };
                 if (!assigneeLookup.ok)
                     return res.status(assigneeLookup.status).json({ error: assigneeLookup.error });
-                serializedBody = (0, channelMessageTasks_1.buildTaskMessageBody)({
-                    taskAction,
-                    title: nextTitle,
-                    description: nextDescription,
-                    note: payloadCheck.payload.body ?? null,
-                });
+                const explicitNote = typeof payloadCheck.payload.body === "string" ? payloadCheck.payload.body.trim() : "";
+                serializedBody = explicitNote
+                    ? (0, channelMessageTasks_1.buildTaskMessageBody)({
+                        taskAction,
+                        title: nextTitle,
+                        description: nextDescription,
+                        note: explicitNote,
+                    })
+                    : latestTask.event.body || (0, channelMessageTasks_1.buildTaskMessageBody)({
+                        taskAction: "create",
+                        title: nextTitle,
+                        description: nextDescription,
+                    });
                 assignmentRef = (0, channelMessageTasks_1.buildTaskAssignmentRef)({
                     taskId: currentTask.id,
                     taskType: currentTask.task_type,
@@ -2356,8 +2366,10 @@ app.post("/api/channels/:id/messages", async (req, res) => {
                     createdById: currentTask.created_by ?? auth.user.id,
                     createdByRole: currentTask.created_by_role ?? roleScopeCheck.result.role,
                     channelId,
+                    messageId: sourceMessageId,
                     createdAt: nowIso,
                 });
+                taskMutationTargetMessageId = sourceMessageId;
             }
         }
         if (messageType === "media_attachment") {
@@ -2407,24 +2419,67 @@ app.post("/api/channels/:id/messages", async (req, res) => {
                 });
             }
         }
-        const { data: message, error: messageError } = await dataClient
-            .from("channel_messages")
-            .insert({
-            channel_id: channelId,
-            sender_user_id: auth.user.id,
-            body: serializedBody,
-            message_type: messageType === "media_attachment" ? "message" : messageType,
-            message_kind: messageKind,
-            assignment_ref: assignmentRef,
-        })
-            .select("id,channel_id,sender_user_id,body,message_type,message_kind,assignment_ref,created_at")
-            .single();
+        const messageMutation = taskMutationTargetMessageId
+            ? await dataClient
+                .from("channel_messages")
+                .update({
+                body: serializedBody,
+                message_kind: messageKind,
+                assignment_ref: assignmentRef,
+            })
+                .eq("id", taskMutationTargetMessageId)
+                .eq("channel_id", channelId)
+                .select("id,channel_id,sender_user_id,body,message_type,message_kind,assignment_ref,created_at")
+                .single()
+            : await dataClient
+                .from("channel_messages")
+                .insert({
+                channel_id: channelId,
+                sender_user_id: auth.user.id,
+                body: serializedBody,
+                message_type: messageType === "media_attachment" ? "message" : messageType,
+                message_kind: messageKind,
+                assignment_ref: assignmentRef,
+            })
+                .select("id,channel_id,sender_user_id,body,message_type,message_kind,assignment_ref,created_at")
+                .single();
+        const { data: message, error: messageError } = messageMutation;
         if (messageError) {
-            return handleSupabaseError(res, "Failed to create message", messageError);
+            return handleSupabaseError(res, taskMutationTargetMessageId ? "Failed to update task message" : "Failed to create message", messageError);
         }
-        await fanOutUnreadCounters(channelId, auth.user.id);
+        if (!taskMutationTargetMessageId && assignmentRef && (messageKind === "coach_task" || messageKind === "personal_task")) {
+            const hydratedAssignmentRef = (0, channelMessageTasks_1.buildTaskAssignmentRef)({
+                taskId: assignmentRef.id,
+                taskType: assignmentRef.task_type,
+                title: assignmentRef.title,
+                description: assignmentRef.description,
+                status: assignmentRef.status,
+                dueAt: assignmentRef.due_at,
+                assigneeId: assignmentRef.assignee_id,
+                assigneeName: assignmentRef.assignee_name,
+                createdById: assignmentRef.created_by ?? auth.user.id,
+                createdByRole: assignmentRef.created_by_role ?? roleScopeCheck.result.role,
+                channelId,
+                messageId: String(message.id ?? ""),
+                createdAt: typeof message.created_at === "string"
+                    ? String(message.created_at)
+                    : assignmentRef.last_thread_event_at,
+            });
+            const { data: updatedTaskMessage, error: updatedTaskMessageError } = await dataClient
+                .from("channel_messages")
+                .update({ assignment_ref: hydratedAssignmentRef })
+                .eq("id", String(message.id ?? ""))
+                .select("id,channel_id,sender_user_id,body,message_type,message_kind,assignment_ref,created_at")
+                .single();
+            if (!updatedTaskMessageError && updatedTaskMessage) {
+                Object.assign(message, updatedTaskMessage);
+            }
+        }
+        if (!taskMutationTargetMessageId) {
+            await fanOutUnreadCounters(channelId, auth.user.id);
+        }
         const messageReadModel = (0, channelMessageTasks_1.buildChannelMessageReadModel)(message, { userId: auth.user.id, role: roleScopeCheck.result.role });
-        return res.status(201).json({ message: messageReadModel });
+        return res.status(taskMutationTargetMessageId ? 200 : 201).json({ message: messageReadModel });
     }
     catch (err) {
         // eslint-disable-next-line no-console
@@ -4643,6 +4698,21 @@ app.post("/api/coaching/media/live-sessions", async (req, res) => {
         if (!result.ok) {
             return errorEnvelopeResponse(res, result.status, "create_failed", result.error, req.headers["x-request-id"]);
         }
+        // Insert system message for live session start (best-effort)
+        if (!result.idempotent_replay && dataClient) {
+            try {
+                await dataClient.from("channel_messages").insert({
+                    channel_id: payload.channel_id,
+                    sender_user_id: auth.user.id,
+                    body: JSON.stringify({ text: "\uD83D\uDD34 Live session started" }),
+                    message_type: "system",
+                });
+                await fanOutUnreadCounters(payload.channel_id, auth.user.id);
+            }
+            catch (sysErr) {
+                console.error("[LIVE] Failed to insert live-start system message", sysErr);
+            }
+        }
         return res.status(result.idempotent_replay ? 200 : 201).json({
             ...(0, muxLiveService_1.buildSessionResponse)(result.session, true),
             idempotent_replay: result.idempotent_replay,
@@ -4771,11 +4841,110 @@ app.post("/api/coaching/media/live-sessions/:id/end", async (req, res) => {
         if (!result.ok) {
             return errorEnvelopeResponse(res, 500, "end_failed", result.error, req.headers["x-request-id"]);
         }
+        // Insert system message for live session end (best-effort)
+        if (dataClient && session.channel_id) {
+            try {
+                await dataClient.from("channel_messages").insert({
+                    channel_id: session.channel_id,
+                    sender_user_id: auth.user.id,
+                    body: JSON.stringify({ text: "Live session ended" }),
+                    message_type: "system",
+                });
+                await fanOutUnreadCounters(session.channel_id, auth.user.id);
+            }
+            catch (sysErr) {
+                console.error("[LIVE] Failed to insert live-end system message", sysErr);
+            }
+        }
         return res.json((0, muxLiveService_1.buildSessionResponse)(result.session, false));
     }
     catch (err) {
         // eslint-disable-next-line no-console
         console.error("Error in POST /api/coaching/media/live-sessions/:id/end", err);
+        return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+    }
+});
+/* ── Publish Replay — fetches Mux VOD asset and inserts a media message ── */
+app.post("/api/coaching/media/live-sessions/:id/publish-replay", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok) {
+            return errorEnvelopeResponse(res, auth.status, "unauthenticated", auth.error, req.headers["x-request-id"]);
+        }
+        const sessionId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+        if (!sessionId) {
+            return errorEnvelopeResponse(res, 422, "invalid_request", "session id is required", req.headers["x-request-id"]);
+        }
+        const session = (0, muxLiveService_1.getLiveSession)(sessionId);
+        if (!session) {
+            return errorEnvelopeResponse(res, 404, "not_found", "Live session not found", req.headers["x-request-id"]);
+        }
+        if (session.status !== "ended") {
+            return errorEnvelopeResponse(res, 409, "invalid_state", "Live session must be ended before publishing replay", req.headers["x-request-id"]);
+        }
+        if (session.host_user_id !== auth.user.id) {
+            const roleResult = await getUserRoleForScope(auth.user.id);
+            if (!roleResult.ok || !(0, muxLiveService_1.canHostLiveSession)(roleResult.role)) {
+                return errorEnvelopeResponse(res, 403, "unauthorized_scope", "Only the host or admin can publish replays", req.headers["x-request-id"]);
+            }
+        }
+        // Resolve Mux VOD asset from the live stream
+        const muxStreamId = session.mux_live_stream_id;
+        if (!muxStreamId) {
+            return errorEnvelopeResponse(res, 422, "no_mux_stream", "No Mux live stream associated with this session", req.headers["x-request-id"]);
+        }
+        const streamDetails = await (0, muxLiveService_1.getMuxLiveStreamDetails)(muxStreamId);
+        if (!streamDetails.ok) {
+            return errorEnvelopeResponse(res, 502, "mux_error", streamDetails.error, req.headers["x-request-id"]);
+        }
+        const recentAssetId = streamDetails.data.recent_asset_ids?.[0];
+        if (!recentAssetId) {
+            return errorEnvelopeResponse(res, 404, "no_asset", "No replay asset available yet. The recording may still be processing.", req.headers["x-request-id"]);
+        }
+        const assetResult = await (0, muxLiveService_1.getMuxAsset)(recentAssetId);
+        if (!assetResult.ok) {
+            return errorEnvelopeResponse(res, 502, "mux_error", assetResult.error, req.headers["x-request-id"]);
+        }
+        const playbackId = assetResult.data.playback_ids?.[0]?.id;
+        if (!playbackId) {
+            return errorEnvelopeResponse(res, 404, "no_playback", "Replay asset does not have a playback ID yet", req.headers["x-request-id"]);
+        }
+        const hlsUrl = `https://stream.mux.com/${playbackId}.m3u8`;
+        // Insert replay media message
+        if (!dataClient) {
+            return errorEnvelopeResponse(res, 500, "no_db", "Database client not available", req.headers["x-request-id"]);
+        }
+        const { data: replayMsg, error: replayMsgError } = await dataClient
+            .from("channel_messages")
+            .insert({
+            channel_id: session.channel_id,
+            sender_user_id: auth.user.id,
+            body: JSON.stringify({
+                text: "\uD83D\uDCF9 Live replay",
+                media_attachment: {
+                    media_id: recentAssetId,
+                    content_type: "video/mp4",
+                    playback_id: playbackId,
+                    file_url: hlsUrl,
+                    lifecycle: { processing_status: "ready", playback_ready: true },
+                },
+            }),
+            message_type: "message",
+        })
+            .select("id")
+            .single();
+        if (replayMsgError) {
+            console.error("[LIVE] Failed to insert replay message", replayMsgError);
+            return errorEnvelopeResponse(res, 500, "insert_failed", "Failed to insert replay message", req.headers["x-request-id"]);
+        }
+        await fanOutUnreadCounters(session.channel_id, auth.user.id);
+        return res.status(201).json({
+            media_message_id: replayMsg?.id ?? null,
+            playback_url: hlsUrl,
+        });
+    }
+    catch (err) {
+        console.error("Error in POST /api/coaching/media/live-sessions/:id/publish-replay", err);
         return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
     }
 });
@@ -5068,140 +5237,446 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
             return res.status(auth.status).json({ error: auth.error });
         if (!dataClient)
             return res.status(500).json({ error: "Supabase data client not configured" });
-        const userId = auth.user.id;
-        const assignments = [];
-        // 1. Fetch goals owned by or assigned to user
-        const { data: goalRows, error: goalRowsError } = await dataClient
-            .from("goals")
-            .select("id,title,status,due_at,assignee_id,created_by,created_at,goal_type")
-            .or(`assignee_id.eq.${userId},created_by.eq.${userId}`)
-            .order("due_at", { ascending: true, nullsFirst: false });
-        if (goalRowsError) {
-            if (!isRecoverableAssignmentSourceGap(goalRowsError)) {
-                return handleSupabaseError(res, "Failed to fetch goal assignments", goalRowsError);
-            }
-        }
-        for (const g of goalRows ?? []) {
-            const goalType = g.goal_type ?? "personal";
-            let assignmentType = "personal_goal";
-            if (goalType === "coach") {
-                assignmentType = "coach_goal";
-            }
-            else if (goalType === "team_leader") {
-                assignmentType = "team_leader_goal";
-            }
-            const isOwner = g.created_by === userId;
-            const isAssignee = g.assignee_id === userId;
-            assignments.push({
-                id: g.id,
-                type: assignmentType,
-                title: g.title ?? "Untitled Goal",
-                status: normalizeGoalStatus(g.status),
-                due_at: g.due_at ?? null,
-                assignee_id: g.assignee_id ?? null,
-                source: "goals",
-                created_at: g.created_at ?? new Date().toISOString(),
-                channel_id: null,
-                source_message_id: null,
-                last_thread_event_at: null,
-                thread_read_state: "unknown",
-                rights: {
-                    can_edit_fields: isOwner,
-                    can_update_status: isOwner || isAssignee,
-                    can_mark_complete: isOwner || isAssignee,
-                    can_reassign: isOwner,
-                },
-            });
-        }
-        // 2. Fetch message-linked tasks (messages with message_kind metadata)
-        const { data: memberChannelRows, error: memberChannelRowsError } = await dataClient
-            .from("channel_memberships")
-            .select("channel_id")
-            .eq("user_id", userId);
-        if (memberChannelRowsError) {
-            return handleSupabaseError(res, "Failed to fetch channel scope for message-linked assignments", memberChannelRowsError);
-        }
-        const allowedChannelIds = (memberChannelRows ?? []).map((row) => String(row.channel_id ?? "")).filter(Boolean);
-        const { data: taskMsgRows, error: taskRowsError } = await dataClient
-            .from("channel_messages")
-            .select("id,channel_id,message_kind,assignment_ref,created_at")
-            .in("message_kind", ["coach_task", "personal_task"])
-            .in("channel_id", allowedChannelIds.length > 0 ? allowedChannelIds : ["00000000-0000-0000-0000-000000000000"])
-            .order("created_at", { ascending: false });
-        if (taskRowsError) {
-            if (!isRecoverableAssignmentSourceGap(taskRowsError)) {
-                return handleSupabaseError(res, "Failed to fetch message-linked assignments", taskRowsError);
-            }
-        }
-        const seenMessageLinkedTaskIds = new Set();
-        for (const m of taskMsgRows ?? []) {
-            const ref = (0, channelMessageTasks_1.parseTaskAssignmentRef)(m.assignment_ref);
-            if (!ref)
-                continue;
-            const assigneeId = ref.assignee_id ?? null;
-            // Only include tasks assigned to or created by this user
-            if (assigneeId !== userId && ref.created_by !== userId)
-                continue;
-            const taskType = m.message_kind === "coach_task" ? "coach_task" : "personal_task";
-            const taskId = ref.id ?? m.id;
-            // Keep latest state only (rows are sorted newest->oldest).
-            if (seenMessageLinkedTaskIds.has(taskId))
-                continue;
-            seenMessageLinkedTaskIds.add(taskId);
-            const roleScopeCheck = await evaluateRoleScopeForChannel(userId, String(m.channel_id ?? ""));
-            if (!roleScopeCheck.ok)
-                return res.status(roleScopeCheck.status).json({ error: roleScopeCheck.error });
-            if (!roleScopeCheck.result.allowed)
-                continue;
-            const rights = (0, channelMessageTasks_1.buildLinkedTaskRights)({
-                taskType,
-                viewerUserId: userId,
-                viewerRole: roleScopeCheck.result.role,
-                assigneeId,
-            });
-            const sourceMessageId = ref.source_message_id ?? m.id;
-            const lastThreadEventAt = ref.last_thread_event_at ?? m.created_at ?? null;
-            assignments.push({
-                id: taskId,
-                type: taskType,
-                title: ref.title ?? "Task",
-                status: normalizeGoalStatus(ref.status ?? "pending"),
-                due_at: ref.due_at ?? null,
-                assignee_id: assigneeId,
-                source: "message_linked",
-                created_at: m.created_at ?? new Date().toISOString(),
-                channel_id: m.channel_id ?? null,
-                source_message_id: sourceMessageId,
-                last_thread_event_at: lastThreadEventAt,
-                thread_read_state: "unknown",
-                rights,
-            });
-        }
-        // Sort: due_at asc (nulls last), then created_at desc
-        assignments.sort((a, b) => {
-            if (a.due_at && b.due_at)
-                return a.due_at.localeCompare(b.due_at);
-            if (a.due_at && !b.due_at)
-                return -1;
-            if (!a.due_at && b.due_at)
-                return 1;
-            return b.created_at.localeCompare(a.created_at);
+        const listResult = await (0, profileAssignments_1.listUnifiedAssignmentsForUser)({
+            dataClient,
+            targetUserId: auth.user.id,
+            viewerUserId: auth.user.id,
+            canViewAllTargetChannels: true,
+            evaluateRoleScopeForChannel,
         });
-        const emptyState = assignments.length === 0
-            ? {
-                code: "no_assignments",
-                message: "No assignments available.",
-            }
-            : null;
+        if (!listResult.ok) {
+            return res.status(listResult.status).json({ error: listResult.error });
+        }
         return res.json({
-            assignments,
-            total: assignments.length,
-            empty_state: emptyState,
+            assignments: listResult.assignments,
+            total: listResult.assignments.length,
+            empty_state: listResult.empty_state,
         });
     }
     catch (err) {
         // eslint-disable-next-line no-console
         console.error("Error in GET /api/coaching/assignments/me", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.get("/api/coaching/users/:userId/assignments", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok)
+            return res.status(auth.status).json({ error: auth.error });
+        if (!dataClient)
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        const targetUserId = String(req.params.userId ?? "").trim();
+        if (!isUuidLike(targetUserId))
+            return res.status(422).json({ error: "user id must be a UUID" });
+        const accessCheck = await resolveProfileAssignmentsAccess(auth.user.id, targetUserId, auth.user);
+        if (!accessCheck.ok)
+            return res.status(accessCheck.status).json({ error: accessCheck.error });
+        if (!accessCheck.capabilities.can_view) {
+            return res.status(403).json({ error: "Caller cannot view this profile assignments surface" });
+        }
+        const listResult = await (0, profileAssignments_1.listUnifiedAssignmentsForUser)({
+            dataClient,
+            targetUserId,
+            viewerUserId: auth.user.id,
+            viewerRole: accessCheck.access.role ?? null,
+            canViewAllTargetChannels: accessCheck.capabilities.can_manage_items,
+            evaluateRoleScopeForChannel,
+        });
+        if (!listResult.ok)
+            return res.status(listResult.status).json({ error: listResult.error });
+        return res.json({
+            assignments: listResult.assignments,
+            total: listResult.assignments.length,
+            empty_state: listResult.empty_state,
+            viewer_capabilities: accessCheck.capabilities,
+        });
+    }
+    catch (err) {
+        console.error("Error in GET /api/coaching/users/:userId/assignments", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.post("/api/coaching/users/:userId/goals", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok)
+            return res.status(auth.status).json({ error: auth.error });
+        if (!dataClient)
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        const targetUserId = String(req.params.userId ?? "").trim();
+        if (!isUuidLike(targetUserId))
+            return res.status(422).json({ error: "user id must be a UUID" });
+        const accessCheck = await resolveProfileAssignmentsAccess(auth.user.id, targetUserId, auth.user);
+        if (!accessCheck.ok)
+            return res.status(accessCheck.status).json({ error: accessCheck.error });
+        if (!accessCheck.capabilities.can_create_goal) {
+            return res.status(403).json({ error: "Caller cannot create goals on this profile" });
+        }
+        const payloadCheck = (0, profileAssignments_1.validateProfileGoalCreatePayload)(req.body);
+        if (!payloadCheck.ok)
+            return res.status(payloadCheck.status).json({ error: payloadCheck.error });
+        const goalType = auth.user.id === targetUserId
+            ? "personal"
+            : accessCheck.access.canAuthorGlobal || accessCheck.access.platformAdmin
+                ? "coach"
+                : "team_leader";
+        const { data: goalRow, error: goalInsertError } = await dataClient
+            .from("goals")
+            .insert({
+            title: payloadCheck.payload.title,
+            due_at: payloadCheck.payload.due_at,
+            status: "pending",
+            assignee_id: targetUserId,
+            created_by: auth.user.id,
+            goal_type: goalType,
+        })
+            .select("id,title,status,due_at,assignee_id,created_by,created_at,goal_type")
+            .single();
+        if (goalInsertError) {
+            return handleSupabaseError(res, "Failed to create goal", goalInsertError);
+        }
+        const assignment = {
+            id: String(goalRow.id),
+            type: goalType === "coach" ? "coach_goal" : goalType === "team_leader" ? "team_leader_goal" : "personal_goal",
+            title: String(goalRow.title ?? "Untitled Goal"),
+            description: null,
+            status: "pending",
+            due_at: typeof goalRow.due_at === "string" ? goalRow.due_at : null,
+            assignee_id: String(goalRow.assignee_id ?? "") || null,
+            assignee_name: await resolveUserDisplayName(targetUserId),
+            source: "goals",
+            created_at: typeof goalRow.created_at === "string" ? goalRow.created_at : new Date().toISOString(),
+            created_by: String(goalRow.created_by ?? "") || null,
+            channel_id: null,
+            source_message_id: null,
+            last_thread_event_at: null,
+            thread_read_state: "unknown",
+            rights: {
+                can_edit_fields: true,
+                can_update_status: true,
+                can_mark_complete: true,
+                can_reassign: true,
+            },
+        };
+        return res.status(201).json({ assignment });
+    }
+    catch (err) {
+        console.error("Error in POST /api/coaching/users/:userId/goals", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.patch("/api/coaching/users/:userId/goals/:goalId", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok)
+            return res.status(auth.status).json({ error: auth.error });
+        if (!dataClient)
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        const targetUserId = String(req.params.userId ?? "").trim();
+        const goalId = String(req.params.goalId ?? "").trim();
+        if (!isUuidLike(targetUserId) || !isUuidLike(goalId))
+            return res.status(422).json({ error: "invalid goal route params" });
+        const accessCheck = await resolveProfileAssignmentsAccess(auth.user.id, targetUserId, auth.user);
+        if (!accessCheck.ok)
+            return res.status(accessCheck.status).json({ error: accessCheck.error });
+        if (!accessCheck.capabilities.can_view) {
+            return res.status(403).json({ error: "Caller cannot update this profile goal" });
+        }
+        const payloadCheck = (0, profileAssignments_1.validateProfileGoalPatchPayload)(req.body);
+        if (!payloadCheck.ok)
+            return res.status(payloadCheck.status).json({ error: payloadCheck.error });
+        const { data: goalRow, error: goalFetchError } = await dataClient
+            .from("goals")
+            .select("id,title,status,due_at,assignee_id,created_by,created_at,goal_type")
+            .eq("id", goalId)
+            .maybeSingle();
+        if (goalFetchError)
+            return handleSupabaseError(res, "Failed to load goal", goalFetchError);
+        if (!goalRow)
+            return res.status(404).json({ error: "Goal not found" });
+        const goalAssigneeId = String(goalRow.assignee_id ?? "") || null;
+        const goalCreatedBy = String(goalRow.created_by ?? "") || null;
+        if (goalAssigneeId !== targetUserId && goalCreatedBy !== targetUserId) {
+            return res.status(404).json({ error: "Goal not found for this profile" });
+        }
+        const isOwner = goalCreatedBy === auth.user.id;
+        const isAssignee = goalAssigneeId === auth.user.id;
+        const isManager = accessCheck.capabilities.can_manage_items && auth.user.id !== targetUserId;
+        if ((payloadCheck.payload.title !== undefined || payloadCheck.payload.due_at !== undefined) && !isOwner && !isManager) {
+            return res.status(403).json({ error: "Caller cannot edit goal fields" });
+        }
+        if (payloadCheck.payload.status !== undefined && !isOwner && !isAssignee && !isManager) {
+            return res.status(403).json({ error: "Caller cannot update goal status" });
+        }
+        const patch = {};
+        if (payloadCheck.payload.title !== undefined)
+            patch.title = payloadCheck.payload.title;
+        if (payloadCheck.payload.due_at !== undefined)
+            patch.due_at = payloadCheck.payload.due_at;
+        if (payloadCheck.payload.status !== undefined)
+            patch.status = payloadCheck.payload.status;
+        const { data: updatedGoal, error: goalUpdateError } = await dataClient
+            .from("goals")
+            .update(patch)
+            .eq("id", goalId)
+            .select("id,title,status,due_at,assignee_id,created_by,created_at,goal_type")
+            .single();
+        if (goalUpdateError)
+            return handleSupabaseError(res, "Failed to update goal", goalUpdateError);
+        return res.json({
+            assignment: {
+                id: String(updatedGoal.id),
+                type: String(updatedGoal.goal_type ?? "personal") === "coach"
+                    ? "coach_goal"
+                    : String(updatedGoal.goal_type ?? "personal") === "team_leader"
+                        ? "team_leader_goal"
+                        : "personal_goal",
+                title: String(updatedGoal.title ?? "Untitled Goal"),
+                description: null,
+                status: (0, channelMessageTasks_1.normalizeTaskStatus)(updatedGoal.status),
+                due_at: typeof updatedGoal.due_at === "string" ? updatedGoal.due_at : null,
+                assignee_id: String(updatedGoal.assignee_id ?? "") || null,
+                assignee_name: await resolveUserDisplayName(goalAssigneeId ?? targetUserId),
+                source: "goals",
+                created_at: typeof updatedGoal.created_at === "string" ? updatedGoal.created_at : new Date().toISOString(),
+                created_by: String(updatedGoal.created_by ?? "") || null,
+                channel_id: null,
+                source_message_id: null,
+                last_thread_event_at: null,
+                thread_read_state: "unknown",
+                rights: {
+                    can_edit_fields: isOwner || isManager,
+                    can_update_status: isOwner || isAssignee || isManager,
+                    can_mark_complete: isOwner || isAssignee || isManager,
+                    can_reassign: isOwner || isManager,
+                },
+            },
+        });
+    }
+    catch (err) {
+        console.error("Error in PATCH /api/coaching/users/:userId/goals/:goalId", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.post("/api/coaching/users/:userId/tasks", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok)
+            return res.status(auth.status).json({ error: auth.error });
+        if (!dataClient)
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        const targetUserId = String(req.params.userId ?? "").trim();
+        if (!isUuidLike(targetUserId))
+            return res.status(422).json({ error: "user id must be a UUID" });
+        const accessCheck = await resolveProfileAssignmentsAccess(auth.user.id, targetUserId, auth.user);
+        if (!accessCheck.ok)
+            return res.status(accessCheck.status).json({ error: accessCheck.error });
+        if (!accessCheck.capabilities.can_create_task) {
+            return res.status(403).json({ error: "Caller cannot create tasks on this profile" });
+        }
+        const payloadCheck = (0, profileAssignments_1.validateProfileTaskCreatePayload)(req.body);
+        if (!payloadCheck.ok)
+            return res.status(payloadCheck.status).json({ error: payloadCheck.error });
+        const assigneeId = payloadCheck.payload.assignee_id ?? targetUserId;
+        if (assigneeId !== targetUserId) {
+            return res.status(422).json({ error: "profile task assignee must match the selected profile user" });
+        }
+        const taskType = auth.user.id === targetUserId ? "personal_task" : "coach_task";
+        const targetName = await resolveUserDisplayName(targetUserId);
+        const channelResult = await ensureProfileTaskChannel(auth.user.id, targetUserId, targetName);
+        if (!channelResult.ok)
+            return res.status(channelResult.status).json({ error: channelResult.error });
+        const channelId = channelResult.channel.id;
+        const assigneeLookup = await resolveChannelMemberDisplayName(channelId, targetUserId);
+        if (!assigneeLookup.ok)
+            return res.status(assigneeLookup.status).json({ error: assigneeLookup.error });
+        if (taskType === "coach_task" && !(0, channelMessageTasks_1.canAuthorCoachTask)(accessCheck.access.role)) {
+            return res.status(403).json({ error: "coach_task authoring requires coach-scope role" });
+        }
+        const nowIso = new Date().toISOString();
+        const taskId = crypto_1.default.randomUUID();
+        const assignmentRef = (0, channelMessageTasks_1.buildTaskAssignmentRef)({
+            taskId,
+            taskType,
+            title: payloadCheck.payload.title,
+            description: payloadCheck.payload.description,
+            status: "pending",
+            dueAt: payloadCheck.payload.due_at,
+            assigneeId: targetUserId,
+            assigneeName: assigneeLookup.displayName ?? targetName ?? "Member",
+            createdById: auth.user.id,
+            createdByRole: accessCheck.access.role,
+            channelId,
+            createdAt: nowIso,
+        });
+        const body = (0, channelMessageTasks_1.buildTaskMessageBody)({
+            taskAction: "create",
+            title: payloadCheck.payload.title,
+            description: payloadCheck.payload.description,
+            note: null,
+        });
+        const { data: insertedMessage, error: insertError } = await dataClient
+            .from("channel_messages")
+            .insert({
+            channel_id: channelId,
+            sender_user_id: auth.user.id,
+            body,
+            message_type: "message",
+            message_kind: taskType,
+            assignment_ref: assignmentRef,
+            created_at: nowIso,
+        })
+            .select("id")
+            .single();
+        if (insertError)
+            return handleSupabaseError(res, "Failed to create profile task message", insertError);
+        await fanOutUnreadCounters(channelId, auth.user.id);
+        return res.status(201).json({
+            assignment: {
+                id: taskId,
+                type: taskType,
+                title: payloadCheck.payload.title,
+                description: payloadCheck.payload.description,
+                status: "pending",
+                due_at: payloadCheck.payload.due_at,
+                assignee_id: targetUserId,
+                assignee_name: assigneeLookup.displayName ?? targetName ?? "Member",
+                source: "message_linked",
+                created_at: nowIso,
+                created_by: auth.user.id,
+                channel_id: channelId,
+                source_message_id: String(insertedMessage.id),
+                last_thread_event_at: nowIso,
+                thread_read_state: "unknown",
+                rights: (0, channelMessageTasks_1.buildLinkedTaskRights)({
+                    taskType,
+                    viewerUserId: auth.user.id,
+                    viewerRole: accessCheck.access.role,
+                    assigneeId: targetUserId,
+                }),
+            },
+        });
+    }
+    catch (err) {
+        console.error("Error in POST /api/coaching/users/:userId/tasks", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.patch("/api/coaching/users/:userId/tasks/:taskId", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok)
+            return res.status(auth.status).json({ error: auth.error });
+        if (!dataClient)
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        const targetUserId = String(req.params.userId ?? "").trim();
+        const taskId = String(req.params.taskId ?? "").trim();
+        if (!isUuidLike(targetUserId) || !isUuidLike(taskId))
+            return res.status(422).json({ error: "invalid task route params" });
+        const accessCheck = await resolveProfileAssignmentsAccess(auth.user.id, targetUserId, auth.user);
+        if (!accessCheck.ok)
+            return res.status(accessCheck.status).json({ error: accessCheck.error });
+        if (!accessCheck.capabilities.can_view)
+            return res.status(403).json({ error: "Caller cannot update this profile task" });
+        const payloadCheck = (0, profileAssignments_1.validateProfileTaskPatchPayload)(req.body);
+        if (!payloadCheck.ok)
+            return res.status(payloadCheck.status).json({ error: payloadCheck.error });
+        const membership = await checkChannelMembership(payloadCheck.payload.channel_id, auth.user.id);
+        if (!membership.ok)
+            return res.status(membership.status).json({ error: membership.error });
+        if (!membership.member)
+            return res.status(403).json({ error: "Not a channel member" });
+        const roleScopeCheck = await evaluateRoleScopeForChannel(auth.user.id, payloadCheck.payload.channel_id);
+        if (!roleScopeCheck.ok)
+            return res.status(roleScopeCheck.status).json({ error: roleScopeCheck.error });
+        if (!roleScopeCheck.result.allowed) {
+            return res.status(403).json({ error: roleScopeCheck.result.reason ?? "Channel scope denied for caller role" });
+        }
+        const latestTask = await loadLatestTaskRefForChannel(payloadCheck.payload.channel_id, taskId);
+        if (!latestTask.ok)
+            return res.status(latestTask.status).json({ error: latestTask.error });
+        if (!latestTask.event)
+            return res.status(404).json({ error: "Task not found in thread history" });
+        const currentTask = latestTask.event.assignment_ref;
+        if (currentTask.assignee_id !== targetUserId && currentTask.created_by !== targetUserId) {
+            return res.status(404).json({ error: "Task not found for this profile" });
+        }
+        const permission = (0, profileAssignments_1.resolveProfileTaskMutation)({
+            currentTask,
+            actorUserId: auth.user.id,
+            actorRole: roleScopeCheck.result.role,
+            nextStatus: payloadCheck.payload.status,
+        });
+        if (!permission.allowed) {
+            return res.status(403).json({ error: permission.reason ?? "Caller cannot update this task" });
+        }
+        const nowIso = new Date().toISOString();
+        const assignmentRef = (0, channelMessageTasks_1.buildTaskAssignmentRef)({
+            taskId: currentTask.id,
+            taskType: currentTask.task_type,
+            title: currentTask.title,
+            description: currentTask.description,
+            status: payloadCheck.payload.status,
+            dueAt: currentTask.due_at,
+            assigneeId: currentTask.assignee_id,
+            assigneeName: currentTask.assignee_name,
+            createdById: currentTask.created_by ?? auth.user.id,
+            createdByRole: currentTask.created_by_role ?? roleScopeCheck.result.role ?? "member",
+            channelId: payloadCheck.payload.channel_id,
+            createdAt: nowIso,
+            messageId: currentTask.source_message_id ?? latestTask.event.message_id,
+        });
+        const body = (0, channelMessageTasks_1.buildTaskMessageBody)({
+            taskAction: payloadCheck.payload.status === "completed" ? "complete" : "update",
+            title: currentTask.title,
+            description: currentTask.description,
+            note: null,
+        });
+        const { data: insertedMessage, error: insertError } = await dataClient
+            .from("channel_messages")
+            .insert({
+            channel_id: payloadCheck.payload.channel_id,
+            sender_user_id: auth.user.id,
+            body,
+            message_type: "message",
+            message_kind: currentTask.task_type,
+            assignment_ref: assignmentRef,
+            created_at: nowIso,
+        })
+            .select("id")
+            .single();
+        if (insertError)
+            return handleSupabaseError(res, "Failed to update profile task", insertError);
+        await fanOutUnreadCounters(payloadCheck.payload.channel_id, auth.user.id);
+        return res.json({
+            assignment: {
+                id: currentTask.id,
+                type: currentTask.task_type,
+                title: currentTask.title,
+                description: currentTask.description,
+                status: payloadCheck.payload.status,
+                due_at: currentTask.due_at,
+                assignee_id: currentTask.assignee_id,
+                assignee_name: currentTask.assignee_name,
+                source: "message_linked",
+                created_at: nowIso,
+                created_by: currentTask.created_by,
+                channel_id: payloadCheck.payload.channel_id,
+                source_message_id: String(insertedMessage.id),
+                last_thread_event_at: nowIso,
+                thread_read_state: "unknown",
+                rights: (0, channelMessageTasks_1.buildLinkedTaskRights)({
+                    taskType: currentTask.task_type,
+                    viewerUserId: auth.user.id,
+                    viewerRole: roleScopeCheck.result.role,
+                    assigneeId: currentTask.assignee_id,
+                }),
+            },
+        });
+    }
+    catch (err) {
+        console.error("Error in PATCH /api/coaching/users/:userId/tasks/:taskId", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 });
@@ -9577,13 +10052,6 @@ function validateCoachingBroadcastPayload(body) {
         },
     };
 }
-function normalizeGoalStatus(raw) {
-    if (raw === "completed" || raw === "done")
-        return "completed";
-    if (raw === "in_progress" || raw === "active")
-        return "in_progress";
-    return "pending";
-}
 function validateCoachEngagementCreatePayload(body) {
     if (!body || typeof body !== "object") {
         return { ok: false, status: 400, error: "Body must be a JSON object" };
@@ -12019,7 +12487,7 @@ async function loadLatestTaskRefForChannel(channelId, taskId) {
     }
     const { data, error } = await dataClient
         .from("channel_messages")
-        .select("id,message_kind,assignment_ref,created_at")
+        .select("id,body,message_kind,assignment_ref,created_at")
         .eq("channel_id", channelId)
         .in("message_kind", ["coach_task", "personal_task"])
         .order("created_at", { ascending: false })
@@ -12039,6 +12507,9 @@ async function loadLatestTaskRefForChannel(channelId, taskId) {
             event: {
                 message_id: String(row.id ?? ""),
                 message_kind: messageKind,
+                body: typeof row.body === "string"
+                    ? String(row.body)
+                    : "",
                 created_at: typeof row.created_at === "string"
                     ? String(row.created_at)
                     : null,
@@ -12139,6 +12610,199 @@ async function canLeaderTargetUserForAiSuggestion(actorUserId, targetUserId) {
         return { ok: false, status: 500, error: "Failed to evaluate target team scope" };
     }
     return { ok: true, allowed: Boolean(targetMembership) };
+}
+async function resolveProfileAssignmentsAccess(actorUserId, targetUserId, authUser) {
+    const accessResult = await getCoachingAccessContext(actorUserId, { authUser });
+    if (!accessResult.ok)
+        return accessResult;
+    const access = accessResult.context;
+    if (access.sponsorReadOnly) {
+        return {
+            ok: true,
+            access,
+            capabilities: (0, profileAssignments_1.buildProfileAssignmentCapabilities)({
+                viewerUserId: actorUserId,
+                targetUserId,
+                canGlobalView: false,
+                canManageTarget: false,
+                sharedTeam: false,
+                platformAdmin: false,
+                coachScope: false,
+            }),
+        };
+    }
+    let sharedTeam = actorUserId === targetUserId;
+    if (!sharedTeam) {
+        const sharedScope = await hasSharedTeamMembership(actorUserId, targetUserId);
+        if (!sharedScope.ok)
+            return sharedScope;
+        sharedTeam = sharedScope.shared;
+    }
+    let canManageTarget = actorUserId === targetUserId;
+    if (!canManageTarget && access.leaderTeamIds.size > 0) {
+        const leaderScope = await canLeaderTargetUserForAiSuggestion(actorUserId, targetUserId);
+        if (!leaderScope.ok)
+            return leaderScope;
+        canManageTarget = leaderScope.allowed;
+    }
+    return {
+        ok: true,
+        access,
+        capabilities: (0, profileAssignments_1.buildProfileAssignmentCapabilities)({
+            viewerUserId: actorUserId,
+            targetUserId,
+            canGlobalView: access.canGlobalView,
+            canManageTarget,
+            sharedTeam,
+            platformAdmin: access.platformAdmin,
+            coachScope: access.canAuthorGlobal && !access.platformAdmin,
+        }),
+    };
+}
+async function resolveUserDisplayName(userId) {
+    if (!dataClient)
+        return null;
+    const { data, error } = await dataClient
+        .from("users")
+        .select("full_name")
+        .eq("id", userId)
+        .maybeSingle();
+    if (error)
+        return null;
+    const name = typeof data?.full_name === "string"
+        ? String(data.full_name).trim()
+        : "";
+    return name || null;
+}
+async function ensureProfileTaskChannel(actorUserId, targetUserId, targetDisplayName) {
+    if (!dataClient) {
+        return { ok: false, status: 500, error: "Supabase data client not configured" };
+    }
+    if (actorUserId === targetUserId) {
+        const { data: existingChannel, error: existingError } = await dataClient
+            .from("channels")
+            .select("id,type,name,team_id,context_id,created_by,created_at")
+            .eq("type", "direct")
+            .eq("created_by", actorUserId)
+            .eq("context_id", actorUserId)
+            .eq("is_active", true)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (existingError) {
+            return { ok: false, status: 500, error: "Failed to load personal task channel" };
+        }
+        if (existingChannel) {
+            return {
+                ok: true,
+                channel: {
+                    id: String(existingChannel.id ?? ""),
+                    type: String(existingChannel.type ?? "direct"),
+                    name: String(existingChannel.name ?? "My Tasks"),
+                    team_id: String(existingChannel.team_id ?? "") || null,
+                    context_id: String(existingChannel.context_id ?? "") || null,
+                    created_by: String(existingChannel.created_by ?? "") || null,
+                    created_at: String(existingChannel.created_at ?? new Date().toISOString()),
+                },
+            };
+        }
+        const { data: channel, error: channelError } = await dataClient
+            .from("channels")
+            .insert({
+            type: "direct",
+            name: "My Tasks",
+            team_id: null,
+            context_id: actorUserId,
+            created_by: actorUserId,
+        })
+            .select("id,type,name,team_id,context_id,created_by,created_at")
+            .single();
+        if (channelError) {
+            return handleSupabaseErrorResult("Failed to create personal task channel", channelError);
+        }
+        const nowIso = new Date().toISOString();
+        const { error: membershipError } = await dataClient.from("channel_memberships").upsert({ channel_id: channel.id, user_id: actorUserId, role: "admin" }, { onConflict: "channel_id,user_id" });
+        if (membershipError) {
+            return handleSupabaseErrorResult("Failed to create personal task channel membership", membershipError);
+        }
+        const { error: unreadError } = await dataClient.from("message_unreads").upsert({
+            channel_id: channel.id,
+            user_id: actorUserId,
+            unread_count: 0,
+            last_seen_at: nowIso,
+            updated_at: nowIso,
+        }, { onConflict: "channel_id,user_id" });
+        if (unreadError) {
+            return handleSupabaseErrorResult("Failed to initialize personal task unread state", unreadError);
+        }
+        return {
+            ok: true,
+            channel: {
+                id: String(channel.id),
+                type: String(channel.type),
+                name: String(channel.name),
+                team_id: String(channel.team_id ?? "") || null,
+                context_id: String(channel.context_id ?? "") || null,
+                created_by: String(channel.created_by ?? "") || null,
+                created_at: String(channel.created_at ?? nowIso),
+            },
+        };
+    }
+    const directChannel = await findExistingDirectChannelForMemberSet(actorUserId, [targetUserId]);
+    if (!directChannel.ok)
+        return directChannel;
+    if (directChannel.channel) {
+        return { ok: true, channel: directChannel.channel };
+    }
+    const directName = targetDisplayName ? `${targetDisplayName} Direct` : "Direct Message";
+    const { data: channel, error: channelError } = await dataClient
+        .from("channels")
+        .insert({
+        type: "direct",
+        name: directName,
+        team_id: null,
+        context_id: targetUserId,
+        created_by: actorUserId,
+    })
+        .select("id,type,name,team_id,context_id,created_by,created_at")
+        .single();
+    if (channelError) {
+        return handleSupabaseErrorResult("Failed to create profile task direct channel", channelError);
+    }
+    const nowIso = new Date().toISOString();
+    const { error: membershipError } = await dataClient
+        .from("channel_memberships")
+        .upsert([
+        { channel_id: channel.id, user_id: actorUserId, role: "admin" },
+        { channel_id: channel.id, user_id: targetUserId, role: "member" },
+    ], { onConflict: "channel_id,user_id" });
+    if (membershipError) {
+        return handleSupabaseErrorResult("Failed to create profile task direct channel memberships", membershipError);
+    }
+    const { error: unreadError } = await dataClient
+        .from("message_unreads")
+        .upsert([
+        { channel_id: channel.id, user_id: actorUserId, unread_count: 0, last_seen_at: nowIso, updated_at: nowIso },
+        { channel_id: channel.id, user_id: targetUserId, unread_count: 0, last_seen_at: nowIso, updated_at: nowIso },
+    ], { onConflict: "channel_id,user_id" });
+    if (unreadError) {
+        return handleSupabaseErrorResult("Failed to initialize profile task unread state", unreadError);
+    }
+    return {
+        ok: true,
+        channel: {
+            id: String(channel.id),
+            type: String(channel.type),
+            name: String(channel.name),
+            team_id: String(channel.team_id ?? "") || null,
+            context_id: String(channel.context_id ?? "") || null,
+            created_by: String(channel.created_by ?? "") || null,
+            created_at: String(channel.created_at ?? nowIso),
+        },
+    };
+}
+function handleSupabaseErrorResult(message, error) {
+    return { ok: false, status: 500, error: error?.message ? `${message}: ${error.message}` : message };
 }
 async function fanOutUnreadCounters(channelId, senderUserId) {
     if (!dataClient) {

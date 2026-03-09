@@ -75,7 +75,7 @@ module.exports = ({ config }) => ({
   name: variantProfile.appName,
   slug: 'compass-kpi',
   plugins: Array.from(
-    new Set([...(config.plugins || []), 'expo-audio', 'expo-secure-store', 'expo-image-picker', 'expo-video'])
+    new Set([...(config.plugins || []), 'expo-audio', 'expo-secure-store', 'expo-image-picker', 'expo-video', '@react-native-community/datetimepicker'])
   ),
   ios: {
     ...(config.ios || {}),

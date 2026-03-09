@@ -65,6 +65,8 @@ export interface ThreadComposerProps {
 
   /* ── live session ── */
   onStartLiveSession?: () => void;
+  onInsertTask?: () => void;
+  canUseTaskCommands?: boolean;
 
   /* ── layout ── */
   bottomInset?: number;
@@ -81,6 +83,7 @@ export default function ThreadComposer(props: ThreadComposerProps) {
     messageDraft, onChangeMessageDraft, onSend, sendDisabled, messageSubmitting,
     pendingUpload, onSendUploadedMedia, onCancelUpload,
     gateBlocksActions, onPickMediaFile, onStartLiveSession,
+    onInsertTask, canUseTaskCommands = false,
     bottomInset = 0, keyboardVisible = false, onLayout,
   } = props;
 
@@ -138,6 +141,11 @@ export default function ThreadComposer(props: ThreadComposerProps) {
       Alert.alert('Go Live', 'Live streaming is not available right now.');
     }
   }, [closeSheet, onStartLiveSession]);
+
+  const handleTask = useCallback(() => {
+    closeSheet();
+    onInsertTask?.();
+  }, [closeSheet, onInsertTask]);
 
   const handleSendPress = useCallback(() => {
     closeSheet();
@@ -229,6 +237,16 @@ export default function ThreadComposer(props: ThreadComposerProps) {
             <Text style={st.actionMenuIcon}>▤</Text>
             <Text style={st.actionMenuLabel}>File</Text>
           </Pressable>
+          {canUseTaskCommands ? (
+            <Pressable
+              style={[st.actionMenuItem, gateBlocksActions && st.actionMenuItemDisabled]}
+              disabled={gateBlocksActions}
+              onPress={handleTask}
+            >
+              <Text style={st.actionMenuIcon}>☑</Text>
+              <Text style={st.actionMenuLabel}>Task</Text>
+            </Pressable>
+          ) : null}
           <Pressable
             style={[st.actionMenuItem, gateBlocksActions && st.actionMenuItemDisabled]}
             disabled={gateBlocksActions}

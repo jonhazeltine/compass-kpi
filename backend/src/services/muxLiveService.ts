@@ -265,6 +265,65 @@ export async function disableMuxLiveStream(streamId: string): Promise<
 }
 
 /* ================================================================
+   MUX ASSET QUERY HELPERS (for replay flow)
+   ================================================================ */
+
+type MuxLiveStreamDetail = MuxLiveStreamData & {
+  recent_asset_ids?: string[];
+};
+
+/**
+ * Get full details of a Mux live stream, including recent_asset_ids
+ * which we need to find the replay asset after a stream ends.
+ */
+export async function getMuxLiveStreamDetails(streamId: string): Promise<
+  | { ok: true; data: MuxLiveStreamDetail }
+  | { ok: false; error: string }
+> {
+  try {
+    const res = await fetch(`${MUX_API_BASE}/live-streams/${encodeURIComponent(streamId)}`, {
+      headers: { Authorization: muxAuthHeader() },
+    });
+    const json = (await res.json().catch(() => ({}))) as { data?: MuxLiveStreamDetail };
+    if (!res.ok || !json.data) {
+      return { ok: false, error: `Mux API returned ${res.status}` };
+    }
+    return { ok: true, data: json.data };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Mux live stream query failed" };
+  }
+}
+
+type MuxAssetData = {
+  id: string;
+  status: string;
+  playback_ids?: Array<{ id: string; policy: string }>;
+  duration?: number;
+  created_at?: string;
+};
+
+/**
+ * Get a Mux video asset by ID (used to resolve replay playback URL).
+ */
+export async function getMuxAsset(assetId: string): Promise<
+  | { ok: true; data: MuxAssetData }
+  | { ok: false; error: string }
+> {
+  try {
+    const res = await fetch(`${MUX_API_BASE}/assets/${encodeURIComponent(assetId)}`, {
+      headers: { Authorization: muxAuthHeader() },
+    });
+    const json = (await res.json().catch(() => ({}))) as { data?: MuxAssetData };
+    if (!res.ok || !json.data) {
+      return { ok: false, error: `Mux API returned ${res.status}` };
+    }
+    return { ok: true, data: json.data };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Mux asset query failed" };
+  }
+}
+
+/* ================================================================
    URL BUILDERS
    ================================================================ */
 

@@ -10,6 +10,7 @@
  * This component is purely presentational + handles local UI state.
  */
 import React, { useRef, useEffect, useMemo, useState } from 'react';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import {
   ActivityIndicator,
   Animated,
@@ -37,6 +38,7 @@ import {
   parseThreadMessage,
   resolveThreadSendPayload,
   type LinkedTaskCard,
+  type LinkedTaskType,
   type MediaAttachment,
   type ThreadSendPayload,
 } from './messageLinkedTasks';
@@ -180,10 +182,13 @@ export interface CommsHubProps {
   livePlaybackUrl: string | null;
   liveStreamKey: string | null;
   liveProviderMode: 'mock' | 'mux' | 'unavailable' | null;
-  onStartLiveSession: () => void;
+  liveSessionRecord?: { session_id: string; status: 'scheduled' | 'live' | 'ended' | 'cancelled'; [k: string]: unknown } | null;
+  onGoLive: () => void;
   onRefreshLiveSession: () => void;
-  onWatchLiveStream: () => void;
   onEndLiveSession: () => void;
+  onPublishReplay?: () => void;
+  replayBusy?: boolean;
+  replayPublished?: boolean;
   composerBottomInset?: number;
 
   /* ── broadcast composer ─── */
@@ -762,7 +767,8 @@ function ThreadView(props: CommsHubProps) {
     onSendLatestMediaAttachment, resolveMediaPlaybackUrl, pendingMediaUpload, onPickMediaFile, onCancelMediaUpload, mediaUploadBusy, mediaUploadStatus,
     localMediaPreviewById = {},
     liveSessionBusy, liveSessionStatus, canHostLiveSession, liveCallerRole, livePlaybackUrl, liveStreamKey, liveProviderMode,
-    onStartLiveSession, onRefreshLiveSession, onWatchLiveStream, onEndLiveSession,
+    liveSessionRecord, onGoLive, onRefreshLiveSession, onEndLiveSession,
+    onPublishReplay, replayBusy = false, replayPublished = false,
     composerBottomInset = 0,
     gateBlocksActions, fmtTime, fmtDate, personaVariant, roleCanBroadcast,
   } = props;
@@ -772,8 +778,16 @@ function ThreadView(props: CommsHubProps) {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [composerHeight, setComposerHeight] = useState(96);
+  const [taskComposerOpen, setTaskComposerOpen] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
+  const [taskDueAt, setTaskDueAt] = useState('');
+  const [taskDueDateValue, setTaskDueDateValue] = useState<Date | null>(null);
+  const [taskAssigneeId, setTaskAssigneeId] = useState<string | null>(null);
+  const [taskDatePickerOpen, setTaskDatePickerOpen] = useState(false);
 
   const canUseTaskCommands = personaVariant !== 'sponsor';
+  const canAuthorCoachTask = personaVariant === 'coach' || personaVariant === 'team_leader';
   const showSlashMenu = messageDraft.trim().startsWith('/');
   const threadDockInset = keyboardVisible
     ? keyboardHeight + composerHeight + 20
@@ -783,6 +797,18 @@ function ThreadView(props: CommsHubProps) {
     [messages]
   );
   const taskStatusMap = useMemo(() => buildLegacyTaskStatusMap(parsedMessages), [parsedMessages]);
+  const taskAssigneeOptions = useMemo(() => {
+    const rows = [
+      { id: String(currentUserId ?? ''), name: 'You', role: personaVariant },
+      ...props.fallbackDms.map((row) => ({ id: row.id, name: row.name, role: row.role })),
+    ].filter((row) => row.id);
+    const seen = new Set<string>();
+    return rows.filter((row) => {
+      if (seen.has(row.id)) return false;
+      seen.add(row.id);
+      return true;
+    });
+  }, [currentUserId, personaVariant, props.fallbackDms]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -815,6 +841,18 @@ function ThreadView(props: CommsHubProps) {
       hideSub.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (!taskComposerOpen) return;
+    if (canAuthorCoachTask) {
+      if (!taskAssigneeId) {
+        const preferred = taskAssigneeOptions.find((row) => row.id !== String(currentUserId ?? '')) ?? taskAssigneeOptions[0] ?? null;
+        setTaskAssigneeId(preferred?.id ?? null);
+      }
+      return;
+    }
+    setTaskAssigneeId(String(currentUserId ?? '') || null);
+  }, [canAuthorCoachTask, currentUserId, taskAssigneeId, taskAssigneeOptions, taskComposerOpen]);
 
   const slashItems = useMemo(() => {
     const roleScoped = [
@@ -885,6 +923,61 @@ function ThreadView(props: CommsHubProps) {
     onChangeMessageDraft('');
   };
 
+  const resetTaskComposer = () => {
+    setTaskComposerOpen(false);
+    setTaskTitle('');
+    setTaskDescription('');
+    setTaskDueAt('');
+    setTaskDueDateValue(null);
+    setTaskDatePickerOpen(false);
+    setTaskAssigneeId(canAuthorCoachTask ? null : String(currentUserId ?? '') || null);
+  };
+
+  const formatTaskDueDate = (value: Date) => {
+    const year = value.getFullYear();
+    const month = `${value.getMonth() + 1}`.padStart(2, '0');
+    const day = `${value.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleTaskDateChange = (event: DateTimePickerEvent, value?: Date) => {
+    setTaskDatePickerOpen(false);
+    if (event.type === 'dismissed' || !value) return;
+    setTaskDueDateValue(value);
+    setTaskDueAt(formatTaskDueDate(value));
+  };
+
+  const handleSendTask = () => {
+    if (gateBlocksActions || messageSubmitting || !selectedChannelId) return;
+    const trimmedTitle = taskTitle.trim();
+    if (!trimmedTitle) {
+      setSlashHintError('Task title is required.');
+      return;
+    }
+    const assigneeId = canAuthorCoachTask
+      ? String(taskAssigneeId ?? '').trim()
+      : String(currentUserId ?? '').trim();
+    if (!assigneeId) {
+      setSlashHintError('Choose an assignee before sending the task.');
+      return;
+    }
+    const taskType: LinkedTaskType = canAuthorCoachTask ? 'coach_task' : 'personal_task';
+    setSlashHintError(null);
+    onSendMessage({
+      message_kind: taskType,
+      task_action: 'create',
+      task_card_draft: {
+        task_type: taskType,
+        title: trimmedTitle,
+        description: taskDescription.trim() || undefined,
+        assignee_id: assigneeId,
+        due_at: taskDueAt.trim() || undefined,
+        status: 'pending',
+      },
+    });
+    resetTaskComposer();
+  };
+
   const liveCardStatus = liveSessionStatus
     ?? (liveCallerRole === 'host'
       ? 'Broadcast ready to start'
@@ -948,7 +1041,8 @@ function ThreadView(props: CommsHubProps) {
               || /^media:\s/i.test(parsed.text)
               || /^[a-f0-9-]{20,}\.(png|jpe?g|gif|webp|heic)$/i.test(mediaCaption)
               || /^capture-\d+\.(mp4|mov)$/i.test(mediaCaption);
-            const showMessageText = Boolean(parsed.text) && !(parsed.mediaAttachment && mediaAutoNamed);
+            const isTaskMessage = Boolean(parsed.linkedTaskCard || parsed.legacyTaskCard);
+            const showMessageText = Boolean(parsed.text) && !(parsed.mediaAttachment && mediaAutoNamed) && !isTaskMessage;
             const isStructuredMediaBubble = Boolean(parsed.mediaAttachment);
             const mediaTitle =
               !mediaAutoNamed && mediaCaption
@@ -1004,40 +1098,84 @@ function ThreadView(props: CommsHubProps) {
                     </Text>
                   ) : null}
                   {parsed.linkedTaskCard ? (
-                    <View style={st.taskCard}>
+                    <View style={[st.taskCard, isMine ? st.taskCardSent : st.taskCardReceived]}>
                       <View style={st.taskCardHead}>
                         <Text style={st.taskCardTitle}>
                           {parsed.linkedTaskCard.task_type === 'coach_task' ? 'Coach Task' : 'Personal Task'}
                         </Text>
-                        <Text style={st.taskCardStatus}>{String(parsed.linkedTaskCard.status ?? 'pending').replace('_', ' ').toUpperCase()}</Text>
+                        <Text
+                          style={[
+                            st.taskCardStatus,
+                            parsed.linkedTaskCard.status === 'completed'
+                              ? st.taskCardStatusDone
+                              : parsed.linkedTaskCard.status === 'in_progress'
+                                ? st.taskCardStatusActive
+                                : st.taskCardStatusPending,
+                          ]}
+                        >
+                          {String(parsed.linkedTaskCard.status ?? 'pending').replace('_', ' ')}
+                        </Text>
                       </View>
-                      <Text style={st.taskCardBody}>{parsed.linkedTaskCard.title}</Text>
+                      <Text
+                        style={[
+                          st.taskCardBody,
+                          parsed.linkedTaskCard.status === 'completed' && st.taskCardBodyCompleted,
+                        ]}
+                      >
+                        {parsed.linkedTaskCard.title}
+                      </Text>
                       {parsed.linkedTaskCard.description ? (
-                        <Text style={st.taskCardMeta}>{parsed.linkedTaskCard.description}</Text>
+                        <Text
+                          style={[
+                            st.taskCardDescription,
+                            parsed.linkedTaskCard.status === 'completed' && st.taskCardDescriptionCompleted,
+                          ]}
+                        >
+                          {parsed.linkedTaskCard.description}
+                        </Text>
                       ) : null}
                       <View style={st.taskCardMetaRow}>
                         {parsed.linkedTaskCard.assignee?.display_name ? (
-                          <Text style={st.taskCardMeta}>Owner: {parsed.linkedTaskCard.assignee.display_name}</Text>
+                          <Text style={st.taskCardMetaPill}>Owner: {parsed.linkedTaskCard.assignee.display_name}</Text>
                         ) : null}
                         {parsed.linkedTaskCard.due_at ? (
-                          <Text style={st.taskCardMeta}>Due: {fmtDate(parsed.linkedTaskCard.due_at)}</Text>
+                          <Text style={st.taskCardMetaPill}>Due: {fmtDate(parsed.linkedTaskCard.due_at)}</Text>
                         ) : null}
                       </View>
-                      <Text style={st.taskCardId}>#{parsed.linkedTaskCard.task_id}</Text>
+                      {(parsed.linkedTaskCard.status !== 'completed'
+                        ? parsed.linkedTaskCard.rights?.can_mark_complete
+                        : parsed.linkedTaskCard.rights?.can_update_status) ? (
+                        <Pressable
+                          style={st.taskCardActionBtn}
+                          onPress={() => onSendMessage({
+                            body: undefined,
+                            message_kind: parsed.linkedTaskCard?.task_type,
+                            task_action: parsed.linkedTaskCard?.status === 'completed' ? 'update' : 'complete',
+                            task_card_draft: {
+                              task_type: parsed.linkedTaskCard?.task_type,
+                              task_id: parsed.linkedTaskCard?.task_id,
+                              ...(parsed.linkedTaskCard?.status === 'completed' ? { status: 'pending' as const } : {}),
+                            },
+                          })}
+                        >
+                          <Text style={st.taskCardActionBtnText}>
+                            {parsed.linkedTaskCard.status === 'completed' ? 'Mark Incomplete' : 'Mark Complete'}
+                          </Text>
+                        </Pressable>
+                      ) : null}
                     </View>
                   ) : null}
                   {parsed.legacyTaskCard ? (
-                    <View style={st.taskCard}>
+                    <View style={[st.taskCard, isMine ? st.taskCardSent : st.taskCardReceived]}>
                       <View style={st.taskCardHead}>
                         <Text style={st.taskCardTitle}>Task</Text>
-                        <Text style={st.taskCardStatus}>{String(legacyTaskCardStatus ?? 'open').toUpperCase()}</Text>
+                        <Text style={[st.taskCardStatus, st.taskCardStatusPending]}>{String(legacyTaskCardStatus ?? 'open').toLowerCase()}</Text>
                       </View>
                       <Text style={st.taskCardBody}>{parsed.legacyTaskCard.title}</Text>
                       <View style={st.taskCardMetaRow}>
-                        {parsed.legacyTaskCard.owner ? <Text style={st.taskCardMeta}>Owner: {parsed.legacyTaskCard.owner}</Text> : null}
-                        {parsed.legacyTaskCard.due ? <Text style={st.taskCardMeta}>Due: {parsed.legacyTaskCard.due}</Text> : null}
+                        {parsed.legacyTaskCard.owner ? <Text style={st.taskCardMetaPill}>Owner: {parsed.legacyTaskCard.owner}</Text> : null}
+                        {parsed.legacyTaskCard.due ? <Text style={st.taskCardMetaPill}>Due: {parsed.legacyTaskCard.due}</Text> : null}
                       </View>
-                      <Text style={st.taskCardId}>#{parsed.legacyTaskCard.taskId}</Text>
                     </View>
                   ) : null}
                   {parsed.legacyTaskUpdate ? (
@@ -1153,12 +1291,29 @@ function ThreadView(props: CommsHubProps) {
             providerMode={liveProviderMode}
             busy={liveSessionBusy}
             gateBlocksActions={gateBlocksActions}
-            onWatch={onWatchLiveStream}
+            sessionStatus={liveSessionRecord?.status ?? null}
+            onWatch={() => {/* inline player handled inside LiveThreadCard */}}
             onEnd={onEndLiveSession}
-            onRefresh={canHostLiveSession && !liveCallerRole ? onStartLiveSession : onRefreshLiveSession}
+            onRefresh={canHostLiveSession && !liveCallerRole ? onGoLive : onRefreshLiveSession}
+            onPublishReplay={onPublishReplay}
+            replayBusy={replayBusy}
+            replayPublished={replayPublished}
           />
         ) : null}
       </ScrollView>
+      {(mediaUploadBusy || liveSessionBusy) ? (
+        <View style={st.composerStatusToast}>
+          <Text style={st.composerStatusText}>
+            {mediaUploadBusy ? (mediaUploadStatus ?? 'Uploading…') : (liveSessionStatus ?? 'Working…')}
+          </Text>
+        </View>
+      ) : null}
+      <View
+        style={[
+          st.threadDock,
+          keyboardVisible && Platform.OS === 'ios' ? { bottom: Math.max(0, keyboardHeight) } : null,
+        ]}
+      >
       {(messageSubmitError || slashHintError) ? (
         <View style={st.composerError}>
           <Text style={st.composerErrorText}>{messageSubmitError ?? slashHintError}</Text>
@@ -1178,19 +1333,6 @@ function ThreadView(props: CommsHubProps) {
           )}
         </View>
       ) : null}
-      {(mediaUploadBusy || liveSessionBusy) ? (
-        <View style={st.composerStatusToast}>
-          <Text style={st.composerStatusText}>
-            {mediaUploadBusy ? (mediaUploadStatus ?? 'Uploading…') : (liveSessionStatus ?? 'Working…')}
-          </Text>
-        </View>
-      ) : null}
-      <View
-        style={[
-          st.threadDock,
-          keyboardVisible && Platform.OS === 'ios' ? { bottom: Math.max(0, keyboardHeight) } : null,
-        ]}
-      >
       {!keyboardVisible ? (
       <View style={st.threadUtilityRow}>
         <Pressable
@@ -1218,6 +1360,83 @@ function ThreadView(props: CommsHubProps) {
         ) : null}
       </View>
       ) : null}
+      {taskComposerOpen ? (
+        <View style={st.taskComposerCard}>
+          <View style={st.taskComposerHeader}>
+            <Text style={st.taskComposerTitle}>{canAuthorCoachTask ? 'New Coach Task' : 'New Personal Task'}</Text>
+            <Pressable onPress={resetTaskComposer} hitSlop={8}>
+              <Text style={st.taskComposerClose}>✕</Text>
+            </Pressable>
+          </View>
+          <TextInput
+            value={taskTitle}
+            onChangeText={setTaskTitle}
+            placeholder="Task name"
+            placeholderTextColor={C.textTertiary}
+            style={st.taskComposerInput}
+          />
+          <TextInput
+            value={taskDescription}
+            onChangeText={setTaskDescription}
+            placeholder="Description"
+            placeholderTextColor={C.textTertiary}
+            multiline
+            style={[st.taskComposerInput, st.taskComposerTextarea]}
+          />
+          {canAuthorCoachTask ? (
+            <View style={st.taskComposerChips}>
+              {taskAssigneeOptions.map((option) => (
+                <Pressable
+                  key={option.id}
+                  style={[st.taskComposerChip, taskAssigneeId === option.id && st.taskComposerChipActive]}
+                  onPress={() => setTaskAssigneeId(option.id)}
+                >
+                  <Text style={[st.taskComposerChipText, taskAssigneeId === option.id && st.taskComposerChipTextActive]}>
+                    {option.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <Text style={st.taskComposerMeta}>Assignee: You</Text>
+          )}
+          <Pressable style={st.taskComposerDateBtn} onPress={() => setTaskDatePickerOpen((prev) => !prev)}>
+            <Text style={taskDueAt ? st.taskComposerDateValue : st.taskComposerDatePlaceholder}>
+              {taskDueAt || 'Choose due date'}
+            </Text>
+          </Pressable>
+          {taskDatePickerOpen ? (
+            <View style={st.taskComposerDatePickerWrap}>
+              <DateTimePicker
+                value={taskDueDateValue ?? new Date()}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                minimumDate={new Date()}
+                onChange={handleTaskDateChange}
+              />
+              {taskDueAt ? (
+                <Pressable
+                  style={st.taskComposerDateClearBtn}
+                  onPress={() => {
+                    setTaskDueAt('');
+                    setTaskDueDateValue(null);
+                    if (Platform.OS !== 'ios') setTaskDatePickerOpen(false);
+                  }}
+                >
+                  <Text style={st.taskComposerDateClearBtnText}>Clear date</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+          <Pressable
+            style={[st.taskComposerSendBtn, (!taskTitle.trim() || messageSubmitting) && st.taskComposerSendBtnDisabled]}
+            disabled={!taskTitle.trim() || messageSubmitting}
+            onPress={handleSendTask}
+          >
+            <Text style={st.taskComposerSendBtnText}>{messageSubmitting ? 'Sending…' : 'Send Task'}</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <ThreadComposer
         messageDraft={messageDraft}
         onChangeMessageDraft={onChangeMessageDraft}
@@ -1229,7 +1448,12 @@ function ThreadView(props: CommsHubProps) {
         onCancelUpload={onCancelMediaUpload}
         gateBlocksActions={gateBlocksActions}
         onPickMediaFile={onPickMediaFile}
-        onStartLiveSession={onStartLiveSession}
+        onStartLiveSession={onGoLive}
+        onInsertTask={() => {
+          setTaskComposerOpen(true);
+          setSlashHintError(null);
+        }}
+        canUseTaskCommands={canUseTaskCommands}
         bottomInset={composerBottomInset}
         keyboardVisible={keyboardVisible}
         onLayout={setComposerHeight}
@@ -1878,12 +2102,23 @@ const st = StyleSheet.create({
   },
   taskCard: {
     marginTop: 8,
-    borderRadius: 10,
-    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+    borderRadius: 18,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: 'rgba(37, 99, 235, 0.24)',
-    padding: 10,
-    gap: 6,
+    borderColor: '#dbe4f2',
+    padding: 14,
+    gap: 10,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 2,
+  },
+  taskCardSent: {
+    borderColor: 'rgba(59, 130, 246, 0.24)',
+  },
+  taskCardReceived: {
+    borderColor: '#dbe4f2',
   },
   taskCardHead: {
     flexDirection: 'row',
@@ -1891,35 +2126,78 @@ const st = StyleSheet.create({
     alignItems: 'center',
   },
   taskCardTitle: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#1E3A8A',
+    color: '#334155',
     textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   taskCardStatus: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#1D4ED8',
+    textTransform: 'capitalize',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  taskCardStatusPending: {
+    color: '#92400e',
+    backgroundColor: '#ffedd5',
+  },
+  taskCardStatusActive: {
+    color: '#1d4ed8',
+    backgroundColor: '#dbeafe',
+  },
+  taskCardStatusDone: {
+    color: '#166534',
+    backgroundColor: '#dcfce7',
   },
   taskCardBody: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0f172a',
+    letterSpacing: -0.3,
+  },
+  taskCardBodyCompleted: {
+    color: '#64748b',
+    textDecorationLine: 'line-through',
+  },
+  taskCardDescription: {
     fontSize: 14,
-    fontWeight: '600',
-    color: C.textPrimary,
+    lineHeight: 20,
+    color: '#475569',
+  },
+  taskCardDescriptionCompleted: {
+    color: '#94a3b8',
+    textDecorationLine: 'line-through',
   },
   taskCardMetaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
   },
-  taskCardMeta: {
-    fontSize: 11,
-    color: C.textSecondary,
-    fontWeight: '500',
-  },
-  taskCardId: {
-    fontSize: 10,
-    color: C.textTertiary,
+  taskCardMetaPill: {
+    fontSize: 12,
     fontWeight: '600',
+    color: '#475569',
+    backgroundColor: '#f8fafc',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  taskCardActionBtn: {
+    marginTop: 2,
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: '#0f172a',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  taskCardActionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   taskUpdateCard: {
     marginTop: 8,
@@ -2098,6 +2376,129 @@ const st = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#31568d',
+  },
+  taskComposerCard: {
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: C.divider,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 10,
+    gap: 10,
+  },
+  taskComposerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  taskComposerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.textPrimary,
+  },
+  taskComposerClose: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.textSecondary,
+  },
+  taskComposerInput: {
+    minHeight: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.inputBorder,
+    backgroundColor: C.inputBg,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: C.textPrimary,
+    ...T.composerInput,
+  },
+  taskComposerTextarea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  taskComposerDateBtn: {
+    minHeight: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.inputBorder,
+    backgroundColor: C.inputBg,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'center',
+  },
+  taskComposerDatePlaceholder: {
+    ...T.composerInput,
+    color: C.textTertiary,
+  },
+  taskComposerDateValue: {
+    ...T.composerInput,
+    color: C.textPrimary,
+  },
+  taskComposerDatePickerWrap: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: C.inputBorder,
+  },
+  taskComposerDateClearBtn: {
+    alignSelf: 'flex-start',
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 999,
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  taskComposerDateClearBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#3730a3',
+  },
+  taskComposerChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  taskComposerChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: C.inputBorder,
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  taskComposerChipActive: {
+    backgroundColor: 'rgba(37, 99, 235, 0.12)',
+    borderColor: 'rgba(37, 99, 235, 0.35)',
+  },
+  taskComposerChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.textSecondary,
+  },
+  taskComposerChipTextActive: {
+    color: '#1d4ed8',
+  },
+  taskComposerMeta: {
+    fontSize: 12,
+    color: C.textSecondary,
+    fontWeight: '600',
+  },
+  taskComposerSendBtn: {
+    alignSelf: 'flex-start',
+    borderRadius: 10,
+    backgroundColor: C.brand,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  taskComposerSendBtnDisabled: {
+    opacity: 0.45,
+  },
+  taskComposerSendBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   pendingAttachmentRow: {
     flexDirection: 'row',
