@@ -48,6 +48,7 @@ import {
   validateProfileTaskCreatePayload,
   validateProfileTaskPatchPayload,
 } from "./services/profileAssignments";
+import { loadTeamMemberIdentitySummaries } from "./services/teamMemberIdentity";
 import {
   canHostLiveSession as canHostLiveSessionSvc,
   resolveLiveProviderMode as resolveLiveProviderModeSvc,
@@ -1323,6 +1324,7 @@ type UserMetadata = {
   pipeline_listings_pending?: number;
   pipeline_buyers_uc?: number;
   onboarding_projection_seeded_at?: string;
+  avatar_preset_id?: string;
 };
 
 app.use(cors());
@@ -7413,27 +7415,17 @@ app.get("/teams/:id", async (req, res) => {
     const memberUserIds = (members ?? [])
       .map((row) => String((row as { user_id?: unknown }).user_id ?? ""))
       .filter(Boolean);
-    const memberProfileById = new Map<string, { full_name: string | null; avatar_url: string | null; email: string | null }>();
+    const memberProfileById = new Map<
+      string,
+      { full_name: string | null; avatar_url: string | null; email: string | null; avatar_preset_id: string | null }
+    >();
     if (memberUserIds.length > 0) {
-      const { data: memberProfiles, error: memberProfilesError } = await dataClient
-        .from("users")
-        .select("id,full_name,avatar_url")
-        .in("id", memberUserIds);
-      if (memberProfilesError) {
-        return handleSupabaseError(res, "Failed to fetch team member profiles", memberProfilesError);
+      const profileResult = await loadTeamMemberIdentitySummaries(dataClient, memberUserIds);
+      if (!profileResult.ok) {
+        return handleSupabaseError(res, "Failed to fetch team member profiles", profileResult.error);
       }
-      for (const row of memberProfiles ?? []) {
-        const id = String((row as { id?: unknown }).id ?? "");
-        if (!id) continue;
-        memberProfileById.set(id, {
-          full_name: typeof (row as { full_name?: unknown }).full_name === "string"
-            ? String((row as { full_name?: unknown }).full_name)
-            : null,
-          avatar_url: typeof (row as { avatar_url?: unknown }).avatar_url === "string"
-            ? String((row as { avatar_url?: unknown }).avatar_url)
-            : null,
-          email: null,
-        });
+      for (const [id, profile] of profileResult.profiles.entries()) {
+        memberProfileById.set(id, profile);
       }
     }
 
@@ -7448,6 +7440,7 @@ app.get("/teams/:id", async (req, res) => {
           full_name: profile?.full_name ?? null,
           email: profile?.email ?? null,
           avatar_url: profile?.avatar_url ?? null,
+          avatar_preset_id: profile?.avatar_preset_id ?? null,
           created_at: (row as { created_at?: unknown }).created_at ?? null,
         };
       }),
@@ -10533,6 +10526,7 @@ function getUserMetadata(value: unknown): UserMetadata {
       value.pipeline_buyers_uc !== undefined ? toNumberOrZero(value.pipeline_buyers_uc) : undefined,
     onboarding_projection_seeded_at:
       typeof value.onboarding_projection_seeded_at === "string" ? value.onboarding_projection_seeded_at : undefined,
+    avatar_preset_id: typeof value.avatar_preset_id === "string" ? value.avatar_preset_id : undefined,
   };
 }
 

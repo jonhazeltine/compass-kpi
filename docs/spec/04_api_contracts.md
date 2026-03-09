@@ -494,6 +494,7 @@ These notes are additive contract guidance only. They do not introduce a new end
     - `full_name`
     - `email` (nullable; present only when available in `public.users`)
     - `avatar_url` (nullable)
+    - `avatar_preset_id` (nullable; controlled Compass avatar theme preset used for roster/profile rendering fallback)
 - `PATCH /teams/{id}`
   - Enforces leader-only update.
   - Accepts `name` plus optional additive identity fields:

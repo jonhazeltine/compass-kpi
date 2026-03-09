@@ -68,6 +68,7 @@ import {
 } from '../lib/kpiIcons';
 import { colors, radii } from '../theme/tokens';
 import { buildDefaultChallengeTemplatesFromKpis } from './kpi-dashboard/defaultChallengeTemplates';
+import { toneForAvatarPreset } from '../lib/profileIdentity';
 
 type DashboardPayload = {
   projection: {
@@ -352,6 +353,7 @@ type TeamDirectoryMember = {
   sub: string;
   roleLabel: string;
   avatarTone: string;
+  avatarPresetId?: string | null;
   avatarUrl: string | null;
   email: string;
   phone: string;
@@ -368,6 +370,7 @@ type TeamApiMemberSummary = {
   full_name?: string | null;
   email?: string | null;
   avatar_url?: string | null;
+  avatar_preset_id?: string | null;
 };
 type TeamDetailResponse = {
   team?: {
@@ -6225,6 +6228,7 @@ export default function KPIDashboardScreen({
       const roleLabel = roleRaw.includes('lead') ? 'Team Lead' : 'Member';
       const displayEmail = member.email ? String(member.email) : 'Email unavailable';
       const avatarUrlRaw = String(member.avatar_url ?? '').trim();
+      const avatarPresetId = String(member.avatar_preset_id ?? '').trim() || null;
       const dialSuffix = String((1000 + idx * 17) % 9000).padStart(4, '0');
       return {
         id: userId || `team-member-${idx + 1}`,
@@ -6233,7 +6237,8 @@ export default function KPIDashboardScreen({
         roleLabel,
         metric: '0%',
         sub: displayEmail,
-        avatarTone: avatarTones[idx % avatarTones.length],
+        avatarTone: toneForAvatarPreset(avatarPresetId, avatarTones[idx % avatarTones.length]),
+        avatarPresetId,
         avatarUrl: /^https?:\/\//i.test(avatarUrlRaw) ? avatarUrlRaw : null,
         email: displayEmail,
         phone: `(000) 000-${dialSuffix}`,
@@ -13174,6 +13179,20 @@ export default function KPIDashboardScreen({
                       void openTeamDirectThread(
                         selectedTeamProfile,
                         effectiveTeamPersonaVariant === 'leader' ? 'team_leader_dashboard' : 'team_member_dashboard'
+                      );
+                    }}
+                    onIdentityUpdated={(next) => {
+                      setTeamRosterMembers((prev) =>
+                        prev.map((row) =>
+                          String(row.user_id ?? '').trim() === next.userId
+                            ? {
+                                ...row,
+                                full_name: next.name,
+                                avatar_url: next.avatarUrl,
+                                avatar_preset_id: next.avatarPresetId,
+                              }
+                            : row
+                        )
                       );
                     }}
                     onRemoveMember={

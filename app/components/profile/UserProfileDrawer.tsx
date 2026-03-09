@@ -22,6 +22,13 @@ import {
   updateProfileGoal,
   updateProfileTask,
 } from "../../lib/profileAssignmentsApi";
+import {
+  AVATAR_PRESETS,
+  initialsFromName,
+  saveProfileIdentity,
+  toneForAvatarPreset,
+  uploadProfileAvatar,
+} from "../../lib/profileIdentity";
 
 export type UserProfileDrawerMember = {
   id: string;
@@ -29,6 +36,7 @@ export type UserProfileDrawerMember = {
   name: string;
   roleLabel: string;
   avatarTone: string;
+  avatarPresetId?: string | null;
   avatarUrl: string | null;
   email: string;
   phone: string;
@@ -48,6 +56,13 @@ type Props = {
   onClose: () => void;
   onMessage: () => void;
   onRemoveMember?: () => void;
+  onIdentityUpdated?: (next: {
+    userId: string;
+    name: string;
+    avatarUrl: string | null;
+    avatarPresetId: string;
+    avatarTone: string;
+  }) => void;
 };
 
 type DrawerTab = "tasks" | "goals" | "completed";
@@ -66,15 +81,6 @@ function formatTimestamp(value: string | null | undefined) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "Recently";
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-function initialsFromName(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0] ?? "")
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
 }
 
 function replaceAssignment(rows: ProfileAssignment[], next: ProfileAssignment | null) {
@@ -114,6 +120,7 @@ export default function UserProfileDrawer({
   onClose,
   onMessage,
   onRemoveMember,
+  onIdentityUpdated,
 }: Props) {
   const [activeTab, setActiveTab] = useState<DrawerTab>("tasks");
   const [assignments, setAssignments] = useState<ProfileAssignment[]>([]);
@@ -130,10 +137,18 @@ export default function UserProfileDrawer({
   const [goalDueAt, setGoalDueAt] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [formBusy, setFormBusy] = useState(false);
+  const [identityEditorOpen, setIdentityEditorOpen] = useState(false);
+  const [identityDraftName, setIdentityDraftName] = useState("");
+  const [identityDraftAvatarUrl, setIdentityDraftAvatarUrl] = useState("");
+  const [identityDraftAvatarPresetId, setIdentityDraftAvatarPresetId] = useState(AVATAR_PRESETS[0].id);
+  const [identityBusy, setIdentityBusy] = useState(false);
+  const [identityUploading, setIdentityUploading] = useState(false);
+  const [identityError, setIdentityError] = useState<string | null>(null);
 
   const targetUserId = member?.userId ?? null;
   const canLoad = visible && Boolean(accessToken) && Boolean(targetUserId);
   const isSelfProfile = Boolean(targetUserId && viewerUserId && targetUserId === viewerUserId);
+  const identityAvatarTone = toneForAvatarPreset(identityDraftAvatarPresetId, member?.avatarTone ?? "#dbeafe");
 
   const loadAssignments = useCallback(async () => {
     if (!accessToken || !targetUserId) return;
@@ -163,8 +178,18 @@ export default function UserProfileDrawer({
       setGoalModalVisible(false);
       setFormError(null);
       setActionBusyId(null);
+      setIdentityEditorOpen(false);
+      setIdentityError(null);
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!member) return;
+    setIdentityDraftName(member.name);
+    setIdentityDraftAvatarUrl(member.avatarUrl ?? "");
+    setIdentityDraftAvatarPresetId(member.avatarPresetId ?? AVATAR_PRESETS[0].id);
+    setIdentityError(null);
+  }, [member]);
 
   const activeTasks = useMemo(
     () => assignments.filter((item) => item.type.includes("task") && item.status !== "completed"),
@@ -277,6 +302,59 @@ export default function UserProfileDrawer({
     { icon: "check-decagram-outline", label: `${counts.completed} completed` },
   ];
 
+  const saveIdentity = useCallback(async () => {
+    if (!accessToken || !targetUserId || !isSelfProfile) return;
+    if (!identityDraftName.trim()) {
+      setIdentityError("Name is required.");
+      return;
+    }
+    setIdentityBusy(true);
+    setIdentityError(null);
+    try {
+      await saveProfileIdentity(accessToken, {
+        full_name: identityDraftName.trim(),
+        avatar_url: identityDraftAvatarUrl.trim() || undefined,
+        avatar_preset_id: identityDraftAvatarPresetId,
+      });
+      onIdentityUpdated?.({
+        userId: targetUserId,
+        name: identityDraftName.trim(),
+        avatarUrl: identityDraftAvatarUrl.trim() || null,
+        avatarPresetId: identityDraftAvatarPresetId,
+        avatarTone: identityAvatarTone,
+      });
+      setIdentityEditorOpen(false);
+    } catch (err) {
+      setIdentityError(err instanceof Error ? err.message : "Profile save failed.");
+    } finally {
+      setIdentityBusy(false);
+    }
+  }, [
+    accessToken,
+    identityAvatarTone,
+    identityDraftAvatarPresetId,
+    identityDraftAvatarUrl,
+    identityDraftName,
+    isSelfProfile,
+    onIdentityUpdated,
+    targetUserId,
+  ]);
+
+  const handleUploadAvatar = useCallback(async () => {
+    if (!accessToken || !isSelfProfile) return;
+    setIdentityUploading(true);
+    setIdentityError(null);
+    try {
+      const fileUrl = await uploadProfileAvatar(accessToken);
+      if (!fileUrl) return;
+      setIdentityDraftAvatarUrl(fileUrl);
+    } catch (err) {
+      setIdentityError(err instanceof Error ? err.message : "Avatar upload failed.");
+    } finally {
+      setIdentityUploading(false);
+    }
+  }, [accessToken, isSelfProfile]);
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
@@ -286,17 +364,44 @@ export default function UserProfileDrawer({
             <>
               <View style={styles.header}>
                 <View style={styles.identityRow}>
-                  <View style={[styles.avatarWrap, { backgroundColor: member.avatarTone }]}>
-                    {member.avatarUrl ? (
-                      <Image source={{ uri: member.avatarUrl }} style={styles.avatarImage} />
+                  <TouchableOpacity
+                    activeOpacity={isSelfProfile ? 0.9 : 1}
+                    disabled={!isSelfProfile}
+                    style={[styles.avatarWrap, { backgroundColor: isSelfProfile ? identityAvatarTone : member.avatarTone }]}
+                    onPress={() => {
+                      if (!isSelfProfile) return;
+                      setIdentityEditorOpen((prev) => !prev);
+                    }}
+                  >
+                    {(isSelfProfile ? identityDraftAvatarUrl : member.avatarUrl) ? (
+                      <Image
+                        source={{ uri: isSelfProfile ? identityDraftAvatarUrl : String(member.avatarUrl ?? "") }}
+                        style={styles.avatarImage}
+                      />
                     ) : (
-                      <Text style={styles.avatarText}>{initialsFromName(member.name)}</Text>
+                      <Text style={styles.avatarText}>{initialsFromName(isSelfProfile ? identityDraftName : member.name)}</Text>
                     )}
-                  </View>
+                    {isSelfProfile ? (
+                      <View style={styles.avatarEditBadge}>
+                        <MaterialCommunityIcons name="pencil" size={12} color="#ffffff" />
+                      </View>
+                    ) : null}
+                  </TouchableOpacity>
                   <View style={styles.identityCopy}>
-                    <Text style={styles.name}>{member.name}</Text>
-                    <View style={styles.roleChip}>
-                      <Text style={styles.roleChipText}>{member.roleLabel}</Text>
+                    <Text style={styles.name}>{isSelfProfile ? identityDraftName || member.name : member.name}</Text>
+                    <View style={styles.identityMetaRow}>
+                      <View style={styles.roleChip}>
+                        <Text style={styles.roleChipText}>{member.roleLabel}</Text>
+                      </View>
+                      {isSelfProfile ? (
+                        <TouchableOpacity
+                          style={styles.editIdentityChip}
+                          onPress={() => setIdentityEditorOpen((prev) => !prev)}
+                        >
+                          <MaterialCommunityIcons name="pencil-outline" size={13} color="#324056" />
+                          <Text style={styles.editIdentityChipText}>{identityEditorOpen ? "Done" : "Edit"}</Text>
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
                     <Text style={styles.relationshipText}>
                       {isSelfProfile ? "Your operational profile" : "Profile tasks, goals, and completions"}
@@ -306,6 +411,72 @@ export default function UserProfileDrawer({
                     <MaterialCommunityIcons name="close" size={20} color="#324056" />
                   </TouchableOpacity>
                 </View>
+
+                {isSelfProfile && identityEditorOpen ? (
+                  <View style={styles.identityEditorCard}>
+                    <View style={styles.identityEditorHeader}>
+                      <Text style={styles.identityEditorTitle}>Identity</Text>
+                      <Text style={styles.identityEditorSub}>Update your avatar and theme without leaving the operational drawer.</Text>
+                    </View>
+                    <Text style={styles.fieldLabel}>Display Name</Text>
+                    <TextInput
+                      value={identityDraftName}
+                      onChangeText={setIdentityDraftName}
+                      style={styles.fieldInput}
+                      placeholder="Your full name"
+                    />
+                    <TouchableOpacity
+                      style={[styles.secondaryActionBtn, identityUploading ? styles.dialogPrimaryBtnDisabled : null]}
+                      onPress={() => void handleUploadAvatar()}
+                      disabled={identityUploading}
+                    >
+                      <MaterialCommunityIcons name="camera-outline" size={16} color="#2158d5" />
+                      <Text style={styles.secondaryActionText}>{identityUploading ? "Uploading…" : "Change Photo"}</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.fieldLabel}>Theme</Text>
+                    <View style={styles.presetGrid}>
+                      {AVATAR_PRESETS.map((preset) => {
+                        const isActive = identityDraftAvatarPresetId === preset.id;
+                        return (
+                          <TouchableOpacity
+                            key={preset.id}
+                            style={[styles.presetCard, isActive ? styles.presetCardActive : null]}
+                            onPress={() => setIdentityDraftAvatarPresetId(preset.id)}
+                          >
+                            <View style={[styles.presetSwatch, { backgroundColor: preset.tone }]}>
+                              <Text style={styles.presetSwatchText}>{initialsFromName(identityDraftName || member.name)}</Text>
+                            </View>
+                            <Text style={[styles.presetCardText, isActive ? styles.presetCardTextActive : null]}>
+                              {preset.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    {identityError ? <Text style={styles.formError}>{identityError}</Text> : null}
+                    <View style={styles.dialogActionRow}>
+                      <TouchableOpacity
+                        style={styles.dialogSecondaryBtn}
+                        onPress={() => {
+                          setIdentityEditorOpen(false);
+                          setIdentityDraftName(member.name);
+                          setIdentityDraftAvatarUrl(member.avatarUrl ?? "");
+                          setIdentityDraftAvatarPresetId(member.avatarPresetId ?? AVATAR_PRESETS[0].id);
+                          setIdentityError(null);
+                        }}
+                      >
+                        <Text style={styles.dialogSecondaryText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.dialogPrimaryBtn, identityBusy ? styles.dialogPrimaryBtnDisabled : null]}
+                        onPress={() => void saveIdentity()}
+                        disabled={identityBusy}
+                      >
+                        <Text style={styles.dialogPrimaryText}>{identityBusy ? "Saving…" : "Save Profile"}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
 
                 <View style={styles.contactRow}>
                   <View style={styles.contactPill}>
@@ -641,7 +812,21 @@ const styles = StyleSheet.create({
   },
   avatarImage: { width: "100%", height: "100%" },
   avatarText: { fontSize: 20, fontWeight: "800", color: "#23314d" },
+  avatarEditBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#2158d5",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#f7f9fc",
+  },
   identityCopy: { flex: 1, gap: 4 },
+  identityMetaRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   name: { fontSize: 24, lineHeight: 28, fontWeight: "800", color: "#162033" },
   roleChip: {
     alignSelf: "flex-start",
@@ -651,6 +836,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#e9eefb",
   },
   roleChipText: { fontSize: 12, fontWeight: "700", color: "#2158d5" },
+  editIdentityChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#d7e0ef",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  editIdentityChipText: { fontSize: 12, fontWeight: "700", color: "#324056" },
   relationshipText: { fontSize: 13, lineHeight: 18, color: "#6b7890" },
   closeBtn: {
     width: 36,
@@ -660,6 +857,38 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#eef2f8",
   },
+  identityEditorCard: {
+    borderRadius: 22,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#dfe5ef",
+    padding: 16,
+    gap: 10,
+  },
+  identityEditorHeader: { gap: 4 },
+  identityEditorTitle: { fontSize: 16, fontWeight: "800", color: "#162033" },
+  identityEditorSub: { fontSize: 13, lineHeight: 18, color: "#6b7890" },
+  presetGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  presetCard: {
+    width: "47%",
+    borderRadius: 18,
+    backgroundColor: "#f8fbff",
+    borderWidth: 1,
+    borderColor: "#d9e1ee",
+    padding: 12,
+    gap: 10,
+  },
+  presetCardActive: { borderColor: "#2158d5", backgroundColor: "#edf3ff" },
+  presetSwatch: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  presetSwatchText: { fontSize: 14, fontWeight: "800", color: "#22314c" },
+  presetCardText: { fontSize: 12, fontWeight: "700", color: "#526175" },
+  presetCardTextActive: { color: "#2158d5" },
   contactRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   contactPill: {
     flexDirection: "row",
