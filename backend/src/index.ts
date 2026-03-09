@@ -6248,6 +6248,7 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
       dataClient,
       targetUserId: auth.user.id,
       viewerUserId: auth.user.id,
+      canViewAllTargetChannels: true,
       evaluateRoleScopeForChannel,
     });
     if (!listResult.ok) {
@@ -6283,6 +6284,8 @@ app.get("/api/coaching/users/:userId/assignments", async (req, res) => {
       dataClient,
       targetUserId,
       viewerUserId: auth.user.id,
+      viewerRole: accessCheck.access.role ?? null,
+      canViewAllTargetChannels: accessCheck.capabilities.can_manage_items,
       evaluateRoleScopeForChannel,
     });
     if (!listResult.ok) return res.status(listResult.status).json({ error: listResult.error });

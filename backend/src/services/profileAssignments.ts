@@ -203,6 +203,8 @@ export async function listUnifiedAssignmentsForUser(input: {
   dataClient: DataClientLike;
   targetUserId: string;
   viewerUserId: string;
+  viewerRole?: string | null;
+  canViewAllTargetChannels?: boolean;
   evaluateRoleScopeForChannel: EvaluateRoleScopeForChannel;
 }): Promise<
   | { ok: true; assignments: UnifiedAssignmentItem[]; empty_state: { code: string; message: string } | null }
@@ -261,9 +263,24 @@ export async function listUnifiedAssignmentsForUser(input: {
   if (viewerMembershipError) {
     return { ok: false, status: 500, error: "Failed to fetch channel scope for assignments" };
   }
-  const allowedChannelIds = (viewerMemberships ?? [])
+  const viewerChannelIds = (viewerMemberships ?? [])
     .map((row: { channel_id?: unknown }) => String(row.channel_id ?? ""))
     .filter(Boolean);
+
+  const { data: targetMemberships, error: targetMembershipError } = await input.dataClient
+    .from("channel_memberships")
+    .select("channel_id")
+    .eq("user_id", input.targetUserId);
+  if (targetMembershipError) {
+    return { ok: false, status: 500, error: "Failed to fetch target channel scope for assignments" };
+  }
+  const targetChannelIds = (targetMemberships ?? [])
+    .map((row: { channel_id?: unknown }) => String(row.channel_id ?? ""))
+    .filter(Boolean);
+
+  const allowedChannelIds = input.canViewAllTargetChannels
+    ? targetChannelIds
+    : targetChannelIds.filter((channelId: string) => viewerChannelIds.includes(channelId));
 
   const { data: taskRows, error: taskRowsError } = await input.dataClient
     .from("channel_messages")
@@ -285,9 +302,13 @@ export async function listUnifiedAssignmentsForUser(input: {
     if (!isTargetRelated) continue;
 
     const channelId = String((row as { channel_id?: unknown }).channel_id ?? "");
-    const scope = await input.evaluateRoleScopeForChannel(input.viewerUserId, channelId);
-    if (!scope.ok) return { ok: false, status: scope.status, error: scope.error };
-    if (!scope.result.allowed) continue;
+    let viewerRole = input.viewerRole ?? null;
+    if (!input.canViewAllTargetChannels) {
+      const scope = await input.evaluateRoleScopeForChannel(input.viewerUserId, channelId);
+      if (!scope.ok) return { ok: false, status: scope.status, error: scope.error };
+      if (!scope.result.allowed) continue;
+      viewerRole = scope.result.role;
+    }
 
     seenTaskIds.add(taskId);
     const taskType = String((row as { message_kind?: unknown }).message_kind) === "coach_task" ? "coach_task" : "personal_task";
@@ -314,7 +335,7 @@ export async function listUnifiedAssignmentsForUser(input: {
       rights: buildLinkedTaskRights({
         taskType: taskType as LinkedTaskType,
         viewerUserId: input.viewerUserId,
-        viewerRole: scope.result.role,
+        viewerRole,
         assigneeId: ref.assignee_id,
       }),
     });
