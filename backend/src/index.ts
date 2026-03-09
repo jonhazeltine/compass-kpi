@@ -3032,7 +3032,7 @@ app.get("/api/channels/:id/messages", async (req, res) => {
 
     const { data: messages, error: messagesError } = await dataClient
       .from("channel_messages")
-      .select("id,channel_id,sender_user_id,body,message_type,created_at")
+      .select("id,channel_id,sender_user_id,body,message_type,message_kind,assignment_ref,created_at")
       .eq("channel_id", channelId)
       .order("created_at", { ascending: true })
       .limit(500);
@@ -3045,7 +3045,19 @@ app.get("/api/channels/:id/messages", async (req, res) => {
       messages: (messages ?? []) as Array<{ id?: unknown; channel_id?: unknown; body?: unknown; message_type?: unknown; created_at?: unknown }>,
     });
     const messageReadModels = (messages ?? []).map((row) =>
-      buildChannelMessageReadModel(row as { id?: unknown; channel_id?: unknown; sender_user_id?: unknown; body?: unknown; message_type?: unknown; created_at?: unknown })
+      buildChannelMessageReadModel(
+        row as {
+          id?: unknown;
+          channel_id?: unknown;
+          sender_user_id?: unknown;
+          body?: unknown;
+          message_type?: unknown;
+          message_kind?: unknown;
+          assignment_ref?: unknown;
+          created_at?: unknown;
+        },
+        { userId: auth.user.id, role: roleScopeCheck.result.role }
+      )
     );
     const syncState = streamChannelSyncStates.get(channelId);
     const channelWithProviderState = {
@@ -3101,6 +3113,118 @@ app.post("/api/channels/:id/messages", async (req, res) => {
 
     let serializedBody = payloadCheck.payload.body ?? "";
     let messageType: "message" | "media_attachment" = payloadCheck.payload.message_type ?? "message";
+    let messageKind: "text" | LinkedTaskType = payloadCheck.payload.message_kind ?? "text";
+    let assignmentRef: ReturnType<typeof buildTaskAssignmentRef> | null = null;
+
+    if (messageKind === "personal_task" || messageKind === "coach_task") {
+      const taskDraft = payloadCheck.payload.task_card_draft!;
+      const taskAction = payloadCheck.payload.task_action!;
+      const nowIso = new Date().toISOString();
+
+      if (taskAction === "create") {
+        const assigneeId = String(taskDraft.assignee_id ?? "").trim();
+        if (messageKind === "personal_task" && assigneeId !== auth.user.id) {
+          return res.status(403).json({ error: "personal_task can only be created for the caller" });
+        }
+        if (messageKind === "coach_task" && !canAuthorCoachTask(roleScopeCheck.result.role)) {
+          return res.status(403).json({ error: "coach_task authoring requires coach-scope role" });
+        }
+
+        const assigneeLookup = await resolveChannelMemberDisplayName(channelId, assigneeId);
+        if (!assigneeLookup.ok) return res.status(assigneeLookup.status).json({ error: assigneeLookup.error });
+
+        const title = String(taskDraft.title ?? "").trim() || "Task";
+        const description = taskDraft.description ?? null;
+        const dueAt = taskDraft.due_at ?? null;
+        const status = normalizeTaskStatus(taskDraft.status);
+        const taskId = crypto.randomUUID();
+
+        serializedBody = buildTaskMessageBody({
+          taskAction: "create",
+          title,
+          description,
+          note: payloadCheck.payload.body ?? null,
+        });
+        assignmentRef = buildTaskAssignmentRef({
+          taskId,
+          taskType: messageKind,
+          title,
+          description,
+          status,
+          dueAt,
+          assigneeId,
+          assigneeName: assigneeLookup.displayName ?? "Member",
+          createdById: auth.user.id,
+          createdByRole: roleScopeCheck.result.role,
+          channelId,
+          createdAt: nowIso,
+        });
+      } else {
+        const taskId = String(taskDraft.task_id ?? "").trim();
+        const latestTask = await loadLatestTaskRefForChannel(channelId, taskId);
+        if (!latestTask.ok) return res.status(latestTask.status).json({ error: latestTask.error });
+        if (!latestTask.event) {
+          return res.status(404).json({ error: "Task not found in thread history" });
+        }
+
+        const currentTask = latestTask.event.assignment_ref;
+        if (currentTask.task_type !== messageKind) {
+          return res.status(409).json({ error: "task_id does not match message_kind" });
+        }
+
+        const nextTitle = taskDraft.title !== undefined ? String(taskDraft.title).trim() || currentTask.title : currentTask.title;
+        const nextDescription = taskDraft.description !== undefined ? taskDraft.description ?? null : currentTask.description;
+        const nextDueAt = taskDraft.due_at !== undefined ? taskDraft.due_at ?? null : currentTask.due_at;
+        const nextAssigneeId = taskDraft.assignee_id !== undefined ? String(taskDraft.assignee_id).trim() || null : currentTask.assignee_id;
+        const nextStatus = payloadCheck.payload.task_action === "complete"
+          ? "completed"
+          : normalizeTaskStatus(taskDraft.status ?? currentTask.status);
+
+        const mutationCheck = canMutateLinkedTask({
+          taskType: currentTask.task_type,
+          action: taskAction,
+          actorUserId: auth.user.id,
+          actorRole: roleScopeCheck.result.role,
+          assigneeId: currentTask.assignee_id,
+          proposedAssigneeId: nextAssigneeId,
+          proposedTitle: nextTitle,
+          proposedDescription: nextDescription,
+          proposedDueAt: nextDueAt,
+          currentTitle: currentTask.title,
+          currentDescription: currentTask.description,
+          currentDueAt: currentTask.due_at,
+        });
+        if (!mutationCheck.allowed) {
+          return res.status(403).json({ error: mutationCheck.reason ?? "Task mutation not permitted" });
+        }
+
+        const assigneeLookup = nextAssigneeId
+          ? await resolveChannelMemberDisplayName(channelId, nextAssigneeId)
+          : { ok: true as const, displayName: null };
+        if (!assigneeLookup.ok) return res.status(assigneeLookup.status).json({ error: assigneeLookup.error });
+
+        serializedBody = buildTaskMessageBody({
+          taskAction,
+          title: nextTitle,
+          description: nextDescription,
+          note: payloadCheck.payload.body ?? null,
+        });
+        assignmentRef = buildTaskAssignmentRef({
+          taskId: currentTask.id,
+          taskType: currentTask.task_type,
+          title: nextTitle,
+          description: nextDescription,
+          status: nextStatus,
+          dueAt: nextDueAt,
+          assigneeId: nextAssigneeId,
+          assigneeName: assigneeLookup.displayName ?? currentTask.assignee_name ?? "Member",
+          createdById: currentTask.created_by ?? auth.user.id,
+          createdByRole: currentTask.created_by_role ?? roleScopeCheck.result.role,
+          channelId,
+          createdAt: nowIso,
+        });
+      }
+    }
     if (messageType === "media_attachment") {
       const mediaId = payloadCheck.payload.media_attachment?.media_id ?? "";
       const media = await getMuxMediaRecord(mediaId);
@@ -3141,10 +3265,12 @@ app.post("/api/channels/:id/messages", async (req, res) => {
       });
     } else {
       messageType = "message";
-      serializedBody = serializeChannelMessageBody({
-        body: payloadCheck.payload.body,
-        message_type: "message",
-      });
+      if (messageKind === "text") {
+        serializedBody = serializeChannelMessageBody({
+          body: payloadCheck.payload.body,
+          message_type: "message",
+        });
+      }
     }
 
     const { data: message, error: messageError } = await dataClient
@@ -3154,8 +3280,10 @@ app.post("/api/channels/:id/messages", async (req, res) => {
         sender_user_id: auth.user.id,
         body: serializedBody,
         message_type: messageType === "media_attachment" ? "message" : messageType,
+        message_kind: messageKind,
+        assignment_ref: assignmentRef,
       })
-      .select("id,channel_id,sender_user_id,body,message_type,created_at")
+      .select("id,channel_id,sender_user_id,body,message_type,message_kind,assignment_ref,created_at")
       .single();
     if (messageError) {
       return handleSupabaseError(res, "Failed to create message", messageError);
@@ -3163,7 +3291,17 @@ app.post("/api/channels/:id/messages", async (req, res) => {
 
     await fanOutUnreadCounters(channelId, auth.user.id);
     const messageReadModel = buildChannelMessageReadModel(
-      message as { id?: unknown; channel_id?: unknown; sender_user_id?: unknown; body?: unknown; message_type?: unknown; created_at?: unknown }
+      message as {
+        id?: unknown;
+        channel_id?: unknown;
+        sender_user_id?: unknown;
+        body?: unknown;
+        message_type?: unknown;
+        message_kind?: unknown;
+        assignment_ref?: unknown;
+        created_at?: unknown;
+      },
+      { userId: auth.user.id, role: roleScopeCheck.result.role }
     );
     return res.status(201).json({ message: messageReadModel });
   } catch (err) {
@@ -3273,6 +3411,9 @@ app.post("/api/channels/:id/broadcast", async (req, res) => {
     if ((payloadCheck.payload.message_type ?? "message") !== "message") {
       return res.status(422).json({ error: "broadcast endpoint supports text message payloads only" });
     }
+    if ((payloadCheck.payload.message_kind ?? "text") !== "text" || payloadCheck.payload.task_action) {
+      return res.status(422).json({ error: "broadcast endpoint does not accept task-linked message payloads" });
+    }
 
     const permission = await canBroadcastToChannel(channelId, auth.user.id);
     if (!permission.ok) return res.status(permission.status).json({ error: permission.error });
@@ -3299,8 +3440,9 @@ app.post("/api/channels/:id/broadcast", async (req, res) => {
         sender_user_id: auth.user.id,
         body: payloadCheck.payload.body,
         message_type: "broadcast",
+        message_kind: "text",
       })
-      .select("id,channel_id,sender_user_id,body,message_type,created_at")
+      .select("id,channel_id,sender_user_id,body,message_type,message_kind,assignment_ref,created_at")
       .single();
     if (messageError) {
       return handleSupabaseError(res, "Failed to create broadcast message", messageError);
@@ -3317,7 +3459,12 @@ app.post("/api/channels/:id/broadcast", async (req, res) => {
     }
 
     await fanOutUnreadCounters(channelId, auth.user.id);
-    return res.status(201).json({ broadcast: message });
+    return res.status(201).json({
+      broadcast: buildChannelMessageReadModel(message, {
+        userId: auth.user.id,
+        role: null,
+      }),
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in POST /api/channels/:id/broadcast", err);
@@ -5968,13 +6115,13 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
 
     const seenMessageLinkedTaskIds = new Set<string>();
     for (const m of taskMsgRows ?? []) {
-      const ref = (m.assignment_ref as Record<string, unknown>) ?? {};
+      const ref = parseTaskAssignmentRef((m as { assignment_ref?: unknown }).assignment_ref);
+      if (!ref) continue;
       const assigneeId = (ref.assignee_id as string) ?? null;
       // Only include tasks assigned to or created by this user
       if (assigneeId !== userId && (ref.created_by as string) !== userId) continue;
 
       const taskType = (m.message_kind as string) === "coach_task" ? "coach_task" : "personal_task";
-      const isAssignee = assigneeId === userId;
       const taskId = (ref.id as string) ?? (m.id as string);
       // Keep latest state only (rows are sorted newest->oldest).
       if (seenMessageLinkedTaskIds.has(taskId)) continue;
@@ -5984,11 +6131,12 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
       if (!roleScopeCheck.ok) return res.status(roleScopeCheck.status).json({ error: roleScopeCheck.error });
       if (!roleScopeCheck.result.allowed) continue;
 
-      const role = roleScopeCheck.result.role;
-      const canManageCoachTask = taskType === "coach_task" && (role === "coach" || role === "team_leader" || role === "admin" || role === "super_admin");
-      const canEditFields = !isAssignee && canManageCoachTask;
-      const canUpdateStatus = taskType === "personal_task" ? isAssignee : (isAssignee || canManageCoachTask);
-      const canMarkComplete = canUpdateStatus;
+      const rights = buildLinkedTaskRights({
+        taskType,
+        viewerUserId: userId,
+        viewerRole: roleScopeCheck.result.role,
+        assigneeId,
+      });
       const sourceMessageId = (ref.source_message_id as string) ?? (m.id as string);
       const lastThreadEventAt = (ref.last_thread_event_at as string) ?? (m.created_at as string) ?? null;
 
@@ -6005,12 +6153,7 @@ app.get("/api/coaching/assignments/me", async (req, res) => {
         source_message_id: sourceMessageId,
         last_thread_event_at: lastThreadEventAt,
         thread_read_state: "unknown",
-        rights: {
-          can_edit_fields: canEditFields,
-          can_update_status: canUpdateStatus,
-          can_mark_complete: canMarkComplete,
-          can_reassign: canEditFields,
-        },
+        rights,
       });
     }
 
@@ -13385,6 +13528,91 @@ async function canBroadcastToChannel(channelId: string, userId: string): Promise
     };
   }
   return { ok: true, allowed: false };
+}
+
+async function resolveChannelMemberDisplayName(
+  channelId: string,
+  userId: string
+): Promise<
+  | { ok: true; displayName: string | null }
+  | { ok: false; status: number; error: string }
+> {
+  if (!dataClient) {
+    return { ok: false, status: 500, error: "Supabase data client not configured" };
+  }
+  const membership = await checkChannelMembership(channelId, userId);
+  if (!membership.ok) return membership;
+  if (!membership.member) {
+    return { ok: false, status: 422, error: "task assignee must be a channel member" };
+  }
+
+  const { data, error } = await dataClient
+    .from("users")
+    .select("full_name")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) {
+    return { ok: false, status: 500, error: "Failed to load task assignee profile" };
+  }
+
+  return {
+    ok: true,
+    displayName:
+      typeof (data as { full_name?: unknown } | null)?.full_name === "string"
+        ? String((data as { full_name?: unknown }).full_name).trim() || null
+        : null,
+  };
+}
+
+async function loadLatestTaskRefForChannel(
+  channelId: string,
+  taskId: string
+): Promise<
+  | {
+      ok: true;
+      event: {
+        message_id: string;
+        message_kind: LinkedTaskType;
+        created_at: string | null;
+        assignment_ref: NonNullable<ReturnType<typeof parseTaskAssignmentRef>>;
+      } | null;
+    }
+  | { ok: false; status: number; error: string }
+> {
+  if (!dataClient) {
+    return { ok: false, status: 500, error: "Supabase data client not configured" };
+  }
+
+  const { data, error } = await dataClient
+    .from("channel_messages")
+    .select("id,message_kind,assignment_ref,created_at")
+    .eq("channel_id", channelId)
+    .in("message_kind", ["coach_task", "personal_task"])
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) {
+    return { ok: false, status: 500, error: "Failed to load task thread history" };
+  }
+
+  for (const row of data ?? []) {
+    const assignmentRef = parseTaskAssignmentRef((row as { assignment_ref?: unknown }).assignment_ref);
+    if (!assignmentRef || assignmentRef.id !== taskId) continue;
+    const messageKind = (row as { message_kind?: unknown }).message_kind;
+    if (messageKind !== "coach_task" && messageKind !== "personal_task") continue;
+    return {
+      ok: true,
+      event: {
+        message_id: String((row as { id?: unknown }).id ?? ""),
+        message_kind: messageKind,
+        created_at: typeof (row as { created_at?: unknown }).created_at === "string"
+          ? String((row as { created_at?: unknown }).created_at)
+          : null,
+        assignment_ref: assignmentRef,
+      },
+    };
+  }
+
+  return { ok: true, event: null };
 }
 
 async function evaluateRoleScopeForChannel(
