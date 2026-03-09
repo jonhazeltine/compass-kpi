@@ -48,9 +48,11 @@ export interface LiveThreadCardProps {
   onWatch: () => void;
   onEnd: () => void;
   onRefresh: () => void;
-  /** Replay */
+  /** @deprecated Replay is now auto-published by the backend */
   onPublishReplay?: () => void;
+  /** @deprecated Replay is now auto-published by the backend */
   replayBusy?: boolean;
+  /** @deprecated Replay is now auto-published by the backend */
   replayPublished?: boolean;
 }
 
@@ -83,7 +85,9 @@ export default function LiveThreadCard(props: LiveThreadCardProps) {
     status, canHost, callerRole, playbackUrl, streamKey, providerMode,
     busy, gateBlocksActions, sessionStatus,
     onWatch, onEnd, onRefresh,
-    onPublishReplay, replayBusy = false, replayPublished = false,
+    // Replay props kept for backward compat but no longer used (auto-published by backend)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    onPublishReplay: _onPublishReplay, replayBusy: _replayBusy = false, replayPublished: _replayPublished = false,
   } = props;
   const disabled = busy || gateBlocksActions;
   const statusText = status ?? 'No active live session';
@@ -158,25 +162,14 @@ export default function LiveThreadCard(props: LiveThreadCardProps) {
           </Pressable>
         ) : null}
 
-        {/* Save Replay — shown after session ends, for host */}
-        {isEnded && canHost && onPublishReplay ? (
-          replayPublished ? (
-            <View style={[st.btn, st.btnReplayDone]}>
-              <Text style={st.btnReplayDoneText}>✓ Replay Saved</Text>
-            </View>
-          ) : (
-            <Pressable
-              style={[st.btn, st.btnReplay, replayBusy && st.btnDisabled]}
-              disabled={replayBusy}
-              onPress={onPublishReplay}
-            >
-              {replayBusy ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={st.btnReplayText}>Save Replay</Text>
-              )}
-            </Pressable>
-          )
+        {/* Replay processing notice — shown after session ends */}
+        {isEnded && canHost ? (
+          <View style={st.replayNotice}>
+            <ActivityIndicator size="small" color="#7c3aed" />
+            <Text style={st.replayNoticeText}>
+              Your replay will appear when processing is complete
+            </Text>
+          </View>
         ) : null}
       </View>
     </View>
@@ -296,20 +289,16 @@ const st = StyleSheet.create({
   btnEndText: {
     color: '#dc2626',
   },
-  btnReplay: {
-    backgroundColor: '#7c3aed',
+  replayNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
   },
-  btnReplayText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  btnReplayDone: {
-    backgroundColor: '#d1fae5',
-  },
-  btnReplayDoneText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#059669',
+  replayNoticeText: {
+    fontSize: 11,
+    color: '#7c3aed',
+    fontStyle: 'italic',
+    flexShrink: 1,
   },
 });

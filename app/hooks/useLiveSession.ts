@@ -166,10 +166,18 @@ export function useLiveSession(
     const sessionId = session?.session_id;
     if (!authToken || !sessionId) return;
     setReplayBusy(true);
+    setStatusMessage('Processing replay…');
     try {
       const result = await apiPublishReplay(sessionId, authToken);
       if (!result.ok) {
-        setStatusMessage(getApiErrorMessage(result.data, `Replay publish failed (${result.status})`));
+        // Surface a user-friendly message for the "still processing" case
+        const errObj = result.data?.error;
+        const errorCode = typeof errObj === 'object' ? errObj?.code : undefined;
+        if (errorCode === 'no_asset' || errorCode === 'no_playback') {
+          setStatusMessage('Replay is still processing. Please try again in a minute.');
+        } else {
+          setStatusMessage(getApiErrorMessage(result.data, `Replay publish failed (${result.status})`));
+        }
         return;
       }
       setReplayPublished(true);

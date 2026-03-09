@@ -139,14 +139,19 @@ const resolveApiUrl = (): string => {
   // Physical iOS devices (Constants.isDevice === true) cannot — rewrite to LAN IP just like Android.
   if (Platform.OS === 'web') return raw;
   if (Platform.OS === 'ios' && !Constants.isDevice) return raw;
-  const expoHostIp = getExpoHostIp() ?? DEV_LAN_FALLBACK_IP;
+  const expoHost = getExpoHostIp();
+  // If the Expo host looks like a tunnel hostname (not a numeric IP), ignore it and use the LAN fallback.
+  const looksLikeIp = expoHost != null && /^\d+\.\d+\.\d+\.\d+$/.test(expoHost);
+  const expoHostIp = looksLikeIp ? expoHost : DEV_LAN_FALLBACK_IP;
   const resolved = raw.replace('://localhost', `://${expoHostIp}`).replace('://127.0.0.1', `://${expoHostIp}`);
   // eslint-disable-next-line no-console
-  console.log(`[API_URL] platform=${Platform.OS} isDevice=${Constants.isDevice} expoHost=${getExpoHostIp()} → ${resolved}`);
+  console.log(`[API_URL] platform=${Platform.OS} isDevice=${Constants.isDevice} expoHost=${expoHost} lanIp=${expoHostIp} → ${resolved}`);
   return resolved;
 };
 
 export const API_URL = resolveApiUrl();
+// eslint-disable-next-line no-console
+console.log(`[API_URL] platform=${Platform.OS} isDevice=${Constants.isDevice} raw=${String(extra.apiUrl ?? '(none)')} → ${API_URL}`);
 
 const extraWithDev = extra as {
   enableDevTools?: boolean | string;

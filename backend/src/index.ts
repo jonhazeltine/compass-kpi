@@ -5822,6 +5822,16 @@ app.post("/api/coaching/media/live-sessions/:id/end", async (req, res) => {
       }
     }
 
+    // Fire-and-forget: auto-publish replay when Mux finishes processing
+    if (session.mux_live_stream_id && session.channel_id) {
+      scheduleAutoPublishReplay(
+        sessionId,
+        session.channel_id,
+        auth.user.id,
+        session.mux_live_stream_id,
+      ).catch((err) => console.error("[LIVE] Auto-replay background task crashed:", err));
+    }
+
     return res.json(buildSessionResponse(result.session, false));
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -5829,6 +5839,106 @@ app.post("/api/coaching/media/live-sessions/:id/end", async (req, res) => {
     return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
   }
 });
+
+/* ── Auto-publish replay — background task that polls Mux until asset is ready ── */
+async function scheduleAutoPublishReplay(
+  sessionId: string,
+  channelId: string,
+  hostUserId: string,
+  muxStreamId: string,
+) {
+  const MAX_ATTEMPTS = 20; // 20 × 5s = 100s max wait
+  const POLL_INTERVAL_MS = 5000;
+  const tag = `[LIVE:auto-replay:${sessionId}]`;
+
+  console.log(`${tag} Starting background replay publish for stream ${muxStreamId}`);
+
+  let recentAssetId: string | undefined;
+
+  // Phase 1: Wait for recent_asset_ids to appear on the live stream
+  for (let i = 1; i <= MAX_ATTEMPTS; i++) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    try {
+      const streamDetails = await getMuxLiveStreamDetails(muxStreamId);
+      if (!streamDetails.ok) {
+        console.warn(`${tag} Mux stream query failed (attempt ${i}): ${streamDetails.error}`);
+        continue;
+      }
+      recentAssetId = streamDetails.data.recent_asset_ids?.[0];
+      if (recentAssetId) {
+        console.log(`${tag} Found asset ID ${recentAssetId} on attempt ${i}`);
+        break;
+      }
+    } catch (err) {
+      console.warn(`${tag} Poll error (attempt ${i}):`, err);
+    }
+  }
+
+  if (!recentAssetId) {
+    console.warn(`${tag} Gave up waiting for replay asset after ${MAX_ATTEMPTS} attempts`);
+    return;
+  }
+
+  // Phase 2: Wait for the asset to reach "ready" status
+  let playbackId: string | undefined;
+  for (let i = 1; i <= MAX_ATTEMPTS; i++) {
+    try {
+      const assetResult = await getMuxAsset(recentAssetId);
+      if (!assetResult.ok) {
+        console.warn(`${tag} Mux asset query failed (attempt ${i}): ${assetResult.error}`);
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        continue;
+      }
+      if (assetResult.data.status === "ready" && assetResult.data.playback_ids?.[0]?.id) {
+        playbackId = assetResult.data.playback_ids[0].id;
+        console.log(`${tag} Asset ready with playback ID ${playbackId}`);
+        break;
+      }
+      console.log(`${tag} Asset status: ${assetResult.data.status}, waiting... (attempt ${i})`);
+    } catch (err) {
+      console.warn(`${tag} Asset poll error (attempt ${i}):`, err);
+    }
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+  }
+
+  if (!playbackId) {
+    console.warn(`${tag} Gave up waiting for asset to become ready`);
+    return;
+  }
+
+  // Phase 3: Insert the replay media message
+  if (!dataClient) {
+    console.warn(`${tag} No database client — cannot insert replay message`);
+    return;
+  }
+
+  const hlsUrl = `https://stream.mux.com/${playbackId}.m3u8`;
+  try {
+    const { error: insertErr } = await dataClient.from("channel_messages").insert({
+      channel_id: channelId,
+      sender_user_id: hostUserId,
+      body: JSON.stringify({
+        text: "\uD83D\uDCF9 Live replay",
+        media_attachment: {
+          media_id: recentAssetId,
+          content_type: "video/mp4",
+          playback_id: playbackId,
+          file_url: hlsUrl,
+          lifecycle: { processing_status: "ready", playback_ready: true },
+        },
+      }),
+      message_type: "message",
+    });
+    if (insertErr) {
+      console.error(`${tag} Failed to insert replay message:`, insertErr);
+      return;
+    }
+    await fanOutUnreadCounters(channelId, hostUserId);
+    console.log(`${tag} ✓ Replay published to channel ${channelId}`);
+  } catch (err) {
+    console.error(`${tag} Error inserting replay message:`, err);
+  }
+}
 
 /* ── Publish Replay — fetches Mux VOD asset and inserts a media message ── */
 app.post("/api/coaching/media/live-sessions/:id/publish-replay", async (req, res) => {
@@ -5862,24 +5972,49 @@ app.post("/api/coaching/media/live-sessions/:id/publish-replay", async (req, res
       return errorEnvelopeResponse(res, 422, "no_mux_stream", "No Mux live stream associated with this session", req.headers["x-request-id"]);
     }
 
-    const streamDetails = await getMuxLiveStreamDetails(muxStreamId);
-    if (!streamDetails.ok) {
-      return errorEnvelopeResponse(res, 502, "mux_error", streamDetails.error, req.headers["x-request-id"]);
+    // Mux creates the VOD asset asynchronously after the stream ends.
+    // Poll a few times to give it time to appear.
+    const MAX_POLL_ATTEMPTS = 6;
+    const POLL_DELAY_MS = 3000; // 3 seconds between retries (18s max wait)
+    let recentAssetId: string | undefined;
+
+    for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
+      const streamDetails = await getMuxLiveStreamDetails(muxStreamId);
+      if (!streamDetails.ok) {
+        return errorEnvelopeResponse(res, 502, "mux_error", streamDetails.error, req.headers["x-request-id"]);
+      }
+      recentAssetId = streamDetails.data.recent_asset_ids?.[0];
+      if (recentAssetId) break;
+      if (attempt < MAX_POLL_ATTEMPTS) {
+        console.log(`[LIVE] Replay asset not ready yet for stream ${muxStreamId}, retrying in ${POLL_DELAY_MS}ms (attempt ${attempt}/${MAX_POLL_ATTEMPTS})`);
+        await new Promise((r) => setTimeout(r, POLL_DELAY_MS));
+      }
     }
 
-    const recentAssetId = streamDetails.data.recent_asset_ids?.[0];
     if (!recentAssetId) {
-      return errorEnvelopeResponse(res, 404, "no_asset", "No replay asset available yet. The recording may still be processing.", req.headers["x-request-id"]);
+      return errorEnvelopeResponse(res, 404, "no_asset", "No replay asset available yet. The recording may still be processing. Try again in a minute.", req.headers["x-request-id"]);
     }
 
-    const assetResult = await getMuxAsset(recentAssetId);
-    if (!assetResult.ok) {
-      return errorEnvelopeResponse(res, 502, "mux_error", assetResult.error, req.headers["x-request-id"]);
+    // Poll for the asset to reach "ready" status (Mux transitions: preparing → ready)
+    let playbackId: string | undefined;
+    const ASSET_POLL_ATTEMPTS = 6;
+    const ASSET_POLL_DELAY_MS = 3000;
+
+    for (let attempt = 1; attempt <= ASSET_POLL_ATTEMPTS; attempt++) {
+      const assetResult = await getMuxAsset(recentAssetId);
+      if (!assetResult.ok) {
+        return errorEnvelopeResponse(res, 502, "mux_error", assetResult.error, req.headers["x-request-id"]);
+      }
+      playbackId = assetResult.data.playback_ids?.[0]?.id;
+      if (playbackId && assetResult.data.status === "ready") break;
+      if (attempt < ASSET_POLL_ATTEMPTS) {
+        console.log(`[LIVE] Replay asset ${recentAssetId} status: ${assetResult.data.status}, retrying in ${ASSET_POLL_DELAY_MS}ms (attempt ${attempt}/${ASSET_POLL_ATTEMPTS})`);
+        await new Promise((r) => setTimeout(r, ASSET_POLL_DELAY_MS));
+      }
     }
 
-    const playbackId = assetResult.data.playback_ids?.[0]?.id;
     if (!playbackId) {
-      return errorEnvelopeResponse(res, 404, "no_playback", "Replay asset does not have a playback ID yet", req.headers["x-request-id"]);
+      return errorEnvelopeResponse(res, 404, "no_playback", "Replay asset is still processing. Try again in a minute.", req.headers["x-request-id"]);
     }
 
     const hlsUrl = `https://stream.mux.com/${playbackId}.m3u8`;
