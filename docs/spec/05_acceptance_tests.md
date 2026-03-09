@@ -527,6 +527,29 @@
 - And subsequent `GET /api/coaching/assignments/me` returns `thread_read_state=read` (or `unknown` when unread derivation is not available in family baseline)
 - And task completion state is unaffected by read-state transitions
 
+### 40) Profile Drawer Unified Assignments Read (M6)
+- Given a team leader opens a shared-team member profile drawer
+- When app calls `GET /api/coaching/users/{userId}/assignments`
+- Then response returns merged `goals + message_linked tasks` for that profile target
+- And response includes `viewer_capabilities`
+- And shared-team non-manager viewers remain read-only while team leader/coach scopes can create/manage
+
+### 41) Profile Drawer Goal Create + Inline Status Update (M6)
+- Given an authorized profile viewer with create-goal permission
+- When app posts `POST /api/coaching/users/{userId}/goals` with `title` and optional `due_at`
+- Then API returns `201` with a unified goal assignment item
+- When owner/assignee/authorized manager later calls `PATCH /api/coaching/users/{userId}/goals/{goalId}` with `status=completed` or `status=in_progress`
+- Then the same goal item is updated in place and reappears under the correct active/completed section
+
+### 42) Profile Drawer Task Create + Complete/Reopen Sync (M6)
+- Given an authorized profile viewer with create-task permission
+- When app posts `POST /api/coaching/users/{userId}/tasks` with `title`, optional `description`, optional `due_at`, and `assignee_id` matching the selected profile
+- Then API returns `201` with a unified `message_linked` task assignment item
+- And the task is persisted through the canonical channel-message contract (not a separate task table)
+- When app calls `PATCH /api/coaching/users/{userId}/tasks/{taskId}` with `status=completed` or `status=in_progress` and canonical `channel_id`
+- Then the same task card updates in place in the profile drawer
+- And the corresponding thread/assignments state stays synchronized via latest-event-wins task semantics
+
 ### W13 Planned Contract Behavior Coverage Map (Dependency-Gated)
 - Mapping is `planned only`; runnable only after `DEP-002`, `DEP-004`, and `DEP-005` close.
 

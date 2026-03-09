@@ -185,6 +185,7 @@ Only use long custom prompts when the board is missing required details or a one
 | `M6-MUX-LIVE-LAUNCH-URL-INTEGRATION-A` | `active` | `M6 media/live runtime enablement` | `Team Leader`, `Team Member`, `Coach` | `live session provider wiring` (`real launch url issuance`, `host/join role-safe links`, `non-stub provider semantics`) | backend live-session endpoints (`POST /api/coaching/media/live-sessions`, `GET /api/coaching/media/live-sessions/:id`, `POST /api/coaching/media/live-sessions/:id/join-token`) + app launch consumption (`KPIDashboardScreen`) | `Mobile-2` | `codex/a2-admin-list-usability-pass` (backend+mobile worktree required) | manual-spec-driven + existing Mux/Stream contract boundaries | Replace current `compass_live` stub behavior with deterministic launch URL flow so Start/Join opens an actionable live room URL (or deterministic unavailable state) rather than session-only success. |
 | `OWNER-A3-ADMIN-LANE-UNINTERRUPTED-A` | `active` | `A3 owner direct lane (long-running, collision-safe)` | `Admin operator` | `admin users/reports UX hardening` (`list clarity`, `filters`, `sorting`, `bulk-safe affordances`, `empty/error states`, `navigation consistency`) | `AdminShellScreen` admin users/reports surfaces only (`/admin/users`, `/admin/reports`) | `Owner + delegated agent` | `codex/a2-admin-list-usability-pass` (owner lane; no shared-file overlap) | N/A (admin web lane, no Figma parity requirement) | Reserved owner lane for uninterrupted swaths. Hard boundary: no edits to `KPIDashboardScreen`, `CommsHub`, `CoachPortalScreen`, backend `/api/channels*`, backend `/api/coaching/media*`, migrations, or invite redemption contracts. Escalate to controller when boundary is reached. |
 | `OWNER-M5-TEAM-MESSAGING-VALIDATION-LANE-A` | `active` | `M5/M6 owner direct lane (team + messaging validation)` | `Team Leader`, `Team Member`, `Coach`, `Solo User`, `Challenge Sponsor` | `team + messaging runtime validation` (`team rename propagation`, `chat back-nav continuity`, `invite issue/redeem journey`) | runtime validation only across Team + Comms flows; evidence + acceptance docs + board notes | `Owner + delegated agent` | `codex/a2-admin-list-usability-pass` (owner lane; QA/docs evidence swath) | manual-spec-driven + acceptance harness authority | Reserved owner lane for uninterrupted Team/Messaging validation and bug isolation without colliding with active coding lanes. Hard boundary: no edits to `KPIDashboardScreen`, `CommsHub`, `CoachPortalScreen`, or `backend/src/index.ts`; evidence/docs only unless controller unlocks a bugfix sub-lane. |
+| `M6-UNIFIED-USER-PROFILE-GOALS-TASKS-A` | `review` | `M6 profile drawer operational surface unification` | `Team Leader` (primary), `Team Member`, `Coach`, `Solo User` | `user profile drawer -> tasks/goals/completed` (`profile-scoped assignments`, `inline task status`, `goal/task create dialogs`) | `KPIDashboardScreen` person-profile drawer + extracted profile modules; backend coaching assignments/profile mutation endpoints only if required | `Mobile-1` | `codex/a2-admin-list-usability-pass` | manual-spec-driven (existing Compass runtime styling baseline) | Completed for review: static person-profile drawer replaced with extracted premium profile-task-goal drawer module (`Tasks`, `Goals`, `Completed`) plus Add Task/Add Goal dialogs and inline complete/reopen. Added coaching-family profile assignment endpoints (`/api/coaching/users/{userId}/assignments`, `/goals*`, `/tasks*`) so drawer actions persist against real goal rows and canonical message-linked task writes. Validation passed (`backend build`, `app tsc`); refactor guardrail remains red on pre-existing monolith baselines (`KPIDashboardScreen.tsx`, `AdminShellScreen.tsx`, `backend/src/index.ts`). Live screenshot evidence is partial only: active Team Leader runtime capture saved, but full drawer flow capture was blocked by current simulator accessibility/input limits and two expired-session simulators. |
 | `M6-CHALLENGE-FIRST-BUILDOUT-A` | `committed+pushed` | `M6 challenge-first + pricing/entitlements direct migration` | `Solo User`, `Team Member`, `Team Leader`, `Coach`, `Sponsor` | `challenge-first nav + monetization guardrails` | `KPIDashboardScreen`, entitlement/paywall context/components, backend tier/billing/geo/custom-kpi/challenge policy routes | `Controller` | `codex/a2-admin-list-usability-pass` | owner-approved M6 direct migration plan | Controller swath landed and pushed: migrations `021-024`, `/me` entitlements, billing/webhook routes, sponsored geo filters, custom KPI APIs, and solo challenge-first tab routing are in branch with follow-on runtime refinements tracked separately. |
 | `M6-AVATAR-DROPDOWN-PROFILE-GOALS-SETTINGS-INVITES-A` | `committed+pushed` | `M6 account-surface routing + invite wiring` | `Team Member`, `Team Leader`, `Coach`, `Solo User`, `Sponsor`, `Admin operator` | `avatar menu + split account screens + invite redemption` | `HomeScreen`, `KPIDashboardScreen`, `ProfileScreen`, `GoalsScreen`, `SettingsScreen`, `InviteCodeScreen`; backend `/me`, avatar upload, invite-code issue/redeem routes | `Controller` | `codex/a2-admin-list-usability-pass` | owner-approved M6 plan (fully wired) | Implemented in one swath and pushed (`141221d` + follow-on fixes): universal top-right avatar menu routing across top-level tabs, split profile/goals/settings/invite screens, signed avatar upload endpoint, invite code schema + issue/redeem routes, plus role-aware team-card control refinements. |
 | `M6-DEVTOOLS-PERSONA-SWITCHER-WAVES-ABC` | `committed+pushed` | `M6 dev enablement (persona switching + side-by-side variants)` | `Solo User`, `Team Member`, `Team Leader`, `Coach`, `Sponsor`, `Admin operator` | `dev tools + auth/runtime bootstrap` | `KPIDashboardScreen` (`LOG` 3s long-press trigger), `DeveloperToolsModal`, `AuthContext`, `lib/supabase`, `lib/personaVault`, `lib/devRuntime`, `app.config.js`, `eas.json` | `Controller` | `codex/a2-admin-list-usability-pass` | owner directive: execute 3 waves back-to-back without pause | Completed in one swath: SecureStore-backed Supabase auth persistence, persona vault sign-in/cache/switch with no signOut, user-scoped runtime reset hooks, hidden dev menu on 3s long-press LOG CTA, whoami+RLS probe surface, and per-persona EAS variant profiles (`DEFAULT_PERSONA_KEY`, `APP_VARIANT`) for side-by-side installs. |
@@ -233,11 +234,65 @@ Every worker report should include:
 ### `M6-COACH-PRIMARY-WORKFLOW-TAB-A`
 
 #### Snapshot
-- `Status:` `active`
+- `Status:` `review`
 - `Program status:` `M6 coach runtime/operator flow buildout`
 - `Persona:` `Coach` (primary)
 - `Flow:` `coach primary workflow` (`journeys`, `clients`, `cohorts`, `segments`, `broadcast`)
 - `Owner:` `Claude-1`
+
+### `M6-UNIFIED-USER-PROFILE-GOALS-TASKS-A`
+
+#### Snapshot
+- `Status:` `active`
+- `Program status:` `M6 profile drawer operational surface unification`
+- `Persona:` `Team Leader` (primary), `Team Member`, `Coach`, `Solo User`
+- `Flow:` `user profile drawer -> tasks/goals/completed` (`profile-scoped assignments`, `inline task status`, `goal/task create dialogs`)
+- `Owner:` `Mobile-1`
+- `Branch:` `codex/a2-admin-list-usability-pass`
+
+#### Scope
+- `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`
+- extracted app profile modules under `/Users/jon/compass-kpi/app/components/profile/**`
+- backend coaching/profile assignment helpers under `/Users/jon/compass-kpi/backend/src/services/**`
+- `/Users/jon/compass-kpi/backend/src/index.ts` orchestration only if required
+
+#### Requirements
+1. Turn the existing person-profile bottom drawer into the canonical operational surface for a user’s tasks and goals.
+2. Drawer must present premium segmented sections:
+   - `Tasks`
+   - `Goals`
+   - `Completed`
+3. Add direct drawer actions:
+   - `Add Task`
+   - `Add Goal`
+4. Task dialog must include:
+   - `title`
+   - `description`
+   - `assignee`
+   - `due date`
+5. Goal dialog must be real and mapped to the current goal model (no fake placeholder action).
+6. Inline completion/reopen must update the same card in place with no extra completion-message noise.
+7. Keep thread task cards working; profile drawer becomes the better operational home, not a divergent system.
+8. No emoji-driven UI.
+
+#### Guardrails
+- Do not materially worsen `/Users/jon/compass-kpi/app/screens/KPIDashboardScreen.tsx`.
+- Do not materially worsen `/Users/jon/compass-kpi/backend/src/index.ts`.
+- Extract scoped modules/helpers where practical.
+- Do not touch Mux/live-session behavior.
+
+#### Validation
+- `node /Users/jon/compass-kpi/ops/scripts/refactor_guardrails_check.js`
+- `cd /Users/jon/compass-kpi/app && npx tsc --noEmit --pretty false`
+- `cd /Users/jon/compass-kpi/backend && npm run -s build` (if backend touched)
+- runtime evidence/screenshots for drawer tabs + create/update flows
+
+#### Report Back
+- changed files
+- runtime behavior summary
+- screenshots/evidence
+- guardrail status: pre-existing vs new
+- commit hash
 - `Branch/worktree:` `codex/a2-admin-list-usability-pass` (dedicated coach/mobile worktree required)
 - `Current blocker status:` `resolved (seed persona role-gating corrected for coach/sponsor realism accounts)`
 

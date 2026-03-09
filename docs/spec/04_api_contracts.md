@@ -683,7 +683,7 @@ These notes are additive contract guidance only. They do not introduce a new end
   - Used by Coach tab to determine pre-engagement vs post-engagement routing.
 - `GET /api/coaching/assignments/me` (implemented — C3)
   - Returns unified feed of goals + message-linked tasks for caller.
-  - Each item includes: `id`, `type` (`personal_goal | team_leader_goal | coach_goal | personal_task | coach_task`), `title`, `status` (`pending | in_progress | completed`), `due_at`, `assignee_id`, `source` (`goals | message_linked`), `created_at`.
+  - Each item includes: `id`, `type` (`personal_goal | team_leader_goal | coach_goal | personal_task | coach_task`), `title`, `description` (nullable), `status` (`pending | in_progress | completed`), `due_at`, `assignee_id`, `assignee_name` (nullable), `source` (`goals | message_linked`), `created_at`, `created_by` (nullable).
   - Additive sync fields for message-linked task parity:
     - `channel_id` (nullable)
     - `source_message_id` (nullable)
@@ -696,6 +696,60 @@ These notes are additive contract guidance only. They do not introduce a new end
     - `personal_task`: assignee can update status/complete; non-assignee cannot mutate task fields/status.
     - `coach_task`: assigned coach-scope actor can edit/reassign, assignee can update status/complete.
   - Sorted by `due_at` ascending (nulls last), then `created_at` descending.
+- `GET /api/coaching/users/{userId}/assignments` (implemented — M6 profile drawer)
+  - Purpose: return the same unified goals/tasks feed for a selected profile target inside the existing coaching family.
+  - Access:
+    - self: allowed
+    - shared-team viewers: read allowed
+    - team leader on shared team: read + create/manage allowed
+    - coach/admin scopes: read + create/manage allowed
+    - sponsor-only scope: denied
+  - Response matches `GET /api/coaching/assignments/me` and adds:
+    - `viewer_capabilities`:
+      - `can_view`
+      - `can_create_task`
+      - `can_create_goal`
+      - `can_manage_items`
+      - `relationship_scope` (`self | shared_team | coach_scope | admin_scope | none`)
+- `POST /api/coaching/users/{userId}/goals` (implemented — M6 profile drawer)
+  - Purpose: create a real goal record for the selected profile without leaving the profile drawer.
+  - Request:
+    - `title` (required)
+    - `due_at` (optional ISO date)
+  - Behavior:
+    - `goal_type` is derived from caller scope, not free-authored by client:
+      - self => `personal`
+      - shared-team leader => `team_leader`
+      - coach/admin scope => `coach`
+- `PATCH /api/coaching/users/{userId}/goals/{goalId}` (implemented — M6 profile drawer)
+  - Purpose: update a profile goal in place.
+  - Request supports:
+    - `status`
+    - `title`
+    - `due_at`
+  - Rights:
+    - owner can edit fields/status
+    - assignee can update status
+    - coach/team-leader manager scope can manage items when authorized by profile access rules
+- `POST /api/coaching/users/{userId}/tasks` (implemented — M6 profile drawer)
+  - Purpose: create a canonical message-linked task from the profile drawer while preserving thread/task-card convergence.
+  - Request:
+    - `title` (required)
+    - `description` (optional)
+    - `due_at` (optional ISO date)
+    - `assignee_id` (currently must match selected profile user)
+  - Behavior:
+    - self profile => creates `personal_task`
+    - managed profile => creates `coach_task`
+    - task write persists through the existing channel-message contract under the hood and syncs into assignments feed
+- `PATCH /api/coaching/users/{userId}/tasks/{taskId}` (implemented — M6 profile drawer)
+  - Purpose: complete/reopen a message-linked task from the profile drawer.
+  - Request:
+    - `status` (`pending | in_progress | completed`)
+    - `channel_id` (required canonical thread context)
+  - Behavior:
+    - writes a new latest-event-wins task event into the existing channel-message family
+    - no separate task table introduced
 - `POST /api/ai/suggestions`
   - Always creates records in `pending` status; no outbound send side effects.
   - Cross-user creation is restricted to platform admins or team leaders targeting users on their own team.

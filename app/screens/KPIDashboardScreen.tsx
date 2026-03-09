@@ -30,6 +30,7 @@ import { useBottomNavAnimation } from '../components/comms/useBottomNavAnimation
 import type { LinkedTaskCard, ThreadSendPayload } from '../components/comms/messageLinkedTasks';
 import DeveloperToolsModal from '../components/dev/DeveloperToolsModal';
 import { KpiIcon, KpiIconPicker } from '../components/kpi';
+import UserProfileDrawer from '../components/profile/UserProfileDrawer';
 import ReportsTabV2 from '../components/reports/ReportsTabV2';
 import PillGrowthBg from '../assets/figma/kpi_icon_bank/pill_growth_bg_v1.svg';
 import PillProjectionsBg from '../assets/figma/kpi_icon_bank/pill_projections_bg_v1.svg';
@@ -55,6 +56,9 @@ import {
   triggerHapticAsync,
 } from '../lib/feedback';
 import { API_URL, DEV_TOOLS_ENABLED } from '../lib/supabase';
+import { useLiveSession } from '../hooks/useLiveSession';
+import LiveSetupSheet from '../components/comms/LiveSetupSheet';
+import LiveBroadcastScreen from '../components/comms/LiveBroadcastScreen';
 import { createCustomKpi, fetchCustomKpis, updateCustomKpi, type CustomKpiRow } from '../lib/customKpiApi';
 import {
   getKpiTypeIconTreatment,
@@ -879,34 +883,8 @@ type CoachingMediaPlaybackTokenResponse = {
   playback_id?: string;
   error?: string | { code?: string; message?: string; request_id?: string };
 };
-type LiveSessionRecord = {
-  session_id: string;
-  channel_id: string;
-  title: string;
-  status: 'scheduled' | 'live' | 'ended' | 'cancelled';
-  host_user_id: string;
-  started_at: string;
-  ends_at: string | null;
-  created_at: string;
-  updated_at: string;
-};
-type LiveSessionResponse = {
-  session?: LiveSessionRecord;
-  idempotent_replay?: boolean;
-  role?: 'host' | 'viewer';
-  caller_role?: 'host' | 'viewer';
-  token?: string;
-  token_expires_at?: string;
-  provider?: string;
-  provider_mode?: 'mock' | 'mux' | 'unavailable';
-  host_url?: string;
-  join_url?: string;
-  live_url?: string;
-  stream_key?: string;
-  rtmp_url?: string;
-  playback_url?: string;
-  error?: string | { code?: string; message?: string; request_id?: string };
-};
+// LiveSessionRecord / LiveSessionResponse — now in app/lib/liveSessionTypes.ts
+// State management moved to useLiveSession hook.
 
 type PendingDirectLog = {
   kpiId: string;
@@ -1771,7 +1749,7 @@ function compareKpisForSelectionOrder(
 }
 
 function renderKpiIcon(kpi: DashboardPayload['loggable_kpis'][number]) {
-  return <KpiIcon kpi={kpi} size={44} backgroundColor="transparent" color={kpiTypeAccent(kpi.type)} />;
+  return <KpiIcon kpi={kpi} size={76} backgroundColor="transparent" color={kpiTypeAccent(kpi.type)} />;
 }
 
 function sortSelectableKpis(
@@ -2590,14 +2568,10 @@ export default function KPIDashboardScreen({
     thumbnailUri?: string;
     contentType?: string;
   }>>({});
-  const [liveSessionBusy, setLiveSessionBusy] = useState(false);
-  const [liveSessionStatus, setLiveSessionStatus] = useState<string | null>(null);
-  const [activeLiveSession, setActiveLiveSession] = useState<LiveSessionRecord | null>(null);
-  const [liveCallerRole, setLiveCallerRole] = useState<'host' | 'viewer' | null>(null);
-  const [liveStreamKey, setLiveStreamKey] = useState<string | null>(null);
-  const [liveRtmpUrl, setLiveRtmpUrl] = useState<string | null>(null);
-  const [livePlaybackUrl, setLivePlaybackUrl] = useState<string | null>(null);
-  const [liveProviderMode, setLiveProviderMode] = useState<'mock' | 'mux' | 'unavailable' | null>(null);
+  // Live session — managed by useLiveSession hook
+  const live = useLiveSession(session?.access_token);
+  const [showLiveSetup, setShowLiveSetup] = useState(false);
+  const [showLiveBroadcast, setShowLiveBroadcast] = useState(false);
   const commsClientSessionIdRef = useRef(
     `mobile_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
   );
@@ -8332,7 +8306,8 @@ export default function KPIDashboardScreen({
         setChannelMessageSubmitError('Select a channel before sending.');
         return false;
       }
-      if (messageType === 'message' && !bodyText) {
+      const isTaskMessage = Boolean(options?.taskAction || options?.taskCardDraft || (options?.messageKind && options.messageKind !== 'text'));
+      if (messageType === 'message' && !bodyText && !isTaskMessage) {
         setChannelMessageSubmitError('Message body is required.');
         return false;
       }
@@ -8685,125 +8660,18 @@ export default function KPIDashboardScreen({
     [coachingShellContext.selectedJourneyId, coachingShellContext.selectedLessonId, session?.access_token]
   );
 
-  /** Apply Mux live-session response fields to local state */
-  const applyLiveSessionResponse = useCallback((payload: LiveSessionResponse) => {
-    if (payload.session) setActiveLiveSession(payload.session);
-    setLiveCallerRole(payload.caller_role ?? payload.role ?? null);
-    setLiveStreamKey(payload.stream_key ?? null);
-    setLiveRtmpUrl(payload.rtmp_url ?? null);
-    setLivePlaybackUrl(payload.playback_url ?? null);
-    if (payload.provider_mode) setLiveProviderMode(payload.provider_mode);
-  }, []);
+  // ── Live broadcast: auto-transition setup → broadcast when credentials arrive ──
+  useEffect(() => {
+    if (showLiveSetup && live.streamKey && live.rtmpUrl && !live.busy) {
+      setShowLiveSetup(false);
+      setShowLiveBroadcast(true);
+    }
+  }, [showLiveSetup, live.streamKey, live.rtmpUrl, live.busy]);
 
-  const startLiveSession = useCallback(
-    async (channelId: string | null) => {
-      const token = session?.access_token;
-      if (!token) { setLiveSessionStatus('Sign in is required for live sessions (401).'); return; }
-      if (!channelId) { setLiveSessionStatus('Select a channel before starting a live session.'); return; }
-      setLiveSessionBusy(true);
-      setLiveSessionStatus('Starting live session…');
-      try {
-        const response = await fetch(`${API_URL}/api/coaching/media/live-sessions`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            channel_id: channelId,
-            title: `Live Session ${new Date().toLocaleTimeString()}`,
-            idempotency_key: `live_start_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-          }),
-        });
-        const payload = (await response.json().catch(() => ({}))) as LiveSessionResponse;
-        if (!response.ok) {
-          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, `Live session start failed (${response.status})`)));
-          return;
-        }
-        applyLiveSessionResponse(payload);
-        const sid = payload.session?.session_id ?? '?';
-        const s = payload.session?.status ?? '?';
-        const mode = payload.provider_mode ?? 'unknown';
-        setLiveSessionStatus(`Live session active: ${sid} (${s}) [${mode}].`);
-      } catch (err) {
-        setLiveSessionStatus(err instanceof Error ? err.message : 'Live session start failed.');
-      } finally {
-        setLiveSessionBusy(false);
-      }
-    },
-    [session?.access_token, applyLiveSessionResponse]
-  );
-
-  const refreshLiveSession = useCallback(
-    async () => {
-      const token = session?.access_token;
-      const sessionId = activeLiveSession?.session_id ?? null;
-      if (!token) { setLiveSessionStatus('Sign in is required to refresh live session state (401).'); return; }
-      if (!sessionId) { setLiveSessionStatus('No live session id available to refresh.'); return; }
-      setLiveSessionBusy(true);
-      try {
-        const response = await fetch(`${API_URL}/api/coaching/media/live-sessions/${encodeURIComponent(sessionId)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const payload = (await response.json().catch(() => ({}))) as LiveSessionResponse;
-        if (!response.ok) {
-          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, `Live session refresh failed (${response.status})`)));
-          return;
-        }
-        applyLiveSessionResponse(payload);
-        setLiveSessionStatus(`Live session refreshed: ${payload.session?.session_id ?? sessionId} (${payload.session?.status ?? '?'}).`);
-      } catch (err) {
-        setLiveSessionStatus(err instanceof Error ? err.message : 'Live session refresh failed.');
-      } finally {
-        setLiveSessionBusy(false);
-      }
-    },
-    [activeLiveSession?.session_id, session?.access_token, applyLiveSessionResponse]
-  );
-
-  /** Watch live stream — opens HLS playback URL for viewers */
-  const watchLiveStream = useCallback(
-    async () => {
-      if (!livePlaybackUrl) { setLiveSessionStatus('Playback URL not available yet. Try refreshing.'); return; }
-      try {
-        const canOpen = await Linking.canOpenURL(livePlaybackUrl);
-        if (canOpen) { await Linking.openURL(livePlaybackUrl); setLiveSessionStatus('Opened live stream playback.'); }
-        else { setLiveSessionStatus(`Playback URL could not be opened on this device: ${livePlaybackUrl}`); }
-      } catch (err) {
-        setLiveSessionStatus(err instanceof Error ? err.message : 'Failed to open live stream.');
-      }
-    },
-    [livePlaybackUrl]
-  );
-
-  const endLiveSession = useCallback(
-    async () => {
-      const token = session?.access_token;
-      const sessionId = activeLiveSession?.session_id ?? null;
-      if (!token) { setLiveSessionStatus('Sign in is required to end live sessions (401).'); return; }
-      if (!sessionId) { setLiveSessionStatus('No active live session available to end.'); return; }
-      setLiveSessionBusy(true);
-      try {
-        const response = await fetch(`${API_URL}/api/coaching/media/live-sessions/${encodeURIComponent(sessionId)}/end`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const payload = (await response.json().catch(() => ({}))) as LiveSessionResponse;
-        if (!response.ok) {
-          setLiveSessionStatus(mapCommsHttpError(response.status, getApiErrorMessage(payload, `Live session end failed (${response.status})`)));
-          return;
-        }
-        if (payload.session) setActiveLiveSession(payload.session);
-        setLiveStreamKey(null);
-        setLiveRtmpUrl(null);
-        setLivePlaybackUrl(null);
-        setLiveCallerRole(null);
-        setLiveSessionStatus('Live session ended.');
-      } catch (err) {
-        setLiveSessionStatus(err instanceof Error ? err.message : 'Live session end failed.');
-      } finally {
-        setLiveSessionBusy(false);
-      }
-    },
-    [activeLiveSession?.session_id, session?.access_token]
-  );
+  const handleEndBroadcast = useCallback(async () => {
+    await live.endSession();
+    setShowLiveBroadcast(false);
+  }, [live]);
 
   const openDirectThreadForMember = useCallback(
     async ({
@@ -9447,6 +9315,13 @@ export default function KPIDashboardScreen({
     coachCohorts.length, coachCohortsLoading, fetchCoachCohorts,
     coachProfiles.length, coachMarketplaceLoading, fetchCoachMarketplace,
   ]);
+
+  useEffect(() => {
+    if (state !== 'ready') return;
+    if (!session?.access_token) return;
+    if (Array.isArray(channelsApiRows) || channelsLoading) return;
+    void fetchChannels();
+  }, [channelsApiRows, channelsLoading, fetchChannels, session?.access_token, state]);
 
   useEffect(() => {
     if (activeTab !== 'comms') return;
@@ -13282,111 +13157,47 @@ export default function KPIDashboardScreen({
                       {teamLoggingBlock}
                     </View>
                   )}
-                  <Modal
+                  <UserProfileDrawer
                     visible={Boolean(selectedTeamProfile)}
-                    transparent
-                    animationType="slide"
-                    onRequestClose={() => setTeamProfileMemberId(null)}
-                  >
-                    <Pressable style={styles.teamProfileDrawerOverlay} onPress={() => setTeamProfileMemberId(null)}>
-                      <Pressable style={styles.teamProfileDrawerSheet} onPress={() => {}}>
-                        <View style={styles.teamProfileDrawerHandle} />
-                        {selectedTeamProfile ? (
-                          <>
-                            <View style={styles.teamProfileDrawerHeader}>
-                              <View style={[styles.teamProfileDrawerAvatarCircle, { backgroundColor: selectedTeamProfile.avatarTone }]}>
-                                <Text style={styles.teamProfileDrawerAvatarText}>
-                                  {selectedTeamProfile.name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()}
-                                </Text>
-                              </View>
-                              <View style={styles.teamProfileDrawerHeaderCopy}>
-                                <Text style={styles.teamProfileDrawerName}>{selectedTeamProfile.name}</Text>
-                                <Text style={styles.teamProfileDrawerRole}>{selectedTeamProfile.roleLabel}</Text>
-                              </View>
-                              <TouchableOpacity style={styles.teamProfileDrawerCloseBtn} onPress={() => setTeamProfileMemberId(null)}>
-                                <Text style={styles.teamProfileDrawerCloseBtnText}>✕</Text>
-                              </TouchableOpacity>
-                            </View>
-
-                            <View style={styles.teamProfileDrawerContactRow}>
-                              <Text style={styles.teamProfileDrawerContactText}>✉ {selectedTeamProfile.email}</Text>
-                              <Text style={styles.teamProfileDrawerContactText}>☎ {selectedTeamProfile.phone}</Text>
-                            </View>
-
-                            <TouchableOpacity
-                              style={styles.teamProfileDrawerDmBtn}
-                              onPress={() => {
-                                void openTeamDirectThread(
-                                  selectedTeamProfile,
-                                  effectiveTeamPersonaVariant === 'leader' ? 'team_leader_dashboard' : 'team_member_dashboard'
-                                );
-                              }}
-                            >
-                              <Text style={styles.teamProfileDrawerDmBtnText}>Message</Text>
-                            </TouchableOpacity>
-                            {effectiveTeamPersonaVariant === 'leader' &&
-                            selectedTeamProfile.userId &&
-                            selectedTeamProfile.userId !== String(session?.user?.id ?? '') ? (
-                              <TouchableOpacity
-                                style={[styles.teamProfileDrawerRemoveBtn, teamMembershipMutationBusy && styles.disabled]}
-                                disabled={teamMembershipMutationBusy}
-                                onPress={() =>
-                                  Alert.alert(
-                                    `Remove ${selectedTeamProfile.name}?`,
-                                    `${selectedTeamProfile.name} will be removed from the team, unenrolled from team challenges, and removed from team contribution metrics.`,
-                                    [
-                                      { text: 'Cancel', style: 'cancel' },
-                                      {
-                                        text: 'Remove',
-                                        style: 'destructive',
-                                        onPress: () =>
-                                          void removeTeamMember(
-                                            String(selectedTeamProfile.userId),
-                                            selectedTeamProfile.name
-                                          ),
-                                      },
-                                    ]
-                                  )
-                                }
-                              >
-                                <Text style={styles.teamProfileDrawerRemoveBtnText}>
-                                  {teamMembershipMutationBusy ? 'Removing…' : 'Remove Member'}
-                                </Text>
-                              </TouchableOpacity>
-                            ) : null}
-
-                            <ScrollView style={styles.teamProfileDrawerScrollArea} showsVerticalScrollIndicator={false}>
-                              <Text style={styles.teamProfileDrawerSectionLabel}>Coaching Goals</Text>
-                              {selectedTeamProfile.coachingGoals.map((goal) => (
-                                <View key={`${selectedTeamProfile.id}-goal-${goal}`} style={styles.teamProfileDrawerBulletRow}>
-                                  <View style={styles.teamProfileDrawerBulletDot} />
-                                  <Text style={styles.teamProfileDrawerBulletText}>{goal}</Text>
-                                </View>
-                              ))}
-
-                              <Text style={styles.teamProfileDrawerSectionLabel}>KPI Goals</Text>
-                              {selectedTeamProfile.kpiGoals.map((goal) => (
-                                <View key={`${selectedTeamProfile.id}-kpi-${goal}`} style={styles.teamProfileDrawerBulletRow}>
-                                  <View style={styles.teamProfileDrawerBulletDot} />
-                                  <Text style={styles.teamProfileDrawerBulletText}>{goal}</Text>
-                                </View>
-                              ))}
-
-                              <Text style={styles.teamProfileDrawerSectionLabel}>Enrollments</Text>
-                              <View style={styles.teamProfileDrawerEnrollmentRow}>
-                                <Text style={styles.teamProfileDrawerEnrollmentLabel}>Cohorts</Text>
-                                <Text style={styles.teamProfileDrawerEnrollmentValue}>{selectedTeamProfile.cohorts.join(', ')}</Text>
-                              </View>
-                              <View style={styles.teamProfileDrawerEnrollmentRow}>
-                                <Text style={styles.teamProfileDrawerEnrollmentLabel}>Journeys</Text>
-                                <Text style={styles.teamProfileDrawerEnrollmentValue}>{selectedTeamProfile.journeys.join(', ')}</Text>
-                              </View>
-                            </ScrollView>
-                          </>
-                        ) : null}
-                      </Pressable>
-                    </Pressable>
-                  </Modal>
+                    member={selectedTeamProfile ?? null}
+                    accessToken={session?.access_token ?? null}
+                    viewerUserId={String(session?.user?.id ?? '') || null}
+                    canRemoveMember={
+                      effectiveTeamPersonaVariant === 'leader' &&
+                      Boolean(selectedTeamProfile?.userId) &&
+                      selectedTeamProfile?.userId !== String(session?.user?.id ?? '')
+                    }
+                    removeBusy={teamMembershipMutationBusy}
+                    onClose={() => setTeamProfileMemberId(null)}
+                    onMessage={() => {
+                      if (!selectedTeamProfile) return;
+                      void openTeamDirectThread(
+                        selectedTeamProfile,
+                        effectiveTeamPersonaVariant === 'leader' ? 'team_leader_dashboard' : 'team_member_dashboard'
+                      );
+                    }}
+                    onRemoveMember={
+                      selectedTeamProfile?.userId
+                        ? () =>
+                            Alert.alert(
+                              `Remove ${selectedTeamProfile.name}?`,
+                              `${selectedTeamProfile.name} will be removed from the team, unenrolled from team challenges, and removed from team contribution metrics.`,
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                {
+                                  text: 'Remove',
+                                  style: 'destructive',
+                                  onPress: () =>
+                                    void removeTeamMember(
+                                      String(selectedTeamProfile.userId),
+                                      selectedTeamProfile.name
+                                    ),
+                                },
+                              ]
+                            )
+                        : undefined
+                    }
+                  />
                 </>
               );
             })()}
@@ -14585,19 +14396,22 @@ export default function KPIDashboardScreen({
                     }}
                     mediaUploadBusy={mediaUploadBusy}
                     mediaUploadStatus={mediaUploadStatus}
-                    liveSessionBusy={liveSessionBusy}
-                    liveSessionStatus={liveSessionStatus}
+                    liveSessionBusy={live.busy}
+                    liveSessionStatus={live.statusMessage}
                     canHostLiveSession={
                       isCoachRuntimeOperator || (effectiveTeamPersonaVariant === 'leader' && !isChallengeSponsorRuntime)
                     }
-                    liveCallerRole={liveCallerRole}
-                    livePlaybackUrl={livePlaybackUrl}
-                    liveStreamKey={liveStreamKey}
-                    liveProviderMode={liveProviderMode}
-                    onStartLiveSession={() => void startLiveSession(selectedChannelResolvedId)}
-                    onRefreshLiveSession={() => void refreshLiveSession()}
-                    onWatchLiveStream={() => void watchLiveStream()}
-                    onEndLiveSession={() => void endLiveSession()}
+                    liveCallerRole={live.callerRole}
+                    livePlaybackUrl={live.playbackUrl}
+                    liveStreamKey={live.streamKey}
+                    liveProviderMode={live.providerMode}
+                    liveSessionRecord={live.session}
+                    onGoLive={() => setShowLiveSetup(true)}
+                    onRefreshLiveSession={() => void live.refreshSession()}
+                    onEndLiveSession={() => void live.endSession()}
+                    onPublishReplay={() => void live.publishReplay()}
+                    replayBusy={live.replayBusy}
+                    replayPublished={live.replayPublished}
                     composerBottomInset={commsComposerBottomInset}
                     broadcastDraft={broadcastDraft}
                     onChangeBroadcastDraft={setBroadcastDraft}
@@ -17070,6 +16884,27 @@ export default function KPIDashboardScreen({
           </View>
         </View>
       </Modal>
+
+      {/* ── Live broadcast modals ── */}
+      <LiveSetupSheet
+        visible={showLiveSetup}
+        channelName={selectedChannelName ?? 'this channel'}
+        providerMode={live.providerMode}
+        busy={live.busy}
+        onConfirm={() => {
+          if (selectedChannelId) void live.startSession(selectedChannelId);
+        }}
+        onCancel={() => setShowLiveSetup(false)}
+      />
+      <LiveBroadcastScreen
+        visible={showLiveBroadcast}
+        streamKey={live.streamKey}
+        rtmpUrl={live.rtmpUrl}
+        providerMode={live.providerMode}
+        channelName={selectedChannelName ?? ''}
+        busy={live.busy}
+        onEnd={() => void handleEndBroadcast()}
+      />
     </View>
   );
 }
