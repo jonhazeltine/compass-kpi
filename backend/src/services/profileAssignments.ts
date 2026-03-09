@@ -382,8 +382,10 @@ function normalizeIsoDateOrNull(value: unknown): string | null {
 
 function isRecoverableAssignmentSourceGap(error: unknown): boolean {
   const code = String((error as { code?: unknown } | null)?.code ?? "");
-  if (!code) return false;
-  return code === "PGRST116" || code === "42P01" || code === "42703";
+  if (code === "PGRST116" || code === "PGRST205" || code === "42P01" || code === "42703") return true;
+  const message = String((error as { message?: unknown } | null)?.message ?? "").toLowerCase();
+  const hint = String((error as { hint?: unknown } | null)?.hint ?? "").toLowerCase();
+  return message.includes("could not find the table") || hint.includes("perhaps you meant the table");
 }
 
 function sortAssignments(a: UnifiedAssignmentItem, b: UnifiedAssignmentItem) {
