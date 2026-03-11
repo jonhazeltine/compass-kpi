@@ -307,9 +307,11 @@ function normalizeIsoDateOrNull(value) {
 }
 function isRecoverableAssignmentSourceGap(error) {
     const code = String(error?.code ?? "");
-    if (!code)
-        return false;
-    return code === "PGRST116" || code === "42P01" || code === "42703";
+    if (code === "PGRST116" || code === "PGRST205" || code === "42P01" || code === "42703")
+        return true;
+    const message = String(error?.message ?? "").toLowerCase();
+    const hint = String(error?.hint ?? "").toLowerCase();
+    return message.includes("could not find the table") || hint.includes("perhaps you meant the table");
 }
 function sortAssignments(a, b) {
     const aCompleted = a.status === "completed";

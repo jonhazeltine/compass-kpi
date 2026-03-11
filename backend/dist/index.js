@@ -20,6 +20,8 @@ const adminChallengeTemplateValidation_1 = require("./services/adminChallengeTem
 const channelMessageTasks_1 = require("./services/channelMessageTasks");
 const profileAssignments_1 = require("./services/profileAssignments");
 const teamMemberIdentity_1 = require("./services/teamMemberIdentity");
+const tenantScope_1 = require("./services/tenantScope");
+const broadcastCampaign_1 = require("./services/broadcastCampaign");
 const muxLiveService_1 = require("./services/muxLiveService");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -1821,12 +1823,14 @@ app.post("/api/channels", async (req, res) => {
                 return res.status(200).json({ channel: existingChannel.channel, idempotent_replay: true });
             }
             const directName = payload.name && payload.name.trim() ? payload.name.trim() : "Direct Message";
+            const directChannelOrgId = await (0, tenantScope_1.resolveResourceOrgId)({ dataClient, ownerUserId: auth.user.id });
             const { data: channel, error: channelError } = await dataClient
                 .from("channels")
                 .insert({
                 type: "direct",
                 name: directName,
                 team_id: null,
+                org_id: directChannelOrgId ?? undefined,
                 context_id: payload.context_id ?? null,
                 created_by: auth.user.id,
             })
@@ -1875,12 +1879,16 @@ app.post("/api/channels", async (req, res) => {
                 return res.status(403).json({ error: "Only team leaders or admins can create team channels" });
             }
         }
+        const channelOrgId = payload.team_id
+            ? await (0, tenantScope_1.resolveResourceOrgId)({ dataClient, teamId: payload.team_id })
+            : await (0, tenantScope_1.resolveResourceOrgId)({ dataClient, ownerUserId: auth.user.id });
         const { data: channel, error: channelError } = await dataClient
             .from("channels")
             .insert({
             type: payload.type,
             name: payload.name ?? "Channel",
             team_id: payload.team_id ?? null,
+            org_id: channelOrgId ?? undefined,
             context_id: payload.context_id ?? null,
             created_by: auth.user.id,
         })
@@ -2694,9 +2702,10 @@ app.get("/api/coaching/journeys", async (req, res) => {
         }
         const access = accessResult.context;
         const scope = parseCoachingScope(req.query.scope);
+        const allowedOrgIds = access.allowedOrgIds.size > 0 ? Array.from(access.allowedOrgIds) : [];
         const { data: journeys, error: journeysError } = await dataClient
             .from("journeys")
-            .select("id,title,description,team_id,created_by,is_active,created_at")
+            .select("id,title,description,team_id,org_id,created_by,is_active,created_at")
             .eq("is_active", true)
             .order("created_at", { ascending: false });
         if (journeysError) {
@@ -2719,12 +2728,13 @@ app.get("/api/coaching/journeys", async (req, res) => {
         const visibleJourneys = (journeys ?? []).filter((j) => {
             const jId = String(j.id ?? "");
             const teamId = String(j.team_id ?? "") || null;
+            const orgId = String(j.org_id ?? "") || null;
             const createdBy = String(j.created_by ?? "");
             // Enrolled journeys are always visible
             const isEnrolled = enrolledJourneyIds.has(jId);
             const isMine = createdBy === auth.user.id || isEnrolled;
             const inTeamScope = Boolean(teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId)));
-            const canRead = canReadJourneyByTeam(access, teamId) || isMine;
+            const canRead = canReadJourneyByTeam(access, teamId, orgId) || isMine;
             if (!canRead)
                 return false;
             if (scope === "my")
@@ -2882,14 +2892,28 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
             return errorEnvelopeResponse(res, 422, "invalid_request", "journey id is required", req.headers["x-request-id"]);
         const { data: journey, error: journeyError } = await dataClient
             .from("journeys")
-            .select("id,title,description,team_id,is_active,created_at")
+            .select("id,title,description,team_id,org_id,created_by,is_active,created_at")
             .eq("id", journeyId)
             .single();
         if (journeyError) {
             return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
         }
         const scopedTeamId = String(journey?.team_id ?? "");
-        if (!canReadJourneyByTeam(access, scopedTeamId || null)) {
+        const scopedOrgId = String(journey?.org_id ?? "");
+        const createdBy = String(journey?.created_by ?? "");
+        let isEnrolled = false;
+        const enrollmentCheck = await dataClient
+            .from("journey_enrollments")
+            .select("journey_id")
+            .eq("journey_id", journeyId)
+            .eq("user_id", auth.user.id)
+            .eq("status", "active")
+            .limit(1)
+            .maybeSingle();
+        if (!enrollmentCheck.error && enrollmentCheck.data) {
+            isEnrolled = true;
+        }
+        if (!canReadJourneyByTeam(access, scopedTeamId || null, scopedOrgId || null) && createdBy !== auth.user.id && !isEnrolled) {
             return errorEnvelopeResponse(res, 403, "scope_denied", "You are not allowed to view this journey", req.headers["x-request-id"]);
         }
         const { data: milestones, error: milestonesError } = await dataClient
@@ -2976,7 +3000,10 @@ app.post("/api/coaching/journeys", async (req, res) => {
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         }
         const access = accessResult.context;
-        if (!canWriteJourneyByTeam(access, payload.team_id ?? null)) {
+        const createOrgId = payload.team_id
+            ? await (0, tenantScope_1.getTeamOrgId)(dataClient, payload.team_id)
+            : access.viewerOrgId;
+        if (!canWriteJourneyByTeam(access, payload.team_id ?? null, createOrgId ?? null)) {
             return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot create journey in this scope", req.headers["x-request-id"]);
         }
         await ensureUserRow(auth.user.id);
@@ -2987,12 +3014,13 @@ app.post("/api/coaching/journeys", async (req, res) => {
             title: payload.title,
             description: payload.description ?? null,
             team_id: payload.team_id ?? null,
+            org_id: createOrgId ?? undefined,
             created_by: auth.user.id,
             is_active: true,
             created_at: nowIso,
             updated_at: nowIso,
         })
-            .select("id,title,description,team_id,is_active,created_by,created_at,updated_at")
+            .select("id,title,description,team_id,org_id,is_active,created_by,created_at,updated_at")
             .single();
         if (error) {
             return errorEnvelopeResponse(res, 500, "journey_create_failed", "Failed to create journey", req.headers["x-request-id"]);
@@ -3022,7 +3050,7 @@ app.patch("/api/coaching/journeys/:id", async (req, res) => {
         const payload = payloadCheck.payload;
         const { data: journey, error: journeyError } = await dataClient
             .from("journeys")
-            .select("id,team_id,is_active")
+            .select("id,team_id,org_id,is_active")
             .eq("id", journeyId)
             .maybeSingle();
         if (journeyError || !journey) {
@@ -3037,11 +3065,15 @@ app.patch("/api/coaching/journeys/:id", async (req, res) => {
         }
         const access = accessResult.context;
         const currentTeamId = String(journey.team_id ?? "") || null;
-        if (!canWriteJourneyByTeam(access, currentTeamId)) {
+        const currentOrgId = String(journey.org_id ?? "") || null;
+        if (!canWriteJourneyByTeam(access, currentTeamId, currentOrgId)) {
             return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot update this journey", req.headers["x-request-id"]);
         }
         const nextTeamId = payload.team_id === undefined ? currentTeamId : payload.team_id;
-        if (!canWriteJourneyByTeam(access, nextTeamId ?? null)) {
+        const nextOrgId = payload.team_id
+            ? await (0, tenantScope_1.getTeamOrgId)(dataClient, payload.team_id)
+            : currentOrgId ?? access.viewerOrgId;
+        if (!canWriteJourneyByTeam(access, nextTeamId ?? null, nextOrgId ?? null)) {
             return errorEnvelopeResponse(res, 403, "scope_denied", "Caller role cannot move journey to requested scope", req.headers["x-request-id"]);
         }
         const patch = { updated_at: new Date().toISOString() };
@@ -3051,13 +3083,15 @@ app.patch("/api/coaching/journeys/:id", async (req, res) => {
             patch.description = payload.description || null;
         if (payload.team_id !== undefined)
             patch.team_id = payload.team_id;
+        if (payload.team_id !== undefined && nextOrgId)
+            patch.org_id = nextOrgId;
         if (payload.is_active !== undefined)
             patch.is_active = payload.is_active;
         const { data: updated, error: updateError } = await dataClient
             .from("journeys")
             .update(patch)
             .eq("id", journeyId)
-            .select("id,title,description,team_id,is_active,created_by,created_at,updated_at")
+            .select("id,title,description,team_id,org_id,is_active,created_by,created_at,updated_at")
             .single();
         if (updateError) {
             return errorEnvelopeResponse(res, 500, "journey_update_failed", "Failed to update journey", req.headers["x-request-id"]);
@@ -3803,6 +3837,7 @@ app.get("/api/coaching/channels", async (req, res) => {
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         const access = accessResult.context;
         const scope = parseCoachingScope(req.query.scope);
+        const allowedOrgIds = access.allowedOrgIds.size > 0 ? Array.from(access.allowedOrgIds) : [];
         const { data: membershipRows, error: membershipError } = await dataClient
             .from("channel_memberships")
             .select("channel_id,user_id,role")
@@ -3813,9 +3848,12 @@ app.get("/api/coaching/channels", async (req, res) => {
         const directMemberChannelIds = new Set((membershipRows ?? []).map((row) => String(row.channel_id ?? "")));
         let channelsQuery = dataClient
             .from("channels")
-            .select("id,type,name,team_id,context_id,is_active,created_at")
+            .select("id,type,name,team_id,org_id,context_id,is_active,created_at")
             .eq("is_active", true)
             .order("created_at", { ascending: false });
+        if (access.tenancyEnabled && access.canGlobalView && allowedOrgIds.length > 0 && scope !== "my" && scope !== "team") {
+            channelsQuery = channelsQuery.in("org_id", allowedOrgIds);
+        }
         if (!access.canGlobalView || scope === "team") {
             const scopedTeamIds = Array.from(new Set([...access.leaderTeamIds, ...access.memberTeamIds]));
             if (scopedTeamIds.length > 0) {
@@ -3876,9 +3914,11 @@ app.get("/api/coaching/channels", async (req, res) => {
             .filter((channel) => {
             const channelId = String(channel.id ?? "");
             const teamId = String(channel.team_id ?? "");
+            const orgId = String(channel.org_id ?? "");
             const isMine = directMemberChannelIds.has(channelId);
             const inTeamScope = Boolean(teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId)));
-            const canSee = access.canGlobalView || isMine || inTeamScope;
+            const inAllowedOrg = !access.tenancyEnabled || !orgId || access.allowedOrgIds.has(orgId);
+            const canSee = (access.canGlobalView && inAllowedOrg) || isMine || inTeamScope;
             if (!canSee)
                 return false;
             if (scope === "my")
@@ -3939,12 +3979,17 @@ app.get("/api/coaching/library/assets", async (req, res) => {
             return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
         const access = accessResult.context;
         const scope = parseCoachingScope(req.query.scope);
-        const { data: assetRowsRaw, error: assetError } = await dataClient
+        const allowedOrgIds = access.allowedOrgIds.size > 0 ? Array.from(access.allowedOrgIds) : [];
+        let assetQuery = dataClient
             .from("coaching_media_assets")
-            .select("media_id,owner_user_id,journey_id,filename,content_type,created_at,updated_at,processing_status")
+            .select("media_id,org_id,owner_user_id,journey_id,filename,content_type,created_at,updated_at,processing_status")
             .not("processing_status", "eq", "deleted")
             .order("created_at", { ascending: false })
             .limit(500);
+        if (access.tenancyEnabled && allowedOrgIds.length > 0) {
+            assetQuery = assetQuery.in("org_id", allowedOrgIds);
+        }
+        const { data: assetRowsRaw, error: assetError } = await assetQuery;
         if (assetError && !isRecoverableAssignmentSourceGap(assetError)) {
             return errorEnvelopeResponse(res, 500, "asset_fetch_failed", "Failed to fetch library assets", req.headers["x-request-id"]);
         }
@@ -4002,13 +4047,15 @@ app.get("/api/coaching/library/assets", async (req, res) => {
         const visibleAssets = (assetRows ?? [])
             .map((row) => {
             const mediaId = String(row.media_id ?? "");
+            const assetOrgId = String(row.org_id ?? "") || null;
             const ownerUserId = String(row.owner_user_id ?? "");
             const journeyId = String(row.journey_id ?? "");
             const journeyScope = journeyById.get(journeyId);
             const teamId = journeyScope?.team_id ?? null;
             const isMine = ownerUserId === auth.user.id;
             const inTeamScope = Boolean(teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId)));
-            const canSee = access.canGlobalView || isMine || inTeamScope;
+            const inAllowedOrg = !access.tenancyEnabled || !assetOrgId || access.allowedOrgIds.has(assetOrgId);
+            const canSee = (access.canGlobalView && inAllowedOrg) || isMine || inTeamScope;
             if (!canSee)
                 return null;
             if (scope === "my" && !isMine)
@@ -4460,6 +4507,105 @@ app.post("/api/coaching/broadcast", async (req, res) => {
     catch (err) {
         // eslint-disable-next-line no-console
         console.error("Error in POST /api/coaching/broadcast", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+/* ================================================================
+   BROADCAST CAMPAIGN ENDPOINTS
+   ================================================================ */
+app.post("/api/coaching/broadcast/campaign/preview", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok)
+            return res.status(auth.status).json({ error: auth.error });
+        if (!dataClient)
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        const targets = req.body?.targets;
+        if (!Array.isArray(targets) || targets.length === 0) {
+            return res.status(422).json({ error: "targets must be a non-empty array" });
+        }
+        const preview = await (0, broadcastCampaign_1.getAudiencePreview)(targets, auth.user.id, dataClient);
+        return res.status(200).json(preview);
+    }
+    catch (err) {
+        console.error("Error in POST /api/coaching/broadcast/campaign/preview", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.post("/api/coaching/broadcast/campaign", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok)
+            return res.status(auth.status).json({ error: auth.error });
+        if (!dataClient)
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        // Permission check: must be admin, coach, or team_leader
+        const { data: userRow } = await dataClient
+            .from("users")
+            .select("role")
+            .eq("id", auth.user.id)
+            .maybeSingle();
+        const role = String(userRow?.role ?? "member");
+        const canBroadcast = ["admin", "super_admin", "coach", "team_leader"].includes(role);
+        if (!canBroadcast) {
+            return res.status(403).json({ error: "Your role does not permit broadcast campaigns" });
+        }
+        // Validate payload
+        const payloadCheck = (0, broadcastCampaign_1.validateBroadcastCampaignPayload)(req.body);
+        if (!payloadCheck.ok)
+            return res.status(payloadCheck.status).json({ error: payloadCheck.error });
+        const payload = payloadCheck.payload;
+        // Team leader scope check: verify leadership of each team/cohort target
+        if (role === "team_leader") {
+            for (const target of payload.targets) {
+                if (target.scope_type === "team" || target.scope_type === "cohort") {
+                    const leaderCheck = await checkTeamLeader(target.scope_id, auth.user.id);
+                    if (!leaderCheck.ok)
+                        return res.status(leaderCheck.status).json({ error: leaderCheck.error });
+                    if (!leaderCheck.isLeader) {
+                        return res.status(403).json({ error: `Not a leader of ${target.scope_type} ${target.scope_id}` });
+                    }
+                }
+            }
+        }
+        // Rate limit
+        const rateCheck = await (0, broadcastCampaign_1.checkCampaignRateLimit)(auth.user.id, dataClient);
+        if (!rateCheck.ok) {
+            return res.status(429).json({ error: `Campaign rate limit exceeded (${rateCheck.count}/25 in 24h)` });
+        }
+        // Execute campaign
+        const result = await (0, broadcastCampaign_1.executeBroadcastCampaign)({
+            payload,
+            senderUserId: auth.user.id,
+            senderRole: role,
+            dc: dataClient,
+        });
+        if (!result.ok)
+            return res.status(result.status).json({ error: result.error });
+        return res.status(201).json({ campaign: result.result });
+    }
+    catch (err) {
+        console.error("Error in POST /api/coaching/broadcast/campaign", err);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+app.post("/api/coaching/broadcast/campaign/:id/publish-replay", async (req, res) => {
+    try {
+        const auth = await authenticateRequest(req.headers.authorization);
+        if (!auth.ok)
+            return res.status(auth.status).json({ error: auth.error });
+        if (!dataClient)
+            return res.status(500).json({ error: "Supabase data client not configured" });
+        const campaignId = req.params.id;
+        if (!campaignId)
+            return res.status(400).json({ error: "Campaign ID is required" });
+        const result = await (0, broadcastCampaign_1.publishReplayToCampaignRecipients)(campaignId, auth.user.id, dataClient);
+        if (!result.ok)
+            return res.status(result.status).json({ error: result.error });
+        return res.status(200).json(result);
+    }
+    catch (err) {
+        console.error("Error in POST /api/coaching/broadcast/campaign/:id/publish-replay", err);
         return res.status(500).json({ error: "Internal server error" });
     }
 });
@@ -10708,12 +10854,13 @@ function validateCoachingMediaUploadUrlPayload(body) {
     const channelId = typeof candidate.channel_id === "string" && candidate.channel_id.trim()
         ? candidate.channel_id.trim()
         : undefined;
+    const broadcastContext = candidate.broadcast_context === true;
     if (journeyId && lessonId) {
         return { ok: false, status: 422, error: "Provide at most one of journey_id or lesson_id (not both)" };
     }
-    // Chat media: neither journey_id nor lesson_id — channel_id is the context
-    if (!journeyId && !lessonId && !channelId) {
-        return { ok: false, status: 422, error: "At least one of journey_id, lesson_id, or channel_id is required" };
+    // Chat media: neither journey_id nor lesson_id — channel_id or broadcast_context is the context
+    if (!journeyId && !lessonId && !channelId && !broadcastContext) {
+        return { ok: false, status: 422, error: "At least one of journey_id, lesson_id, channel_id, or broadcast_context is required" };
     }
     if (typeof candidate.filename !== "string" || !candidate.filename.trim()) {
         return { ok: false, status: 422, error: "filename is required" };
@@ -10748,6 +10895,7 @@ function validateCoachingMediaUploadUrlPayload(body) {
             journey_id: journeyId,
             lesson_id: lessonId,
             channel_id: channelId,
+            broadcast_context: broadcastContext || undefined,
             filename: candidate.filename.trim(),
             content_type: contentType,
             content_length_bytes: Math.round(candidate.content_length_bytes),
@@ -11445,9 +11593,13 @@ async function upsertMuxMediaRecord(record) {
     }
     if (!dataClient)
         return;
-    const { error } = await dataClient
-        .from("coaching_media_assets")
-        .upsert({
+    const resourceOrgId = await (0, tenantScope_1.resolveResourceOrgId)({
+        dataClient,
+        ownerUserId: record.owner_user_id,
+        journeyId: record.journey_id,
+        channelId: record.channel_id,
+    });
+    const persistencePayload = {
         media_id: record.media_id,
         upload_id: record.upload_id,
         provider: record.provider,
@@ -11471,7 +11623,13 @@ async function upsertMuxMediaRecord(record) {
         verification_status: record.verification_status,
         created_at: record.created_at,
         updated_at: record.updated_at,
-    }, { onConflict: "media_id" });
+    };
+    if (resourceOrgId) {
+        persistencePayload.org_id = resourceOrgId;
+    }
+    const { error } = await dataClient
+        .from("coaching_media_assets")
+        .upsert(persistencePayload, { onConflict: "media_id" });
     if (error && !isRecoverableAssignmentSourceGap(error)) {
         // eslint-disable-next-line no-console
         console.error("Failed to persist mux media record", error);
@@ -12207,6 +12365,7 @@ async function ensureUserRow(userId) {
     if (error) {
         throw new Error(`Failed to ensure user row: ${error.message ?? "unknown error"}`);
     }
+    await (0, tenantScope_1.ensureUserHomeOrgId)(dataClient, userId);
 }
 function isUuidLike(value) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -12479,6 +12638,19 @@ async function getCoachingAccessContext(userId, options = {}) {
     const canAuthorGlobal = (platformAdmin && (!superAdminRole || elevated)) || coachRole;
     const canManageCohorts = canAuthorGlobal || teamLeaderRole;
     const canManageChannels = canAuthorGlobal || teamLeaderRole;
+    const tenancyEnabled = await (0, tenantScope_1.supportsTenantOrgScope)(dataClient);
+    const viewerOrgId = tenancyEnabled ? await (0, tenantScope_1.ensureUserHomeOrgId)(dataClient, userId) : null;
+    const allowedOrgIds = new Set();
+    if (viewerOrgId) {
+        allowedOrgIds.add(viewerOrgId);
+    }
+    if (tenancyEnabled) {
+        const teamOrgIds = await (0, tenantScope_1.listTeamOrgIdsForUser)(dataClient, userId);
+        for (const orgId of teamOrgIds) {
+            if (orgId)
+                allowedOrgIds.add(orgId);
+        }
+    }
     return {
         ok: true,
         context: {
@@ -12493,28 +12665,37 @@ async function getCoachingAccessContext(userId, options = {}) {
             sponsorReadOnly,
             leaderTeamIds,
             memberTeamIds,
+            viewerOrgId,
+            allowedOrgIds,
+            tenancyEnabled,
         },
     };
 }
-function canReadJourneyByTeam(access, teamId) {
+function canReadJourneyByTeam(access, teamId, orgId = null) {
+    const orgAllowed = !access.tenancyEnabled || !orgId || access.allowedOrgIds.has(orgId);
+    if (teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId)))
+        return true;
+    if (!orgAllowed)
+        return false;
     if (!teamId)
         return access.canGlobalView;
     if (access.canGlobalView)
         return true;
-    if (access.leaderTeamIds.has(teamId))
-        return true;
-    if (access.memberTeamIds.has(teamId))
-        return true;
     return false;
 }
-function canWriteJourneyByTeam(access, teamId) {
+function canWriteJourneyByTeam(access, teamId, orgId = null) {
     if (access.sponsorReadOnly)
+        return false;
+    if (teamId && access.leaderTeamIds.has(teamId))
+        return true;
+    const orgAllowed = !access.tenancyEnabled || !orgId || access.allowedOrgIds.has(orgId);
+    if (!orgAllowed)
         return false;
     if (access.canAuthorGlobal)
         return true;
     if (!teamId)
         return false;
-    return access.leaderTeamIds.has(teamId);
+    return false;
 }
 async function canBroadcastToChannel(channelId, userId) {
     if (!dataClient) {

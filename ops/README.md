@@ -7,6 +7,8 @@
 - VS Code
 - Replit
 - Lovable
+- cloudflared
+- Expo Go (for physical-device dev)
 
 ## How We Work
 - Builders implement features.
@@ -56,6 +58,51 @@ Interpretation quick guide:
 - If launch-gate fails before deploy, do not deploy and triage failing suite first.
 - If smoke test fails after deploy, rollback to previous backend release artifact.
 - Re-run `npm run test:release` in staging before re-attempt.
+
+## Physical Device Dev (El Guapo)
+
+Use `/Users/jon/compass-kpi/dev-phone.sh` for physical-device startup on the connected iPhone `El Guapo`.
+
+This workflow is specifically for the phone. It is not the preferred path for iOS simulators.
+
+Run:
+```bash
+cd /Users/jon/compass-kpi
+./dev-phone.sh
+```
+
+What it guarantees:
+1. Cleans up stale listeners on backend `4000` and Expo `8081`
+2. Starts backend and waits for `/health`
+3. Starts a fresh `cloudflared` quick tunnel for backend traffic
+4. Captures the new tunnel URL automatically
+5. Rewrites `/Users/jon/compass-kpi/app/.env` with the current `EXPO_PUBLIC_API_URL`
+6. Starts Expo in LAN mode with cache clear
+7. Pushes Expo Go to the physical device `El Guapo`
+8. Cleans up child processes on `Ctrl-C`
+
+Why this exists:
+- `cloudflared` quick tunnels get a new random hostname every restart
+- stale `EXPO_PUBLIC_API_URL` values in `app/.env` break phone startup
+- manually juggling backend tunnel URLs is the main cause of broken device sessions
+
+Current script assumptions:
+- device name: `El Guapo`
+- Expo LAN IP: `192.168.86.32`
+- Expo port: `8081`
+- backend port: `4000`
+
+If those change, update `/Users/jon/compass-kpi/dev-phone.sh`.
+
+Useful logs:
+- `/tmp/compass-backend.log`
+- `/tmp/compass-tunnel.log`
+- `/tmp/compass-expo.log`
+
+Do not:
+- manually hard-code a `trycloudflare.com` URL in `app/.env`
+- use this script as the simulator quick-start path
+- leave a stale `dev-phone.sh` terminal running and then start a second one on top of it
 
 ## SQL Migration Method (Codex Standard)
 - Use Node + `pg` against `SUPABASE_DATABASE_URL` (do not assume `DATABASE_URL` exists in this repo).

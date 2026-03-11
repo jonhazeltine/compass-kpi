@@ -74,9 +74,20 @@ module.exports = ({ config }) => ({
   ...config,
   name: variantProfile.appName,
   slug: 'compass-kpi',
-  plugins: Array.from(
-    new Set([...(config.plugins || []), 'expo-audio', 'expo-secure-store', 'expo-image-picker', 'expo-video', '@react-native-community/datetimepicker'])
-  ),
+  plugins: [
+    ...(config.plugins || []).filter((p) => {
+      const name = Array.isArray(p) ? p[0] : p;
+      return !['expo-audio', 'expo-secure-store', 'expo-image-picker', 'expo-video', '@react-native-community/datetimepicker'].includes(name);
+    }),
+    'expo-audio',
+    'expo-secure-store',
+    ['expo-image-picker', {
+      photosPermission: 'Allow $(PRODUCT_NAME) to access your photo library to attach photos and videos.',
+      cameraPermission: 'Allow $(PRODUCT_NAME) to access your camera for live broadcasting.',
+    }],
+    'expo-video',
+    '@react-native-community/datetimepicker',
+  ],
   ios: {
     ...(config.ios || {}),
     bundleIdentifier: variantProfile.iosBundle,

@@ -72,6 +72,9 @@ export interface ThreadComposerProps {
   bottomInset?: number;
   keyboardVisible?: boolean;
   onLayout?: (height: number) => void;
+
+  /** When true, hides the + action menu (media, task, live). Text-only mode. */
+  textOnly?: boolean;
 }
 
 /* ================================================================
@@ -85,6 +88,7 @@ export default function ThreadComposer(props: ThreadComposerProps) {
     gateBlocksActions, onPickMediaFile, onStartLiveSession,
     onInsertTask, canUseTaskCommands = false,
     bottomInset = 0, keyboardVisible = false, onLayout,
+    textOnly = false,
   } = props;
 
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -108,28 +112,66 @@ export default function ThreadComposer(props: ThreadComposerProps) {
       fileInputRef.current.click();
       return;
     }
-    void (async () => {
-      const file = await pickers.pickPhotoVideo();
-      if (file && onPickMediaFile) onPickMediaFile(file);
-    })();
+    // Small delay on iOS to let sheet dismiss animation finish before presenting native picker
+    const launch = () => {
+      void (async () => {
+        try {
+          const file = await pickers.pickPhotoVideo();
+          if (file && onPickMediaFile) onPickMediaFile(file);
+        } catch (err) {
+          Alert.alert('Error', 'Could not open photo library. Please try again.');
+        }
+      })();
+    };
+    if (Platform.OS === 'ios') {
+      setTimeout(launch, 400);
+    } else {
+      launch();
+    }
   }, [closeSheet, pickers, onPickMediaFile]);
 
   /** Camera — launch capture directly */
-  const handleCamera = useCallback(async () => {
+  const handleCamera = useCallback(() => {
     closeSheet();
     if (Platform.OS === 'web') {
       Alert.alert('Not available', 'Camera capture is not available in this web preview.');
       return;
     }
-    const file = await pickers.launchCamera();
-    if (file && onPickMediaFile) onPickMediaFile(file);
+    const launch = () => {
+      void (async () => {
+        try {
+          const file = await pickers.launchCamera();
+          if (file && onPickMediaFile) onPickMediaFile(file);
+        } catch (err) {
+          Alert.alert('Error', 'Could not open camera. Please try again.');
+        }
+      })();
+    };
+    if (Platform.OS === 'ios') {
+      setTimeout(launch, 400);
+    } else {
+      launch();
+    }
   }, [closeSheet, pickers, onPickMediaFile]);
 
   /** File — launch document picker */
-  const handleFile = useCallback(async () => {
+  const handleFile = useCallback(() => {
     closeSheet();
-    const file = await pickers.pickDocument();
-    if (file && onPickMediaFile) onPickMediaFile(file);
+    const launch = () => {
+      void (async () => {
+        try {
+          const file = await pickers.pickDocument();
+          if (file && onPickMediaFile) onPickMediaFile(file);
+        } catch (err) {
+          Alert.alert('Error', 'Could not open file picker. Please try again.');
+        }
+      })();
+    };
+    if (Platform.OS === 'ios') {
+      setTimeout(launch, 400);
+    } else {
+      launch();
+    }
   }, [closeSheet, pickers, onPickMediaFile]);
 
   /** Go Live — triggers live session creation via parent callback */
@@ -210,7 +252,7 @@ export default function ThreadComposer(props: ThreadComposerProps) {
         );
       })() : null}
 
-      {/* ── Vertical action menu ── */}
+      {/* ── Vertical action menu (in-flow, sits directly above input row) ── */}
       {sheetOpen ? (
         <View style={st.actionMenu}>
           <Pressable
@@ -387,21 +429,19 @@ const st = StyleSheet.create({
     fontWeight: '700',
   },
 
-  /* ── floating popover menu ── */
+  /* ── action menu (in-flow, sits above input row) ── */
   actionMenu: {
-    position: 'absolute',
-    bottom: 52,
-    left: 8,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.97)',
     borderRadius: 14,
     paddingVertical: 6,
     paddingHorizontal: 4,
+    marginBottom: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 10,
     elevation: 8,
-    zIndex: 10,
   },
   actionMenuItem: {
     flexDirection: 'row',

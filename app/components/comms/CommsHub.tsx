@@ -9,7 +9,7 @@
  * All data fetching / state lives in the parent (KPIDashboardScreen).
  * This component is purely presentational + handles local UI state.
  */
-import React, { useRef, useEffect, useMemo, useState } from 'react';
+import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import {
   ActivityIndicator,
@@ -42,6 +42,7 @@ import {
   type MediaAttachment,
   type ThreadSendPayload,
 } from './messageLinkedTasks';
+import BroadcastTargetHeader, { type BroadcastTargetHeaderProps, type TargetOption } from './BroadcastComposer';
 import LiveThreadCard from './LiveThreadCard';
 import ThreadComposer from './ThreadComposer';
 import type { PickedFile } from './useThreadPickers';
@@ -191,7 +192,7 @@ export interface CommsHubProps {
   replayPublished?: boolean;
   composerBottomInset?: number;
 
-  /* ── broadcast composer ─── */
+  /* ── broadcast composer (legacy channel-scoped) ─── */
   broadcastDraft: string;
   onChangeBroadcastDraft: (text: string) => void;
   broadcastTargetScope: 'team' | 'cohort' | 'channel' | 'segment';
@@ -202,6 +203,15 @@ export interface CommsHubProps {
   broadcastSuccessNote: string | null;
   broadcastAudienceLabel?: string | null;
   onSendBroadcast: () => void;
+
+  /* ── broadcast campaign (target header for DM fan-out) ─── */
+  broadcastCampaignProps?: BroadcastTargetHeaderProps | null;
+  /** Callback when broadcast send is triggered via ThreadComposer */
+  onSendBroadcastCampaign?: () => void;
+  broadcastCampaignSubmitting?: boolean;
+  /** Task draft for broadcast mode — set by broadcast task composer, consumed by campaign send */
+  broadcastTaskDraft?: { task_type: 'personal_task' | 'assigned_task' | 'team_task'; title: string; description?: string | null; due_at?: string | null } | null;
+  onSetBroadcastTaskDraft?: (draft: { task_type: 'personal_task' | 'assigned_task' | 'team_task'; title: string; description?: string | null; due_at?: string | null } | null) => void;
 
   /* ── package gate ─── */
   gateBlocksActions: boolean;
@@ -268,7 +278,11 @@ export default function CommsHub(props: CommsHubProps) {
       <View style={st.sceneViewport}>
         {screen !== 'channel_thread' ? (
           showBroadcastPanel ? (
-            <BroadcastCompose {...props} />
+            props.broadcastCampaignProps ? (
+              <BroadcastCampaignPanel {...props} />
+            ) : (
+              <BroadcastComposeLegacy {...props} />
+            )
           ) : (
             <ChannelList {...props} />
           )
@@ -1557,10 +1571,229 @@ function InlineVideoAttachment(props: {
 }
 
 /* ================================================================
-   BROADCAST COMPOSE — first-class messaging tool
+   BROADCAST CAMPAIGN PANEL — target header + ThreadComposer
+   Same UX as normal thread, but message goes to campaign fan-out.
    ================================================================ */
 
-function BroadcastCompose(props: CommsHubProps) {
+function BroadcastCampaignPanel(props: CommsHubProps) {
+  const {
+    broadcastCampaignProps,
+    roleCanBroadcast,
+    gateBlocksActions,
+    onSendBroadcastCampaign,
+    broadcastCampaignSubmitting,
+    messageDraft,
+    onChangeMessageDraft,
+    pendingMediaUpload,
+    onSendLatestMediaAttachment,
+    onCancelMediaUpload,
+    onPickMediaFile,
+    onGoLive,
+    composerBottomInset = 0,
+    personaVariant,
+    broadcastTaskDraft,
+    onSetBroadcastTaskDraft,
+  } = props;
+
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [taskComposerOpen, setTaskComposerOpen] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
+  const [taskDueAt, setTaskDueAt] = useState('');
+  const [taskDueDateValue, setTaskDueDateValue] = useState<Date | null>(null);
+  const [taskDatePickerOpen, setTaskDatePickerOpen] = useState(false);
+  const canUseTaskCommands = personaVariant !== 'sponsor';
+  const hasTargets = (broadcastCampaignProps?.selectedTargets.length ?? 0) > 0;
+
+  const resetBroadcastTaskComposer = useCallback(() => {
+    setTaskComposerOpen(false);
+    setTaskTitle('');
+    setTaskDescription('');
+    setTaskDueAt('');
+    setTaskDueDateValue(null);
+    setTaskDatePickerOpen(false);
+  }, []);
+
+  const handleBroadcastTaskDateChange = useCallback((_event: unknown, date?: Date) => {
+    if (date) {
+      setTaskDueDateValue(date);
+      setTaskDueAt(date.toISOString().split('T')[0]);
+      if (Platform.OS !== 'ios') setTaskDatePickerOpen(false);
+    }
+  }, []);
+
+  const handleSendBroadcastTask = useCallback(() => {
+    const trimmedTitle = taskTitle.trim();
+    if (!trimmedTitle || !onSetBroadcastTaskDraft) return;
+    onSetBroadcastTaskDraft({
+      task_type: 'assigned_task',
+      title: trimmedTitle,
+      description: taskDescription.trim() || null,
+      due_at: taskDueAt.trim() || null,
+    });
+    resetBroadcastTaskComposer();
+    // Auto-trigger send after setting the draft
+    setTimeout(() => onSendBroadcastCampaign?.(), 50);
+  }, [taskTitle, taskDescription, taskDueAt, onSetBroadcastTaskDraft, onSendBroadcastCampaign, resetBroadcastTaskComposer]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardVisible(true);
+      setKeyboardHeight(Math.max(0, event.endCoordinates?.height ?? 0));
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  if (!roleCanBroadcast) {
+    return (
+      <View style={st.emptyState}>
+        <Text style={st.emptyIcon}>🔒</Text>
+        <Text style={st.emptyTitle}>Broadcasts restricted</Text>
+        <Text style={st.emptySub}>Your current role doesn't have permission to send broadcasts.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      {/* Target selector header */}
+      {broadcastCampaignProps ? (
+        <BroadcastTargetHeader {...broadcastCampaignProps} />
+      ) : null}
+
+      {/* Empty state hint when no targets selected */}
+      {!hasTargets ? (
+        <View style={st.broadcastEmptyHint}>
+          <Text style={st.broadcastEmptyHintText}>
+            Select an audience above, then compose your message below.
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Pending broadcast task draft badge */}
+      {broadcastTaskDraft ? (
+        <View style={st.broadcastTaskBadge}>
+          <Text style={st.broadcastTaskBadgeText}>
+            Task queued: {broadcastTaskDraft.title}
+          </Text>
+          <Pressable onPress={() => onSetBroadcastTaskDraft?.(null)} hitSlop={8}>
+            <Text style={st.broadcastTaskBadgeClear}>✕</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {/* Spacer to push composer to bottom */}
+      <View style={{ flex: 1 }} />
+
+      {/* Docked at bottom — task composer + ThreadComposer shift together with keyboard */}
+      <View
+        style={[
+          st.threadDock,
+          keyboardVisible && Platform.OS === 'ios' ? { bottom: Math.max(0, keyboardHeight) } : null,
+        ]}
+      >
+        {/* Broadcast task composer — shown above the ThreadComposer inside the dock */}
+        {taskComposerOpen ? (
+          <View style={[st.taskComposerCard, { marginBottom: 0 }]}>
+            <View style={st.taskComposerHeader}>
+              <Text style={st.taskComposerTitle}>Broadcast Task</Text>
+              <Pressable onPress={resetBroadcastTaskComposer} hitSlop={8}>
+                <Text style={st.taskComposerClose}>✕</Text>
+              </Pressable>
+            </View>
+            <TextInput
+              value={taskTitle}
+              onChangeText={setTaskTitle}
+              placeholder="Task name"
+              placeholderTextColor={C.textTertiary}
+              style={st.taskComposerInput}
+              autoFocus
+            />
+            <TextInput
+              value={taskDescription}
+              onChangeText={setTaskDescription}
+              placeholder="Description (optional)"
+              placeholderTextColor={C.textTertiary}
+              multiline
+              style={[st.taskComposerInput, st.taskComposerTextarea]}
+            />
+            <Text style={st.taskComposerMeta}>Each recipient will receive an individual task assignment.</Text>
+            <Pressable style={st.taskComposerDateBtn} onPress={() => setTaskDatePickerOpen((prev) => !prev)}>
+              <Text style={taskDueAt ? st.taskComposerDateValue : st.taskComposerDatePlaceholder}>
+                {taskDueAt || 'Choose due date'}
+              </Text>
+            </Pressable>
+            {taskDatePickerOpen ? (
+              <View style={st.taskComposerDatePickerWrap}>
+                <DateTimePicker
+                  value={taskDueDateValue ?? new Date()}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                  minimumDate={new Date()}
+                  onChange={handleBroadcastTaskDateChange}
+                />
+                {taskDueAt ? (
+                  <Pressable
+                    style={st.taskComposerDateClearBtn}
+                    onPress={() => {
+                      setTaskDueAt('');
+                      setTaskDueDateValue(null);
+                      if (Platform.OS !== 'ios') setTaskDatePickerOpen(false);
+                    }}
+                  >
+                    <Text style={st.taskComposerDateClearBtnText}>Clear date</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+            <Pressable
+              style={[st.taskComposerSendBtn, (!taskTitle.trim() || !hasTargets || broadcastCampaignSubmitting) && st.taskComposerSendBtnDisabled]}
+              disabled={!taskTitle.trim() || !hasTargets || broadcastCampaignSubmitting === true}
+              onPress={handleSendBroadcastTask}
+            >
+              <Text style={st.taskComposerSendBtnText}>{broadcastCampaignSubmitting ? 'Sending…' : 'Send Task to All'}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        <ThreadComposer
+          messageDraft={messageDraft}
+          onChangeMessageDraft={onChangeMessageDraft}
+          onSend={() => onSendBroadcastCampaign?.()}
+          sendDisabled={!hasTargets || broadcastCampaignSubmitting === true}
+          messageSubmitting={broadcastCampaignSubmitting ?? false}
+          pendingUpload={pendingMediaUpload ?? null}
+          onSendUploadedMedia={() => onSendBroadcastCampaign?.()}
+          onCancelUpload={onCancelMediaUpload}
+          gateBlocksActions={gateBlocksActions}
+          onPickMediaFile={onPickMediaFile}
+          onStartLiveSession={onGoLive}
+          onInsertTask={() => {
+            setTaskComposerOpen(true);
+          }}
+          canUseTaskCommands={canUseTaskCommands}
+          bottomInset={composerBottomInset}
+          keyboardVisible={keyboardVisible}
+        />
+      </View>
+    </View>
+  );
+}
+
+/* ================================================================
+   BROADCAST COMPOSE LEGACY — first-class messaging tool
+   ================================================================ */
+
+function BroadcastComposeLegacy(props: CommsHubProps) {
   const {
     roleCanBroadcast, gateBlocksActions,
     broadcastDraft, onChangeBroadcastDraft,
@@ -2695,7 +2928,40 @@ const st = StyleSheet.create({
     paddingVertical: 10,
   },
 
-  /* ─── broadcast compose ─── */
+  /* ─── broadcast campaign panel ─── */
+  broadcastEmptyHint: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  broadcastEmptyHintText: {
+    fontSize: 14,
+    color: C.textTertiary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  broadcastTaskBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: C.brandLight,
+    borderRadius: 8,
+  },
+  broadcastTaskBadgeText: {
+    flex: 1,
+    fontSize: 13,
+    color: C.brand,
+    fontWeight: '600',
+  },
+  broadcastTaskBadgeClear: {
+    fontSize: 14,
+    color: C.brand,
+    paddingLeft: 8,
+  },
+
+  /* ─── broadcast compose legacy ─── */
   broadcastScroll: {
     flex: 1,
   },

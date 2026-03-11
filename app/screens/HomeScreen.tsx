@@ -16,6 +16,7 @@ type DashboardRouteTarget = {
   screen?: string;
   target_id?: string;
 } | null;
+const SELF_PROFILE_DRAWER_ID = '__self_profile__';
 
 export default function HomeScreen() {
   const { signOut } = useAuth();
@@ -56,7 +57,15 @@ export default function HomeScreen() {
       <AvatarMenu
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
-        onSelectProfile={() => routeTo('profile')}
+        onSelectProfile={() => {
+          setMenuVisible(false);
+          setActiveRoute('dashboard');
+          setDashboardRouteTarget({
+            tab: 'team',
+            screen: 'profile_drawer',
+            target_id: SELF_PROFILE_DRAWER_ID,
+          });
+        }}
         onSelectGoals={() => routeTo('goals')}
         onSelectSettings={() => routeTo('settings')}
         onSelectInvite={() => routeTo('invite')}

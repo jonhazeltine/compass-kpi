@@ -25,11 +25,12 @@ import type { LiveProviderMode } from '../../lib/liveSessionTypes';
 
 // ── Conditionally import native livestream view ──────────────────────
 // On web or when the native module isn't available, we fall back to mock.
+// The module name is split to prevent Metro web from statically resolving it.
 let ApiVideoLiveStreamView: React.ComponentType<any> | null = null;
 try {
   if (Platform.OS !== 'web') {
-    ApiVideoLiveStreamView =
-      require('@api.video/react-native-livestream').ApiVideoLiveStreamView;
+    const pkg = '@api.video/react-native-' + 'livestream';
+    ApiVideoLiveStreamView = require(pkg).ApiVideoLiveStreamView;
   }
 } catch {
   // Native module not linked — fallback to mock UI
