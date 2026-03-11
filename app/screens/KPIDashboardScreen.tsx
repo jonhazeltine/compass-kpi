@@ -55,6 +55,13 @@ import {
   setFeedbackConfig,
   triggerHapticAsync,
 } from '../lib/feedback';
+import {
+  previewCampaignAudience,
+  sendBroadcastCampaign,
+  type BroadcastTarget,
+  type BroadcastTaskDraft,
+} from '../lib/broadcastCampaignApi';
+import type { TargetOption } from '../components/comms/BroadcastComposer';
 import { API_URL, DEV_TOOLS_ENABLED } from '../lib/supabase';
 import { useLiveSession } from '../hooks/useLiveSession';
 import LiveSetupSheet from '../components/comms/LiveSetupSheet';
@@ -2305,14 +2312,14 @@ const bottomTabAccessibilityLabel: Record<BottomTab, string> = {
   challenge: 'Challenges',
   coach: 'Coach',
   logs: 'Reports',
-  home: 'LOG',
+  home: 'Log',
   team: 'Team',
   comms: 'Messages',
 };
 const bottomTabDisplayLabel: Record<BottomTab, string> = {
   comms: 'Messages',
   team: 'Team',
-  home: 'LOG',
+  home: 'Log',
   logs: 'Reports',
   challenge: 'Challenges',
   coach: 'Coach',
@@ -2551,6 +2558,16 @@ export default function KPIDashboardScreen({
   const [broadcastSubmitting, setBroadcastSubmitting] = useState(false);
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
   const [broadcastSuccessNote, setBroadcastSuccessNote] = useState<string | null>(null);
+
+  // ── Broadcast campaign state (multi-target DM fan-out) ──
+  const [campaignTargets, setCampaignTargets] = useState<BroadcastTarget[]>([]);
+  const [campaignAudienceCount, setCampaignAudienceCount] = useState<number | null>(null);
+  const [campaignAudienceLoading, setCampaignAudienceLoading] = useState(false);
+  const [campaignSubmitting, setCampaignSubmitting] = useState(false);
+  const [campaignError, setCampaignError] = useState<string | null>(null);
+  const [campaignSuccessNote, setCampaignSuccessNote] = useState<string | null>(null);
+  const [broadcastTaskDraft, setBroadcastTaskDraft] = useState<BroadcastTaskDraft | null>(null);
+  const campaignAudienceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mediaUploadBusy, setMediaUploadBusy] = useState(false);
   const [mediaUploadStatus, setMediaUploadStatus] = useState<string | null>(null);
   const [latestMediaId, setLatestMediaId] = useState<string | null>(null);
@@ -2709,7 +2726,7 @@ export default function KPIDashboardScreen({
   const bottomNavLift = Math.max(8, Math.round(insets.bottom * 0.24));
   const bottomNavPadBottom = Math.max(8, Math.round(insets.bottom * 0.45));
   const contentBottomPad = 132 + Math.max(12, insets.bottom);
-  const isCommsThreadMode = coachingShellScreen === 'channel_thread';
+  const isCommsThreadMode = coachingShellScreen === 'channel_thread' || coachingShellScreen === 'coach_broadcast_compose' || commsHubPrimaryTab === 'broadcast';
   const bottomNavAnimation = useBottomNavAnimation({
     isThreadMode: isCommsThreadMode,
     navLayoutHeight: bottomNavLayoutHeight,
@@ -5295,15 +5312,15 @@ export default function KPIDashboardScreen({
   };
 
   const handleOpenProfileFromAvatar = () => {
+    if (onOpenUserMenu) {
+      onOpenUserMenu();
+      return;
+    }
     if (selfProfileDrawerMember) {
       setActiveTab('team');
       setViewMode('log');
       setTeamFlowScreen('dashboard');
       setTeamProfileMemberId(selfProfileDrawerMember.id);
-      return;
-    }
-    if (onOpenUserMenu) {
-      onOpenUserMenu();
       return;
     }
     Alert.alert('Profile unavailable', 'Profile and settings routing is not available in this build context.');
@@ -6337,6 +6354,9 @@ export default function KPIDashboardScreen({
       setActiveTab('team');
       setViewMode('log');
       setTeamFlowScreen('dashboard');
+      if (menuRouteTarget.screen === 'profile_drawer') {
+        setTeamProfileMemberId(String(menuRouteTarget.target_id ?? SELF_PROFILE_DRAWER_ID));
+      }
     } else if (menuRouteTarget.tab === 'coach') {
       setActiveTab('coach');
       setViewMode('log');
@@ -8471,6 +8491,118 @@ export default function KPIDashboardScreen({
     [bootstrapCommsStreamForSurface, broadcastDraft, fetchChannelMessages, fetchChannels, session?.access_token]
   );
 
+  // ── Broadcast campaign: debounced audience preview ──
+  useEffect(() => {
+    if (campaignTargets.length === 0) {
+      setCampaignAudienceCount(null);
+      setCampaignAudienceLoading(false);
+      return;
+    }
+    const token = session?.access_token;
+    if (!token) return;
+    setCampaignAudienceLoading(true);
+    if (campaignAudienceTimer.current) clearTimeout(campaignAudienceTimer.current);
+    campaignAudienceTimer.current = setTimeout(async () => {
+      try {
+        const result = await previewCampaignAudience(campaignTargets, token);
+        if (result.ok) {
+          setCampaignAudienceCount(result.data.total_unique_recipients ?? 0);
+        } else {
+          setCampaignAudienceCount(null);
+        }
+      } catch {
+        setCampaignAudienceCount(null);
+      } finally {
+        setCampaignAudienceLoading(false);
+      }
+    }, 500);
+    return () => {
+      if (campaignAudienceTimer.current) clearTimeout(campaignAudienceTimer.current);
+    };
+  }, [campaignTargets, session?.access_token]);
+
+  // ── Broadcast campaign: send (detects content type from pending media/task/text) ──
+  const executeBroadcastCampaign = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token) { setCampaignError('Sign in is required.'); return; }
+    if (campaignTargets.length === 0) { setCampaignError('Select at least one target audience.'); return; }
+
+    // Determine content type from current state
+    const hasMedia = pendingMediaUpload?.status === 'ready' && pendingMediaUpload.mediaId;
+    const hasTask = broadcastTaskDraft !== null;
+    const hasText = channelMessageDraft.trim().length > 0;
+
+    if (!hasMedia && !hasTask && !hasText) {
+      setCampaignError('Add a message, media, or task to broadcast.');
+      return;
+    }
+
+    setCampaignSubmitting(true);
+    setCampaignError(null);
+    setCampaignSuccessNote(null);
+
+    try {
+      const idempotency_key = `campaign_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+      let payload: Parameters<typeof sendBroadcastCampaign>[0];
+      if (hasTask && broadcastTaskDraft) {
+        payload = {
+          content_type: 'task',
+          targets: campaignTargets,
+          task_draft: broadcastTaskDraft,
+          body: channelMessageDraft.trim() || undefined,
+          idempotency_key,
+        };
+      } else if (hasMedia && pendingMediaUpload?.mediaId) {
+        payload = {
+          content_type: 'video',
+          targets: campaignTargets,
+          media_id: pendingMediaUpload.mediaId,
+          body: channelMessageDraft.trim() || undefined,
+          idempotency_key,
+        };
+      } else {
+        payload = {
+          content_type: 'message',
+          targets: campaignTargets,
+          body: channelMessageDraft.trim(),
+          idempotency_key,
+        };
+      }
+
+      const result = await sendBroadcastCampaign(payload, token);
+
+      if (!result.ok) {
+        setCampaignError(result.data.error ?? `Campaign failed (${result.status})`);
+        return;
+      }
+
+      const c = result.data.campaign;
+      const delivered = c?.delivered ?? 0;
+      const failed = c?.failed ?? 0;
+      const contentLabel = hasTask ? 'Task broadcast' : hasMedia ? 'Media broadcast' : 'Broadcast';
+      const note = failed > 0
+        ? `${contentLabel} sent to ${delivered} recipient${delivered !== 1 ? 's' : ''} (${failed} failed).`
+        : `${contentLabel} sent to ${delivered} recipient${delivered !== 1 ? 's' : ''}.`;
+      setCampaignSuccessNote(note);
+
+      // Clear state after successful send
+      setChannelMessageDraft('');
+      if (hasMedia) {
+        setPendingMediaUpload((prev) => (prev ? { ...prev, sent: true } : null));
+        setLatestMediaId(null);
+        setLatestMediaFileName(null);
+      }
+      if (hasTask) {
+        setBroadcastTaskDraft(null);
+      }
+    } catch (err) {
+      setCampaignError(err instanceof Error ? err.message : 'Campaign failed');
+    } finally {
+      setCampaignSubmitting(false);
+    }
+  }, [session?.access_token, campaignTargets, channelMessageDraft, pendingMediaUpload, broadcastTaskDraft]);
+
   const requestMediaUploadUrl = useCallback(
     async (channelId: string | null) => {
       const token = session?.access_token;
@@ -8617,7 +8749,8 @@ export default function KPIDashboardScreen({
         });
         return;
       }
-      if (!channelId) {
+      const isBroadcastMode = !channelId && commsHubPrimaryTab === 'broadcast';
+      if (!channelId && !isBroadcastMode) {
         setPendingMediaUpload({
           fileName: file.name,
           progress: 0,
@@ -8630,6 +8763,19 @@ export default function KPIDashboardScreen({
         });
         return;
       }
+
+      // Resolve file size — expo-image-picker may return 0; estimate from blob if needed
+      let fileSize = file.size;
+      if (!fileSize || fileSize <= 0) {
+        try {
+          const sizeRes = await fetch(file.uri);
+          const sizeBlob = await sizeRes.blob();
+          fileSize = sizeBlob.size || 1;
+        } catch {
+          fileSize = 1; // fallback — backend just needs > 0
+        }
+      }
+
       setPendingMediaUpload({
         fileName: file.name,
         progress: 0,
@@ -8649,12 +8795,13 @@ export default function KPIDashboardScreen({
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            lesson_id: contextLessonId ?? undefined,
-            journey_id: contextLessonId ? undefined : contextJourneyId ?? undefined,
-            channel_id: channelId,
+            lesson_id: isBroadcastMode ? undefined : (contextLessonId ?? undefined),
+            journey_id: isBroadcastMode ? undefined : (contextLessonId ? undefined : contextJourneyId ?? undefined),
+            channel_id: channelId || undefined,
+            broadcast_context: isBroadcastMode || undefined,
             filename: file.name,
             content_type: file.type || 'application/octet-stream',
-            content_length_bytes: file.size,
+            content_length_bytes: fileSize,
             idempotency_key: idempotencyKey,
           }),
         });
@@ -8715,7 +8862,7 @@ export default function KPIDashboardScreen({
         setMediaUploadBusy(false);
       }
     },
-    [coachingShellContext.selectedJourneyId, coachingShellContext.selectedLessonId, session?.access_token]
+    [commsHubPrimaryTab, coachingShellContext.selectedJourneyId, coachingShellContext.selectedLessonId, session?.access_token]
   );
 
   // ── Live broadcast: auto-transition setup → broadcast when credentials arrive ──
@@ -14510,6 +14657,39 @@ export default function KPIDashboardScreen({
                       }
                       void sendChannelBroadcast(String(targetId));
                     }}
+                    broadcastCampaignProps={{
+                      availableTargets: [
+                        // Channels (non-direct)
+                        ...allChannelApiRows
+                          .filter((row) => String(row.type ?? '').toLowerCase() !== 'direct')
+                          .map((row): TargetOption => ({
+                            scope_type: 'channel',
+                            scope_id: String(row.id),
+                            label: String(row.name ?? row.id),
+                          })),
+                        // Team (if available)
+                        ...(teamRosterTeamId
+                          ? [{ scope_type: 'team' as const, scope_id: teamRosterTeamId, label: teamRosterName ?? 'My Team' }]
+                          : []),
+                        // Cohorts
+                        ...coachCohorts.map((c): TargetOption => ({
+                          scope_type: 'cohort',
+                          scope_id: c.id,
+                          label: c.name,
+                        })),
+                      ],
+                      selectedTargets: campaignTargets,
+                      onChangeTargets: setCampaignTargets,
+                      audienceCount: campaignAudienceCount,
+                      audienceLoading: campaignAudienceLoading,
+                      submitting: campaignSubmitting,
+                      error: campaignError,
+                      successNote: campaignSuccessNote,
+                    }}
+                    onSendBroadcastCampaign={executeBroadcastCampaign}
+                    broadcastCampaignSubmitting={campaignSubmitting}
+                    broadcastTaskDraft={broadcastTaskDraft}
+                    onSetBroadcastTaskDraft={setBroadcastTaskDraft}
                     gateBlocksActions={shellPackageGateBlocksActions}
                     fmtTime={fmtMonthDayTime}
                     fmtDate={fmtShortMonthDay}

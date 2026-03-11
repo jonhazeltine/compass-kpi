@@ -28,6 +28,8 @@ export function getAdminRouteStage(routeKey: AdminRouteKey): AdminRouteStage {
     case 'coachingChannels':
     case 'coachingAudit':
       return 'A3 now';
+    case 'projectionLab':
+      return 'A3 now';
     default:
       return 'A1 now';
   }

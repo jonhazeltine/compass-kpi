@@ -3307,6 +3307,7 @@ function AdminCoachingPortalFoundationPanel({
   const isCoach = effectiveRoles.includes('coach');
   const isTeamLeader = effectiveRoles.includes('team_leader');
   const isSponsor = effectiveRoles.includes('challenge_sponsor');
+  const panelPortalLabel = isCoach ? 'Coach Portal' : isTeamLeader ? 'Team Portal' : isSponsor ? 'Sponsor Portal' : 'Coach Portal';
 
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
 
@@ -3428,7 +3429,7 @@ function AdminCoachingPortalFoundationPanel({
       <View style={styles.panelTopRow}>
         <View style={styles.panelTitleBlock}>
           <Text style={styles.eyebrow}>{surface.path}</Text>
-          <Text style={styles.panelTitle}>Coach Portal • {surface.title}</Text>
+          <Text style={styles.panelTitle}>{panelPortalLabel} • {surface.title}</Text>
         </View>
         <View style={[styles.stagePill, { backgroundColor: '#E8FFF3', borderColor: '#B6E6CB' }]}>
           <Text style={[styles.stagePillText, { color: '#146C43' }]}>Standalone W11</Text>
@@ -3769,6 +3770,10 @@ function AdminMediaLibraryPanel({
   };
 
   const isUploads = routeKey === 'coachingUploads';
+  const mediaPortalLabel = effectiveRoles.includes('coach') ? 'Coach Portal'
+    : effectiveRoles.includes('team_leader') ? 'Team Portal'
+    : effectiveRoles.includes('challenge_sponsor') ? 'Sponsor Portal'
+    : 'Coach Portal';
 
   return (
     <View style={styles.panel}>
@@ -3776,7 +3781,7 @@ function AdminMediaLibraryPanel({
       <View style={styles.panelTopRow}>
         <View style={styles.panelTitleBlock}>
           <Text style={styles.eyebrow}>{isUploads ? '/coach/uploads' : '/coach/library'}</Text>
-          <Text style={styles.panelTitle}>Coach Portal • {isUploads ? 'Content Uploads' : 'Content Library'}</Text>
+          <Text style={styles.panelTitle}>{mediaPortalLabel} • {isUploads ? 'Content Uploads' : 'Content Library'}</Text>
         </View>
         <View style={[styles.stagePill, { backgroundColor: '#E8FFF3', borderColor: '#B6E6CB' }]}>
           <Text style={[styles.stagePillText, { color: '#146C43' }]}>Live</Text>
@@ -5127,10 +5132,10 @@ export default function AdminShellScreen() {
                 }
               }}
               accessibilityRole="button"
-              accessibilityLabel={showCoachPortalExperience ? 'Switch to admin panel' : 'Switch to coach portal'}
+              accessibilityLabel={showCoachPortalExperience ? 'Switch to admin panel' : `Switch to ${portalTitle.toLowerCase()}`}
             >
               <Text style={styles.accountMenuSwitchSurfaceText}>
-                {showCoachPortalExperience ? 'Switch to Admin Panel' : 'Switch to Coach Portal'}
+                {showCoachPortalExperience ? 'Switch to Admin Panel' : `Switch to ${portalTitle}`}
               </Text>
             </TouchableOpacity>
           ) : null}
@@ -5769,6 +5774,8 @@ export default function AdminShellScreen() {
     { label: 'Manual authz acceptance pass (admin vs non-admin)', status: 'done' },
   ] as const;
   const coachScopeLabel = hasCoachRole ? 'Coach' : hasTeamLeaderRole ? 'Team Leader' : hasSponsorRole ? 'Sponsor' : 'Scoped';
+  const portalTitle = hasCoachRole ? 'Coach Portal' : hasTeamLeaderRole ? 'Team Portal' : hasSponsorRole ? 'Sponsor Portal' : 'Coach Portal';
+  const portalEyebrow = hasCoachRole ? 'Compass Coach' : hasTeamLeaderRole ? 'Compass Team Leader' : hasSponsorRole ? 'Compass Sponsor' : 'Compass Coach';
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -5839,7 +5846,7 @@ export default function AdminShellScreen() {
                   accessibilityRole="button"
                   accessibilityState={{ selected: COACH_PORTAL_TRANSITION_ROUTE_KEYS.includes(activeRoute.key as CoachingPortalSurfaceKey) }}
                 >
-                  <Text style={[styles.navLabel, COACH_PORTAL_TRANSITION_ROUTE_KEYS.includes(activeRoute.key as CoachingPortalSurfaceKey) && styles.navLabelSelected]}>Coach Portal</Text>
+                  <Text style={[styles.navLabel, COACH_PORTAL_TRANSITION_ROUTE_KEYS.includes(activeRoute.key as CoachingPortalSurfaceKey) && styles.navLabelSelected]}>{portalTitle}</Text>
                 </Pressable>
               ) : null}
             </ScrollView>
@@ -5859,8 +5866,8 @@ export default function AdminShellScreen() {
             {showCoachPortalExperience ? (
               <View style={styles.coachStandaloneHeader}>
                 <View style={styles.coachStandaloneHeaderCopy}>
-                  <Text style={styles.coachStandaloneEyebrow}>Compass Coach</Text>
-                  <Text style={styles.coachStandaloneTitle}>Coach Portal</Text>
+                  <Text style={styles.coachStandaloneEyebrow}>{portalEyebrow}</Text>
+                  <Text style={styles.coachStandaloneTitle}>{portalTitle}</Text>
                   <Text style={styles.coachStandaloneSubtitle}>
                     Publish content, manage journeys, coordinate cohorts, and run channels from a dedicated coach workspace.
                   </Text>
@@ -5932,7 +5939,11 @@ export default function AdminShellScreen() {
             {!showCoachPortalExperience && activeRoute.key === 'overview' ? (
               <View style={styles.welcomeCard}>
                 <Text style={styles.welcomeTitle}>Admin Dashboard</Text>
-                <Text style={styles.welcomeSubtitle}>Select a section from the sidebar to get started.</Text>
+                <Text style={styles.welcomeSubtitle}>
+                  {effectiveHasAdminAccess
+                    ? `Signed in as ${rolesLabel}. ${ADMIN_ROUTES.filter((r) => canAccessAdminRoute(effectiveRoles, r)).length} sections available.`
+                    : 'Select a section from the sidebar to get started.'}
+                </Text>
               </View>
             ) : null}
 

@@ -76,13 +76,6 @@ function formatShortDate(value: string | null | undefined) {
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function formatTimestamp(value: string | null | undefined) {
-  if (!value) return "Recently";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "Recently";
-  return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
 function replaceAssignment(rows: ProfileAssignment[], next: ProfileAssignment | null) {
   if (!next) return rows;
   const existingIndex = rows.findIndex((row) => row.id === next.id && row.source === next.source);
@@ -108,6 +101,22 @@ function tabLabel(tab: DrawerTab) {
   if (tab === "tasks") return "Tasks";
   if (tab === "goals") return "Goals";
   return "Completed";
+}
+
+function assignmentTypeLabel(type: string) {
+  if (type === "coach_task") return "Coach Task";
+  if (type.includes("task")) return "Task";
+  if (type === "coach_goal") return "Coach Goal";
+  if (type === "team_leader_goal") return "Team Goal";
+  if (type === "sponsor_goal") return "Sponsor Goal";
+  if (type.includes("goal")) return "Goal";
+  return "Item";
+}
+
+function assignmentStatusLabel(status: string, isCompleted: boolean) {
+  if (isCompleted) return "Completed";
+  if (status === "in_progress") return "In Progress";
+  return "Open";
 }
 
 export default function UserProfileDrawer({
@@ -137,13 +146,14 @@ export default function UserProfileDrawer({
   const [goalDueAt, setGoalDueAt] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [formBusy, setFormBusy] = useState(false);
-  const [identityEditorOpen, setIdentityEditorOpen] = useState(false);
+  const [identityModalVisible, setIdentityModalVisible] = useState(false);
   const [identityDraftName, setIdentityDraftName] = useState("");
   const [identityDraftAvatarUrl, setIdentityDraftAvatarUrl] = useState("");
   const [identityDraftAvatarPresetId, setIdentityDraftAvatarPresetId] = useState(AVATAR_PRESETS[0].id);
   const [identityBusy, setIdentityBusy] = useState(false);
   const [identityUploading, setIdentityUploading] = useState(false);
   const [identityError, setIdentityError] = useState<string | null>(null);
+  const [actionMenuVisible, setActionMenuVisible] = useState(false);
 
   const targetUserId = member?.userId ?? null;
   const canLoad = visible && Boolean(accessToken) && Boolean(targetUserId);
@@ -178,8 +188,9 @@ export default function UserProfileDrawer({
       setGoalModalVisible(false);
       setFormError(null);
       setActionBusyId(null);
-      setIdentityEditorOpen(false);
+      setIdentityModalVisible(false);
       setIdentityError(null);
+      setActionMenuVisible(false);
     }
   }, [visible]);
 
@@ -296,12 +307,6 @@ export default function UserProfileDrawer({
     [accessToken, targetUserId]
   );
 
-  const summaryPills = [
-    { icon: "clipboard-text-outline", label: `${counts.tasks} open tasks` },
-    { icon: "target", label: `${counts.goals} active goals` },
-    { icon: "check-decagram-outline", label: `${counts.completed} completed` },
-  ];
-
   const saveIdentity = useCallback(async () => {
     if (!accessToken || !targetUserId || !isSelfProfile) return;
     if (!identityDraftName.trim()) {
@@ -323,7 +328,7 @@ export default function UserProfileDrawer({
         avatarPresetId: identityDraftAvatarPresetId,
         avatarTone: identityAvatarTone,
       });
-      setIdentityEditorOpen(false);
+      setIdentityModalVisible(false);
     } catch (err) {
       setIdentityError(err instanceof Error ? err.message : "Profile save failed.");
     } finally {
@@ -355,13 +360,23 @@ export default function UserProfileDrawer({
     }
   }, [accessToken, isSelfProfile]);
 
+  // Overflow menu has actions beyond Message
+  const hasOverflowActions = isSelfProfile || capabilities?.can_create_task || capabilities?.can_create_goal || (canRemoveMember && onRemoveMember);
+
+  const contextLine = [
+    member ? `${member.cohorts.length} cohorts` : null,
+    member ? `${member.journeys.length} journeys` : null,
+    member ? `${member.kpiGoals.length} KPI goals` : null,
+  ].filter(Boolean).join(" · ");
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+        <Pressable style={styles.sheet} onPress={() => setActionMenuVisible(false)}>
           <View style={styles.handle} />
           {member ? (
             <>
+              {/* ── Header ── */}
               <View style={styles.header}>
                 <View style={styles.identityRow}>
                   <TouchableOpacity
@@ -370,7 +385,7 @@ export default function UserProfileDrawer({
                     style={[styles.avatarWrap, { backgroundColor: isSelfProfile ? identityAvatarTone : member.avatarTone }]}
                     onPress={() => {
                       if (!isSelfProfile) return;
-                      setIdentityEditorOpen((prev) => !prev);
+                      setIdentityModalVisible(true);
                     }}
                   >
                     {(isSelfProfile ? identityDraftAvatarUrl : member.avatarUrl) ? (
@@ -389,167 +404,95 @@ export default function UserProfileDrawer({
                   </TouchableOpacity>
                   <View style={styles.identityCopy}>
                     <Text style={styles.name}>{isSelfProfile ? identityDraftName || member.name : member.name}</Text>
-                    <View style={styles.identityMetaRow}>
-                      <View style={styles.roleChip}>
-                        <Text style={styles.roleChipText}>{member.roleLabel}</Text>
-                      </View>
-                      {isSelfProfile ? (
-                        <TouchableOpacity
-                          style={styles.editIdentityChip}
-                          onPress={() => setIdentityEditorOpen((prev) => !prev)}
-                        >
-                          <MaterialCommunityIcons name="pencil-outline" size={13} color="#324056" />
-                          <Text style={styles.editIdentityChipText}>{identityEditorOpen ? "Done" : "Edit"}</Text>
-                        </TouchableOpacity>
-                      ) : null}
+                    <View style={styles.roleChip}>
+                      <Text style={styles.roleChipText}>{member.roleLabel}</Text>
                     </View>
-                    <Text style={styles.relationshipText}>
-                      {isSelfProfile ? "Your operational profile" : "Profile tasks, goals, and completions"}
-                    </Text>
                   </View>
                   <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
                     <MaterialCommunityIcons name="close" size={20} color="#324056" />
                   </TouchableOpacity>
                 </View>
 
-                {isSelfProfile && identityEditorOpen ? (
-                  <View style={styles.identityEditorCard}>
-                    <View style={styles.identityEditorHeader}>
-                      <Text style={styles.identityEditorTitle}>Identity</Text>
-                      <Text style={styles.identityEditorSub}>Update your avatar and theme without leaving the operational drawer.</Text>
-                    </View>
-                    <Text style={styles.fieldLabel}>Display Name</Text>
-                    <TextInput
-                      value={identityDraftName}
-                      onChangeText={setIdentityDraftName}
-                      style={styles.fieldInput}
-                      placeholder="Your full name"
-                    />
-                    <TouchableOpacity
-                      style={[styles.secondaryActionBtn, identityUploading ? styles.dialogPrimaryBtnDisabled : null]}
-                      onPress={() => void handleUploadAvatar()}
-                      disabled={identityUploading}
-                    >
-                      <MaterialCommunityIcons name="camera-outline" size={16} color="#2158d5" />
-                      <Text style={styles.secondaryActionText}>{identityUploading ? "Uploading…" : "Change Photo"}</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.fieldLabel}>Theme</Text>
-                    <View style={styles.presetGrid}>
-                      {AVATAR_PRESETS.map((preset) => {
-                        const isActive = identityDraftAvatarPresetId === preset.id;
-                        return (
-                          <TouchableOpacity
-                            key={preset.id}
-                            style={[styles.presetCard, isActive ? styles.presetCardActive : null]}
-                            onPress={() => setIdentityDraftAvatarPresetId(preset.id)}
-                          >
-                            <View style={[styles.presetSwatch, { backgroundColor: preset.tone }]}>
-                              <Text style={styles.presetSwatchText}>{initialsFromName(identityDraftName || member.name)}</Text>
-                            </View>
-                            <Text style={[styles.presetCardText, isActive ? styles.presetCardTextActive : null]}>
-                              {preset.label}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                    {identityError ? <Text style={styles.formError}>{identityError}</Text> : null}
-                    <View style={styles.dialogActionRow}>
-                      <TouchableOpacity
-                        style={styles.dialogSecondaryBtn}
-                        onPress={() => {
-                          setIdentityEditorOpen(false);
-                          setIdentityDraftName(member.name);
-                          setIdentityDraftAvatarUrl(member.avatarUrl ?? "");
-                          setIdentityDraftAvatarPresetId(member.avatarPresetId ?? AVATAR_PRESETS[0].id);
-                          setIdentityError(null);
-                        }}
-                      >
-                        <Text style={styles.dialogSecondaryText}>Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.dialogPrimaryBtn, identityBusy ? styles.dialogPrimaryBtnDisabled : null]}
-                        onPress={() => void saveIdentity()}
-                        disabled={identityBusy}
-                      >
-                        <Text style={styles.dialogPrimaryText}>{identityBusy ? "Saving…" : "Save Profile"}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : null}
-
-                <View style={styles.contactRow}>
-                  <View style={styles.contactPill}>
-                    <MaterialCommunityIcons name="email-outline" size={14} color="#64748b" />
-                    <Text style={styles.contactText} numberOfLines={1}>{member.email}</Text>
-                  </View>
-                  <View style={styles.contactPill}>
-                    <MaterialCommunityIcons name="phone-outline" size={14} color="#64748b" />
-                    <Text style={styles.contactText}>{member.phone}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.summaryRow}>
-                  {summaryPills.map((pill) => (
-                    <View key={pill.label} style={styles.summaryPill}>
-                      <MaterialCommunityIcons name={pill.icon as any} size={14} color="#2158d5" />
-                      <Text style={styles.summaryPillText}>{pill.label}</Text>
-                    </View>
-                  ))}
-                </View>
-
-                <View style={styles.primaryActionRow}>
-                  {isSelfProfile ? (
-                    <TouchableOpacity
-                      style={styles.secondaryActionBtn}
-                      onPress={() => setIdentityEditorOpen((prev) => !prev)}
-                    >
-                      <MaterialCommunityIcons name="account-edit-outline" size={16} color="#2158d5" />
-                      <Text style={styles.secondaryActionText}>{identityEditorOpen ? "Hide Editor" : "Edit Profile"}</Text>
-                    </TouchableOpacity>
-                  ) : null}
+                {/* Action buttons: Message + overflow */}
+                <View style={styles.headerActions}>
                   <TouchableOpacity style={styles.messageBtn} onPress={onMessage}>
-                    <MaterialCommunityIcons name="message-text-outline" size={16} color="#ffffff" />
+                    <MaterialCommunityIcons name="message-text-outline" size={15} color="#ffffff" />
                     <Text style={styles.messageBtnText}>Message</Text>
                   </TouchableOpacity>
-                  {capabilities?.can_create_task ? (
-                    <TouchableOpacity
-                      style={styles.secondaryActionBtn}
-                      onPress={() => {
-                        resetTaskForm();
-                        setTaskModalVisible(true);
-                      }}
-                    >
-                      <MaterialCommunityIcons name="clipboard-plus-outline" size={16} color="#2158d5" />
-                      <Text style={styles.secondaryActionText}>Add Task</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                  {capabilities?.can_create_goal ? (
-                    <TouchableOpacity
-                      style={styles.secondaryActionBtn}
-                      onPress={() => {
-                        resetGoalForm();
-                        setGoalModalVisible(true);
-                      }}
-                    >
-                      <MaterialCommunityIcons name="target" size={16} color="#2158d5" />
-                      <Text style={styles.secondaryActionText}>Add Goal</Text>
-                    </TouchableOpacity>
+                  {hasOverflowActions ? (
+                    <View>
+                      <TouchableOpacity
+                        style={styles.overflowBtn}
+                        onPress={() => setActionMenuVisible((prev) => !prev)}
+                      >
+                        <MaterialCommunityIcons name="dots-horizontal" size={20} color="#526175" />
+                      </TouchableOpacity>
+                      {actionMenuVisible ? (
+                        <View style={styles.actionMenu}>
+                          {isSelfProfile ? (
+                            <TouchableOpacity
+                              style={styles.actionMenuItem}
+                              onPress={() => {
+                                setActionMenuVisible(false);
+                                setIdentityModalVisible(true);
+                              }}
+                            >
+                              <MaterialCommunityIcons name="account-edit-outline" size={16} color="#2158d5" />
+                              <Text style={styles.actionMenuItemText}>Edit Profile</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {capabilities?.can_create_task ? (
+                            <TouchableOpacity
+                              style={styles.actionMenuItem}
+                              onPress={() => {
+                                setActionMenuVisible(false);
+                                resetTaskForm();
+                                setTaskModalVisible(true);
+                              }}
+                            >
+                              <MaterialCommunityIcons name="clipboard-plus-outline" size={16} color="#2158d5" />
+                              <Text style={styles.actionMenuItemText}>Add Task</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {capabilities?.can_create_goal ? (
+                            <TouchableOpacity
+                              style={styles.actionMenuItem}
+                              onPress={() => {
+                                setActionMenuVisible(false);
+                                resetGoalForm();
+                                setGoalModalVisible(true);
+                              }}
+                            >
+                              <MaterialCommunityIcons name="target" size={16} color="#2158d5" />
+                              <Text style={styles.actionMenuItemText}>Add Goal</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {canRemoveMember && onRemoveMember ? (
+                            <>
+                              <View style={styles.actionMenuDivider} />
+                              <TouchableOpacity
+                                style={[styles.actionMenuItem, removeBusy ? { opacity: 0.5 } : null]}
+                                disabled={removeBusy}
+                                onPress={() => {
+                                  setActionMenuVisible(false);
+                                  onRemoveMember();
+                                }}
+                              >
+                                <MaterialCommunityIcons name="account-remove-outline" size={16} color="#b9383d" />
+                                <Text style={styles.actionMenuDangerText}>
+                                  {removeBusy ? "Removing…" : "Remove Member"}
+                                </Text>
+                              </TouchableOpacity>
+                            </>
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </View>
                   ) : null}
                 </View>
-
-                {canRemoveMember && onRemoveMember ? (
-                  <TouchableOpacity
-                    style={[styles.removeBtn, removeBusy ? styles.removeBtnDisabled : null]}
-                    onPress={onRemoveMember}
-                    disabled={removeBusy}
-                  >
-                    <MaterialCommunityIcons name="account-remove-outline" size={16} color="#b9383d" />
-                    <Text style={styles.removeBtnText}>{removeBusy ? "Removing…" : "Remove Member"}</Text>
-                  </TouchableOpacity>
-                ) : null}
               </View>
 
+              {/* ── Tabs ── */}
               <View style={styles.tabRow}>
                 {TAB_ORDER.map((tab) => (
                   <TouchableOpacity
@@ -569,28 +512,17 @@ export default function UserProfileDrawer({
                 ))}
               </View>
 
+              {/* ── Scroll content ── */}
               <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+                {/* Context summary — compact inline text */}
                 <View style={styles.contextCard}>
-                  <Text style={styles.contextTitle}>Profile context</Text>
-                  <View style={styles.contextMetaRow}>
-                    <View style={styles.contextMetaChip}>
-                      <Text style={styles.contextMetaChipText}>{member.cohorts.length} cohorts</Text>
-                    </View>
-                    <View style={styles.contextMetaChip}>
-                      <Text style={styles.contextMetaChipText}>{member.journeys.length} journeys</Text>
-                    </View>
-                    <View style={styles.contextMetaChip}>
-                      <Text style={styles.contextMetaChipText}>{member.kpiGoals.length} KPI goals</Text>
-                    </View>
-                  </View>
+                  <Text style={styles.contextMetaLine}>{contextLine}</Text>
                   {member.coachingGoals.length > 0 ? (
                     <Text style={styles.contextSub} numberOfLines={2}>
-                      {member.coachingGoals.join(" • ")}
+                      {member.coachingGoals.join(" · ")}
                     </Text>
                   ) : (
-                    <Text style={styles.contextSub}>
-                      Tasks and goals update live here. Existing coaching context and enrollments stay attached to the profile.
-                    </Text>
+                    <Text style={styles.contextSub}>No coaching goals set</Text>
                   )}
                 </View>
 
@@ -646,61 +578,41 @@ export default function UserProfileDrawer({
                           key={`${assignment.source}-${assignment.id}`}
                           style={[styles.assignmentCard, isCompleted ? styles.assignmentCardCompleted : null]}
                         >
-                          <View style={styles.assignmentTopRow}>
-                            <View style={styles.assignmentTypePill}>
-                              <Text style={styles.assignmentTypePillText}>
-                                {assignment.type.includes("task")
-                                  ? assignment.type === "coach_task"
-                                    ? "Coach Task"
-                                    : "Task"
-                                  : assignment.type === "coach_goal"
-                                    ? "Coach Goal"
-                                    : assignment.type === "team_leader_goal"
-                                      ? "Leader Goal"
-                                      : "Goal"}
-                              </Text>
-                            </View>
-                            <View style={[styles.statusPill, isCompleted ? styles.statusPillDone : styles.statusPillOpen]}>
-                              <Text style={[styles.statusPillText, isCompleted ? styles.statusPillTextDone : styles.statusPillTextOpen]}>
-                                {isCompleted ? "Completed" : assignment.status === "in_progress" ? "In Progress" : "Open"}
-                              </Text>
-                            </View>
-                          </View>
+                          {/* Type · Status merged line */}
+                          <Text style={styles.assignmentTypeStatusLine}>
+                            <Text style={styles.assignmentTypeText}>{assignmentTypeLabel(assignment.type)}</Text>
+                            <Text style={styles.assignmentSeparator}> · </Text>
+                            <Text style={isCompleted ? styles.assignmentStatusDone : styles.assignmentStatusOpen}>
+                              {assignmentStatusLabel(assignment.status, isCompleted)}
+                            </Text>
+                          </Text>
                           <Text style={styles.assignmentTitle}>{assignment.title}</Text>
                           {assignment.description ? (
                             <Text style={styles.assignmentDescription}>{assignment.description}</Text>
                           ) : null}
                           <View style={styles.assignmentMetaRow}>
                             <View style={styles.assignmentMetaPill}>
-                              <MaterialCommunityIcons name="calendar-month-outline" size={14} color="#64748b" />
+                              <MaterialCommunityIcons name="calendar-month-outline" size={13} color="#64748b" />
                               <Text style={styles.assignmentMetaText}>{formatShortDate(assignment.due_at)}</Text>
                             </View>
                             {assignment.assignee_name ? (
                               <View style={styles.assignmentMetaPill}>
-                                <MaterialCommunityIcons name="account-outline" size={14} color="#64748b" />
+                                <MaterialCommunityIcons name="account-outline" size={13} color="#64748b" />
                                 <Text style={styles.assignmentMetaText}>{assignment.assignee_name}</Text>
                               </View>
                             ) : null}
-                            <View style={styles.assignmentMetaPill}>
-                              <MaterialCommunityIcons name="clock-outline" size={14} color="#64748b" />
-                              <Text style={styles.assignmentMetaText}>{formatTimestamp(assignment.last_thread_event_at ?? assignment.created_at)}</Text>
-                            </View>
+                            {canToggle ? (
+                              <TouchableOpacity
+                                disabled={actionBusyId === assignment.id}
+                                onPress={() => void updateAssignmentStatus(assignment, nextStatus)}
+                                style={styles.assignmentToggleWrap}
+                              >
+                                <Text style={[styles.assignmentToggleLink, actionBusyId === assignment.id ? { opacity: 0.5 } : null]}>
+                                  {actionBusyId === assignment.id ? "Updating…" : isCompleted ? "Reopen" : "Complete"}
+                                </Text>
+                              </TouchableOpacity>
+                            ) : null}
                           </View>
-                          {canToggle ? (
-                            <TouchableOpacity
-                              style={[styles.assignmentActionBtn, actionBusyId === assignment.id ? styles.assignmentActionBtnDisabled : null]}
-                              disabled={actionBusyId === assignment.id}
-                              onPress={() => void updateAssignmentStatus(assignment, nextStatus)}
-                            >
-                              <Text style={styles.assignmentActionText}>
-                                {actionBusyId === assignment.id
-                                  ? "Updating…"
-                                  : isCompleted
-                                    ? "Reopen"
-                                    : "Complete"}
-                              </Text>
-                            </TouchableOpacity>
-                          ) : null}
                         </View>
                       );
                     })
@@ -709,6 +621,76 @@ export default function UserProfileDrawer({
             </>
           ) : null}
 
+          {/* ── Identity Editor Modal ── */}
+          <Modal visible={identityModalVisible} transparent animationType="fade" onRequestClose={() => setIdentityModalVisible(false)}>
+            <Pressable style={styles.innerOverlay} onPress={() => setIdentityModalVisible(false)}>
+              <Pressable style={styles.dialogCard} onPress={() => {}}>
+                <Text style={styles.dialogTitle}>Edit Profile</Text>
+                <Text style={styles.dialogSub}>Update your name, avatar, and theme.</Text>
+                <Text style={styles.fieldLabel}>Display Name</Text>
+                <TextInput
+                  value={identityDraftName}
+                  onChangeText={setIdentityDraftName}
+                  style={styles.fieldInput}
+                  placeholder="Your full name"
+                />
+                <TouchableOpacity
+                  style={[styles.secondaryActionBtn, identityUploading ? styles.dialogPrimaryBtnDisabled : null]}
+                  onPress={() => void handleUploadAvatar()}
+                  disabled={identityUploading}
+                >
+                  <MaterialCommunityIcons name="camera-outline" size={16} color="#2158d5" />
+                  <Text style={styles.secondaryActionText}>{identityUploading ? "Uploading…" : "Change Photo"}</Text>
+                </TouchableOpacity>
+                <Text style={styles.fieldLabel}>Theme</Text>
+                <View style={styles.presetGrid}>
+                  {AVATAR_PRESETS.map((preset) => {
+                    const isActive = identityDraftAvatarPresetId === preset.id;
+                    return (
+                      <TouchableOpacity
+                        key={preset.id}
+                        style={[styles.presetCard, isActive ? styles.presetCardActive : null]}
+                        onPress={() => setIdentityDraftAvatarPresetId(preset.id)}
+                      >
+                        <View style={[styles.presetSwatch, { backgroundColor: preset.tone }]}>
+                          <Text style={styles.presetSwatchText}>{initialsFromName(identityDraftName || member?.name || "")}</Text>
+                        </View>
+                        <Text style={[styles.presetCardText, isActive ? styles.presetCardTextActive : null]}>
+                          {preset.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {identityError ? <Text style={styles.formError}>{identityError}</Text> : null}
+                <View style={styles.dialogActionRow}>
+                  <TouchableOpacity
+                    style={styles.dialogSecondaryBtn}
+                    onPress={() => {
+                      setIdentityModalVisible(false);
+                      if (member) {
+                        setIdentityDraftName(member.name);
+                        setIdentityDraftAvatarUrl(member.avatarUrl ?? "");
+                        setIdentityDraftAvatarPresetId(member.avatarPresetId ?? AVATAR_PRESETS[0].id);
+                      }
+                      setIdentityError(null);
+                    }}
+                  >
+                    <Text style={styles.dialogSecondaryText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.dialogPrimaryBtn, identityBusy ? styles.dialogPrimaryBtnDisabled : null]}
+                    onPress={() => void saveIdentity()}
+                    disabled={identityBusy}
+                  >
+                    <Text style={styles.dialogPrimaryText}>{identityBusy ? "Saving…" : "Save Profile"}</Text>
+                  </TouchableOpacity>
+                </View>
+              </Pressable>
+            </Pressable>
+          </Modal>
+
+          {/* ── Add Task Modal ── */}
           <Modal visible={taskModalVisible} transparent animationType="fade" onRequestClose={() => setTaskModalVisible(false)}>
             <Pressable style={styles.innerOverlay} onPress={() => setTaskModalVisible(false)}>
               <Pressable style={styles.dialogCard} onPress={() => {}}>
@@ -748,6 +730,7 @@ export default function UserProfileDrawer({
             </Pressable>
           </Modal>
 
+          {/* ── Add Goal Modal ── */}
           <Modal visible={goalModalVisible} transparent animationType="fade" onRequestClose={() => setGoalModalVisible(false)}>
             <Pressable style={styles.innerOverlay} onPress={() => setGoalModalVisible(false)}>
               <Pressable style={styles.dialogCard} onPress={() => {}}>
@@ -780,6 +763,7 @@ export default function UserProfileDrawer({
 }
 
 const styles = StyleSheet.create({
+  /* ── Outer shell ── */
   overlay: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.35)",
@@ -801,9 +785,11 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: 12,
   },
+
+  /* ── Header ── */
   header: {
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 14,
     gap: 12,
   },
   identityRow: {
@@ -812,22 +798,22 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   avatarWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
   avatarImage: { width: "100%", height: "100%" },
-  avatarText: { fontSize: 20, fontWeight: "800", color: "#23314d" },
+  avatarText: { fontSize: 18, fontWeight: "800", color: "#23314d" },
   avatarEditBadge: {
     position: "absolute",
     right: -2,
     bottom: -2,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: "#2158d5",
     alignItems: "center",
     justifyContent: "center",
@@ -835,29 +821,15 @@ const styles = StyleSheet.create({
     borderColor: "#f7f9fc",
   },
   identityCopy: { flex: 1, gap: 4 },
-  identityMetaRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  name: { fontSize: 24, lineHeight: 28, fontWeight: "800", color: "#162033" },
+  name: { fontSize: 22, lineHeight: 26, fontWeight: "800", color: "#162033" },
   roleChip: {
     alignSelf: "flex-start",
     borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 3,
     backgroundColor: "#e9eefb",
   },
-  roleChipText: { fontSize: 12, fontWeight: "700", color: "#2158d5" },
-  editIdentityChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#d7e0ef",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  editIdentityChipText: { fontSize: 12, fontWeight: "700", color: "#324056" },
-  relationshipText: { fontSize: 13, lineHeight: 18, color: "#6b7890" },
+  roleChipText: { fontSize: 11, fontWeight: "700", color: "#2158d5" },
   closeBtn: {
     width: 36,
     height: 36,
@@ -866,119 +838,89 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#eef2f8",
   },
-  identityEditorCard: {
-    borderRadius: 22,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#dfe5ef",
-    padding: 16,
-    gap: 10,
-  },
-  identityEditorHeader: { gap: 4 },
-  identityEditorTitle: { fontSize: 16, fontWeight: "800", color: "#162033" },
-  identityEditorSub: { fontSize: 13, lineHeight: 18, color: "#6b7890" },
-  presetGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  presetCard: {
-    width: "47%",
-    borderRadius: 18,
-    backgroundColor: "#f8fbff",
-    borderWidth: 1,
-    borderColor: "#d9e1ee",
-    padding: 12,
-    gap: 10,
-  },
-  presetCardActive: { borderColor: "#2158d5", backgroundColor: "#edf3ff" },
-  presetSwatch: {
-    width: 42,
-    height: 42,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  presetSwatchText: { fontSize: 14, fontWeight: "800", color: "#22314c" },
-  presetCardText: { fontSize: 12, fontWeight: "700", color: "#526175" },
-  presetCardTextActive: { color: "#2158d5" },
-  contactRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  contactPill: {
+
+  /* ── Header actions ── */
+  headerActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 14,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#dfe5ef",
+    gap: 10,
   },
-  contactText: { maxWidth: 150, fontSize: 12, color: "#526175", fontWeight: "600" },
-  summaryRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  summaryPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    backgroundColor: "#edf3ff",
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  summaryPillText: { fontSize: 12, color: "#2158d5", fontWeight: "700" },
-  primaryActionRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   messageBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    borderRadius: 16,
-    backgroundColor: "#1f4fd5",
+    gap: 7,
+    borderRadius: 14,
+    backgroundColor: "#2158d5",
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
-  messageBtnText: { color: "#ffffff", fontSize: 14, fontWeight: "800" },
-  secondaryActionBtn: {
-    flexDirection: "row",
+  messageBtnText: { color: "#ffffff", fontSize: 13, fontWeight: "800" },
+  overflowBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+    backgroundColor: "#eef2f8",
+  },
+
+  /* ── Overflow action menu ── */
+  actionMenu: {
+    position: "absolute",
+    top: 42,
+    right: 0,
+    minWidth: 180,
     borderRadius: 16,
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#d7e0ef",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderColor: "#dfe5ef",
+    paddingVertical: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 100,
   },
-  secondaryActionText: { color: "#2158d5", fontSize: 14, fontWeight: "800" },
-  removeBtn: {
+  actionMenuItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    alignSelf: "flex-start",
-    borderRadius: 14,
-    backgroundColor: "#fff1f1",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  removeBtnDisabled: { opacity: 0.6 },
-  removeBtnText: { color: "#b9383d", fontSize: 13, fontWeight: "800" },
+  actionMenuItemText: { fontSize: 14, fontWeight: "700", color: "#162033" },
+  actionMenuDivider: {
+    height: 1,
+    backgroundColor: "#eef2f8",
+    marginVertical: 4,
+    marginHorizontal: 12,
+  },
+  actionMenuDangerText: { fontSize: 14, fontWeight: "700", color: "#b9383d" },
+
+  /* ── Tabs ── */
   tabRow: {
     flexDirection: "row",
     paddingHorizontal: 20,
-    paddingBottom: 14,
-    gap: 8,
+    paddingBottom: 12,
+    gap: 6,
   },
   tabBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    borderRadius: 18,
-    paddingVertical: 12,
+    gap: 6,
+    borderRadius: 16,
+    paddingVertical: 10,
     backgroundColor: "#eef2f8",
   },
   tabBtnActive: { backgroundColor: "#2158d5" },
-  tabText: { color: "#596779", fontSize: 14, fontWeight: "800" },
+  tabText: { color: "#596779", fontSize: 13, fontWeight: "800" },
   tabTextActive: { color: "#ffffff" },
   tabCountPill: {
-    minWidth: 24,
-    paddingHorizontal: 7,
+    minWidth: 22,
+    paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 999,
     backgroundColor: "#d9e2f2",
@@ -987,28 +929,26 @@ const styles = StyleSheet.create({
   tabCountPillActive: { backgroundColor: "rgba(255,255,255,0.2)" },
   tabCountText: { color: "#425066", fontSize: 11, fontWeight: "800" },
   tabCountTextActive: { color: "#ffffff" },
+
+  /* ── Scroll area ── */
   scrollArea: { paddingHorizontal: 20, paddingBottom: 24 },
+
+  /* ── Context card ── */
   contextCard: {
-    borderRadius: 22,
+    borderRadius: 18,
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#dfe5ef",
-    padding: 16,
-    marginBottom: 12,
-    gap: 10,
+    padding: 14,
+    marginBottom: 10,
+    gap: 6,
   },
-  contextTitle: { fontSize: 14, fontWeight: "800", color: "#22314c" },
-  contextMetaRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  contextMetaChip: {
-    borderRadius: 999,
-    backgroundColor: "#f1f5fb",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  contextMetaChipText: { fontSize: 12, color: "#526175", fontWeight: "700" },
+  contextMetaLine: { fontSize: 12, fontWeight: "700", color: "#526175" },
   contextSub: { fontSize: 13, lineHeight: 18, color: "#6b7890" },
+
+  /* ── State/empty cards ── */
   stateCard: {
-    borderRadius: 20,
+    borderRadius: 18,
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#dfe5ef",
@@ -1016,75 +956,59 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   stateCardError: { backgroundColor: "#fff5f5", borderColor: "#f1d4d7" },
   stateText: { fontSize: 13, lineHeight: 18, color: "#526175", textAlign: "center" },
   emptyCard: {
-    borderRadius: 22,
+    borderRadius: 18,
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#dfe5ef",
     padding: 20,
     alignItems: "center",
-    gap: 10,
-    marginBottom: 12,
+    gap: 8,
+    marginBottom: 10,
   },
-  emptyTitle: { fontSize: 16, fontWeight: "800", color: "#22314c" },
+  emptyTitle: { fontSize: 15, fontWeight: "800", color: "#22314c" },
   emptySub: { fontSize: 13, lineHeight: 18, color: "#6b7890", textAlign: "center" },
+
+  /* ── Assignment cards ── */
   assignmentCard: {
-    borderRadius: 22,
+    borderRadius: 18,
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#dfe5ef",
-    padding: 16,
-    gap: 10,
-    marginBottom: 12,
+    padding: 14,
+    gap: 6,
+    marginBottom: 10,
   },
   assignmentCardCompleted: {
     backgroundColor: "#f3f6fb",
+    opacity: 0.7,
   },
-  assignmentTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  assignmentTypePill: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    backgroundColor: "#ecf2ff",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  assignmentTypePillText: { fontSize: 11, fontWeight: "800", color: "#2158d5" },
-  statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  statusPillOpen: { backgroundColor: "#eef7e9" },
-  statusPillDone: { backgroundColor: "#e8edf5" },
-  statusPillText: { fontSize: 11, fontWeight: "800" },
-  statusPillTextOpen: { color: "#2f9f56" },
-  statusPillTextDone: { color: "#5e6e82" },
-  assignmentTitle: { fontSize: 18, lineHeight: 22, fontWeight: "800", color: "#162033" },
-  assignmentDescription: { fontSize: 14, lineHeight: 20, color: "#536178" },
-  assignmentMetaRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  assignmentTypeStatusLine: { fontSize: 12, fontWeight: "700" },
+  assignmentTypeText: { color: "#2158d5" },
+  assignmentSeparator: { color: "#94a3b8" },
+  assignmentStatusOpen: { color: "#2f9f56" },
+  assignmentStatusDone: { color: "#5e6e82" },
+  assignmentTitle: { fontSize: 16, lineHeight: 20, fontWeight: "800", color: "#162033" },
+  assignmentDescription: { fontSize: 13, lineHeight: 18, color: "#536178" },
+  assignmentMetaRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", alignItems: "center" },
   assignmentMetaPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 5,
     borderRadius: 999,
     backgroundColor: "#f4f7fb",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
   },
-  assignmentMetaText: { fontSize: 12, color: "#5f6f84", fontWeight: "700" },
-  assignmentActionBtn: {
-    alignSelf: "flex-start",
-    borderRadius: 14,
-    backgroundColor: "#e8f0ff",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  assignmentActionBtnDisabled: { opacity: 0.65 },
-  assignmentActionText: { fontSize: 13, fontWeight: "800", color: "#2158d5" },
+  assignmentMetaText: { fontSize: 11, color: "#5f6f84", fontWeight: "700" },
+  assignmentToggleWrap: { marginLeft: "auto" },
+  assignmentToggleLink: { fontSize: 12, fontWeight: "700", color: "#2158d5" },
+
+  /* ── Dialog modals (shared) ── */
   innerOverlay: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.28)",
@@ -1145,4 +1069,39 @@ const styles = StyleSheet.create({
   },
   dialogPrimaryBtnDisabled: { opacity: 0.6 },
   dialogPrimaryText: { color: "#ffffff", fontSize: 14, fontWeight: "800" },
+
+  /* ── Identity editor (in modal) ── */
+  secondaryActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 16,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#d7e0ef",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  secondaryActionText: { color: "#2158d5", fontSize: 14, fontWeight: "800" },
+  presetGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  presetCard: {
+    width: "47%",
+    borderRadius: 18,
+    backgroundColor: "#f8fbff",
+    borderWidth: 1,
+    borderColor: "#d9e1ee",
+    padding: 12,
+    gap: 10,
+  },
+  presetCardActive: { borderColor: "#2158d5", backgroundColor: "#edf3ff" },
+  presetSwatch: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  presetSwatchText: { fontSize: 14, fontWeight: "800", color: "#22314c" },
+  presetCardText: { fontSize: 12, fontWeight: "700", color: "#526175" },
+  presetCardTextActive: { color: "#2158d5" },
 });

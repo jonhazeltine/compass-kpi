@@ -167,6 +167,24 @@ const COACH_WORKSPACES: Record<CoachWorkspaceMode, CoachSurface> = {
   },
 };
 
+/** Return persona-tuned labels for coach portal workspaces. */
+function personaWorkspaceLabel(
+  mode: CoachWorkspaceMode,
+  roles: AdminRole[]
+): { label: string; headline: string } {
+  const isTeamLeader = roles.includes('team_leader') && !roles.includes('coach');
+  const isSponsor =
+    roles.includes('challenge_sponsor') && !roles.includes('coach') && !roles.includes('team_leader');
+  if (mode === 'journeys') {
+    if (isTeamLeader) return { label: 'Programs', headline: 'Team Program Builder' };
+    if (isSponsor) return { label: 'Campaign Content', headline: 'Sponsored Content' };
+    return COACH_WORKSPACES.journeys;
+  }
+  if (isTeamLeader) return { label: 'Team & Channels', headline: 'Team & Channels' };
+  if (isSponsor) return { label: 'Audience & Channels', headline: 'Audience & Channels' };
+  return COACH_WORKSPACES.people;
+}
+
 const WORKSPACE_ROUTE_KEYS: Record<CoachWorkspaceMode, CoachRouteKey[]> = {
   journeys: ['coachingJourneys', 'coachingLibrary'],
   people: ['coachingCohorts', 'coachingChannels'],
@@ -1485,7 +1503,7 @@ export default function CoachPortalScreen() {
               return (
                 <Pressable key={mode} style={[s.modeTab, selected && s.modeTabActive]} onPress={() => navigateWorkspace(mode)}>
                   <Text style={[s.modeTabText, selected && s.modeTabTextActive]}>
-                    {COACH_WORKSPACES[mode].label}
+                    {personaWorkspaceLabel(mode, effectiveRoles).label}
                   </Text>
                 </Pressable>
               );
