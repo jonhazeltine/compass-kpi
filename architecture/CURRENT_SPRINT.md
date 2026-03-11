@@ -132,6 +132,7 @@ Parallel staffing assumption: Mobile-first priority; Admin stream starts once M3
 - FE-00 harness closeout criteria (explicit pass/fail): complete (see `docs/spec/05_acceptance_tests.md` -> `FE-00 Harness Closeout Criteria (Gate)`).
 
 ## Active Implementation Focus (M3 Engine Hardening)
+- Approved prerequisite scope exception (2026-03-10): tenancy hardening planning and phased structural rollout for shared content/comms/program systems, anchored on `org_id` home ownership plus explicit cross-scope relationship access; see `docs/spec/appendix/TENANCY_AND_CROSS_SCOPE_ACCESS_MODEL.md` and `docs/spec/appendix/TENANCY_HARDENING_ROLLOUT_PLAN.md`.
 - Canonical algorithm source locked to `docs/spec/appendix/Master Spec.md` ("Calcs and Algorithmns").
 - Backend now owns chart series generation and confidence explainability payloads; frontend consumes render-ready series.
 - Deterministic algorithm validation command added: `cd backend && npm run test:algorithms`.
