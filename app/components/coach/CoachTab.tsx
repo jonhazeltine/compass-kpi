@@ -64,6 +64,7 @@ export interface CoachTabProps {
   coachingJourneysLoading: boolean;
   createCoachEngagement: (coachId: string) => Promise<void>;
   fetchCoachMarketplace: () => Promise<void>;
+  onClientPress: (clientId: string) => void;
 }
 
 export default function CoachTab({
@@ -105,6 +106,7 @@ export default function CoachTab({
   coachingJourneysLoading,
   createCoachEngagement,
   fetchCoachMarketplace,
+  onClientPress,
 }: CoachTabProps) {
   return (
     <>
@@ -433,7 +435,7 @@ coachTabScreen === 'coach_marketplace' ? (
           coachingJourneys.map((j) => {
             const pct = typeof j.completion_percent === 'number' ? j.completion_percent : 0;
             return (
-              <View key={j.id} style={styles.cwfJourneyCard}>
+              <TouchableOpacity key={j.id} style={styles.cwfJourneyCard} onPress={() => openCoachingShell('coaching_journey_detail', { selectedJourneyId: String(j.id), selectedJourneyTitle: j.title })}>
                 <View style={styles.cwfJourneyHeader}>
                   <Text style={styles.cwfJourneyTitle} numberOfLines={1}>{j.title}</Text>
                   <View style={styles.cwfJourneyPctWrap}>
@@ -535,7 +537,7 @@ coachTabScreen === 'coach_marketplace' ? (
                     )}
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
             );
           })
         )}
@@ -554,7 +556,7 @@ coachTabScreen === 'coach_marketplace' ? (
             <Text style={styles.cwfEmpty}>No clients yet. Client profiles will appear once members enroll in a journey.</Text>
           ) : (
             coachingClients.map((client) => (
-              <View key={client.id} style={styles.cwfPersonCard}>
+              <TouchableOpacity key={client.id} style={styles.cwfPersonCard} onPress={() => onClientPress(client.id)}>
                 <View style={styles.cwfPersonAvatar}>
                   <Text style={styles.cwfPersonAvatarText}>
                     {client.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
@@ -575,7 +577,7 @@ coachTabScreen === 'coach_marketplace' ? (
                     <Text style={styles.cwfSmallChipText}>Message</Text>
                   </TouchableOpacity>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))
           )
         ) : (

@@ -291,8 +291,19 @@ export function useJourneyBuilder({
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
-        const body = (await response.json()) as { assets?: LibraryAsset[]; collections?: LibraryCollection[] };
-        setJbAssets(Array.isArray(body.assets) ? body.assets : []);
+        const body = (await response.json()) as { assets?: Array<Record<string, unknown>>; collections?: LibraryCollection[] };
+        // Map snake_case playback_id → camelCase playbackId expected by muxThumb
+        const mapped: LibraryAsset[] = Array.isArray(body.assets)
+          ? body.assets.map((a) => ({
+              id: String(a.id ?? ''),
+              title: String(a.title ?? ''),
+              category: String(a.category ?? 'Video'),
+              scope: String(a.scope ?? ''),
+              duration: String(a.duration ?? '-'),
+              playbackId: (a.playback_id as string | null | undefined) ?? null,
+            }))
+          : [];
+        setJbAssets(mapped);
         setJbCollections(Array.isArray(body.collections) ? body.collections : []);
       }
     } catch {

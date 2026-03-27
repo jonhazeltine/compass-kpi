@@ -6090,6 +6090,7 @@ export default function KPIDashboardScreen({
                 coachingJourneysLoading={coachingJourneysLoading}
                 createCoachEngagement={createCoachEngagement}
                 fetchCoachMarketplace={fetchCoachMarketplace}
+                onClientPress={(clientId) => setTeamProfileMemberId(clientId)}
               />
             ) : null}
             {/* ── Challenges sub-screen (original challenge surface) ── */}
@@ -7745,60 +7746,10 @@ export default function KPIDashboardScreen({
                   )}
                   {coachingShellScreen === 'coaching_journeys' ? (
                     <View style={styles.coachingJourneyModule}>
-                      {shellPackageGateBlocksActions ? (
-                        renderKnownLimitedDataChip('journey actions')
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.coachingAiAssistBtn}
-                          onPress={() =>
-                            openAiAssistShell(
-                              {
-                                host: 'coaching_journeys',
-                                title: 'AI Coaching Suggestion (Approval-First)',
-                                sub: 'Draft only. Human review required.',
-                                targetLabel: selectedJourneyTitle ?? 'Coaching Journeys',
-                                approvedInsertOnly: true,
-                              },
-                              {
-                                prompt: `Draft a coaching suggestion based on ${selectedJourneyTitle ?? 'the current journeys'} progress summary.`,
-                              }
-                            )
-                          }
-                        >
-                          <Text style={styles.coachingAiAssistBtnText}>AI Coaching Suggestion Draft</Text>
-                        </TouchableOpacity>
-                      )}
                       {isSoloPersona ? (
                         <TouchableOpacity style={styles.inviteCodeEntryBtn} onPress={handleOpenInviteCodeEntry}>
                           <Text style={styles.inviteCodeEntryBtnText}>Enter Invite Code</Text>
                         </TouchableOpacity>
-                      ) : null}
-                      <View style={styles.coachingJourneySummaryRow}>
-                        <View style={styles.coachingJourneySummaryCard}>
-                          <Text style={styles.coachingJourneySummaryLabel}>Progress Rows</Text>
-                          <Text style={styles.coachingJourneySummaryValue}>
-                            {coachingProgressLoading ? '…' : String(coachingProgressSummary?.total_progress_rows ?? 0)}
-                          </Text>
-                        </View>
-                        <View style={styles.coachingJourneySummaryCard}>
-                          <Text style={styles.coachingJourneySummaryLabel}>Completed</Text>
-                          <Text style={styles.coachingJourneySummaryValue}>
-                            {coachingProgressLoading
-                              ? '…'
-                              : String(coachingProgressSummary?.status_counts?.completed ?? 0)}
-                          </Text>
-                        </View>
-                        <View style={styles.coachingJourneySummaryCard}>
-                          <Text style={styles.coachingJourneySummaryLabel}>Completion</Text>
-                          <Text style={styles.coachingJourneySummaryValue}>
-                            {coachingProgressLoading
-                              ? '…'
-                              : `${Math.round(Number(coachingProgressSummary?.completion_percent ?? 0))}%`}
-                          </Text>
-                        </View>
-                      </View>
-                      {coachingProgressError ? (
-                        <Text style={styles.coachingJourneyInlineError}>{coachingProgressError}</Text>
                       ) : null}
                       {coachingJourneysLoading ? (
                         <View style={styles.coachingJourneyEmptyCard}>
@@ -7944,15 +7895,20 @@ export default function KPIDashboardScreen({
                         onRenameTask={(lessonId, taskId, title) => { if (selectedJourneyId) void jbRenameTask(selectedJourneyId, lessonId, taskId, title); }}
                         onReorderTasks={(lessonId, fromIdx, toIdx) => { if (selectedJourneyId) void jbReorderTasks(selectedJourneyId, lessonId, fromIdx, toIdx); }}
                         onAddAssetAsTask={(lessonId, asset) => { if (selectedJourneyId) void jbAddAssetAsTask(selectedJourneyId, lessonId, asset); }}
-                        onLessonPress={(lessonId, lessonTitle) =>
+                        onLessonPress={(milestoneId, lessonTitle) => {
+                          // milestoneId is a JB lesson (= API milestone). The lesson detail
+                          // lookup uses actual lesson IDs (milestone.lessons[n].id = task.id).
+                          // Use the first task under this milestone as the navigation target.
+                          const milestone = jbLessons.find((l) => l.id === milestoneId);
+                          const firstTaskId = milestone?.tasks[0]?.id ?? milestoneId;
                           openCoachingShell('coaching_lesson_detail', {
                             source: coachingShellContext.source,
                             selectedJourneyId: selectedJourneyId ?? null,
                             selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
-                            selectedLessonId: lessonId,
+                            selectedLessonId: firstTaskId,
                             selectedLessonTitle: lessonTitle,
-                          })
-                        }
+                          });
+                        }}
                         onMemberPress={(memberId) => setTeamProfileMemberId(memberId)}
                         saveState={jbSaveState}
                         saveMessage={jbSaveMessage}
