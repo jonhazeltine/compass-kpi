@@ -43,6 +43,11 @@ function AppContent() {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
+    const initial = new URLSearchParams(window.location.search).get('path');
+    if (initial && window.location.pathname !== initial) {
+      window.history.replaceState({}, '', initial);
+    }
+
     const syncPath = () => setWebPathname(window.location.pathname);
     const originalPush = window.history.pushState.bind(window.history);
     const originalReplace = window.history.replaceState.bind(window.history);

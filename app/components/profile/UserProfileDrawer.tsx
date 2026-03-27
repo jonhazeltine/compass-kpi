@@ -63,6 +63,10 @@ type Props = {
     avatarPresetId: string;
     avatarTone: string;
   }) => void;
+  /** All journeys the coach owns — for enroll/unenroll picker */
+  availableJourneys?: Array<{ id: string; title: string }>;
+  onEnrollJourney?: (journeyId: string) => void;
+  onUnenrollJourney?: (journeyId: string) => void;
 };
 
 type DrawerTab = "tasks" | "goals" | "completed";
@@ -130,6 +134,9 @@ export default function UserProfileDrawer({
   onMessage,
   onRemoveMember,
   onIdentityUpdated,
+  availableJourneys,
+  onEnrollJourney,
+  onUnenrollJourney,
 }: Props) {
   const [activeTab, setActiveTab] = useState<DrawerTab>("tasks");
   const [assignments, setAssignments] = useState<ProfileAssignment[]>([]);
@@ -171,7 +178,11 @@ export default function UserProfileDrawer({
     } catch (err) {
       setAssignments([]);
       setCapabilities(null);
-      setError(err instanceof Error ? err.message : "Failed to load tasks and goals.");
+      // Suppress channel-membership errors — irrelevant for coach→client profiles
+      const msg = err instanceof Error ? err.message : "Failed to load tasks and goals.";
+      if (!msg.toLowerCase().includes('channel member')) {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -416,7 +427,7 @@ export default function UserProfileDrawer({
                 {/* Action buttons: Message + overflow */}
                 <View style={styles.headerActions}>
                   <TouchableOpacity style={styles.messageBtn} onPress={onMessage}>
-                    <MaterialCommunityIcons name="message-text-outline" size={15} color="#ffffff" />
+                    <MaterialCommunityIcons name="message-text-outline" size={15} color="#6366F1" />
                     <Text style={styles.messageBtnText}>Message</Text>
                   </TouchableOpacity>
                   {hasOverflowActions ? (
@@ -437,7 +448,7 @@ export default function UserProfileDrawer({
                                 setIdentityModalVisible(true);
                               }}
                             >
-                              <MaterialCommunityIcons name="account-edit-outline" size={16} color="#2158d5" />
+                              <MaterialCommunityIcons name="account-edit-outline" size={16} color="#6366F1" />
                               <Text style={styles.actionMenuItemText}>Edit Profile</Text>
                             </TouchableOpacity>
                           ) : null}
@@ -450,7 +461,7 @@ export default function UserProfileDrawer({
                                 setTaskModalVisible(true);
                               }}
                             >
-                              <MaterialCommunityIcons name="clipboard-plus-outline" size={16} color="#2158d5" />
+                              <MaterialCommunityIcons name="clipboard-plus-outline" size={16} color="#6366F1" />
                               <Text style={styles.actionMenuItemText}>Add Task</Text>
                             </TouchableOpacity>
                           ) : null}
@@ -463,7 +474,7 @@ export default function UserProfileDrawer({
                                 setGoalModalVisible(true);
                               }}
                             >
-                              <MaterialCommunityIcons name="target" size={16} color="#2158d5" />
+                              <MaterialCommunityIcons name="target" size={16} color="#6366F1" />
                               <Text style={styles.actionMenuItemText}>Add Goal</Text>
                             </TouchableOpacity>
                           ) : null}
@@ -491,6 +502,52 @@ export default function UserProfileDrawer({
                   ) : null}
                 </View>
               </View>
+
+              {/* ── Enrolled Journeys with enroll/unenroll ── */}
+              {(member.journeys.length > 0 || (availableJourneys?.length ?? 0) > 0) && (
+                <View style={styles.enrolledSection}>
+                  <Text style={styles.enrolledLabel}>Journeys</Text>
+                  {member.journeys.map((j, idx) => {
+                    const journeyMatch = availableJourneys?.find((aj) => aj.title === j || aj.id === j);
+                    return (
+                      <View key={idx} style={styles.enrolledRow}>
+                        <View style={styles.enrolledDot} />
+                        <Text style={styles.enrolledText} numberOfLines={1}>{j}</Text>
+                        {onUnenrollJourney && journeyMatch && (
+                          <TouchableOpacity
+                            onPress={() => onUnenrollJourney(journeyMatch.id)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={{ fontSize: 11, color: '#EF4444', fontWeight: '600' }}>Remove</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    );
+                  })}
+                  {/* Unenrolled journeys — available to add */}
+                  {availableJourneys && availableJourneys.filter((aj) => !member.journeys.includes(aj.title) && !member.journeys.includes(aj.id)).length > 0 && (
+                    <>
+                      <View style={{ height: 6 }} />
+                      {availableJourneys
+                        .filter((aj) => !member.journeys.includes(aj.title) && !member.journeys.includes(aj.id))
+                        .map((aj) => (
+                          <View key={aj.id} style={styles.enrolledRow}>
+                            <View style={[styles.enrolledDot, { backgroundColor: '#CBD5E1' }]} />
+                            <Text style={[styles.enrolledText, { color: '#94A3B8' }]} numberOfLines={1}>{aj.title}</Text>
+                            {onEnrollJourney && (
+                              <TouchableOpacity
+                                onPress={() => onEnrollJourney(aj.id)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Text style={{ fontSize: 11, color: '#6366F1', fontWeight: '600' }}>Enroll</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        ))}
+                    </>
+                  )}
+                </View>
+              )}
 
               {/* ── Tabs ── */}
               <View style={styles.tabRow}>
@@ -528,7 +585,7 @@ export default function UserProfileDrawer({
 
                 {loading ? (
                   <View style={styles.stateCard}>
-                    <ActivityIndicator color="#2158d5" />
+                    <ActivityIndicator color="#6366F1" />
                     <Text style={styles.stateText}>Loading tasks and goals…</Text>
                   </View>
                 ) : null}
@@ -639,7 +696,7 @@ export default function UserProfileDrawer({
                   onPress={() => void handleUploadAvatar()}
                   disabled={identityUploading}
                 >
-                  <MaterialCommunityIcons name="camera-outline" size={16} color="#2158d5" />
+                  <MaterialCommunityIcons name="camera-outline" size={16} color="#6366F1" />
                   <Text style={styles.secondaryActionText}>{identityUploading ? "Uploading…" : "Change Photo"}</Text>
                 </TouchableOpacity>
                 <Text style={styles.fieldLabel}>Theme</Text>
@@ -708,7 +765,7 @@ export default function UserProfileDrawer({
                 />
                 <Text style={styles.fieldLabel}>Assignee</Text>
                 <View style={styles.assigneeField}>
-                  <MaterialCommunityIcons name="account-outline" size={16} color="#2158d5" />
+                  <MaterialCommunityIcons name="account-outline" size={16} color="#6366F1" />
                   <Text style={styles.assigneeFieldText}>{member?.name ?? "Selected user"}</Text>
                 </View>
                 <Text style={styles.fieldLabel}>Due Date</Text>
@@ -766,24 +823,29 @@ const styles = StyleSheet.create({
   /* ── Outer shell ── */
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.35)",
+    backgroundColor: "rgba(15, 23, 42, 0.4)",
     justifyContent: "flex-end",
   },
   sheet: {
     maxHeight: "88%",
-    backgroundColor: "#f7f9fc",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    backgroundColor: "#FBFCFE",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingTop: 10,
     overflow: "hidden",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 12,
   },
   handle: {
-    width: 54,
-    height: 6,
+    width: 40,
+    height: 4,
     borderRadius: 999,
-    backgroundColor: "#d6dce8",
+    backgroundColor: "#CBD5E1",
     alignSelf: "center",
-    marginBottom: 12,
+    marginBottom: 14,
   },
 
   /* ── Header ── */
@@ -798,45 +860,45 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   avatarWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 20,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
   avatarImage: { width: "100%", height: "100%" },
-  avatarText: { fontSize: 18, fontWeight: "800", color: "#23314d" },
+  avatarText: { fontSize: 17, fontWeight: "700", color: "#1E293B" },
   avatarEditBadge: {
     position: "absolute",
     right: -2,
     bottom: -2,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#2158d5",
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#6366F1",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: "#f7f9fc",
+    borderColor: "#FBFCFE",
   },
   identityCopy: { flex: 1, gap: 4 },
-  name: { fontSize: 22, lineHeight: 26, fontWeight: "800", color: "#162033" },
+  name: { fontSize: 21, lineHeight: 26, fontWeight: "700", color: "#0F172A" },
   roleChip: {
     alignSelf: "flex-start",
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 3,
-    backgroundColor: "#e9eefb",
+    backgroundColor: "#EEF2FF",
   },
-  roleChipText: { fontSize: 11, fontWeight: "700", color: "#2158d5" },
+  roleChipText: { fontSize: 11, fontWeight: "600", color: "#6366F1" },
   closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#eef2f8",
+    backgroundColor: "#F1F5F9",
   },
 
   /* ── Header actions ── */
@@ -848,37 +910,41 @@ const styles = StyleSheet.create({
   messageBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
-    borderRadius: 14,
-    backgroundColor: "#2158d5",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    gap: 6,
+    borderRadius: 10,
+    backgroundColor: "#EEF2FF",
+    borderWidth: 1,
+    borderColor: "#C7D2FE",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
-  messageBtnText: { color: "#ffffff", fontSize: 13, fontWeight: "800" },
+  messageBtnText: { color: "#6366F1", fontSize: 13, fontWeight: "600" },
   overflowBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#eef2f8",
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
 
   /* ── Overflow action menu ── */
   actionMenu: {
     position: "absolute",
-    top: 42,
+    top: 40,
     right: 0,
-    minWidth: 180,
-    borderRadius: 16,
+    minWidth: 190,
+    borderRadius: 12,
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#dfe5ef",
-    paddingVertical: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
+    borderColor: "#E2E8F0",
+    paddingVertical: 4,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
     elevation: 8,
     zIndex: 100,
   },
@@ -886,127 +952,161 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
-  actionMenuItemText: { fontSize: 14, fontWeight: "700", color: "#162033" },
+  actionMenuItemText: { fontSize: 14, fontWeight: "500", color: "#1E293B" },
   actionMenuDivider: {
     height: 1,
-    backgroundColor: "#eef2f8",
-    marginVertical: 4,
-    marginHorizontal: 12,
+    backgroundColor: "#F1F5F9",
+    marginVertical: 2,
+    marginHorizontal: 10,
   },
-  actionMenuDangerText: { fontSize: 14, fontWeight: "700", color: "#b9383d" },
+  actionMenuDangerText: { fontSize: 14, fontWeight: "500", color: "#DC2626" },
 
   /* ── Tabs ── */
+  enrolledSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e8edf3',
+    gap: 6,
+  },
+  enrolledLabel: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    color: '#64748b',
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  enrolledRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+  },
+  enrolledDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#6366F1',
+  },
+  enrolledText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    color: '#1E293B',
+    flex: 1,
+  },
   tabRow: {
     flexDirection: "row",
     paddingHorizontal: 20,
     paddingBottom: 12,
-    gap: 6,
+    gap: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E2E8F0",
   },
   tabBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    borderRadius: 16,
-    paddingVertical: 10,
-    backgroundColor: "#eef2f8",
+    gap: 5,
+    borderRadius: 10,
+    paddingVertical: 8,
+    backgroundColor: "transparent",
   },
-  tabBtnActive: { backgroundColor: "#2158d5" },
-  tabText: { color: "#596779", fontSize: 13, fontWeight: "800" },
-  tabTextActive: { color: "#ffffff" },
+  tabBtnActive: { backgroundColor: "#EEF2FF" },
+  tabText: { color: "#64748B", fontSize: 13, fontWeight: "500" },
+  tabTextActive: { color: "#6366F1", fontWeight: "600" },
   tabCountPill: {
-    minWidth: 22,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    minWidth: 20,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
     borderRadius: 999,
-    backgroundColor: "#d9e2f2",
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
   },
-  tabCountPillActive: { backgroundColor: "rgba(255,255,255,0.2)" },
-  tabCountText: { color: "#425066", fontSize: 11, fontWeight: "800" },
-  tabCountTextActive: { color: "#ffffff" },
+  tabCountPillActive: { backgroundColor: "#C7D2FE" },
+  tabCountText: { color: "#94A3B8", fontSize: 11, fontWeight: "600" },
+  tabCountTextActive: { color: "#4338CA" },
 
   /* ── Scroll area ── */
   scrollArea: { paddingHorizontal: 20, paddingBottom: 24 },
 
   /* ── Context card ── */
   contextCard: {
-    borderRadius: 18,
-    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: "#dfe5ef",
+    borderColor: "#E2E8F0",
     padding: 14,
     marginBottom: 10,
-    gap: 6,
+    gap: 4,
   },
-  contextMetaLine: { fontSize: 12, fontWeight: "700", color: "#526175" },
-  contextSub: { fontSize: 13, lineHeight: 18, color: "#6b7890" },
+  contextMetaLine: { fontSize: 12, fontWeight: "600", color: "#475569" },
+  contextSub: { fontSize: 13, lineHeight: 18, color: "#64748B" },
 
   /* ── State/empty cards ── */
   stateCard: {
-    borderRadius: 18,
-    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: "#dfe5ef",
+    borderColor: "#E2E8F0",
     padding: 18,
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
     marginBottom: 10,
   },
-  stateCardError: { backgroundColor: "#fff5f5", borderColor: "#f1d4d7" },
-  stateText: { fontSize: 13, lineHeight: 18, color: "#526175", textAlign: "center" },
+  stateCardError: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
+  stateText: { fontSize: 13, lineHeight: 18, color: "#475569", textAlign: "center" },
   emptyCard: {
-    borderRadius: 18,
-    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: "#dfe5ef",
+    borderColor: "#E2E8F0",
     padding: 20,
     alignItems: "center",
     gap: 8,
     marginBottom: 10,
   },
-  emptyTitle: { fontSize: 15, fontWeight: "800", color: "#22314c" },
-  emptySub: { fontSize: 13, lineHeight: 18, color: "#6b7890", textAlign: "center" },
+  emptyTitle: { fontSize: 15, fontWeight: "600", color: "#1E293B" },
+  emptySub: { fontSize: 13, lineHeight: 18, color: "#64748B", textAlign: "center" },
 
   /* ── Assignment cards ── */
   assignmentCard: {
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#dfe5ef",
+    borderColor: "#E2E8F0",
     padding: 14,
     gap: 6,
     marginBottom: 10,
   },
   assignmentCardCompleted: {
-    backgroundColor: "#f3f6fb",
-    opacity: 0.7,
+    backgroundColor: "#F8FAFC",
+    opacity: 0.65,
   },
-  assignmentTypeStatusLine: { fontSize: 12, fontWeight: "700" },
-  assignmentTypeText: { color: "#2158d5" },
-  assignmentSeparator: { color: "#94a3b8" },
-  assignmentStatusOpen: { color: "#2f9f56" },
-  assignmentStatusDone: { color: "#5e6e82" },
-  assignmentTitle: { fontSize: 16, lineHeight: 20, fontWeight: "800", color: "#162033" },
-  assignmentDescription: { fontSize: 13, lineHeight: 18, color: "#536178" },
+  assignmentTypeStatusLine: { fontSize: 12, fontWeight: "500" },
+  assignmentTypeText: { color: "#6366F1" },
+  assignmentSeparator: { color: "#CBD5E1" },
+  assignmentStatusOpen: { color: "#16A34A" },
+  assignmentStatusDone: { color: "#94A3B8" },
+  assignmentTitle: { fontSize: 15, lineHeight: 20, fontWeight: "600", color: "#0F172A" },
+  assignmentDescription: { fontSize: 13, lineHeight: 18, color: "#64748B" },
   assignmentMetaRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", alignItems: "center" },
   assignmentMetaPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    borderRadius: 999,
-    backgroundColor: "#f4f7fb",
+    gap: 4,
+    borderRadius: 8,
+    backgroundColor: "#F1F5F9",
     paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingVertical: 4,
   },
-  assignmentMetaText: { fontSize: 11, color: "#5f6f84", fontWeight: "700" },
+  assignmentMetaText: { fontSize: 11, color: "#64748B", fontWeight: "500" },
   assignmentToggleWrap: { marginLeft: "auto" },
-  assignmentToggleLink: { fontSize: 12, fontWeight: "700", color: "#2158d5" },
+  assignmentToggleLink: { fontSize: 12, fontWeight: "600", color: "#6366F1" },
 
   /* ── Dialog modals (shared) ── */
   innerOverlay: {
@@ -1018,90 +1118,97 @@ const styles = StyleSheet.create({
   },
   dialogCard: {
     width: "100%",
-    borderRadius: 24,
+    borderRadius: 16,
     backgroundColor: "#ffffff",
     padding: 20,
     gap: 10,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    elevation: 12,
   },
-  dialogTitle: { fontSize: 20, fontWeight: "800", color: "#162033" },
-  dialogSub: { fontSize: 13, lineHeight: 18, color: "#6b7890", marginBottom: 2 },
-  fieldLabel: { fontSize: 12, fontWeight: "800", color: "#526175", marginTop: 2 },
+  dialogTitle: { fontSize: 18, fontWeight: "700", color: "#0F172A" },
+  dialogSub: { fontSize: 13, lineHeight: 18, color: "#64748B", marginBottom: 2 },
+  fieldLabel: { fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 2 },
   fieldInput: {
-    minHeight: 48,
-    borderRadius: 16,
+    minHeight: 44,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#d9e1ee",
-    backgroundColor: "#f8fbff",
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     fontSize: 15,
-    color: "#162033",
+    color: "#0F172A",
   },
   fieldInputMultiline: { minHeight: 96, textAlignVertical: "top" },
   assigneeField: {
-    minHeight: 48,
-    borderRadius: 16,
-    backgroundColor: "#edf3ff",
+    minHeight: 44,
+    borderRadius: 10,
+    backgroundColor: "#EEF2FF",
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
-  assigneeFieldText: { fontSize: 14, color: "#2158d5", fontWeight: "700" },
-  formError: { color: "#b9383d", fontSize: 13, lineHeight: 18 },
+  assigneeFieldText: { fontSize: 14, color: "#6366F1", fontWeight: "600" },
+  formError: { color: "#DC2626", fontSize: 13, lineHeight: 18 },
   dialogActionRow: { flexDirection: "row", gap: 10, marginTop: 8 },
   dialogSecondaryBtn: {
     flex: 1,
-    minHeight: 48,
-    borderRadius: 16,
+    minHeight: 44,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#eef2f8",
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
-  dialogSecondaryText: { color: "#526175", fontSize: 14, fontWeight: "800" },
+  dialogSecondaryText: { color: "#475569", fontSize: 14, fontWeight: "500" },
   dialogPrimaryBtn: {
     flex: 1,
-    minHeight: 48,
-    borderRadius: 16,
+    minHeight: 44,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#2158d5",
+    backgroundColor: "#6366F1",
   },
-  dialogPrimaryBtnDisabled: { opacity: 0.6 },
-  dialogPrimaryText: { color: "#ffffff", fontSize: 14, fontWeight: "800" },
+  dialogPrimaryBtnDisabled: { opacity: 0.5 },
+  dialogPrimaryText: { color: "#ffffff", fontSize: 14, fontWeight: "600" },
 
   /* ── Identity editor (in modal) ── */
   secondaryActionBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    borderRadius: 16,
-    backgroundColor: "#ffffff",
+    borderRadius: 10,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: "#d7e0ef",
+    borderColor: "#E2E8F0",
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
-  secondaryActionText: { color: "#2158d5", fontSize: 14, fontWeight: "800" },
+  secondaryActionText: { color: "#6366F1", fontSize: 14, fontWeight: "600" },
   presetGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   presetCard: {
     width: "47%",
-    borderRadius: 18,
-    backgroundColor: "#f8fbff",
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: "#d9e1ee",
+    borderColor: "#E2E8F0",
     padding: 12,
     gap: 10,
   },
-  presetCardActive: { borderColor: "#2158d5", backgroundColor: "#edf3ff" },
+  presetCardActive: { borderColor: "#6366F1", backgroundColor: "#EEF2FF" },
   presetSwatch: {
-    width: 42,
-    height: 42,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
-  presetSwatchText: { fontSize: 14, fontWeight: "800", color: "#22314c" },
-  presetCardText: { fontSize: 12, fontWeight: "700", color: "#526175" },
-  presetCardTextActive: { color: "#2158d5" },
+  presetSwatchText: { fontSize: 14, fontWeight: "700", color: "#1E293B" },
+  presetCardText: { fontSize: 12, fontWeight: "500", color: "#64748B" },
+  presetCardTextActive: { color: "#6366F1" },
 });

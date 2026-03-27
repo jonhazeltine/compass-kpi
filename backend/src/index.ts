@@ -3923,6 +3923,21 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
     }
     const progressByLesson = new Map(progressRows.map((p) => [String(p.lesson_id), p]));
 
+    // Fetch media assets linked to this journey for thumbnails
+    const journeyCreatedBy = String((journey as { created_by?: unknown }).created_by ?? "");
+    let assetsByMediaId = new Map<string, { playback_id: string | null; filename: string }>();
+    if (journeyCreatedBy) {
+      const { data: mediaAssets } = await dataClient
+        .from("coaching_media_assets")
+        .select("media_id,playback_id,filename")
+        .eq("owner_user_id", journeyCreatedBy)
+        .not("processing_status", "eq", "deleted")
+        .limit(200);
+      for (const a of mediaAssets ?? []) {
+        assetsByMediaId.set(String(a.media_id), { playback_id: a.playback_id as string | null, filename: String(a.filename ?? "") });
+      }
+    }
+
     const lessonsByMilestone = new Map<string, Array<{
       id: string;
       title: string;
@@ -3945,6 +3960,16 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
       lessonsByMilestone.set(String(lesson.milestone_id), arr);
     }
 
+    // Convert asset map to array for response
+    const assetsForResponse = Array.from(assetsByMediaId.entries()).map(([mediaId, a]) => ({
+      id: mediaId,
+      title: a.filename,
+      category: "Video",
+      scope: "",
+      duration: "",
+      playbackId: a.playback_id,
+    }));
+
     return res.json({
       journey: {
         ...journey,
@@ -3954,6 +3979,7 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
         ...m,
         lessons: lessonsByMilestone.get(String(m.id)) ?? [],
       })),
+      assets: assetsForResponse,
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -4901,7 +4927,7 @@ app.get("/api/coaching/library/assets", async (req, res) => {
 
     let assetQuery = dataClient
       .from("coaching_media_assets")
-      .select("media_id,org_id,owner_user_id,journey_id,filename,content_type,created_at,updated_at,processing_status")
+      .select("media_id,org_id,owner_user_id,journey_id,filename,content_type,created_at,updated_at,processing_status,playback_id,playback_ready")
       .not("processing_status", "eq", "deleted")
       .order("created_at", { ascending: false })
       .limit(500);
@@ -4997,6 +5023,8 @@ app.get("/api/coaching/library/assets", async (req, res) => {
         const contentType = String((row as { content_type?: unknown }).content_type ?? "").toLowerCase();
         const category = contentType.startsWith("video/") ? "Video" : contentType.startsWith("image/") ? "Image" : contentType.includes("pdf") ? "Guide" : "Resource";
         const ownership_scope = isMine ? "mine" : inTeamScope ? "team" : "global";
+        const playbackId = String((row as { playback_id?: unknown }).playback_id ?? "").trim() || null;
+        const playbackReady = Boolean((row as { playback_ready?: unknown }).playback_ready);
         return {
           id: mediaId,
           title: filename || `Asset ${mediaId.slice(0, 8)}`,
@@ -5013,6 +5041,8 @@ app.get("/api/coaching/library/assets", async (req, res) => {
           source_journey_title: journeyScope?.title ?? null,
           content_type: contentType || null,
           processing_status: String((row as { processing_status?: unknown }).processing_status ?? "unknown"),
+          playback_id: playbackId,
+          playback_ready: playbackReady,
           created_at: String((row as { created_at?: unknown }).created_at ?? ""),
           updated_at: String((row as { updated_at?: unknown }).updated_at ?? ""),
         };
@@ -5061,6 +5091,13 @@ app.get("/api/coaching/library/assets", async (req, res) => {
     console.error("Error in GET /api/coaching/library/assets", err);
     return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
   }
+});
+
+// Alias: frontend calls /api/coaching/library (without /assets suffix)
+app.get("/api/coaching/library", (req, res, next) => {
+  req.url = "/api/coaching/library/assets" + (req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "");
+  // @ts-expect-error express re-route
+  return app.handle(req, res, next);
 });
 
 app.post("/api/coaching/lessons/:id/progress", async (req, res) => {
@@ -6530,6 +6567,78 @@ app.get("/api/coaching/engagements/me", async (req, res) => {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in GET /api/coaching/engagements/me", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/* ── GET /api/coaching/my-clients — coach sees their clients ── */
+app.get("/api/coaching/my-clients", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+
+    const { data: engagements, error: engError } = await dataClient
+      .from("coaching_engagements")
+      .select("id,client_id,status,created_at")
+      .eq("coach_id", auth.user.id)
+      .in("status", ["active", "pending"])
+      .order("created_at", { ascending: false });
+    if (engError) return handleSupabaseError(res, "Failed to fetch coaching clients", engError);
+
+    const clientIds = (engagements ?? []).map((e) => String(e.client_id));
+    if (clientIds.length === 0) return res.json({ clients: [] });
+
+    const { data: users, error: usersError } = await dataClient
+      .from("users")
+      .select("id,full_name,avatar_url")
+      .in("id", clientIds);
+    if (usersError) return handleSupabaseError(res, "Failed to fetch client profiles", usersError);
+
+    const userMap = new Map((users ?? []).map((u) => [String(u.id), u]));
+
+    // Also check which clients are enrolled in which journeys
+    const { data: enrollments } = await dataClient
+      .from("journey_enrollments")
+      .select("user_id,journey_id,status")
+      .in("user_id", clientIds)
+      .eq("status", "active");
+
+    const allJourneyIds = new Set<string>();
+    const enrollmentsByUser = new Map<string, string[]>();
+    for (const e of enrollments ?? []) {
+      const uid = String(e.user_id);
+      const jid = String(e.journey_id);
+      if (!enrollmentsByUser.has(uid)) enrollmentsByUser.set(uid, []);
+      enrollmentsByUser.get(uid)!.push(jid);
+      allJourneyIds.add(jid);
+    }
+
+    // Resolve journey names
+    const journeyNames = new Map<string, string>();
+    if (allJourneyIds.size > 0) {
+      const { data: jRows } = await dataClient.from("journeys").select("id,title").in("id", Array.from(allJourneyIds));
+      for (const j of jRows ?? []) journeyNames.set(String(j.id), String(j.title));
+    }
+
+    const clients = (engagements ?? []).map((e) => {
+      const cid = String(e.client_id);
+      const user = userMap.get(cid);
+      const jids = enrollmentsByUser.get(cid) ?? [];
+      return {
+        id: cid,
+        name: String((user as { full_name?: unknown })?.full_name ?? "Client"),
+        avatarUrl: (user as { avatar_url?: unknown })?.avatar_url ?? null,
+        status: String(e.status),
+        enrolledJourneyIds: jids,
+        enrolledJourneyNames: jids.map((jid) => journeyNames.get(jid) ?? jid),
+        engagementCreatedAt: String(e.created_at),
+      };
+    });
+
+    return res.json({ clients });
+  } catch (err) {
+    console.error("Error in GET /api/coaching/my-clients", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -8257,6 +8366,88 @@ app.post("/api/coaching/journeys/:id/invite-code", async (req, res) => {
   }
 });
 
+/* ── POST /api/coaching/journeys/:id/enroll — coach enrolls a client ── */
+app.post("/api/coaching/journeys/:id/enroll", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+
+    const journeyId = req.params.id;
+    const clientId = isRecord(req.body) && typeof req.body.user_id === "string" ? req.body.user_id.trim() : "";
+    if (!clientId) return res.status(400).json({ error: "user_id is required" });
+
+    // Verify the journey belongs to this coach
+    const { data: journey } = await dataClient
+      .from("journeys")
+      .select("id,created_by")
+      .eq("id", journeyId)
+      .maybeSingle();
+    if (!journey) return res.status(404).json({ error: "Journey not found" });
+    if (String((journey as { created_by?: unknown }).created_by) !== auth.user.id) {
+      return res.status(403).json({ error: "Only the journey owner can enroll clients" });
+    }
+
+    // Verify coaching engagement exists
+    const { data: engagement } = await dataClient
+      .from("coaching_engagements")
+      .select("id")
+      .eq("coach_id", auth.user.id)
+      .eq("client_id", clientId)
+      .in("status", ["active", "pending"])
+      .limit(1)
+      .maybeSingle();
+    if (!engagement) return res.status(403).json({ error: "No active coaching engagement with this client" });
+
+    // Enroll (upsert)
+    const { error: enrollError } = await dataClient
+      .from("journey_enrollments")
+      .upsert({
+        journey_id: journeyId,
+        user_id: clientId,
+        enrolled_by: auth.user.id,
+        enrolled_via: "coach_assign",
+        status: "active",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "journey_id,user_id" });
+    if (enrollError) return handleSupabaseError(res, "Failed to enroll client", enrollError);
+
+    return res.json({ success: true, journey_id: journeyId, user_id: clientId });
+  } catch (err) {
+    console.error("Error in POST /api/coaching/journeys/:id/enroll", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/* ── POST /api/coaching/journeys/:id/unenroll — coach removes a client ── */
+app.post("/api/coaching/journeys/:id/unenroll", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+
+    const journeyId = req.params.id;
+    const clientId = isRecord(req.body) && typeof req.body.user_id === "string" ? req.body.user_id.trim() : "";
+    if (!clientId) return res.status(400).json({ error: "user_id is required" });
+
+    const { data: journey } = await dataClient.from("journeys").select("id,created_by").eq("id", journeyId).maybeSingle();
+    if (!journey || String((journey as { created_by?: unknown }).created_by) !== auth.user.id) {
+      return res.status(403).json({ error: "Only the journey owner can unenroll clients" });
+    }
+
+    await dataClient.from("journey_enrollments")
+      .update({ status: "removed", updated_at: new Date().toISOString() })
+      .eq("journey_id", journeyId)
+      .eq("user_id", clientId);
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("Error in POST /api/coaching/journeys/:id/unenroll", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.post("/challenges/:id/invite-codes", async (req, res) => {
   try {
     const auth = await authenticateRequest(req.headers.authorization);
@@ -8316,6 +8507,40 @@ app.post("/challenges/:id/invite-codes", async (req, res) => {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in POST /challenges/:id/invite-codes", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/* ── GET /api/invites/my-codes — fetch invite codes created by current user ── */
+app.get("/api/invites/my-codes", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(401).json({ error: auth.error });
+    const userId = auth.user.id;
+    const inviteType = typeof req.query.invite_type === "string" ? req.query.invite_type : undefined;
+
+    if (!dataClient) return res.status(500).json({ error: "Data client unavailable" });
+
+    let query = dataClient
+      .from("invite_codes")
+      .select("id,code,invite_type,target_id,max_uses,uses_count,expires_at,is_active,created_at")
+      .eq("created_by", userId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (inviteType) {
+      query = query.eq("invite_type", inviteType);
+    }
+
+    const { data, error: queryError } = await query;
+    if (queryError) {
+      console.error("Error fetching invite codes", queryError);
+      return res.status(500).json({ error: "Failed to fetch invite codes" });
+    }
+    return res.json({ codes: data ?? [] });
+  } catch (err) {
+    console.error("Error in GET /api/invites/my-codes", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -54,7 +54,6 @@ export default function InviteCodeScreen({ onBack, onRedeemSuccess }: Props) {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? 'Unable to redeem invite');
       onRedeemSuccess(body as InviteRedeemResult);
-      Alert.alert('Invite redeemed', body.already_joined ? 'You are already connected. Opening destination.' : 'Invite redeemed successfully.');
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Unable to redeem invite';
       setError(message);

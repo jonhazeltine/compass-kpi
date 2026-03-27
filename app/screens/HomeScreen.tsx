@@ -29,9 +29,11 @@ export default function HomeScreen() {
     setActiveRoute(route);
   };
 
+  const [refreshKey, setRefreshKey] = useState(0);
   const onInviteRedeemSuccess = (result: {
     route_target?: DashboardRouteTarget;
   }) => {
+    setRefreshKey((k) => k + 1);
     setActiveRoute('dashboard');
     setDashboardRouteTarget(result.route_target ?? null);
   };
@@ -41,6 +43,7 @@ export default function HomeScreen() {
       <View style={styles.body}>
         {activeRoute === 'dashboard' ? (
           <KPIDashboardScreen
+            key={refreshKey}
             onOpenUserMenu={() => setMenuVisible(true)}
             onOpenInviteCode={() => routeTo('invite')}
             menuRouteTarget={dashboardRouteTarget}

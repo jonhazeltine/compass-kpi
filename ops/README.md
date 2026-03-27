@@ -59,6 +59,51 @@ Interpretation quick guide:
 - If smoke test fails after deploy, rollback to previous backend release artifact.
 - Re-run `npm run test:release` in staging before re-attempt.
 
+
+## Browser Admin / Coach Dev
+
+Use `/Users/jon/compass-kpi/dev-web.sh` when you want stable browser access to admin and coach surfaces.
+
+Run:
+```bash
+cd /Users/jon/compass-kpi
+./dev-web.sh
+```
+
+Defaults to the seeded `admin` persona. You can override with `coach`, `leader`, `member`, `sponsor`, or `solo`.
+
+Stable URLs:
+- `http://localhost:8082/?path=/admin`
+- `http://localhost:8082/?path=/admin/users`
+- `http://localhost:8082/?path=/admin/kpis`
+- `http://localhost:8082/?path=/coach/journeys`
+- `http://localhost:8082/?path=/coach/library`
+
+Why `?path=` exists:
+- Expo web dev mode reliably serves the root page, not arbitrary deep links.
+- The app reads `?path=` and rewrites the browser path internally.
+- This gives a stable browser entry path for admin and coach surfaces.
+
+## iOS Simulator Dev
+
+Use `/Users/jon/compass-kpi/dev-sim.sh` for simulator startup.
+
+Run:
+```bash
+cd /Users/jon/compass-kpi
+./dev-sim.sh
+```
+
+Defaults to the seeded `member` persona. You can override with `coach`, `admin`, `leader`, `sponsor`, or `solo`.
+
+What it guarantees:
+1. Backend restarts on `127.0.0.1:4000`
+2. `app/.env` is rewritten to local backend API
+3. Expo starts in `--localhost` mode on `8081`
+4. Expo Go is opened on the booted simulator with `exp://127.0.0.1:8081`
+
+This path is stable regardless of Wi-Fi changes because everything stays local to the Mac.
+
 ## Physical Device Dev (El Guapo)
 
 Use `/Users/jon/compass-kpi/dev-phone.sh` for physical-device startup on the connected iPhone `El Guapo`.
@@ -71,14 +116,16 @@ cd /Users/jon/compass-kpi
 ./dev-phone.sh
 ```
 
+Defaults to the seeded `member` persona. You can override with `coach`, `admin`, `leader`, `sponsor`, or `solo`.
+
 What it guarantees:
 1. Cleans up stale listeners on backend `4000` and Expo `8081`
 2. Starts backend and waits for `/health`
 3. Starts a fresh `cloudflared` quick tunnel for backend traffic
 4. Captures the new tunnel URL automatically
 5. Rewrites `/Users/jon/compass-kpi/app/.env` with the current `EXPO_PUBLIC_API_URL`
-6. Starts Expo in LAN mode with cache clear
-7. Pushes Expo Go to the physical device `El Guapo`
+6. Starts Expo in tunnel mode with cache clear on port `8083`
+7. Pushes Expo Go to the physical device `El Guapo` using the Expo tunnel URL
 8. Cleans up child processes on `Ctrl-C`
 
 Why this exists:
@@ -88,7 +135,7 @@ Why this exists:
 
 Current script assumptions:
 - device name: `El Guapo`
-- Expo LAN IP: `192.168.86.32`
+- Expo phone session uses tunnel mode, so it does not depend on a fixed LAN IP
 - Expo port: `8081`
 - backend port: `4000`
 
@@ -152,3 +199,9 @@ const { Client } = require('pg');
 });
 NODE
 ```
+
+
+Concurrent use rule:
+- Browser can run with simulator.
+- Browser can run with phone.
+- Simulator and phone can now run at the same time because they use different Expo ports (`8081` and `8083`).

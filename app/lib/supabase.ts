@@ -163,6 +163,9 @@ const extraWithDev = extra as {
 export const DEV_TOOLS_ENABLED =
   __DEV__ || extraWithDev.enableDevTools === true || String(extraWithDev.enableDevTools ?? '').toLowerCase() === 'true';
 
+/** Show debug banners, notification surfaces, AI draft buttons, limited-data chips. Off by default even in dev. */
+export const DEV_DEBUG_UI_ENABLED = false;
+
 export const DEFAULT_PERSONA_KEY = String(extraWithDev.defaultPersonaKey ?? '').trim().toLowerCase();
 
 export const APP_VARIANT = String(extraWithDev.appVariant ?? 'default').trim().toLowerCase();
