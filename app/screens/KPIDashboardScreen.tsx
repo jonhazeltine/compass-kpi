@@ -4447,13 +4447,11 @@ export default function KPIDashboardScreen({
           <View style={styles.coachingNotificationHeaderRow}>
             <Text style={styles.coachingNotificationTitle}>{title}</Text>
             <View style={styles.coachingNotificationHeaderMetaRow}>
-              {badgeLabel ? (
+              {unreadCount > 0 ? (
                 <View style={styles.coachingNotificationCountBadge}>
-                  <Text style={styles.coachingNotificationCountBadgeText}>{badgeLabel}</Text>
+                  <Text style={styles.coachingNotificationCountBadgeText}>{unreadCount}</Text>
                 </View>
               ) : null}
-              <Text style={styles.coachingNotificationHeaderLabel}>in-app</Text>
-              {unreadCount > 0 ? <Text style={styles.coachingNotificationHeaderUnread}>{unreadCount} unread</Text> : null}
             </View>
           </View>
           {visibleRows.length === 0 ? (
@@ -4504,19 +4502,11 @@ export default function KPIDashboardScreen({
                         ) : null}
                       </View>
                       {item.body ? <Text numberOfLines={2} style={styles.coachingNotificationRowBody}>{item.body}</Text> : null}
-                      <View style={styles.coachingNotificationRowMetaLine}>
-                        <Text style={styles.coachingNotificationRowClass}>{item.notification_class.replace(/_/g, ' ')}</Text>
-                        <Text style={styles.coachingNotificationRowMetaSep}>•</Text>
-                        <Text style={styles.coachingNotificationRowChannels}>
-                          {(item.delivery_channels ?? ['in_app']).slice(0, 3).join(', ')}
-                        </Text>
-                        {hasRoute ? (
-                          <>
-                            <Text style={styles.coachingNotificationRowMetaSep}>•</Text>
-                            <Text style={styles.coachingNotificationRowLink}>Open</Text>
-                          </>
-                        ) : null}
-                      </View>
+                      {hasRoute ? (
+                        <View style={styles.coachingNotificationRowMetaLine}>
+                          <Text style={styles.coachingNotificationRowLink}>Open</Text>
+                        </View>
+                      ) : null}
                     </View>
                   </TouchableOpacity>
                 );
@@ -4529,29 +4519,9 @@ export default function KPIDashboardScreen({
     [openCoachingNotificationTarget]
   );
 
-  const renderRuntimeStateBanner = useCallback((model: RuntimeSurfaceStateModel, opts?: { compact?: boolean }) => {
-    const toneStyle =
-      model.state === 'ready'
-        ? styles.runtimeStateBannerReady
-        : model.state === 'loading'
-          ? styles.runtimeStateBannerLoading
-          : model.state === 'empty'
-            ? styles.runtimeStateBannerEmpty
-            : model.state === 'permission_denied'
-              ? styles.runtimeStateBannerDenied
-              : model.state === 'partial_read_model'
-                ? styles.runtimeStateBannerPartial
-                : styles.runtimeStateBannerError;
-    return (
-      <View style={[styles.runtimeStateBanner, toneStyle, opts?.compact ? styles.runtimeStateBannerCompact : null]}>
-        <View style={styles.runtimeStateBannerTopRow}>
-          <Text style={styles.runtimeStateBannerTitle}>{opts?.compact ? model.state.replace(/_/g, ' ') : model.title}</Text>
-          <Text style={styles.runtimeStateBannerStateText}>{model.state.replace(/_/g, ' ')}</Text>
-        </View>
-        <Text style={styles.runtimeStateBannerDetail}>{model.detail}</Text>
-        {!opts?.compact ? <Text style={styles.runtimeStateBannerTransition}>{model.transitionHint}</Text> : null}
-      </View>
-    );
+  const renderRuntimeStateBanner = useCallback((_model: RuntimeSurfaceStateModel, _opts?: { compact?: boolean }) => {
+    // Dev-only debug panel — hidden in production
+    return null;
   }, []);
 
   const renderKnownLimitedDataChip = useCallback((label: string) => {
@@ -6200,6 +6170,7 @@ export default function KPIDashboardScreen({
                 setActiveTab={setActiveTab}
                 session={session}
                 isCoachRuntimeOperator={isCoachRuntimeOperator}
+                coachingClients={coachingClients}
                 coachingJourneys={coachingJourneys}
                 coachingJourneysLoading={coachingJourneysLoading}
                 createCoachEngagement={createCoachEngagement}
@@ -6775,7 +6746,9 @@ export default function KPIDashboardScreen({
                         );
             const shellPackageGatePresentation = deriveCoachingPackageGatePresentation(meta.title, shellPackageOutcome);
             const shellPackageGateBlocksActions =
-              shellPackageGatePresentation.tone === 'gated' || shellPackageGatePresentation.tone === 'blocked';
+              !isCoachRuntimeOperator &&
+              coachEntitlementState !== 'allowed' &&
+              (shellPackageGatePresentation.tone === 'gated' || shellPackageGatePresentation.tone === 'blocked');
             const channelRows = ([
               { scope: 'team', label: 'Team Updates', context: 'Team updates' },
               { scope: 'challenge', label: 'Challenge Updates', context: 'Challenge updates' },

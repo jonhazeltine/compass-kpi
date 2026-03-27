@@ -59,6 +59,7 @@ export interface CoachTabProps {
   setActiveTab: (tab: import('../../screens/kpi-dashboard/types').BottomTab) => void;
   session: Session | null;
   isCoachRuntimeOperator: boolean;
+  coachingClients: Array<{ id: string; name: string; avatarUrl?: string | null; enrolledJourneyIds: string[]; enrolledJourneyNames?: string[] }>;
   coachingJourneys: import('../../screens/kpi-dashboard/types').CoachingJourneyListItem[] | null;
   coachingJourneysLoading: boolean;
   createCoachEngagement: (coachId: string) => Promise<void>;
@@ -99,6 +100,7 @@ export default function CoachTab({
   setActiveTab,
   session,
   isCoachRuntimeOperator,
+  coachingClients,
   coachingJourneys,
   coachingJourneysLoading,
   createCoachEngagement,
@@ -547,30 +549,61 @@ coachTabScreen === 'coach_marketplace' ? (
     {coachWorkflowSection === 'clients' && (
       <View style={styles.cwfSection}>
         <Text style={styles.cwfSectionTitle}>People</Text>
-        {coachMarketplaceLoading ? (
-          <Text style={styles.cwfEmpty}>Loading people...</Text>
-        ) : coachProfiles.length === 0 ? (
-          <Text style={styles.cwfEmpty}>No people found. Client profiles will appear once team members are onboarded.</Text>
+        {isCoachRuntimeOperator ? (
+          coachingClients.length === 0 ? (
+            <Text style={styles.cwfEmpty}>No clients yet. Client profiles will appear once members enroll in a journey.</Text>
+          ) : (
+            coachingClients.map((client) => (
+              <View key={client.id} style={styles.cwfPersonCard}>
+                <View style={styles.cwfPersonAvatar}>
+                  <Text style={styles.cwfPersonAvatarText}>
+                    {client.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.cwfPersonInfo}>
+                  <Text style={styles.cwfPersonName}>{client.name}</Text>
+                  <Text style={styles.cwfPersonRole} numberOfLines={1}>
+                    {client.enrolledJourneyIds.length === 0
+                      ? 'No journeys enrolled'
+                      : client.enrolledJourneyNames && client.enrolledJourneyNames.length > 0
+                        ? client.enrolledJourneyNames.join(' · ')
+                        : `${client.enrolledJourneyIds.length} journey${client.enrolledJourneyIds.length !== 1 ? 's' : ''}`}
+                  </Text>
+                </View>
+                <View style={styles.cwfPersonActions}>
+                  <TouchableOpacity style={styles.cwfSmallChip} onPress={() => openCoachingShell('inbox_channels', { preferredChannelScope: 'team' })}>
+                    <Text style={styles.cwfSmallChipText}>Message</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )
         ) : (
-          coachProfiles.map((person) => (
-            <View key={person.id} style={styles.cwfPersonCard}>
-              <View style={styles.cwfPersonAvatar}>
-                <Text style={styles.cwfPersonAvatarText}>
-                  {person.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
-                </Text>
+          coachMarketplaceLoading ? (
+            <Text style={styles.cwfEmpty}>Loading people...</Text>
+          ) : coachProfiles.length === 0 ? (
+            <Text style={styles.cwfEmpty}>No people found. Client profiles will appear once team members are onboarded.</Text>
+          ) : (
+            coachProfiles.map((person) => (
+              <View key={person.id} style={styles.cwfPersonCard}>
+                <View style={styles.cwfPersonAvatar}>
+                  <Text style={styles.cwfPersonAvatarText}>
+                    {person.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.cwfPersonInfo}>
+                  <Text style={styles.cwfPersonName}>{person.name}</Text>
+                  <Text style={styles.cwfPersonRole} numberOfLines={1}>{person.specialties.join(' · ') || 'Member'}</Text>
+                </View>
+                <View style={styles.cwfPersonActions}>
+                  <TouchableOpacity style={styles.cwfSmallChip} onPress={() => openCoachingShell('inbox_channels', { preferredChannelScope: 'team' })}>
+                    <Text style={styles.cwfSmallChipText}>Message</Text>
+                  </TouchableOpacity>
+                  <View style={[styles.cwfAvailDot, person.engagement_availability === 'available' ? styles.cwfAvailGreen : person.engagement_availability === 'waitlist' ? styles.cwfAvailYellow : styles.cwfAvailRed]} />
+                </View>
               </View>
-              <View style={styles.cwfPersonInfo}>
-                <Text style={styles.cwfPersonName}>{person.name}</Text>
-                <Text style={styles.cwfPersonRole} numberOfLines={1}>{person.specialties.join(' · ') || 'Member'}</Text>
-              </View>
-              <View style={styles.cwfPersonActions}>
-                <TouchableOpacity style={styles.cwfSmallChip} onPress={() => openCoachingShell('inbox_channels', { preferredChannelScope: 'team' })}>
-                  <Text style={styles.cwfSmallChipText}>Message</Text>
-                </TouchableOpacity>
-                <View style={[styles.cwfAvailDot, person.engagement_availability === 'available' ? styles.cwfAvailGreen : person.engagement_availability === 'waitlist' ? styles.cwfAvailYellow : styles.cwfAvailRed]} />
-              </View>
-            </View>
-          ))
+            ))
+          )
         )}
       </View>
     )}
