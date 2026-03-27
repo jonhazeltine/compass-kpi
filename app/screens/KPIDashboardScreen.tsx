@@ -19,7 +19,6 @@ import {
 
   View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
@@ -85,7 +84,6 @@ import {
   type KpiAuthoringIconSource,
 } from '../lib/kpiIcons';
 import { colors, radii } from '../theme/tokens';
-import { buildDefaultChallengeTemplatesFromKpis } from './kpi-dashboard/defaultChallengeTemplates';
 import { toneForAvatarPreset } from '../lib/profileIdentity';
 import type {
   AIAssistHostSurface,
@@ -2550,8 +2548,8 @@ export default function KPIDashboardScreen({
         </Text>
         <Text style={styles.visualPlaceholderSub}>
           {kind === 'GP'
-            ? 'City animation placeholder for GP mode (M3 scaffold).'
-            : 'Tree animation placeholder for VP mode (M3 scaffold).'}
+            ? 'Your business growth visual will appear here.'
+            : 'Your vitality visual will appear here.'}
         </Text>
       </View>
     </View>

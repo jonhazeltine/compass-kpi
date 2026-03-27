@@ -859,7 +859,7 @@ export default function TeamTab({
             </View>
             <Text style={styles.challengeEmptyTitle}>No team KPIs available yet</Text>
             <Text style={styles.challengeEmptyText}>
-              Team-relevant KPIs will appear here once team context is available for your account. Dashboard modules above remain in place for parity scaffolding.
+              Your team KPIs will appear here once your team is set up.
             </Text>
             <TouchableOpacity
               style={styles.challengeEmptyCta}
