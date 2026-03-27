@@ -68,6 +68,7 @@ import KpiAddDrawer from '../components/dashboard/KpiAddDrawer';
 import CustomKpiModal from '../components/dashboard/CustomKpiModal';
 import PipelineCheckinDrawer from '../components/dashboard/PipelineCheckinDrawer';
 import JourneyBuilderDrawer from '../components/coach/JourneyBuilderDrawer';
+import CoachJourneyDetailView from '../components/coach/CoachJourneyDetailView';
 import LiveSetupSheet from '../components/comms/LiveSetupSheet';
 import LiveBroadcastScreen from '../components/comms/LiveBroadcastScreen';
 import BottomTabBar from '../components/dashboard/BottomTabBar';
@@ -7910,185 +7911,57 @@ export default function KPIDashboardScreen({
                     </View>
                   ) : null}
                   {coachingShellScreen === 'coaching_journey_detail' ? (
-                    <View style={styles.coachingJourneyModule}>
-                      {!selectedJourneyId ? (
-                        <View style={styles.coachingJourneyEmptyCard}>
-                          <Text style={styles.coachingJourneyEmptyTitle}>Choose a journey first</Text>
-                          <Text style={styles.coachingJourneyEmptySub}>Open Coaching Journeys to continue.</Text>
-                        </View>
-                      ) : coachingJourneyDetailLoading ? (
-                        <View style={styles.coachingJourneyEmptyCard}>
-                          <ActivityIndicator size="small" />
-                          <Text style={styles.coachingJourneyEmptyTitle}>Loading journey detail…</Text>
-                        </View>
-                      ) : coachingJourneyDetailError ? (
-                        <View style={styles.coachingJourneyEmptyCard}>
-                          <Text style={styles.coachingJourneyEmptyTitle}>Journey detail failed to load</Text>
-                          <Text style={styles.coachingJourneyEmptySub}>Could not load journey detail.</Text>
-                          <TouchableOpacity
-                            style={styles.coachingJourneyRetryBtn}
-                            onPress={() => {
-                              if (selectedJourneyId) void fetchCoachingJourneyDetail(selectedJourneyId);
-                            }}
-                          >
-                            <Text style={styles.coachingJourneyRetryBtnText}>Retry Detail</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <>
-                          <View style={styles.coachingJourneyDetailHeader}>
-                            <Text style={styles.coachingJourneyDetailTitle}>
-                              {coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'Journey Detail'}
-                            </Text>
-                            <Text style={styles.coachingJourneyDetailSub}>
-                              {String(coachingJourneyDetail?.journey?.description ?? 'Milestones and lessons loaded from coaching endpoints.')}
-                            </Text>
-                          </View>
-                          <View style={styles.coachingLessonActionRow}>
-                            <TouchableOpacity
-                              style={styles.coachingLessonActionBtn}
-                              onPress={() =>
-                                openCoachingShell('coaching_journeys', {
-                                  source: coachingShellContext.source,
-                                  selectedJourneyId: selectedJourneyId ?? null,
-                                  selectedJourneyTitle:
-                                    coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
-                                  selectedLessonId: null,
-                                  selectedLessonTitle: null,
-                                })
-                              }
-                            >
-                              <Text style={styles.coachingLessonActionBtnText}>Back to Journeys</Text>
-                            </TouchableOpacity>
-                          </View>
-                          {shellPackageGateBlocksActions ? (
-                            renderKnownLimitedDataChip('journey detail actions')
-                          ) : (
-                            <TouchableOpacity
-                              style={styles.coachingAiAssistBtn}
-                              onPress={() =>
-                                openAiAssistShell(
-                                  {
-                                    host: 'coaching_journey_detail',
-                                    title: 'AI Journey Coaching Draft (Approval-First)',
-                                    sub: 'Draft only. Human review required.',
-                                    targetLabel:
-                                      coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'Journey Detail',
-                                    approvedInsertOnly: true,
-                                  },
-                                  {
-                                    prompt: `Draft a coaching note for the journey ${coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? 'current journey'} using milestone progress context.`,
-                                  }
-                                )
-                              }
-                            >
-                              <Text style={styles.coachingAiAssistBtnText}>AI Journey Draft</Text>
-                            </TouchableOpacity>
-                          )}
-
-                          {/* ── Enrolled members list ── */}
-                          {(() => {
-                            const journeyTitle = coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? '';
-                            const journeyId = selectedJourneyId ?? '';
-                            const enrolledMembers = teamMemberDirectory.filter(
-                              (m) => m.journeys.some((j) => j === journeyTitle || j === journeyId)
-                            );
-                            return (
-                              <View style={styles.cwfJourneyMembersWrap}>
-                                <View style={styles.cwfJourneyMembersHeader}>
-                                  <Text style={styles.cwfJourneyMembersTitle}>
-                                    Members {enrolledMembers.length > 0 ? `(${enrolledMembers.length})` : ''}
-                                  </Text>
-                                  {enrolledMembers.length > 0 && isCoachRuntimeOperator && (
-                                    <TouchableOpacity
-                                      style={styles.cwfJourneyMembersBroadcastBtn}
-                                      onPress={() => {
-                                        openCoachingShell('coach_broadcast_compose', {
-                                          broadcastAudienceLabel: `${journeyTitle} enrollees`,
-                                          broadcastRoleAllowed: true,
-                                        });
-                                      }}
-                                    >
-                                      <Text style={styles.cwfJourneyMembersBroadcastText}>Broadcast</Text>
-                                    </TouchableOpacity>
-                                  )}
-                                </View>
-                                {enrolledMembers.length === 0 ? (
-                                  <Text style={styles.cwfEmpty}>No enrolled members found for this journey.</Text>
-                                ) : (
-                                  enrolledMembers.slice(0, 20).map((member) => (
-                                    <TouchableOpacity
-                                      key={member.id}
-                                      style={styles.cwfJourneyMemberRow}
-                                      onPress={() => setTeamProfileMemberId(member.id)}
-                                    >
-                                      <View style={[styles.cwfJourneyMemberAvatar, { backgroundColor: member.avatarTone || '#e8f0fe' }]}>
-                                        <Text style={styles.cwfJourneyMemberAvatarText}>
-                                          {member.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
-                                        </Text>
-                                      </View>
-                                      <View style={styles.cwfJourneyMemberInfo}>
-                                        <Text style={styles.cwfJourneyMemberName} numberOfLines={1}>{member.name}</Text>
-                                        <Text style={styles.cwfJourneyMemberRole} numberOfLines={1}>{member.roleLabel || 'Member'}</Text>
-                                      </View>
-                                      <Text style={styles.cwfJourneyMemberChevron}>›</Text>
-                                    </TouchableOpacity>
-                                  ))
-                                )}
-                              </View>
-                            );
-                          })()}
-
-                          {/* ── Journey Builder (extracted component) ── */}
-                          <JourneyBuilderDrawer
-                            selectedJourneyId={selectedJourneyId ?? null}
-                            selectedLessonId={selectedLessonId ?? null}
-                            selectedJourneyTitle={coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null}
-                            coachingShellContext={coachingShellContext}
-                            milestoneRows={milestoneRows}
-                            isCoachRuntimeOperator={isCoachRuntimeOperator}
-                            shellPackageGateBlocksActions={shellPackageGateBlocksActions}
-                            jbLessons={jbLessons}
-                            jbSaveState={jbSaveState}
-                            jbSaveMessage={jbSaveMessage}
-                            jbAssets={jbAssets}
-                            jbCollections={jbCollections}
-                            jbShowAssetLibrary={jbShowAssetLibrary}
-                            jbActiveTaskMenu={jbActiveTaskMenu}
-                            jbConfirmDelete={jbConfirmDelete}
-                            jbNewLessonTitle={_jbNewLessonTitle}
-                            jbNewTaskTitle={jbNewTaskTitle}
-                            jbAddingTaskToLessonId={jbAddingTaskToLessonId}
-                            jbEditingLessonId={jbEditingLessonId}
-                            jbEditingLessonTitle={jbEditingLessonTitle}
-                            jbEditingTaskKey={jbEditingTaskKey}
-                            jbEditingTaskTitle={jbEditingTaskTitle}
-                            jbMovingItem={jbMovingItem}
-                            jbAssetsById={jbAssetsById}
-                            setJbShowAssetLibrary={setJbShowAssetLibrary}
-                            setJbConfirmDelete={setJbConfirmDelete}
-                            setJbNewTaskTitle={setJbNewTaskTitle}
-                            setJbAddingTaskToLessonId={setJbAddingTaskToLessonId}
-                            setJbEditingLessonId={setJbEditingLessonId}
-                            setJbEditingLessonTitle={setJbEditingLessonTitle}
-                            setJbEditingTaskKey={setJbEditingTaskKey}
-                            setJbEditingTaskTitle={setJbEditingTaskTitle}
-                            setJbMovingItem={setJbMovingItem}
-                            jbAddLesson={jbAddLesson}
-                            jbAddTask={jbAddTask}
-                            jbAddAssetAsTask={jbAddAssetAsTask}
-                            jbDeleteLesson={jbDeleteLesson}
-                            jbRemoveTask={jbRemoveTask}
-                            jbReorderLessons={jbReorderLessons}
-                            jbReorderTasks={jbReorderTasks}
-                            jbRenameLesson={jbRenameLesson}
-                            jbRenameTask={jbRenameTask}
-                            openCoachingShell={openCoachingShell}
-                          />
-
-
-                        </>
-                      )}
+                    <View style={{ flex: 1 }}>
+                      <CoachJourneyDetailView
+                        journeyTitle={coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? ''}
+                        journeyDescription={coachingJourneyDetail?.journey?.description ?? undefined}
+                        lessons={jbLessons}
+                        enrolledMembers={(() => {
+                          const journeyId = selectedJourneyId ?? '';
+                          const journeyTitle = coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? '';
+                          return teamMemberDirectory
+                            .filter((m) => m.journeys.some((j) => j === journeyTitle || j === journeyId))
+                            .map((m) => ({ id: m.id, name: m.name, roleLabel: m.roleLabel }));
+                        })()}
+                        assets={jbAssets}
+                        assetsById={jbAssetsById}
+                        collections={jbCollections}
+                        onFetchAssets={() => void jbFetchAssetLibrary()}
+                        isOperator={isCoachRuntimeOperator}
+                        onBack={() =>
+                          openCoachingShell('coaching_journeys', {
+                            source: coachingShellContext.source,
+                            selectedJourneyId: selectedJourneyId ?? null,
+                            selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
+                            selectedLessonId: null,
+                            selectedLessonTitle: null,
+                          })
+                        }
+                        onAddLesson={() => { if (selectedJourneyId) void jbAddLesson(selectedJourneyId); }}
+                        onDeleteLesson={(lessonId) => { if (selectedJourneyId) void jbDeleteLesson(selectedJourneyId, lessonId); }}
+                        onRenameLesson={(lessonId, title) => { if (selectedJourneyId) void jbRenameLesson(selectedJourneyId, lessonId, title); }}
+                        onReorderLessons={(fromIdx, toIdx) => { if (selectedJourneyId) void jbReorderLessons(selectedJourneyId, fromIdx, toIdx); }}
+                        onAddTask={(lessonId) => { if (selectedJourneyId) void jbAddTask(selectedJourneyId, lessonId); }}
+                        onDeleteTask={(lessonId, taskId) => { if (selectedJourneyId) void jbRemoveTask(selectedJourneyId, lessonId, taskId); }}
+                        onRenameTask={(lessonId, taskId, title) => { if (selectedJourneyId) void jbRenameTask(selectedJourneyId, lessonId, taskId, title); }}
+                        onReorderTasks={(lessonId, fromIdx, toIdx) => { if (selectedJourneyId) void jbReorderTasks(selectedJourneyId, lessonId, fromIdx, toIdx); }}
+                        onAddAssetAsTask={(lessonId, asset) => { if (selectedJourneyId) void jbAddAssetAsTask(selectedJourneyId, lessonId, asset); }}
+                        onLessonPress={(lessonId, lessonTitle) =>
+                          openCoachingShell('coaching_lesson_detail', {
+                            source: coachingShellContext.source,
+                            selectedJourneyId: selectedJourneyId ?? null,
+                            selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
+                            selectedLessonId: lessonId,
+                            selectedLessonTitle: lessonTitle,
+                          })
+                        }
+                        onMemberPress={(memberId) => setTeamProfileMemberId(memberId)}
+                        saveState={jbSaveState}
+                        saveMessage={jbSaveMessage}
+                        loading={coachingJourneyDetailLoading}
+                        error={coachingJourneyDetailError ?? null}
+                        onRetry={() => { if (selectedJourneyId) void fetchCoachingJourneyDetail(selectedJourneyId); }}
+                      />
                     </View>
                   ) : null}
                   {coachingShellScreen === 'coaching_lesson_detail' ? (
