@@ -4427,96 +4427,15 @@ export default function KPIDashboardScreen({
 
   const renderCoachingNotificationSurface = useCallback(
     (
-      title: string,
-      items: RuntimeNotificationItem[],
-      summary?: RuntimeNotificationSummaryReadModel | null,
-      opts?: { compact?: boolean; maxRows?: number; mode?: 'banner' | 'list' | 'thread'; emptyHint?: string }
-    ) => {
-      const visibleRows = items.slice(0, Math.max(1, opts?.maxRows ?? (opts?.compact ? 2 : 4)));
-      if (visibleRows.length === 0 && !summary) return null;
-      const unreadCount = Math.max(0, Number(summary?.unread_count ?? 0));
-      const badgeLabel = summary?.badge_label ?? (unreadCount > 0 ? String(unreadCount) : null);
-      return (
-        <View
-          style={[
-            styles.coachingNotificationCard,
-            opts?.compact ? styles.coachingNotificationCardCompact : null,
-            opts?.mode === 'thread' ? styles.coachingNotificationCardThread : null,
-          ]}
-        >
-          <View style={styles.coachingNotificationHeaderRow}>
-            <Text style={styles.coachingNotificationTitle}>{title}</Text>
-            <View style={styles.coachingNotificationHeaderMetaRow}>
-              {unreadCount > 0 ? (
-                <View style={styles.coachingNotificationCountBadge}>
-                  <Text style={styles.coachingNotificationCountBadgeText}>{unreadCount}</Text>
-                </View>
-              ) : null}
-            </View>
-          </View>
-          {visibleRows.length === 0 ? (
-            <Text style={styles.coachingNotificationEmptyText}>{opts?.emptyHint ?? 'No notification rows available.'}</Text>
-          ) : (
-            <View style={styles.coachingNotificationRowsWrap}>
-              {visibleRows.map((item, idx) => {
-                const severity = String(item.severity ?? 'info').toLowerCase();
-                const isUnread = String(item.read_state ?? 'unknown').toLowerCase() !== 'read';
-                const toneStyle =
-                  severity === 'warning'
-                    ? styles.coachingNotificationRowWarning
-                    : severity === 'error'
-                      ? styles.coachingNotificationRowError
-                      : severity === 'success'
-                        ? styles.coachingNotificationRowSuccess
-                        : styles.coachingNotificationRowInfo;
-                const hasRoute =
-                  Boolean(item.route_target?.screen) ||
-                  Boolean(item.route_target?.channel_id) ||
-                  Boolean(item.route_target?.journey_id) ||
-                  Boolean(item.route_target?.lesson_id);
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={[
-                      styles.coachingNotificationRow,
-                      toneStyle,
-                      idx > 0 ? styles.coachingNotificationRowDivider : null,
-                      !hasRoute ? styles.coachingNotificationRowDisabled : null,
-                    ]}
-                    disabled={!hasRoute}
-                    onPress={() => {
-                      if (!hasRoute) return;
-                      openCoachingNotificationTarget(item);
-                    }}
-                  >
-                    <View style={styles.coachingNotificationRowDotWrap}>
-                      <View style={[styles.coachingNotificationRowDot, isUnread ? styles.coachingNotificationRowDotUnread : null]} />
-                    </View>
-                    <View style={styles.coachingNotificationRowCopy}>
-                      <View style={styles.coachingNotificationRowTitleLine}>
-                        <Text numberOfLines={1} style={styles.coachingNotificationRowTitle}>{item.title}</Text>
-                        {item.badge_label ? (
-                          <View style={styles.coachingNotificationInlineBadge}>
-                            <Text style={styles.coachingNotificationInlineBadgeText}>{item.badge_label}</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      {item.body ? <Text numberOfLines={2} style={styles.coachingNotificationRowBody}>{item.body}</Text> : null}
-                      {hasRoute ? (
-                        <View style={styles.coachingNotificationRowMetaLine}>
-                          <Text style={styles.coachingNotificationRowLink}>Open</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-        </View>
-      );
+      _title: string,
+      _items: RuntimeNotificationItem[],
+      _summary?: RuntimeNotificationSummaryReadModel | null,
+      _opts?: { compact?: boolean; maxRows?: number; mode?: 'banner' | 'list' | 'thread'; emptyHint?: string }
+    ): React.ReactNode => {
+      // Dev-only notification surface — hidden in production
+      return null;
     },
-    [openCoachingNotificationTarget]
+    []
   );
 
   const renderRuntimeStateBanner = useCallback((_model: RuntimeSurfaceStateModel, _opts?: { compact?: boolean }) => {
@@ -4524,12 +4443,9 @@ export default function KPIDashboardScreen({
     return null;
   }, []);
 
-  const renderKnownLimitedDataChip = useCallback((label: string) => {
-    return (
-      <View style={styles.knownLimitedDataChip}>
-        <Text style={styles.knownLimitedDataChipText}>Limited data: {label}</Text>
-      </View>
-    );
+  const renderKnownLimitedDataChip = useCallback((_label: string) => {
+    // Dev-only chip — hidden in production
+    return null;
   }, []);
 
   const renderCoachingPackageGateBanner = useCallback(
