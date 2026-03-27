@@ -25,10 +25,6 @@ import type {
   CoachingProgressSummaryResponse,
   CoachingShellScreen,
   ChallengeGoalScope,
-  JourneyBuilderLesson,
-  JourneyBuilderSaveState,
-  LibraryAsset,
-  LibraryCollection,
   RuntimeNotificationItem,
   RuntimeNotificationSummaryReadModel,
   RuntimePackageVisibilityOutcome,
@@ -90,11 +86,6 @@ export interface CoachingWorkflowSetters {
   setCoachingJourneyDetailError: React.Dispatch<React.SetStateAction<string | null>>;
   setJourneyInviteCodes: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setJourneyInviteLoading: React.Dispatch<React.SetStateAction<string | null>>;
-  setJbLessons: React.Dispatch<React.SetStateAction<JourneyBuilderLesson[]>>;
-  setJbSaveState: React.Dispatch<React.SetStateAction<JourneyBuilderSaveState>>;
-  setJbSaveMessage: React.Dispatch<React.SetStateAction<string>>;
-  setJbAssets: React.Dispatch<React.SetStateAction<LibraryAsset[]>>;
-  setJbCollections: React.Dispatch<React.SetStateAction<LibraryCollection[]>>;
   setCoachingLessonProgressSubmittingId: React.Dispatch<React.SetStateAction<string | null>>;
   setCoachingLessonProgressError: React.Dispatch<React.SetStateAction<string | null>>;
   setLessonMediaAssets: React.Dispatch<React.SetStateAction<LessonMediaAsset[]>>;

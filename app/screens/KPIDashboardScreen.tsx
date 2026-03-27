@@ -29,7 +29,7 @@ import type { ChannelRow as CommsChannelRow } from '../components/comms';
 import { useBottomNavAnimation } from '../components/comms/useBottomNavAnimation';
 import type { LinkedTaskCard, ThreadSendPayload } from '../components/comms/messageLinkedTasks';
 import DeveloperToolsModal from '../components/dev/DeveloperToolsModal';
-import { KpiIcon, KpiIconPicker } from '../components/kpi';
+import { KpiIcon } from '../components/kpi';
 import UserProfileDrawer from '../components/profile/UserProfileDrawer';
 import ReportsTabV2 from '../components/reports/ReportsTabV2';
 import { useAuth } from '../contexts/AuthContext';
@@ -62,6 +62,12 @@ import { useTeamRosterManager } from '../hooks/useTeamRosterManager';
 import { useRuntimePersona } from '../hooks/useRuntimePersona';
 import { useChallengeWorkflow } from '../hooks/useChallengeWorkflow';
 import { useCoachingWorkflow } from '../hooks/useCoachingWorkflow';
+import { useJourneyBuilder } from '../hooks/useJourneyBuilder';
+import AiAssistDrawer from '../components/dashboard/AiAssistDrawer';
+import KpiAddDrawer from '../components/dashboard/KpiAddDrawer';
+import CustomKpiModal from '../components/dashboard/CustomKpiModal';
+import PipelineCheckinDrawer from '../components/dashboard/PipelineCheckinDrawer';
+import JourneyBuilderDrawer from '../components/coach/JourneyBuilderDrawer';
 import LiveSetupSheet from '../components/comms/LiveSetupSheet';
 import LiveBroadcastScreen from '../components/comms/LiveBroadcastScreen';
 import BottomTabBar from '../components/dashboard/BottomTabBar';
@@ -218,7 +224,6 @@ import {
   VP_LOTTIE_SOURCE,
   PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS,
   PIPELINE_CHECKIN_DISMISS_KEY_PREFIX,
-  PIPELINE_LOST_ENCOURAGEMENT_MESSAGES,
   MAX_KPIS_PER_TYPE,
   UUID_LIKE_RE,
   SELF_PROFILE_DRAWER_ID,
@@ -300,30 +305,6 @@ import {
   chartFromPayload,
 } from './kpi-dashboard/helpers';
 
-/** Tap-to-pick / tap-to-drop grip handle.
- *  Tap once → item is "picked up" (blue highlight).  Tap another grip → drops there.  Tap same → cancel. */
-const JbGrip = React.memo(function JbGrip({
-  isPickedUp, isDropTarget, onPress, small,
-}: {
-  isPickedUp: boolean; isDropTarget: boolean; onPress: () => void; small?: boolean;
-}) {
-  return (
-    <TouchableOpacity
-      activeOpacity={0.6}
-      onPress={onPress}
-      style={{
-        width: small ? 18 : 22, height: small ? 22 : 28,
-        alignItems: 'center' as const, justifyContent: 'center' as const,
-        marginRight: small ? 3 : 6, borderRadius: 4,
-        backgroundColor: isPickedUp ? '#bfdbfe' : isDropTarget ? '#dcfce7' : '#e2e8f0',
-        borderWidth: isPickedUp ? 1.5 : isDropTarget ? 1 : 0,
-        borderColor: isPickedUp ? '#3b82f6' : isDropTarget ? '#22c55e' : 'transparent',
-      }}
-    >
-      <Text style={{ fontSize: small ? 11 : 14, color: isPickedUp ? '#2563eb' : isDropTarget ? '#16a34a' : '#64748b' }}>⠿</Text>
-    </TouchableOpacity>
-  );
-});
 
 function renderKpiIcon(kpi: DashboardPayload['loggable_kpis'][number]) {
   return <KpiIcon kpi={kpi} size={76} backgroundColor="transparent" color={kpiTypeAccent(kpi.type)} />;
@@ -477,25 +458,8 @@ export default function KPIDashboardScreen({
   const [coachingJourneyDetail, setCoachingJourneyDetail] = useState<CoachingJourneyDetailResponse | null>(null);
   const [coachingJourneyDetailLoading, setCoachingJourneyDetailLoading] = useState(false);
   const [coachingJourneyDetailError, setCoachingJourneyDetailError] = useState<string | null>(null);
-  /* ── Journey Builder state (lesson/task CRUD, asset library, reorder) ── */
-  const [jbLessons, setJbLessons] = useState<JourneyBuilderLesson[]>([]);
-  const [jbSaveState, setJbSaveState] = useState<JourneyBuilderSaveState>('idle');
-  const [jbSaveMessage, setJbSaveMessage] = useState('');
-  const [jbAssets, setJbAssets] = useState<LibraryAsset[]>([]);
-  const [jbCollections, setJbCollections] = useState<LibraryCollection[]>([]);
-  const [jbShowAssetLibrary, setJbShowAssetLibrary] = useState(false);
-  const [jbActiveTaskMenu, setJbActiveTaskMenu] = useState<{ lessonId: string; taskId: string } | null>(null);
-  const [jbConfirmDelete, setJbConfirmDelete] = useState<{ type: 'lesson' | 'task'; id: string; parentId?: string; label: string } | null>(null);
-  const [jbNewLessonTitle, setJbNewLessonTitle] = useState('');
-  const [jbNewTaskTitle, setJbNewTaskTitle] = useState('');
-  const [jbAddingTaskToLessonId, setJbAddingTaskToLessonId] = useState<string | null>(null);
-  const [jbEditingLessonId, setJbEditingLessonId] = useState<string | null>(null);
-  const [jbEditingLessonTitle, setJbEditingLessonTitle] = useState('');
-  const [jbEditingTaskKey, setJbEditingTaskKey] = useState<string | null>(null);
-  const [jbEditingTaskTitle, setJbEditingTaskTitle] = useState('');
-  const [jbMovingItem, setJbMovingItem] = useState<{
-    type: 'lesson' | 'task'; lessonIdx: number; lessonId: string; taskIdx?: number; taskId?: string;
-  } | null>(null);
+  /* ── Journey Builder state: wired via useJourneyBuilder after fetchCoachingJourneyDetail is defined ── */
+  // (jbLessons, jbSaveState, … jbMovingItem are destructured from journeyBuilder below)
   const [coachingLessonProgressSubmittingId, setCoachingLessonProgressSubmittingId] = useState<string | null>(null);
   const [coachingLessonProgressError, setCoachingLessonProgressError] = useState<string | null>(null);
   type LessonMediaAsset = {
@@ -4734,11 +4698,6 @@ export default function KPIDashboardScreen({
       setCoachingJourneyDetailError,
       setJourneyInviteCodes,
       setJourneyInviteLoading,
-      setJbLessons,
-      setJbSaveState,
-      setJbSaveMessage,
-      setJbAssets,
-      setJbCollections,
       setCoachingLessonProgressSubmittingId,
       setCoachingLessonProgressError,
       setLessonMediaAssets,
@@ -4791,248 +4750,56 @@ export default function KPIDashboardScreen({
     [session?.access_token]
   );
 
-  /* ── Journey Builder helpers (lesson/task CRUD, reorder, asset library) ── */
-  const jbMoveItem = <T,>(items: T[], fromIndex: number, toIndex: number): T[] => {
-    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return items;
-    const copy = [...items];
-    const [item] = copy.splice(fromIndex, 1);
-    copy.splice(toIndex, 0, item);
-    return copy;
-  };
-
-  const jbRunMutation = useCallback(async (pendingLabel: string, successLabel: string, action: () => Promise<void>) => {
-    setJbSaveState('pending');
-    setJbSaveMessage(pendingLabel);
-    try {
-      await action();
-      setJbSaveState('saved');
-      setJbSaveMessage(`${successLabel} at ${new Date().toLocaleTimeString()}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Request failed';
-      setJbSaveState('error');
-      setJbSaveMessage(message);
-    }
-  }, []);
-
-  const jbSendJson = useCallback(async <T,>(
-    path: string,
-    method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
-    body?: Record<string, unknown>
-  ): Promise<T> => {
-    const token = session?.access_token;
-    if (!token) throw new Error('Session token required');
-    const response = await fetch(`${API_URL}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!response.ok) {
-      let message = `Request failed (${response.status})`;
-      try {
-        const payload = (await response.json()) as { error?: unknown };
-        if (payload.error && typeof payload.error === 'object' && typeof (payload.error as any).message === 'string') message = (payload.error as any).message;
-        else if (typeof payload.error === 'string' && payload.error) message = payload.error;
-      } catch { /* ignore */ }
-      throw new Error(message);
-    }
-    return (await response.json()) as T;
-  }, [session?.access_token]);
-
-  const jbSyncLessonsFromDetail = useCallback((detail: CoachingJourneyDetailResponse | null) => {
-    if (!detail?.milestones) { setJbLessons([]); return; }
-    const lessons: JourneyBuilderLesson[] = (detail.milestones ?? []).map((m) => ({
-      id: String(m.id),
-      title: m.title ?? `Lesson ${(m as any).sort_order ?? 0}`,
-      tasks: (m.lessons ?? []).map((l) => ({
-        id: String(l.id),
-        title: l.title ?? 'Untitled Task',
-        assetId: typeof (l as any).body === 'string' && (l as any).body.startsWith('asset:') ? (l as any).body.slice(6) : null,
-      })),
-    }));
-    setJbLessons(lessons);
-  }, []);
-
-  const jbRefreshJourney = useCallback(async (journeyId: string) => {
-    await fetchCoachingJourneyDetail(journeyId);
-  }, [fetchCoachingJourneyDetail]);
-
-  useEffect(() => {
-    jbSyncLessonsFromDetail(coachingJourneyDetail);
-    setJbMovingItem(null);
-  }, [coachingJourneyDetail, jbSyncLessonsFromDetail]);
-
-  const jbAddLesson = useCallback(async (journeyId: string) => {
-    const nextCount = jbLessons.length + 1;
-    const title = jbNewLessonTitle.trim() || `Lesson ${nextCount}`;
-    await jbRunMutation('Adding lesson…', 'Lesson added', async () => {
-      await jbSendJson<{ lesson: { id: string } }>(
-        `/api/coaching/journeys/${journeyId}/lessons`,
-        'POST',
-        { title, sort_order: jbLessons.length }
-      );
-      setJbNewLessonTitle('');
-      await jbRefreshJourney(journeyId);
-    });
-  }, [jbLessons.length, jbNewLessonTitle, jbRefreshJourney, jbRunMutation, jbSendJson]);
-
-  const jbAddTask = useCallback(async (journeyId: string, lessonId: string) => {
-    const lesson = jbLessons.find((l) => l.id === lessonId);
-    if (!lesson) return;
-    const title = jbNewTaskTitle.trim() || `Task ${lesson.tasks.length + 1}`;
-    await jbRunMutation('Adding task…', 'Task added', async () => {
-      await jbSendJson<{ task: { id: string } }>(
-        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}/tasks`,
-        'POST',
-        { title, sort_order: lesson.tasks.length }
-      );
-      setJbNewTaskTitle('');
-      setJbAddingTaskToLessonId(null);
-      await jbRefreshJourney(journeyId);
-    });
-  }, [jbLessons, jbNewTaskTitle, jbRefreshJourney, jbRunMutation, jbSendJson]);
-
-  const jbAddAssetAsTask = useCallback(async (journeyId: string, lessonId: string, asset: LibraryAsset) => {
-    const lesson = jbLessons.find((l) => l.id === lessonId);
-    if (!lesson) return;
-    await jbRunMutation('Adding asset…', 'Asset added', async () => {
-      await jbSendJson<{ task: { id: string } }>(
-        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}/tasks`,
-        'POST',
-        { title: asset.title, body: `asset:${asset.id}`, sort_order: lesson.tasks.length }
-      );
-      await jbRefreshJourney(journeyId);
-    });
-  }, [jbLessons, jbRefreshJourney, jbRunMutation, jbSendJson]);
-
-  const jbRemoveTask = useCallback(async (journeyId: string, lessonId: string, taskId: string) => {
-    await jbRunMutation('Removing task…', 'Task removed', async () => {
-      await jbSendJson(
-        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}/tasks/${taskId}`,
-        'DELETE'
-      );
-      await jbRefreshJourney(journeyId);
-    });
-    setJbActiveTaskMenu(null);
-    setJbConfirmDelete(null);
-  }, [jbRefreshJourney, jbRunMutation, jbSendJson]);
-
-  const jbDeleteLesson = useCallback(async (journeyId: string, lessonId: string) => {
-    await jbRunMutation('Deleting lesson…', 'Lesson deleted', async () => {
-      await jbSendJson(
-        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}`,
-        'DELETE'
-      );
-      await jbRefreshJourney(journeyId);
-    });
-    setJbConfirmDelete(null);
-  }, [jbRefreshJourney, jbRunMutation, jbSendJson]);
-
-  const jbReorderLessons = useCallback(async (journeyId: string, fromIndex: number, toIndex: number) => {
-    const reordered = jbMoveItem(jbLessons, fromIndex, toIndex);
-    if (reordered === jbLessons) return;
-    setJbLessons(reordered);
-    const lessonIds = reordered.map((l) => l.id);
-    await jbRunMutation('Saving lesson order…', 'Lesson order updated', async () => {
-      await jbSendJson(
-        `/api/coaching/journeys/${journeyId}/lessons/reorder`,
-        'POST',
-        { lesson_ids: lessonIds }
-      );
-      await jbRefreshJourney(journeyId);
-    });
-  }, [jbLessons, jbRefreshJourney, jbRunMutation, jbSendJson]);
-
-  const jbReorderTasks = useCallback(async (journeyId: string, lessonId: string, fromIndex: number, toIndex: number) => {
-    const lesson = jbLessons.find((l) => l.id === lessonId);
-    if (!lesson) return;
-    const reordered = jbMoveItem(lesson.tasks, fromIndex, toIndex);
-    if (reordered === lesson.tasks) return;
-    setJbLessons((prev) =>
-      prev.map((l) => (l.id === lessonId ? { ...l, tasks: reordered } : l))
-    );
-    const taskIds = reordered.map((t) => t.id);
-    await jbRunMutation('Saving task order…', 'Task order updated', async () => {
-      await jbSendJson(
-        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}/tasks/reorder`,
-        'POST',
-        { task_ids: taskIds }
-      );
-      await jbRefreshJourney(journeyId);
-    });
-  }, [jbLessons, jbRefreshJourney, jbRunMutation, jbSendJson]);
-
-  const jbFetchAssetLibrary = useCallback(async () => {
-    const token = session?.access_token;
-    if (!token) return;
-    try {
-      const response = await fetch(`${API_URL}/api/coaching/library`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const body = (await response.json()) as { assets?: LibraryAsset[]; collections?: LibraryCollection[] };
-        setJbAssets(Array.isArray(body.assets) ? body.assets : []);
-        setJbCollections(Array.isArray(body.collections) ? body.collections : []);
-      }
-    } catch {
-      // Library fetch is non-blocking; empty state is acceptable
-    }
-  }, [session?.access_token]);
-
-  useEffect(() => {
-    if (jbShowAssetLibrary && jbAssets.length === 0) {
-      void jbFetchAssetLibrary();
-    }
-  }, [jbShowAssetLibrary, jbAssets.length, jbFetchAssetLibrary]);
-
-  const jbAssetsById = useMemo(() => {
-    const map = new Map<string, LibraryAsset>();
-    for (const a of jbAssets) map.set(a.id, a);
-    return map;
-  }, [jbAssets]);
-
-  const jbRenameLesson = useCallback(async (journeyId: string, lessonId: string, newTitle: string) => {
-    const trimmed = newTitle.trim();
-    if (!trimmed) { setJbEditingLessonId(null); return; }
-    const existing = jbLessons.find((l) => l.id === lessonId);
-    if (existing && existing.title === trimmed) { setJbEditingLessonId(null); return; }
-    setJbLessons((prev) => prev.map((l) => (l.id === lessonId ? { ...l, title: trimmed } : l)));
-    setJbEditingLessonId(null);
-    await jbRunMutation('Renaming lesson…', 'Lesson renamed', async () => {
-      await jbSendJson(
-        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}`,
-        'PATCH',
-        { title: trimmed }
-      );
-      await jbRefreshJourney(journeyId);
-    });
-  }, [jbLessons, jbRefreshJourney, jbRunMutation, jbSendJson]);
-
-  const jbRenameTask = useCallback(async (journeyId: string, lessonId: string, taskId: string, newTitle: string) => {
-    const trimmed = newTitle.trim();
-    if (!trimmed) { setJbEditingTaskKey(null); return; }
-    const lesson = jbLessons.find((l) => l.id === lessonId);
-    const task = lesson?.tasks.find((t) => t.id === taskId);
-    if (task && task.title === trimmed) { setJbEditingTaskKey(null); return; }
-    setJbLessons((prev) =>
-      prev.map((l) =>
-        l.id === lessonId
-          ? { ...l, tasks: l.tasks.map((t) => (t.id === taskId ? { ...t, title: trimmed } : t)) }
-          : l
-      )
-    );
-    setJbEditingTaskKey(null);
-    await jbRunMutation('Renaming task…', 'Task renamed', async () => {
-      await jbSendJson(
-        `/api/coaching/journeys/${journeyId}/lessons/${lessonId}/tasks/${taskId}`,
-        'PATCH',
-        { title: trimmed }
-      );
-      await jbRefreshJourney(journeyId);
-    });
-  }, [jbLessons, jbRefreshJourney, jbRunMutation, jbSendJson]);
+  /* ── useJourneyBuilder ───────────────────────────────────────────── */
+  const {
+    jbLessons,
+    jbSaveState,
+    jbSaveMessage,
+    jbAssets,
+    jbCollections,
+    jbShowAssetLibrary,
+    jbActiveTaskMenu,
+    jbConfirmDelete,
+    jbNewLessonTitle: _jbNewLessonTitle,
+    jbNewTaskTitle,
+    jbAddingTaskToLessonId,
+    jbEditingLessonId,
+    jbEditingLessonTitle,
+    jbEditingTaskKey,
+    jbEditingTaskTitle,
+    jbMovingItem,
+    jbAssetsById,
+    setJbLessons,
+    setJbSaveState,
+    setJbSaveMessage,
+    setJbAssets,
+    setJbCollections,
+    setJbShowAssetLibrary,
+    setJbActiveTaskMenu,
+    setJbConfirmDelete,
+    setJbNewLessonTitle,
+    setJbNewTaskTitle,
+    setJbAddingTaskToLessonId,
+    setJbEditingLessonId,
+    setJbEditingLessonTitle,
+    setJbEditingTaskKey,
+    setJbEditingTaskTitle,
+    setJbMovingItem,
+    jbAddLesson,
+    jbAddTask,
+    jbAddAssetAsTask,
+    jbRemoveTask,
+    jbDeleteLesson,
+    jbReorderLessons,
+    jbReorderTasks,
+    jbRenameLesson,
+    jbRenameTask,
+    jbFetchAssetLibrary,
+  } = useJourneyBuilder({
+    accessToken: session?.access_token ?? null,
+    coachingJourneyDetail,
+    fetchCoachingJourneyDetail,
+  });
 
   const submitCoachingLessonProgress = useCallback(
     async (lessonId: string, status: 'not_started' | 'in_progress' | 'completed') => {
@@ -8407,364 +8174,54 @@ export default function KPIDashboardScreen({
                             );
                           })()}
 
-                          {/* ── Journey Builder: save status banner ── */}
-                          {jbSaveState !== 'idle' && (
-                            <View style={[styles.jbSaveBanner, jbSaveState === 'error' ? styles.jbSaveBannerError : jbSaveState === 'pending' ? styles.jbSaveBannerPending : styles.jbSaveBannerOk]}>
-                              <Text style={styles.jbSaveBannerText}>
-                                {jbSaveState === 'pending' ? '⏳ ' : jbSaveState === 'error' ? '⚠️ ' : '✅ '}
-                                {jbSaveMessage}
-                              </Text>
-                            </View>
-                          )}
+                          {/* ── Journey Builder (extracted component) ── */}
+                          <JourneyBuilderDrawer
+                            selectedJourneyId={selectedJourneyId ?? null}
+                            selectedLessonId={selectedLessonId ?? null}
+                            selectedJourneyTitle={coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null}
+                            coachingShellContext={coachingShellContext}
+                            milestoneRows={milestoneRows}
+                            isCoachRuntimeOperator={isCoachRuntimeOperator}
+                            shellPackageGateBlocksActions={shellPackageGateBlocksActions}
+                            jbLessons={jbLessons}
+                            jbSaveState={jbSaveState}
+                            jbSaveMessage={jbSaveMessage}
+                            jbAssets={jbAssets}
+                            jbCollections={jbCollections}
+                            jbShowAssetLibrary={jbShowAssetLibrary}
+                            jbActiveTaskMenu={jbActiveTaskMenu}
+                            jbConfirmDelete={jbConfirmDelete}
+                            jbNewLessonTitle={_jbNewLessonTitle}
+                            jbNewTaskTitle={jbNewTaskTitle}
+                            jbAddingTaskToLessonId={jbAddingTaskToLessonId}
+                            jbEditingLessonId={jbEditingLessonId}
+                            jbEditingLessonTitle={jbEditingLessonTitle}
+                            jbEditingTaskKey={jbEditingTaskKey}
+                            jbEditingTaskTitle={jbEditingTaskTitle}
+                            jbMovingItem={jbMovingItem}
+                            jbAssetsById={jbAssetsById}
+                            setJbShowAssetLibrary={setJbShowAssetLibrary}
+                            setJbConfirmDelete={setJbConfirmDelete}
+                            setJbNewTaskTitle={setJbNewTaskTitle}
+                            setJbAddingTaskToLessonId={setJbAddingTaskToLessonId}
+                            setJbEditingLessonId={setJbEditingLessonId}
+                            setJbEditingLessonTitle={setJbEditingLessonTitle}
+                            setJbEditingTaskKey={setJbEditingTaskKey}
+                            setJbEditingTaskTitle={setJbEditingTaskTitle}
+                            setJbMovingItem={setJbMovingItem}
+                            jbAddLesson={jbAddLesson}
+                            jbAddTask={jbAddTask}
+                            jbAddAssetAsTask={jbAddAssetAsTask}
+                            jbDeleteLesson={jbDeleteLesson}
+                            jbRemoveTask={jbRemoveTask}
+                            jbReorderLessons={jbReorderLessons}
+                            jbReorderTasks={jbReorderTasks}
+                            jbRenameLesson={jbRenameLesson}
+                            jbRenameTask={jbRenameTask}
+                            openCoachingShell={openCoachingShell}
+                          />
 
-                          {/* Moving-item banner */}
-                          {jbMovingItem && (
-                            <View style={{ backgroundColor: '#eff6ff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, marginBottom: 6, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const }}>
-                              <Text style={{ fontSize: 12, color: '#1e40af' }}>
-                                Moving {jbMovingItem.type === 'lesson' ? 'lesson' : 'task'} — tap another ⠿ to place
-                              </Text>
-                              <TouchableOpacity onPress={() => setJbMovingItem(null)} style={{ paddingHorizontal: 8, paddingVertical: 2 }}>
-                                <Text style={{ fontSize: 12, fontWeight: '600' as const, color: '#3b82f6' }}>Cancel</Text>
-                              </TouchableOpacity>
-                            </View>
-                          )}
 
-                          {/* ── Journey Builder: action bar (coach operators) ── */}
-                          {isCoachRuntimeOperator && !shellPackageGateBlocksActions && (
-                            <View style={styles.jbActionBar}>
-                              <TouchableOpacity
-                                style={styles.jbActionBtn}
-                                onPress={() => {
-                                  const jid = selectedJourneyId;
-                                  if (jid) void jbAddLesson(jid);
-                                }}
-                              >
-                                <Text style={styles.jbActionBtnText}>＋ Lesson</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={[styles.jbActionBtn, styles.jbActionBtnSecondary]}
-                                onPress={() => setJbShowAssetLibrary((prev) => !prev)}
-                              >
-                                <Text style={[styles.jbActionBtnText, styles.jbActionBtnSecondaryText]}>
-                                  {jbShowAssetLibrary ? 'Close Library' : 'Asset Library'}
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
-                          )}
-
-                          {/* ── Asset Library Panel ── */}
-                          {jbShowAssetLibrary && isCoachRuntimeOperator && (
-                            <View style={styles.jbAssetLibraryPanel}>
-                              <Text style={styles.jbAssetLibraryTitle}>Asset Library</Text>
-                              {jbAssets.length === 0 ? (
-                                <Text style={styles.jbAssetLibraryEmpty}>No assets available. Assets from the coaching library will appear here.</Text>
-                              ) : (
-                                <>
-                                  {jbCollections.length > 0 && (
-                                    <View style={styles.jbAssetCollectionRow}>
-                                      {jbCollections.map((col) => (
-                                        <TouchableOpacity key={col.id} style={styles.jbAssetCollectionChip}>
-                                          <Text style={styles.jbAssetCollectionChipText} numberOfLines={1}>{col.name} ({col.assetIds.length})</Text>
-                                        </TouchableOpacity>
-                                      ))}
-                                    </View>
-                                  )}
-                                  <ScrollView style={styles.jbAssetListScroll} nestedScrollEnabled>
-                                    {jbAssets.map((asset) => (
-                                      <View key={asset.id} style={styles.jbAssetRow}>
-                                        <View style={styles.jbAssetRowInfo}>
-                                          <Text style={styles.jbAssetRowTitle} numberOfLines={1}>{asset.title}</Text>
-                                          <Text style={styles.jbAssetRowMeta} numberOfLines={1}>{asset.category} · {asset.duration}</Text>
-                                        </View>
-                                        {/* Tap an asset to assign it to a lesson via a quick-pick */}
-                                        <TouchableOpacity
-                                          style={styles.jbAssetAddBtn}
-                                          onPress={() => {
-                                            // If there's only one lesson, auto-add. Otherwise prompt to pick a lesson.
-                                            const jid = selectedJourneyId;
-                                            if (!jid) return;
-                                            if (jbLessons.length === 1) {
-                                              void jbAddAssetAsTask(jid, jbLessons[0].id, asset);
-                                            } else if (jbLessons.length > 1) {
-                                              // Show a simple prompt: pick which lesson
-                                              setJbAddingTaskToLessonId(null);
-                                              // For multi-lesson, we'll use the first lesson and let user reorder
-                                              void jbAddAssetAsTask(jid, jbLessons[0].id, asset);
-                                            }
-                                          }}
-                                        >
-                                          <Text style={styles.jbAssetAddBtnText}>＋ Add</Text>
-                                        </TouchableOpacity>
-                                      </View>
-                                    ))}
-                                  </ScrollView>
-                                </>
-                              )}
-                            </View>
-                          )}
-
-                          {/* ── Journey Builder: Lessons + Tasks (editable) ── */}
-                          {jbLessons.length === 0 && milestoneRows.length === 0 ? (
-                            <View style={styles.coachingJourneyEmptyCard}>
-                              <Text style={styles.coachingJourneyEmptyTitle}>No lessons yet</Text>
-                              <Text style={styles.coachingJourneyEmptySub}>
-                                {isCoachRuntimeOperator ? 'Tap "+ Lesson" above to create your first lesson.' : 'No lessons have been created for this journey.'}
-                              </Text>
-                            </View>
-                          ) : (
-                            <View style={styles.coachingJourneyListCard}>
-                              {jbLessons.map((lesson, lessonIdx) => {
-                                const isActiveLesson = String(lesson.id) === String(selectedLessonId ?? '');
-                                return (
-                                  <View key={`jb-lesson-${lesson.id}`} style={[styles.jbLessonBlock, lessonIdx > 0 ? styles.coachingJourneyRowDivider : null, jbMovingItem?.type === 'lesson' && jbMovingItem.lessonIdx === lessonIdx ? { borderWidth: 1.5, borderColor: '#3b82f6', borderRadius: 8, backgroundColor: '#eff6ff' } : null]}>
-                                    {/* Lesson header with reorder + delete */}
-                                    <View style={styles.jbLessonHeader}>
-                                      {isCoachRuntimeOperator && (
-                                        <JbGrip
-                                          isPickedUp={jbMovingItem?.type === 'lesson' && jbMovingItem.lessonIdx === lessonIdx}
-                                          isDropTarget={!!jbMovingItem && jbMovingItem.type === 'lesson' && jbMovingItem.lessonIdx !== lessonIdx}
-                                          onPress={() => {
-                                            const jid = selectedJourneyId;
-                                            if (!jid) return;
-                                            if (!jbMovingItem) {
-                                              setJbMovingItem({ type: 'lesson', lessonIdx, lessonId: lesson.id });
-                                            } else if (jbMovingItem.type === 'lesson' && jbMovingItem.lessonIdx === lessonIdx) {
-                                              setJbMovingItem(null);
-                                            } else if (jbMovingItem.type === 'lesson') {
-                                              void jbReorderLessons(jid, jbMovingItem.lessonIdx, lessonIdx);
-                                              setJbMovingItem(null);
-                                            } else {
-                                              setJbMovingItem(null);
-                                            }
-                                          }}
-                                        />
-                                      )}
-                                      {jbEditingLessonId === lesson.id && isCoachRuntimeOperator ? (
-                                        <View style={[styles.jbLessonTitleBtn, styles.jbEditingWrap]}>
-                                          <TextInput
-                                            style={styles.jbEditInput}
-                                            value={jbEditingLessonTitle}
-                                            onChangeText={setJbEditingLessonTitle}
-                                            autoFocus
-                                            selectTextOnFocus
-                                            onBlur={() => { const jid = selectedJourneyId; if (jid) void jbRenameLesson(jid, lesson.id, jbEditingLessonTitle); }}
-                                            onSubmitEditing={() => { const jid = selectedJourneyId; if (jid) void jbRenameLesson(jid, lesson.id, jbEditingLessonTitle); }}
-                                            placeholder="Lesson title…"
-                                            placeholderTextColor="#999"
-                                          />
-                                          <Text style={styles.jbLessonTaskCount}>{lesson.tasks.length} task{lesson.tasks.length !== 1 ? 's' : ''}</Text>
-                                        </View>
-                                      ) : (
-                                        <TouchableOpacity
-                                          style={[styles.jbLessonTitleBtn, isActiveLesson ? styles.coachingLessonRowSelected : null]}
-                                          onPress={() =>
-                                            openCoachingShell('coaching_lesson_detail', {
-                                              selectedJourneyId: selectedJourneyId ?? null,
-                                              selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
-                                              selectedLessonId: String(lesson.id),
-                                              selectedLessonTitle: lesson.title,
-                                            })
-                                          }
-                                          onLongPress={() => {
-                                            if (isCoachRuntimeOperator) {
-                                              setJbEditingLessonId(lesson.id);
-                                              setJbEditingLessonTitle(lesson.title);
-                                            }
-                                          }}
-                                        >
-                                          <Text numberOfLines={1} style={styles.jbLessonTitleText}>{lesson.title}</Text>
-                                          {isCoachRuntimeOperator && <Text style={styles.jbEditHint}>long-press to rename</Text>}
-                                          <Text style={styles.jbLessonTaskCount}>{lesson.tasks.length} task{lesson.tasks.length !== 1 ? 's' : ''}</Text>
-                                        </TouchableOpacity>
-                                      )}
-                                      {isCoachRuntimeOperator && (
-                                        <TouchableOpacity
-                                          style={styles.jbDeleteBtn}
-                                          onPress={() => setJbConfirmDelete({ type: 'lesson', id: lesson.id, label: lesson.title })}
-                                        >
-                                          <Text style={styles.jbDeleteBtnText}>✕</Text>
-                                        </TouchableOpacity>
-                                      )}
-                                    </View>
-
-                                    {/* Tasks within lesson */}
-                                    {lesson.tasks.map((task, taskIdx) => {
-                                      const assetInfo = task.assetId ? jbAssetsById.get(task.assetId) : null;
-                                      return (
-                                        <View key={`jb-task-${task.id}`} style={[styles.jbTaskRow, jbMovingItem?.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx === taskIdx ? { borderWidth: 1, borderColor: '#3b82f6', borderRadius: 6, backgroundColor: '#eff6ff' } : null]}>
-                                          {isCoachRuntimeOperator && (
-                                            <JbGrip
-                                              small
-                                              isPickedUp={jbMovingItem?.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx === taskIdx}
-                                              isDropTarget={!!jbMovingItem && jbMovingItem.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx !== taskIdx}
-                                              onPress={() => {
-                                                const jid = selectedJourneyId;
-                                                if (!jid) return;
-                                                if (!jbMovingItem) {
-                                                  setJbMovingItem({ type: 'task', lessonIdx, lessonId: lesson.id, taskIdx, taskId: task.id });
-                                                } else if (jbMovingItem.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx === taskIdx) {
-                                                  setJbMovingItem(null);
-                                                } else if (jbMovingItem.type === 'task' && jbMovingItem.lessonId === lesson.id && jbMovingItem.taskIdx !== undefined) {
-                                                  void jbReorderTasks(jid, lesson.id, jbMovingItem.taskIdx, taskIdx);
-                                                  setJbMovingItem(null);
-                                                } else {
-                                                  setJbMovingItem(null);
-                                                }
-                                              }}
-                                            />
-                                          )}
-                                          <View style={styles.jbTaskContent}>
-                                            {jbEditingTaskKey === `${lesson.id}:${task.id}` && isCoachRuntimeOperator ? (
-                                              <TextInput
-                                                style={styles.jbEditInputSm}
-                                                value={jbEditingTaskTitle}
-                                                onChangeText={setJbEditingTaskTitle}
-                                                autoFocus
-                                                selectTextOnFocus
-                                                onBlur={() => { const jid = selectedJourneyId; if (jid) void jbRenameTask(jid, lesson.id, task.id, jbEditingTaskTitle); }}
-                                                onSubmitEditing={() => { const jid = selectedJourneyId; if (jid) void jbRenameTask(jid, lesson.id, task.id, jbEditingTaskTitle); }}
-                                                placeholder="Task title…"
-                                                placeholderTextColor="#999"
-                                              />
-                                            ) : (
-                                              <TouchableOpacity
-                                                onLongPress={() => {
-                                                  if (isCoachRuntimeOperator) {
-                                                    setJbEditingTaskKey(`${lesson.id}:${task.id}`);
-                                                    setJbEditingTaskTitle(task.title);
-                                                  }
-                                                }}
-                                              >
-                                                <Text numberOfLines={1} style={styles.jbTaskTitle}>{task.title}</Text>
-                                              </TouchableOpacity>
-                                            )}
-                                            {assetInfo && (
-                                              <View style={styles.jbTaskAssetBadge}>
-                                                <Text style={styles.jbTaskAssetBadgeText} numberOfLines={1}>{assetInfo.title}</Text>
-                                              </View>
-                                            )}
-                                          </View>
-                                          {isCoachRuntimeOperator && (
-                                            <TouchableOpacity
-                                              style={styles.jbDeleteBtnSm}
-                                              onPress={() => setJbConfirmDelete({ type: 'task', id: task.id, parentId: lesson.id, label: task.title })}
-                                            >
-                                              <Text style={styles.jbDeleteBtnSmText}>✕</Text>
-                                            </TouchableOpacity>
-                                          )}
-                                        </View>
-                                      );
-                                    })}
-
-                                    {/* Add task to this lesson */}
-                                    {isCoachRuntimeOperator && !shellPackageGateBlocksActions && (
-                                      <View style={styles.jbAddTaskRow}>
-                                        {jbAddingTaskToLessonId === lesson.id ? (
-                                          <View style={styles.jbAddTaskInline}>
-                                            <TextInput
-                                              style={styles.jbAddTaskInput}
-                                              placeholder="Task title…"
-                                              placeholderTextColor="#999"
-                                              value={jbNewTaskTitle}
-                                              onChangeText={setJbNewTaskTitle}
-                                              onSubmitEditing={() => { const jid = selectedJourneyId; if (jid) void jbAddTask(jid, lesson.id); }}
-                                            />
-                                            <TouchableOpacity
-                                              style={styles.jbAddTaskConfirmBtn}
-                                              onPress={() => { const jid = selectedJourneyId; if (jid) void jbAddTask(jid, lesson.id); }}
-                                            >
-                                              <Text style={styles.jbAddTaskConfirmBtnText}>Add</Text>
-                                            </TouchableOpacity>
-                                            <TouchableOpacity
-                                              style={styles.jbAddTaskCancelBtn}
-                                              onPress={() => { setJbAddingTaskToLessonId(null); setJbNewTaskTitle(''); }}
-                                            >
-                                              <Text style={styles.jbAddTaskCancelBtnText}>✕</Text>
-                                            </TouchableOpacity>
-                                          </View>
-                                        ) : (
-                                          <TouchableOpacity
-                                            style={styles.jbAddTaskBtn}
-                                            onPress={() => { setJbAddingTaskToLessonId(lesson.id); setJbNewTaskTitle(''); }}
-                                          >
-                                            <Text style={styles.jbAddTaskBtnText}>＋ Task</Text>
-                                          </TouchableOpacity>
-                                        )}
-                                      </View>
-                                    )}
-                                  </View>
-                                );
-                              })}
-
-                              {/* Fallback: show original milestones/lessons in read-only for non-operators if jbLessons is empty */}
-                              {jbLessons.length === 0 && milestoneRows.map((milestone, milestoneIdx) => (
-                                <View
-                                  key={`coaching-milestone-${milestone.id}`}
-                                  style={[styles.coachingMilestoneBlock, milestoneIdx > 0 ? styles.coachingJourneyRowDivider : null]}
-                                >
-                                  <Text style={styles.coachingMilestoneTitle}>{milestone.title}</Text>
-                                  {(milestone.lessons ?? []).length === 0 ? (
-                                    <Text style={styles.coachingMilestoneEmpty}>No active lessons yet.</Text>
-                                  ) : (
-                                    (milestone.lessons ?? []).map((lesson, lessonIdx) => {
-                                      const statusLabel = String(lesson.progress_status ?? 'not_started').replace('_', ' ');
-                                      return (
-                                        <TouchableOpacity
-                                          key={`coaching-lesson-${lesson.id}`}
-                                          style={[styles.coachingLessonRow, lessonIdx > 0 ? styles.coachingLessonRowDivider : null, shellPackageGateBlocksActions ? styles.disabled : null]}
-                                          disabled={shellPackageGateBlocksActions}
-                                          onPress={() =>
-                                            openCoachingShell('coaching_lesson_detail', {
-                                              selectedJourneyId: selectedJourneyId ?? null,
-                                              selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
-                                              selectedLessonId: String(lesson.id),
-                                              selectedLessonTitle: lesson.title,
-                                            })
-                                          }
-                                        >
-                                          <View style={styles.coachingLessonRowCopy}>
-                                            <Text numberOfLines={1} style={styles.coachingLessonRowTitle}>{lesson.title}</Text>
-                                            <Text numberOfLines={2} style={styles.coachingLessonRowSub}>
-                                              {lesson.body?.trim() || 'Lesson content body available on lesson detail.'}
-                                            </Text>
-                                          </View>
-                                          <View style={styles.coachingLessonRowStatusPill}>
-                                            <Text style={styles.coachingLessonRowStatusText}>{statusLabel}</Text>
-                                          </View>
-                                        </TouchableOpacity>
-                                      );
-                                    })
-                                  )}
-                                </View>
-                              ))}
-                            </View>
-                          )}
-
-                          {/* ── Confirm delete dialog ── */}
-                          {jbConfirmDelete && (
-                            <View style={styles.jbConfirmDeleteOverlay}>
-                              <View style={styles.jbConfirmDeleteCard}>
-                                <Text style={styles.jbConfirmDeleteTitle}>Delete {jbConfirmDelete.type}?</Text>
-                                <Text style={styles.jbConfirmDeleteSub}>"{jbConfirmDelete.label}" will be permanently removed.</Text>
-                                <View style={styles.jbConfirmDeleteActions}>
-                                  <TouchableOpacity style={styles.jbConfirmDeleteCancel} onPress={() => setJbConfirmDelete(null)}>
-                                    <Text style={styles.jbConfirmDeleteCancelText}>Cancel</Text>
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    style={styles.jbConfirmDeleteConfirm}
-                                    onPress={() => {
-                                      const jid = selectedJourneyId;
-                                      if (!jid || !jbConfirmDelete) return;
-                                      if (jbConfirmDelete.type === 'lesson') void jbDeleteLesson(jid, jbConfirmDelete.id);
-                                      else if (jbConfirmDelete.type === 'task' && jbConfirmDelete.parentId) void jbRemoveTask(jid, jbConfirmDelete.parentId, jbConfirmDelete.id);
-                                    }}
-                                  >
-                                    <Text style={styles.jbConfirmDeleteConfirmText}>Delete</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              </View>
-                            </View>
-                          )}
                         </>
                       )}
                     </View>
@@ -9116,164 +8573,28 @@ export default function KPIDashboardScreen({
         onClose={() => setDevToolsVisible(false)}
       />
 
-      <Modal visible={aiAssistVisible} transparent animationType="fade" onRequestClose={() => setAiAssistVisible(false)}>
-        <Pressable style={styles.aiAssistBackdrop} onPress={() => setAiAssistVisible(false)}>
-          <Pressable style={styles.aiAssistCard} onPress={() => {}}>
-            <View style={styles.aiAssistHeader}>
-              <View style={styles.aiAssistHeaderCopy}>
-                <Text style={styles.aiAssistTitle}>{aiAssistContext?.title ?? 'AI Assist (Approval-First)'}</Text>
-                <Text style={styles.aiAssistSub}>
-                  {aiAssistContext?.sub ??
-                    'AI assist is advisory only. Review and edit all content before any human send/publish action.'}
-                </Text>
-              </View>
-              <TouchableOpacity style={styles.aiAssistCloseBtn} onPress={() => setAiAssistVisible(false)}>
-                <Text style={styles.aiAssistCloseBtnText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.aiAssistPolicyBanner}>
-              <Text style={styles.aiAssistPolicyBannerText}>
-                Approval-first shell: no KPI writes, no forecast/challenge-state mutation, no auto-send or auto-publish.
-              </Text>
-            </View>
-            <View style={styles.aiAssistField}>
-              <Text style={styles.aiAssistFieldLabel}>Approved insert point</Text>
-              <Text style={styles.aiAssistFieldValue}>{aiAssistContext?.targetLabel ?? 'Unknown context'}</Text>
-            </View>
-            <View style={styles.aiAssistField}>
-              <Text style={styles.aiAssistFieldLabel}>Draft request (human guided)</Text>
-              <TextInput
-                value={aiAssistPrompt}
-                onChangeText={(text) => {
-                  setAiAssistPrompt(text);
-                  if (aiAssistNotice) setAiAssistNotice(null);
-                }}
-                placeholder="Describe the draft tone, purpose, and audience..."
-                placeholderTextColor="#97a1af"
-                multiline
-                style={[styles.aiAssistInput, styles.aiAssistInputTall]}
-              />
-            </View>
-            <View style={styles.aiAssistField}>
-              <Text style={styles.aiAssistFieldLabel}>AI draft review (editable)</Text>
-              <TextInput
-                value={aiAssistDraftText}
-                onChangeText={(text) => {
-                  setAiAssistDraftText(text);
-                  if (aiAssistNotice) setAiAssistNotice(null);
-                }}
-                placeholder="Generated draft appears here. Edit before applying."
-                placeholderTextColor="#97a1af"
-                multiline
-                style={[styles.aiAssistInput, styles.aiAssistDraftInput]}
-              />
-            </View>
-            <View style={styles.aiAssistQueueCard}>
-              <View style={styles.aiAssistQueueCardTopRow}>
-                <Text style={styles.aiAssistQueueTitle}>Approval Queue (Review-Only)</Text>
-                {aiSuggestionListLoading ? <ActivityIndicator size="small" /> : null}
-              </View>
-              {aiSuggestionListError ? <Text style={styles.aiAssistQueueError}>{aiSuggestionListError}</Text> : null}
-              {aiSuggestionQueueError ? <Text style={styles.aiAssistQueueError}>{aiSuggestionQueueError}</Text> : null}
-              {aiSuggestionQueueSuccess ? <Text style={styles.aiAssistQueueSuccess}>{aiSuggestionQueueSuccess}</Text> : null}
-              {aiSuggestionQueueSummary ? (
-                <Text style={styles.aiAssistQueueSummaryText}>
-                  Queue summary: {Number(aiSuggestionQueueSummary.total ?? 0)} total • pending{' '}
-                  {Number(aiSuggestionQueueSummary.by_status?.pending ?? 0)} • approved{' '}
-                  {Number(aiSuggestionQueueSummary.by_status?.approved ?? 0)} • rejected{' '}
-                  {Number(aiSuggestionQueueSummary.by_status?.rejected ?? 0)}
-                </Text>
-              ) : (
-                <Text style={styles.aiAssistQueueSummaryText}>
-                  Queue summary unavailable in this session. Queueing still creates a pending review item only (no send/publish).
-                </Text>
-              )}
-              {(() => {
-                const hostKey = aiAssistContext?.host ?? null;
-                const hostMatches = (aiSuggestionRows ?? []).filter((row) => {
-                  const source = String(row.ai_queue_read_model?.source_surface ?? '');
-                  if (!hostKey) return true;
-                  if (hostKey === 'coaching_journeys') return source === 'coaching_journey_detail' || source === 'coaching_journey_list';
-                  if (hostKey === 'coaching_journey_detail') return source === 'coaching_journey_detail';
-                  if (hostKey === 'coaching_lesson_detail') return source === 'coaching_lesson_detail';
-                  if (hostKey === 'coach_broadcast_compose') return source === 'coach_broadcast_compose';
-                  if (hostKey === 'channel_thread') return source === 'channel_thread';
-                  if (hostKey === 'challenge_coaching_module') return source === 'challenge_coaching_block';
-                  if (hostKey === 'team_member_coaching_module' || hostKey === 'team_leader_coaching_module') {
-                    return source === 'team_coaching_module';
-                  }
-                  return true;
-                });
-                const rows = (hostMatches.length > 0 ? hostMatches : aiSuggestionRows ?? []).slice(0, 3);
-                if (rows.length === 0) {
-                  return (
-                    <Text style={styles.aiAssistQueueRecentEmpty}>
-                      No recent AI review items for this user/context yet. Queueing remains approval-first and advisory only.
-                    </Text>
-                  );
-                }
-                return (
-                  <View style={styles.aiAssistQueueRecentList}>
-                    {rows.map((row, idx) => {
-                      const queueStatus = String(
-                        row.ai_queue_read_model?.approval_queue?.queue_status ?? row.status ?? 'unknown'
-                      );
-                      const createdAt = fmtMonthDayTime(row.created_at ?? null);
-                      return (
-                        <View
-                          key={`ai-suggestion-recent-${row.id}`}
-                          style={[styles.aiAssistQueueRecentRow, idx > 0 ? styles.aiAssistQueueRecentRowDivider : null]}
-                        >
-                          <View style={styles.aiAssistQueueRecentRowCopy}>
-                            <Text style={styles.aiAssistQueueRecentStatus}>{queueStatus}</Text>
-                            <Text style={styles.aiAssistQueueRecentMeta}>
-                              {row.ai_queue_read_model?.target_scope_summary ?? row.scope ?? 'scope unavailable'}
-                            </Text>
-                            <Text style={styles.aiAssistQueueRecentMeta}>
-                              {createdAt ? `Created ${createdAt}` : `Suggestion ${row.id}`}
-                            </Text>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                );
-              })()}
-            </View>
-            {aiAssistNotice ? <Text style={styles.aiAssistNotice}>{aiAssistNotice}</Text> : null}
-            <View style={styles.aiAssistActionRow}>
-              <TouchableOpacity
-                style={[styles.aiAssistSecondaryBtn, aiAssistGenerating ? styles.disabled : null]}
-                disabled={aiAssistGenerating}
-                onPress={generateAiAssistDraft}
-              >
-                <Text style={styles.aiAssistSecondaryBtnText}>
-                  {aiAssistGenerating ? 'Generating…' : 'Generate Draft (Shell)'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.aiAssistSecondaryBtn} onPress={applyAiAssistDraftToHumanInput}>
-                <Text style={styles.aiAssistSecondaryBtnText}>
-                  {aiAssistContext?.host === 'channel_thread' || aiAssistContext?.host === 'coach_broadcast_compose'
-                    ? 'Insert Into Human Composer'
-                    : 'Mark Ready For Human Review'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              style={[
-                styles.aiAssistPrimaryBtn,
-                (aiSuggestionQueueSubmitting || aiAssistGenerating || !aiAssistDraftText.trim()) ? styles.disabled : null,
-              ]}
-              disabled={aiSuggestionQueueSubmitting || aiAssistGenerating || !aiAssistDraftText.trim()}
-              onPress={() => void queueAiSuggestionForApproval()}
-            >
-              <Text style={styles.aiAssistPrimaryBtnText}>
-                {aiSuggestionQueueSubmitting ? 'Queueing For Review…' : 'Queue For Approval Review'}
-              </Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <AiAssistDrawer
+        aiAssistVisible={aiAssistVisible}
+        setAiAssistVisible={setAiAssistVisible}
+        aiAssistContext={aiAssistContext}
+        aiAssistPrompt={aiAssistPrompt}
+        setAiAssistPrompt={setAiAssistPrompt}
+        aiAssistDraftText={aiAssistDraftText}
+        setAiAssistDraftText={setAiAssistDraftText}
+        aiAssistGenerating={aiAssistGenerating}
+        aiAssistNotice={aiAssistNotice}
+        setAiAssistNotice={setAiAssistNotice}
+        aiSuggestionQueueSubmitting={aiSuggestionQueueSubmitting}
+        aiSuggestionQueueError={aiSuggestionQueueError}
+        aiSuggestionQueueSuccess={aiSuggestionQueueSuccess}
+        aiSuggestionRows={aiSuggestionRows}
+        aiSuggestionQueueSummary={aiSuggestionQueueSummary}
+        aiSuggestionListLoading={aiSuggestionListLoading}
+        aiSuggestionListError={aiSuggestionListError}
+        generateAiAssistDraft={generateAiAssistDraft}
+        applyAiAssistDraftToHumanInput={applyAiAssistDraftToHumanInput}
+        queueAiSuggestionForApproval={queueAiSuggestionForApproval}
+      />
 
       <Modal visible={logOtherVisible} transparent animationType="fade" onRequestClose={() => setLogOtherVisible(false)}>
         <View style={styles.drawerBackdrop}>
@@ -9347,451 +8668,58 @@ export default function KPIDashboardScreen({
         </View>
       </Modal>
 
-      <Modal visible={addDrawerVisible} transparent animationType="fade" onRequestClose={() => setAddDrawerVisible(false)}>
-        <View style={styles.drawerBackdrop}>
-          <View style={styles.drawerCard}>
-            <Text style={styles.drawerTitle}>Priority Settings</Text>
-            <Text style={styles.drawerUnlockedHint}>Toggle On/Off and mark up to 6 favorites.</Text>
-            <View style={styles.drawerFilterRow}>
-              {(['Quick', 'PC', 'GP', 'VP'] as const).map((filter) => (
-                <TouchableOpacity
-                  key={filter}
-                  style={[styles.drawerFilterChip, drawerFilter === filter && styles.drawerFilterChipActive]}
-                  onPress={() => setDrawerFilter(filter)}
-                >
-                  <Text style={[styles.drawerFilterChipText, drawerFilter === filter && styles.drawerFilterChipTextActive]}>
-                    {filter === 'Quick' ? 'Priority' : `${filter} ${selectedCountsByType[filter]}/${MAX_KPIS_PER_TYPE}`}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <ScrollView style={styles.drawerGridScroll} contentContainerStyle={styles.drawerList}>
-              {canCreateCustomKpis ? (
-                <TouchableOpacity
-                  style={[styles.drawerListRow, styles.drawerListRowSelected, { marginBottom: 6 }]}
-                  onPress={openCreateCustomKpiModal}
-                >
-                  <View style={[styles.drawerListIconWrap, { backgroundColor: '#EEF4FF' }]}>
-                    <View style={styles.drawerListIconInner}>
-                      <KpiIcon
-                        kpi={{ icon_source: 'vector_icon', icon_name: 'plus-circle-outline' }}
-                        size={44}
-                        backgroundColor="transparent"
-                        color="#2453D4"
-                      />
-                    </View>
-                  </View>
-                  <View style={styles.drawerListMain}>
-                    <View style={styles.drawerListTitleRow}>
-                      <Text numberOfLines={1} style={styles.drawerListLabel}>Create Custom KPI</Text>
-                      <View style={[styles.drawerTypeBadge, { backgroundColor: '#F3E8FF' }]}>
-                        <Text style={[styles.drawerTypeBadgeText, { color: '#7A4CC8' }]}>Custom</Text>
-                      </View>
-                    </View>
-                    <Text numberOfLines={2} style={styles.drawerListMeta}>
-                      Add your own KPI with a brand asset or library icon.
-                    </Text>
-                  </View>
-                  <View style={styles.drawerActionCol}>
-                    <View style={[styles.drawerActionPill, styles.drawerActionAdd]}>
-                      <Text style={styles.drawerActionText}>New</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ) : null}
-              {drawerCatalogKpis.map((kpi) => {
-                const locked = (kpi.type === 'GP' && !gpUnlocked) || (kpi.type === 'VP' && !vpUnlocked);
-                const selected = managedKpiIdSet.has(kpi.id);
-                const isFavorite = favoriteKpiIds.includes(kpi.id);
-                const favoriteRank = favoriteKpiIds.indexOf(kpi.id);
-                const editableCustomKpi = customKpiById.get(String(kpi.id));
-                const categoryFull =
-                  (kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP') &&
-                  selectedCountsByType[kpi.type] >= MAX_KPIS_PER_TYPE &&
-                  !selected;
-                const selectionDisabled = locked || categoryFull;
-                return (
-                <TouchableOpacity
-                  key={kpi.id}
-                  style={[
-                    styles.drawerListRow,
-                    selectionDisabled && styles.disabled,
-                    selected && styles.drawerListRowSelected,
-                    categoryFull && styles.drawerListRowCapReached,
-                  ]}
-                  onPress={() => {
-                    if (locked) {
-                      Alert.alert(
-                        'Category Locked',
-                        kpi.type === 'GP'
-                          ? 'Business Growth unlocks after 3 active days or 20 total KPI logs.'
-                          : 'Vitality unlocks after 7 active days or 40 total KPI logs.'
-                      );
-                      return;
-                    }
-                    if (categoryFull) {
-                      Alert.alert(
-                        'Category Full',
-                        `You already have ${MAX_KPIS_PER_TYPE} ${kpi.type} KPIs selected. Turn one off first.`
-                      );
-                      return;
-                    }
-                    toggleManagedKpi(kpi.id);
-                  }}
-                >
-                  <View style={[styles.drawerListIconWrap, { backgroundColor: kpiTypeTint(kpi.type) }]}>
-                    <View style={styles.drawerListIconInner}>
-                      {renderKpiIcon(kpi)}
-                    </View>
-                  </View>
-                  <View style={styles.drawerListMain}>
-                    <View style={styles.drawerListTitleRow}>
-                      <Text numberOfLines={1} style={styles.drawerListLabel}>{kpi.name}</Text>
-                      <View style={[styles.drawerTypeBadge, { backgroundColor: kpiTypeTint(kpi.type) }]}>
-                        <Text style={[styles.drawerTypeBadgeText, { color: kpiTypeAccent(kpi.type) }]}>{kpi.type}</Text>
-                      </View>
-                    </View>
-                    <Text numberOfLines={1} style={styles.drawerListMeta}>{formatDrawerKpiMeta(kpi)}</Text>
-                    <View style={styles.drawerStateRow}>
-                      <View style={[styles.drawerStateChip, selected ? styles.drawerStateChipOn : styles.drawerStateChipOff]}>
-                        <Text style={styles.drawerStateChipText}>{selected ? 'Selected' : 'Not Selected'}</Text>
-                      </View>
-                      {categoryFull ? (
-                        <View style={[styles.drawerStateChip, styles.drawerStateChipCap]}>
-                          <Text style={styles.drawerStateChipText}>Type Full ({MAX_KPIS_PER_TYPE}/{MAX_KPIS_PER_TYPE})</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                  <View style={styles.drawerActionCol}>
-                    <View style={[styles.drawerActionPill, selected ? styles.drawerActionRemove : styles.drawerActionAdd]}>
-                      <Text style={styles.drawerActionText}>{selected ? 'On' : 'Off'}</Text>
-                    </View>
-                    {editableCustomKpi ? (
-                      <TouchableOpacity
-                        style={[styles.drawerActionPill, styles.drawerActionAdd]}
-                        onPress={() => openEditCustomKpiModal(editableCustomKpi)}
-                      >
-                        <Text style={styles.drawerActionText}>Edit</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    <TouchableOpacity
-                      style={[styles.drawerActionPill, isFavorite ? styles.drawerActionFavorite : styles.drawerActionAdd]}
-                      disabled={!selected}
-                      onPress={() => {
-                        if (!selected) return;
-                        toggleFavoriteKpi(kpi.id);
-                      }}
-                    >
-                      <Text style={styles.drawerActionText}>{isFavorite ? `★${favoriteRank + 1}` : '☆'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-            <TouchableOpacity style={styles.drawerClose} onPress={() => setAddDrawerVisible(false)}>
-              <Text style={styles.drawerCloseText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <KpiAddDrawer
+        addDrawerVisible={addDrawerVisible}
+        setAddDrawerVisible={setAddDrawerVisible}
+        drawerFilter={drawerFilter}
+        setDrawerFilter={setDrawerFilter}
+        drawerCatalogKpis={drawerCatalogKpis}
+        managedKpiIdSet={managedKpiIdSet}
+        favoriteKpiIds={favoriteKpiIds}
+        customKpiById={customKpiById}
+        selectedCountsByType={selectedCountsByType}
+        gpUnlocked={gpUnlocked}
+        vpUnlocked={vpUnlocked}
+        canCreateCustomKpis={canCreateCustomKpis}
+        formatDrawerKpiMeta={formatDrawerKpiMeta}
+        toggleManagedKpi={toggleManagedKpi}
+        toggleFavoriteKpi={toggleFavoriteKpi}
+        openCreateCustomKpiModal={openCreateCustomKpiModal}
+        openEditCustomKpiModal={openEditCustomKpiModal}
+      />
 
-      <Modal
-        visible={customKpiModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setCustomKpiModalVisible(false)}
-      >
-        <Pressable style={styles.drawerBackdrop} onPress={() => setCustomKpiModalVisible(false)}>
-          <Pressable style={[styles.drawerCard, { maxHeight: '86%' }]} onPress={() => {}}>
-            <Text style={styles.drawerTitle}>{customKpiDraft.id ? 'Edit Custom KPI' : 'Create Custom KPI'}</Text>
-            <Text style={styles.drawerUnlockedHint}>
-              Custom KPIs stay owner-scoped and still fall back safely where icon metadata is not backfilled yet.
-            </Text>
-            <ScrollView style={styles.drawerGridScroll} contentContainerStyle={{ gap: 14, paddingBottom: 10 }}>
-              <View>
-                <Text style={styles.formLabel}>Name</Text>
-                <TextInput
-                  value={customKpiDraft.name}
-                  onChangeText={(name) =>
-                    setCustomKpiDraft((prev) => ({
-                      ...prev,
-                      name,
-                      slug: prev.id ? prev.slug : normalizeKpiIdentifier(name),
-                    }))
-                  }
-                  style={styles.input}
-                  placeholder="Neighborhood Mailer Responses"
-                />
-              </View>
-              <View>
-                <Text style={styles.formLabel}>Slug</Text>
-                <TextInput
-                  value={customKpiDraft.slug}
-                  onChangeText={(slug) => setCustomKpiDraft((prev) => ({ ...prev, slug }))}
-                  style={styles.input}
-                  placeholder="neighborhood_mailer_responses"
-                />
-              </View>
-              <View>
-                <Text style={styles.formLabel}>Options</Text>
-                <View style={styles.inlineToggleRow}>
-                  <Pressable
-                    onPress={() =>
-                      setCustomKpiDraft((prev) => ({
-                        ...prev,
-                        requiresDirectValueInput: !prev.requiresDirectValueInput,
-                      }))
-                    }
-                    style={[styles.toggleChip, customKpiDraft.requiresDirectValueInput && styles.toggleChipOn]}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleChipText,
-                        customKpiDraft.requiresDirectValueInput && styles.toggleChipTextOn,
-                      ]}
-                    >
-                      Direct Value Input
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-              <KpiIconPicker
-                value={{
-                  icon_source: customKpiDraft.iconSource ?? null,
-                  icon_name: customKpiDraft.iconName ?? null,
-                  icon_emoji: null,
-                  icon_file: customKpiDraft.iconSource === 'brand_asset' ? customKpiDraft.iconName ?? null : null,
-                }}
-                onChange={(next) =>
-                  setCustomKpiDraft((prev) => ({
-                    ...prev,
-                    iconSource: next.icon_source ?? null,
-                    iconName: next.icon_name ?? null,
-                  }))
-                }
-                kpiType="Custom"
-                subtitle="Choose the canonical icon metadata used by mobile KPI tiles and future catalog backfill."
-              />
-              {customKpiError ? <Text style={[styles.metaRow, styles.errorText]}>{customKpiError}</Text> : null}
-              {customKpiSuccessNote ? <Text style={[styles.metaRow, styles.successText]}>{customKpiSuccessNote}</Text> : null}
-            </ScrollView>
-            <View style={styles.formActionsRow}>
-              <TouchableOpacity
-                style={styles.smallGhostButton}
-                onPress={() => setCustomKpiModalVisible(false)}
-                disabled={customKpiSaving}
-              >
-                <Text style={styles.smallGhostButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.primaryButton} onPress={() => void submitCustomKpi()} disabled={customKpiSaving}>
-                <Text style={styles.primaryButtonText}>{customKpiSaving ? 'Saving...' : customKpiDraft.id ? 'Save Custom KPI' : 'Create Custom KPI'}</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <CustomKpiModal
+        customKpiModalVisible={customKpiModalVisible}
+        setCustomKpiModalVisible={setCustomKpiModalVisible}
+        customKpiDraft={customKpiDraft}
+        setCustomKpiDraft={setCustomKpiDraft}
+        customKpiSaving={customKpiSaving}
+        customKpiError={customKpiError}
+        customKpiSuccessNote={customKpiSuccessNote}
+        submitCustomKpi={submitCustomKpi}
+      />
 
-      <Modal
-        visible={pipelineCheckinVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={dismissPipelineCheckinForToday}
-      >
-        <Pressable style={styles.pipelineCheckinBackdrop} onPress={dismissPipelineCheckinForToday}>
-          <Pressable style={styles.pipelineCheckinCard} onPress={() => {}}>
-            <ScrollView
-              style={styles.pipelineCheckinScroll}
-              contentContainerStyle={styles.pipelineCheckinScrollContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.pipelineCheckinHeader}>
-                <View style={styles.pipelineCheckinHeaderCopy}>
-                  <Text style={styles.pipelineCheckinTitle}>
-                    {pipelineForceGciEntryField ? 'Log closed deal details' : 'Update your pipeline'}
-                  </Text>
-                  <Text style={styles.pipelineCheckinHelp}>
-                    {pipelineForceGciEntryField
-                      ? 'A downward pipeline change requires a close date and GCI entry.'
-                      : 'Keep your forecast accurate with current pipeline counts.'}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.pipelineCheckinCloseBtn}
-                  onPress={dismissPipelineCheckinForToday}
-                  disabled={pipelineCheckinSubmitting}
-                >
-                  <Text style={styles.pipelineCheckinCloseBtnText}>✕</Text>
-                </TouchableOpacity>
-              </View>
-
-              {!pipelineForceGciEntryField ? (
-                <>
-                  <View style={styles.pipelineCheckinFieldCard}>
-                    <Text style={styles.pipelineCheckinFieldLabel}>Pending listings</Text>
-                    <View style={styles.pipelineCheckinStepperRow}>
-                      <TouchableOpacity
-                        style={styles.pipelineStepperBtn}
-                        disabled={pipelineCheckinSubmitting}
-                        onPress={() => setPipelineCheckinListings((v) => Math.max(0, v - 1))}
-                      >
-                        <Text style={styles.pipelineStepperBtnText}>−</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.pipelineCheckinCountValue}>{fmtNum(pipelineCheckinListings)}</Text>
-                      <TouchableOpacity
-                        style={styles.pipelineStepperBtn}
-                        disabled={pipelineCheckinSubmitting}
-                        onPress={() => setPipelineCheckinListings((v) => Math.max(0, v + 1))}
-                      >
-                        <Text style={styles.pipelineStepperBtnText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  <View style={styles.pipelineCheckinFieldCard}>
-                    <Text style={styles.pipelineCheckinFieldLabel}>Buyers under contract</Text>
-                    <View style={styles.pipelineCheckinStepperRow}>
-                      <TouchableOpacity
-                        style={styles.pipelineStepperBtn}
-                        disabled={pipelineCheckinSubmitting}
-                        onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v - 1))}
-                      >
-                        <Text style={styles.pipelineStepperBtnText}>−</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.pipelineCheckinCountValue}>{fmtNum(pipelineCheckinBuyers)}</Text>
-                      <TouchableOpacity
-                        style={styles.pipelineStepperBtn}
-                        disabled={pipelineCheckinSubmitting}
-                        onPress={() => setPipelineCheckinBuyers((v) => Math.max(0, v + 1))}
-                      >
-                        <Text style={styles.pipelineStepperBtnText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </>
-              ) : null}
-
-              {pipelineCheckinReasonPromptVisible && !pipelineForceGciEntryField ? (
-                <View style={styles.pipelineCheckinBranchCard}>
-                  <Text style={styles.pipelineCheckinBranchTitle}>Your pipeline count went down. What happened?</Text>
-                  {pipelineCheckinDecreaseFields.length > 0 ? (
-                    <Text style={styles.pipelineCheckinBranchSub}>
-                      Updated lower: {pipelineCheckinDecreaseFields.map((field) => (field === 'listings' ? 'Pending listings' : 'Buyers under contract')).join(', ')}
-                    </Text>
-                  ) : null}
-                  <View style={styles.pipelineCheckinBranchButtons}>
-                    <TouchableOpacity style={styles.pipelineBranchOption} onPress={() => onChoosePipelineDecreaseReason('deal_closed')}>
-                      <Text style={styles.pipelineBranchOptionText}>A deal closed</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.pipelineBranchOption} onPress={() => onChoosePipelineDecreaseReason('deal_lost')}>
-                      <Text style={styles.pipelineBranchOptionText}>A deal was lost</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.pipelineBranchOption} onPress={() => onChoosePipelineDecreaseReason('correction')}>
-                      <Text style={styles.pipelineBranchOptionText}>Just correcting my count</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : null}
-
-              {pipelineCheckinReason === 'deal_closed' ? (
-                <View style={styles.pipelineCheckinBranchCard}>
-                  <Text style={styles.pipelineCheckinBranchTitle}>Capture close follow-up</Text>
-                <Text style={styles.pipelineCheckinBranchSub}>
-                  Enter a close date and GCI amount to log the close and update pipeline counts.
-                </Text>
-                <View style={styles.pipelineCheckinDateRow}>
-                  <TouchableOpacity
-                    style={styles.pipelineCheckinDateBtn}
-                    disabled={pipelineCheckinSubmitting}
-                    onPress={() => setPipelineCloseDateInput((prev) => shiftIsoLocalDate(prev || isoTodayLocal(), -1))}
-                  >
-                    <Text style={styles.pipelineCheckinDateBtnText}>‹</Text>
-                  </TouchableOpacity>
-                  <View style={styles.pipelineCheckinDateValueWrap}>
-                    <Text style={styles.pipelineCheckinDateValueLabel}>Close date</Text>
-                    <Text style={styles.pipelineCheckinDateValueText}>
-                      {formatLogDateHeading(pipelineCloseDateInput || isoTodayLocal())}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.pipelineCheckinDateBtn}
-                    disabled={pipelineCheckinSubmitting}
-                    onPress={() =>
-                      setPipelineCloseDateInput((prev) => {
-                        const next = shiftIsoLocalDate(prev || isoTodayLocal(), 1);
-                        const today = isoTodayLocal();
-                        return next > today ? today : next;
-                      })
-                    }
-                  >
-                    <Text style={styles.pipelineCheckinDateBtnText}>›</Text>
-                  </TouchableOpacity>
-                </View>
-                <TextInput
-                  style={styles.pipelineCheckinInlineInput}
-                  value={pipelineCloseGciInput}
-                    onChangeText={setPipelineCloseGciInput}
-                    placeholder="GCI amount"
-                    keyboardType="decimal-pad"
-                  />
-                  <TouchableOpacity
-                    style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
-                    disabled={pipelineCheckinSubmitting}
-                    onPress={() => void finalizePipelineCheckinSave('deal_closed')}
-                  >
-                    <Text style={styles.pipelineCheckinPrimaryBtnText}>
-                      {pipelineCheckinSubmitting ? 'Logging…' : 'Log close & save counts'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-
-              {pipelineCheckinReason === 'deal_lost' ? (
-                <View style={styles.pipelineCheckinBranchCard}>
-                  <Text style={styles.pipelineCheckinBranchTitle}>Reset and keep moving</Text>
-                  <Text style={styles.pipelineCheckinBranchSub}>
-                    {pipelineLostEncouragement || PIPELINE_LOST_ENCOURAGEMENT_MESSAGES[0]}
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
-                    disabled={pipelineCheckinSubmitting}
-                    onPress={() => void finalizePipelineCheckinSave('deal_lost')}
-                  >
-                    <Text style={styles.pipelineCheckinPrimaryBtnText}>
-                      {pipelineCheckinSubmitting ? 'Logging…' : 'Log & save counts'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-
-              <View style={styles.pipelineCheckinActions}>
-                <TouchableOpacity
-                  style={styles.pipelineCheckinSecondaryBtn}
-                  disabled={pipelineCheckinSubmitting}
-                  onPress={dismissPipelineCheckinForToday}
-                >
-                  <Text style={styles.pipelineCheckinSecondaryBtnText}>Dismiss for today</Text>
-                </TouchableOpacity>
-                {pipelineCheckinReason !== 'deal_closed' &&
-                pipelineCheckinReason !== 'deal_lost' &&
-                !pipelineForceGciEntryField ? (
-                  <TouchableOpacity
-                    style={[styles.pipelineCheckinPrimaryBtn, pipelineCheckinSubmitting && styles.disabled]}
-                    disabled={pipelineCheckinSubmitting || pipelineCheckinReasonPromptVisible}
-                    onPress={onSavePipelineCheckin}
-                  >
-                    <Text style={styles.pipelineCheckinPrimaryBtnText}>
-                      {pipelineCheckinSubmitting ? 'Updating…' : 'Update pipeline'}
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <PipelineCheckinDrawer
+        pipelineCheckinVisible={pipelineCheckinVisible}
+        pipelineCheckinListings={pipelineCheckinListings}
+        pipelineCheckinBuyers={pipelineCheckinBuyers}
+        pipelineCheckinSubmitting={pipelineCheckinSubmitting}
+        pipelineCheckinReasonPromptVisible={pipelineCheckinReasonPromptVisible}
+        pipelineCheckinDecreaseFields={pipelineCheckinDecreaseFields}
+        pipelineCheckinReason={pipelineCheckinReason}
+        pipelineForceGciEntryField={pipelineForceGciEntryField}
+        pipelineCloseDateInput={pipelineCloseDateInput}
+        pipelineCloseGciInput={pipelineCloseGciInput}
+        pipelineLostEncouragement={pipelineLostEncouragement}
+        setPipelineCheckinListings={setPipelineCheckinListings}
+        setPipelineCheckinBuyers={setPipelineCheckinBuyers}
+        setPipelineCloseDateInput={setPipelineCloseDateInput}
+        setPipelineCloseGciInput={setPipelineCloseGciInput}
+        dismissPipelineCheckinForToday={dismissPipelineCheckinForToday}
+        onSavePipelineCheckin={onSavePipelineCheckin}
+        onChoosePipelineDecreaseReason={onChoosePipelineDecreaseReason}
+        finalizePipelineCheckinSave={finalizePipelineCheckinSave}
+      />
 
       <Modal visible={pendingDirectLog !== null} transparent animationType="slide" onRequestClose={() => setPendingDirectLog(null)}>
         <View style={styles.modalBackdrop}>
@@ -10178,214 +9106,6 @@ const styles = StyleSheet.create({
   },
   coachingAiAssistBtnText: {
     color: '#344b77',
-    fontSize: 11,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  aiAssistBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.42)',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  aiAssistCard: {
-    borderRadius: 16,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#dbe4f2',
-    padding: 14,
-    gap: 10,
-    shadowColor: '#1f2f46',
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-    maxHeight: '86%',
-  },
-  aiAssistHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  aiAssistHeaderCopy: {
-    flex: 1,
-    gap: 4,
-  },
-  aiAssistTitle: {
-    color: '#263142',
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  aiAssistSub: {
-    color: '#6d7a8d',
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  aiAssistCloseBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#eef2f8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#dce4f1',
-  },
-  aiAssistCloseBtnText: {
-    color: '#44536a',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  aiAssistPolicyBanner: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e3d7ff',
-    backgroundColor: '#f7f1ff',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  aiAssistPolicyBannerText: {
-    color: '#55476f',
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '700',
-  },
-  aiAssistField: {
-    gap: 5,
-  },
-  aiAssistFieldLabel: {
-    color: '#57657a',
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  aiAssistFieldValue: {
-    color: '#2f3949',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  aiAssistInput: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#dde5f0',
-    backgroundColor: '#fbfcfe',
-    color: '#2e3646',
-    fontSize: 12,
-    lineHeight: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    textAlignVertical: 'top',
-  },
-  aiAssistInputTall: {
-    minHeight: 70,
-  },
-  aiAssistDraftInput: {
-    minHeight: 118,
-  },
-  aiAssistQueueCard: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#dce4ef',
-    backgroundColor: '#f8fbff',
-    padding: 10,
-    gap: 6,
-  },
-  aiAssistQueueCardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  aiAssistQueueTitle: {
-    color: '#304258',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  aiAssistQueueSummaryText: {
-    color: '#55677f',
-    fontSize: 10,
-    lineHeight: 14,
-  },
-  aiAssistQueueError: {
-    color: '#b42318',
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: '700',
-  },
-  aiAssistQueueSuccess: {
-    color: '#1d6f42',
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: '700',
-  },
-  aiAssistQueueRecentEmpty: {
-    color: '#697a90',
-    fontSize: 10,
-    lineHeight: 14,
-  },
-  aiAssistQueueRecentList: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e3eaf3',
-    backgroundColor: '#fff',
-  },
-  aiAssistQueueRecentRow: {
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-  },
-  aiAssistQueueRecentRowDivider: {
-    borderTopWidth: 1,
-    borderTopColor: '#edf1f6',
-  },
-  aiAssistQueueRecentRowCopy: {
-    gap: 2,
-  },
-  aiAssistQueueRecentStatus: {
-    color: '#33465f',
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  aiAssistQueueRecentMeta: {
-    color: '#65778f',
-    fontSize: 10,
-    lineHeight: 13,
-  },
-  aiAssistNotice: {
-    color: '#4c5f79',
-    fontSize: 11,
-    lineHeight: 14,
-  },
-  aiAssistActionRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  aiAssistSecondaryBtn: {
-    flex: 1,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: '#d8e1ef',
-    backgroundColor: '#f5f8fd',
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  aiAssistSecondaryBtnText: {
-    color: '#364a6d',
-    fontSize: 10,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  aiAssistPrimaryBtn: {
-    borderRadius: 9,
-    backgroundColor: '#2f3442',
-    paddingVertical: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  aiAssistPrimaryBtnText: {
-    color: '#fff',
     fontSize: 11,
     fontWeight: '800',
     textAlign: 'center',
@@ -10885,67 +9605,6 @@ const styles = StyleSheet.create({
     color: '#6f7f95',
     fontSize: 11,
     lineHeight: 15,
-  },
-  coachingMilestoneBlock: {
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  coachingMilestoneTitle: {
-    color: '#4a5569',
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.2,
-  },
-  coachingMilestoneEmpty: {
-    color: '#8a93a3',
-    fontSize: 11,
-  },
-  coachingLessonRow: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e1e7f0',
-    backgroundColor: '#fff',
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  coachingLessonRowDivider: {
-    marginTop: 6,
-  },
-  coachingLessonRowSelected: {
-    borderColor: '#cfe0ff',
-    backgroundColor: '#f2f7ff',
-  },
-  coachingLessonRowCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  coachingLessonRowTitle: {
-    color: '#394455',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  coachingLessonRowSub: {
-    color: '#7f8999',
-    fontSize: 10,
-    lineHeight: 13,
-  },
-  coachingLessonRowStatusPill: {
-    borderRadius: 999,
-    backgroundColor: '#eef2f8',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  coachingLessonRowStatusText: {
-    color: '#5d6b81',
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'capitalize',
   },
   coachingLessonDetailHeader: {
     gap: 4,
@@ -11788,14 +10447,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  drawerListRowSelected: {
-    borderColor: '#d4e2fb',
-    backgroundColor: '#f5f9ff',
-  },
-  drawerListRowCapReached: {
-    borderColor: '#efe2be',
-    backgroundColor: '#fffaf0',
-  },
   drawerListIconWrap: {
     width: 42,
     height: 42,
@@ -11838,32 +10489,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
   },
-  drawerStateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 1,
-    flexWrap: 'wrap',
-  },
-  drawerStateChip: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  drawerStateChipOn: {
-    backgroundColor: '#dcf4de',
-  },
-  drawerStateChipOff: {
-    backgroundColor: '#eef2f8',
-  },
-  drawerStateChipCap: {
-    backgroundColor: '#fff0cf',
-  },
-  drawerStateChipText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#415064',
-  },
   drawerActionCol: {
     alignItems: 'flex-end',
     gap: 6,
@@ -11877,12 +10502,6 @@ const styles = StyleSheet.create({
   },
   drawerActionAdd: {
     backgroundColor: '#dfeafb',
-  },
-  drawerActionRemove: {
-    backgroundColor: '#fde3e3',
-  },
-  drawerActionFavorite: {
-    backgroundColor: '#ffe9bc',
   },
   drawerActionText: {
     fontSize: 10,
@@ -11902,315 +10521,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  formLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#334155',
-    marginBottom: 6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D8E4FA',
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    fontSize: 14,
-    color: '#0F172A',
-  },
-  inlineToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  toggleChip: {
-    borderWidth: 1,
-    borderColor: '#D8E4FA',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  toggleChipOn: {
-    borderColor: '#2F5FE3',
-    backgroundColor: '#E8F0FF',
-  },
-  toggleChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  toggleChipTextOn: {
-    color: '#204ECF',
-  },
-  metaRow: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: '#64748B',
-  },
-  successText: {
-    color: '#0F7A45',
-    fontWeight: '600',
-  },
-  formActionsRow: {
-    marginTop: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  smallGhostButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#D8E4FA',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  smallGhostButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  primaryButton: {
-    flex: 1,
-    borderRadius: 12,
-    backgroundColor: '#2453D4',
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
   disabled: {
     opacity: 0.55,
-  },
-  pipelineCheckinBackdrop: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 16,
-    backgroundColor: 'rgba(18, 22, 31, 0.42)',
-  },
-  pipelineCheckinCard: {
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#e4eaf3',
-    maxHeight: '82%',
-    overflow: 'hidden',
-  },
-  pipelineCheckinScroll: {
-    maxHeight: '100%',
-  },
-  pipelineCheckinScrollContent: {
-    padding: 14,
-    gap: 10,
-  },
-  pipelineCheckinHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  pipelineCheckinHeaderCopy: {
-    flex: 1,
-  },
-  pipelineCheckinTitle: {
-    color: '#2d3442',
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  pipelineCheckinHelp: {
-    marginTop: 2,
-    color: '#6f7888',
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  pipelineCheckinCloseBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f1f4f9',
-  },
-  pipelineCheckinCloseBtnText: {
-    color: '#596478',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  pipelineCheckinFieldCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e6ebf2',
-    backgroundColor: '#fbfcfe',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  pipelineCheckinFieldLabel: {
-    color: '#3b4454',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  pipelineCheckinStepperRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  pipelineStepperBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#d8e1ef',
-    backgroundColor: '#f0f5ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pipelineStepperBtnText: {
-    color: '#1f5fe2',
-    fontSize: 22,
-    lineHeight: 24,
-    fontWeight: '700',
-  },
-  pipelineCheckinCountValue: {
-    minWidth: 72,
-    textAlign: 'center',
-    color: '#2f3442',
-    fontSize: 28,
-    lineHeight: 31,
-    fontWeight: '800',
-  },
-  pipelineCheckinBranchCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#ead39f',
-    backgroundColor: '#fff8ea',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  pipelineCheckinBranchTitle: {
-    color: '#5a4824',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  pipelineCheckinBranchSub: {
-    color: '#745f31',
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  pipelineCheckinBranchButtons: {
-    gap: 8,
-  },
-  pipelineBranchOption: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e8d3a6',
-    backgroundColor: '#fff',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-  },
-  pipelineBranchOptionText: {
-    color: '#4f4121',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  pipelineCheckinInlineInput: {
-    borderWidth: 1,
-    borderColor: '#dddff0',
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#2f3442',
-  },
-  pipelineCheckinDateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  pipelineCheckinDateBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#d8e1ef',
-    backgroundColor: '#f0f5ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pipelineCheckinDateBtnText: {
-    color: '#1f5fe2',
-    fontSize: 20,
-    lineHeight: 20,
-    fontWeight: '800',
-  },
-  pipelineCheckinDateValueWrap: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#dddff0',
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  pipelineCheckinDateValueLabel: {
-    color: '#7a8394',
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.2,
-  },
-  pipelineCheckinDateValueText: {
-    marginTop: 2,
-    color: '#2f3442',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  pipelineCheckinActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 2,
-    paddingTop: 2,
-  },
-  pipelineCheckinPrimaryBtn: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 12,
-    backgroundColor: '#1f5fe2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  pipelineCheckinPrimaryBtnText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  pipelineCheckinSecondaryBtn: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#dbe2ee',
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  pipelineCheckinSecondaryBtnText: {
-    color: '#5a6578',
-    fontSize: 12,
-    fontWeight: '700',
   },
   modalBackdrop: {
     flex: 1,
@@ -12350,124 +10662,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   /* ── Journey Builder styles ── */
-  jbSaveBanner: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  jbSaveBannerOk: { backgroundColor: '#f0fdf4' },
-  jbSaveBannerPending: { backgroundColor: '#fef9c3' },
-  jbSaveBannerError: { backgroundColor: '#fef2f2' },
-  jbSaveBannerText: { fontSize: 12, color: '#333' },
-  jbActionBar: {
-    flexDirection: 'row' as const,
-    gap: 8,
-    marginBottom: 10,
-  },
-  jbActionBtn: {
-    backgroundColor: '#2563eb',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-  },
-  jbActionBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' as const },
-  jbActionBtnSecondary: { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1' },
-  jbActionBtnSecondaryText: { color: '#475569' },
-  jbAssetLibraryPanel: {
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-    maxHeight: 280,
-  },
-  jbAssetLibraryTitle: { fontSize: 14, fontWeight: '700' as const, color: '#1e293b', marginBottom: 8 },
-  jbAssetLibraryEmpty: { fontSize: 12, color: '#94a3b8', fontStyle: 'italic' as const },
-  jbAssetCollectionRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6, marginBottom: 8 },
-  jbAssetCollectionChip: { backgroundColor: '#e0e7ff', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12 },
-  jbAssetCollectionChipText: { fontSize: 11, color: '#3730a3', fontWeight: '600' as const },
-  jbAssetListScroll: { flex: 1 },
-  jbAssetRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  jbAssetRowInfo: { flex: 1, marginRight: 8 },
-  jbAssetRowTitle: { fontSize: 13, fontWeight: '600' as const, color: '#1e293b' },
-  jbAssetRowMeta: { fontSize: 11, color: '#94a3b8' },
-  jbAssetAddBtn: { backgroundColor: '#dbeafe', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 6 },
-  jbAssetAddBtnText: { fontSize: 12, fontWeight: '700' as const, color: '#2563eb' },
-  jbLessonBlock: { marginBottom: 4 },
-  jbLessonHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: '#f1f5f9',
-    borderRadius: 8,
-    marginBottom: 2,
-  },
-  jbLessonTitleBtn: { flex: 1, marginRight: 8 },
-  jbLessonTitleText: { fontSize: 14, fontWeight: '700' as const, color: '#1e293b' },
-  jbLessonTaskCount: { fontSize: 11, color: '#94a3b8', marginTop: 1 },
   /* jbReorder ▲/▼ styles removed – replaced by JbGrip tap-to-pick/drop component */
-  jbDeleteBtn: { width: 28, height: 28, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 14, backgroundColor: '#fef2f2' },
-  jbDeleteBtnText: { fontSize: 14, color: '#dc2626' },
-  jbDeleteBtnSm: { width: 24, height: 24, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 12, backgroundColor: '#fef2f2' },
-  jbDeleteBtnSmText: { fontSize: 12, color: '#dc2626' },
-  jbTaskRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginLeft: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  jbTaskContent: { flex: 1, marginRight: 6 },
-  jbTaskTitle: { fontSize: 13, fontWeight: '500' as const, color: '#334155' },
-  jbEditingWrap: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#2563eb', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 },
-  jbEditInput: { fontSize: 14, fontWeight: '700' as const, color: '#1e293b', paddingVertical: 2, paddingHorizontal: 0, borderWidth: 0 },
-  jbEditInputSm: { fontSize: 13, fontWeight: '500' as const, color: '#334155', paddingVertical: 2, paddingHorizontal: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: '#2563eb' },
-  jbEditHint: { fontSize: 9, color: '#c0c8d4', fontStyle: 'italic' as const, marginTop: 1 },
-  jbTaskAssetBadge: { marginTop: 2, backgroundColor: '#eff6ff', paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4, alignSelf: 'flex-start' as const },
-  jbTaskAssetBadgeText: { fontSize: 10, color: '#2563eb' },
-  jbAddTaskRow: { marginLeft: 16, paddingVertical: 4, paddingHorizontal: 12 },
-  jbAddTaskBtn: { paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#f0fdf4', borderRadius: 6, alignSelf: 'flex-start' as const },
-  jbAddTaskBtnText: { fontSize: 12, fontWeight: '600' as const, color: '#16a34a' },
-  jbAddTaskInline: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
-  jbAddTaskInput: { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10, fontSize: 13, color: '#1e293b' },
-  jbAddTaskConfirmBtn: { backgroundColor: '#16a34a', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6 },
-  jbAddTaskConfirmBtnText: { fontSize: 12, fontWeight: '700' as const, color: '#fff' },
-  jbAddTaskCancelBtn: { paddingVertical: 6, paddingHorizontal: 8 },
-  jbAddTaskCancelBtnText: { fontSize: 14, color: '#94a3b8' },
-  jbConfirmDeleteOverlay: {
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    borderRadius: 10,
-    padding: 16,
-    marginTop: 8,
-  },
-  jbConfirmDeleteCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  jbConfirmDeleteTitle: { fontSize: 16, fontWeight: '700' as const, color: '#dc2626', marginBottom: 6 },
-  jbConfirmDeleteSub: { fontSize: 13, color: '#64748b', marginBottom: 16 },
-  jbConfirmDeleteActions: { flexDirection: 'row' as const, justifyContent: 'flex-end' as const, gap: 10 },
-  jbConfirmDeleteCancel: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#f1f5f9' },
-  jbConfirmDeleteCancelText: { fontSize: 13, fontWeight: '600' as const, color: '#475569' },
-  jbConfirmDeleteConfirm: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#dc2626' },
-  jbConfirmDeleteConfirmText: { fontSize: 13, fontWeight: '700' as const, color: '#fff' },
   inviteCodeEntryBtn: {
     marginTop: 8,
     borderRadius: 12,
