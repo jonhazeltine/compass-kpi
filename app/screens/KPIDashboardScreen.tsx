@@ -7181,7 +7181,7 @@ export default function KPIDashboardScreen({
                   />
                 ) : null}
                 {!isCommsScreen ? (
-                <View style={styles.coachingShellCard}>
+                <View style={isCoachingContentScreen ? { flex: 1 } : styles.coachingShellCard}>
                   {/* Comms chrome — hidden for coaching content screens (journey/lesson) */}
                   {!isCoachingContentScreen && (
                   <View>
@@ -7830,18 +7830,6 @@ export default function KPIDashboardScreen({
                   )}
                   {coachingShellScreen === 'coaching_journeys' ? (
                     <View style={styles.coachingJourneyModule}>
-                      {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
-                      {renderCoachingNotificationSurface(
-                        'Coaching journey notifications',
-                        journeysNotificationRows,
-                        journeysNotificationSummaryEffective,
-                        {
-                          compact: true,
-                          maxRows: 3,
-                          mode: 'banner',
-                          emptyHint: 'No coaching journey notifications available.',
-                        }
-                      )}
                       {shellPackageGateBlocksActions ? (
                         renderKnownLimitedDataChip('journey actions')
                       ) : (
@@ -8007,18 +7995,6 @@ export default function KPIDashboardScreen({
                   ) : null}
                   {coachingShellScreen === 'coaching_journey_detail' ? (
                     <View style={styles.coachingJourneyModule}>
-                      {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
-                      {renderCoachingNotificationSurface(
-                        'Journey detail notifications',
-                        journeysNotificationRows,
-                        journeysNotificationSummaryEffective,
-                        {
-                          compact: true,
-                          maxRows: 2,
-                          mode: 'banner',
-                          emptyHint: 'No journey detail notifications available.',
-                        }
-                      )}
                       {!selectedJourneyId ? (
                         <View style={styles.coachingJourneyEmptyCard}>
                           <Text style={styles.coachingJourneyEmptyTitle}>Choose a journey first</Text>
