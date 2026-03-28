@@ -163,6 +163,9 @@ export function useJourneyBuilder({
     const lessons: JourneyBuilderLesson[] = (detail.milestones ?? []).map((m) => ({
       id: String(m.id),
       title: m.title ?? `Lesson ${(m as Record<string, unknown>).sort_order ?? 0}`,
+      is_locked: (m as Record<string, unknown>).is_locked === true,
+      release_strategy: String((m as Record<string, unknown>).release_strategy ?? 'immediate'),
+      release_date: ((m as Record<string, unknown>).release_date as string | null | undefined) ?? null,
       tasks: (m.lessons ?? []).map((l) => ({
         id: String(l.id),
         title: l.title ?? 'Untitled Task',

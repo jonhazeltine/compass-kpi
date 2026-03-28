@@ -25,6 +25,7 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
 import LottieSlot from '../components/LottieSlot';
+import { VPTreeInline } from '../components/vp-tree/VPTreeInline';
 import { CommsHub } from '../components/comms';
 import type { ChannelRow as CommsChannelRow } from '../components/comms';
 import { useBottomNavAnimation } from '../components/comms/useBottomNavAnimation';
@@ -370,6 +371,7 @@ export default function KPIDashboardScreen({
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [vpPulseKey, setVpPulseKey] = useState(0);
   const [submittingKpiId, setSubmittingKpiId] = useState<string | null>(null);
   const [segment, setSegment] = useState<Segment>('PC');
   const [homePanel, setHomePanel] = useState<HomePanel>('Quick');
@@ -497,6 +499,7 @@ export default function KPIDashboardScreen({
   // (jbLessons, jbSaveState, … jbMovingItem are destructured from journeyBuilder below)
   const [coachingLessonProgressSubmittingId, setCoachingLessonProgressSubmittingId] = useState<string | null>(null);
   const [coachingLessonProgressError, setCoachingLessonProgressError] = useState<string | null>(null);
+  const [availableJourneys, setAvailableJourneys] = useState<Array<{ id: string; title: string; description: string | null; lesson_count: number; coach_name: string; has_pending_request: boolean }>>([]);
   type LessonMediaAsset = {
     media_id: string;
     filename: string;
@@ -1811,6 +1814,9 @@ export default function KPIDashboardScreen({
       if (!options?.skipProjectionFlight && (options?.kpiType ?? 'PC') === 'PC' && payoffStartDate) {
         await launchProjectionFlightFx(kpiId, payoffStartDate);
       }
+      if (options?.kpiType === 'VP') {
+        setVpPulseKey((k) => k + 1);
+      }
       await fetchDashboard();
       if ((options?.kpiType ?? 'PC') === 'PC') {
         const elapsed = Date.now() - projectedHudSpinStartedAtRef.current;
@@ -2388,23 +2394,31 @@ export default function KPIDashboardScreen({
     );
   };
 
+  const vpTreeTotal = payload?.points?.vp_raw ?? payload?.points?.vp ?? 0;
+
   const renderHomeVisualPlaceholder = (kind: 'GP' | 'VP') => (
     <View style={styles.chartWrap}>
-      <View style={styles.visualPlaceholder}>
-        <LottieSlot
-          source={kind === 'GP' ? GP_LOTTIE_SOURCE : VP_LOTTIE_SOURCE}
-          size={132}
-          fallbackEmoji={kind === 'GP' ? '🏙️' : '🌳'}
+      {kind === 'VP' ? (
+        <VPTreeInline
+          width={visualPageWidth}
+          height={280}
+          vpTotal={vpTreeTotal}
+          seed={42}
+          pulseKey={vpPulseKey}
         />
-        <Text style={styles.visualPlaceholderTitle}>
-          {kind === 'GP' ? 'Business Growth Visual' : 'Vitality Visual'}
-        </Text>
-        <Text style={styles.visualPlaceholderSub}>
-          {kind === 'GP'
-            ? 'Your business growth visual will appear here.'
-            : 'Your vitality visual will appear here.'}
-        </Text>
-      </View>
+      ) : (
+        <View style={styles.visualPlaceholder}>
+          <LottieSlot
+            source={GP_LOTTIE_SOURCE}
+            size={132}
+            fallbackEmoji="🏙️"
+          />
+          <Text style={styles.visualPlaceholderTitle}>Business Growth Visual</Text>
+          <Text style={styles.visualPlaceholderSub}>
+            Your business growth visual will appear here.
+          </Text>
+        </View>
+      )}
     </View>
   );
 
@@ -4485,6 +4499,39 @@ export default function KPIDashboardScreen({
   // (fetchCoachingJourneyDetail, journey builder, submitCoachingLessonProgress)
   // These use fetchCoachingJourneys / fetchCoachingProgressSummary from the hook above.
 
+  const fetchAvailableJourneys = useCallback(async () => {
+    const token = session?.access_token;
+    if (!token || isCoachRuntimeOperator) return;
+    try {
+      const res = await fetch(`${API_URL}/api/coaching/available-journeys`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const body = await res.json() as { journeys?: typeof availableJourneys };
+        setAvailableJourneys(body.journeys ?? []);
+      }
+    } catch { /* silent */ }
+  }, [session?.access_token, isCoachRuntimeOperator]);
+
+  // Fetch available journeys when coach tab is active and user is not a coach
+  useEffect(() => {
+    if (activeTab === 'coach' && !isCoachRuntimeOperator) {
+      void fetchAvailableJourneys();
+    }
+  }, [activeTab, isCoachRuntimeOperator, fetchAvailableJourneys]);
+
+  const requestJourneyEnrollment = useCallback(async (journeyId: string) => {
+    const token = session?.access_token;
+    if (!token) return;
+    try {
+      await fetch(`${API_URL}/api/coaching/journeys/${journeyId}/request-enrollment`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      // Mark as pending locally
+      setAvailableJourneys((prev) => prev.map((j) => j.id === journeyId ? { ...j, has_pending_request: true } : j));
+    } catch { /* silent */ }
+  }, [session?.access_token]);
+
   const fetchCoachingJourneyDetail = useCallback(
     async (journeyId: string) => {
       const token = session?.access_token;
@@ -6024,6 +6071,8 @@ export default function KPIDashboardScreen({
                 createCoachEngagement={createCoachEngagement}
                 fetchCoachMarketplace={fetchCoachMarketplace}
                 onClientPress={(clientId) => setTeamProfileMemberId(clientId)}
+                availableJourneys={availableJourneys.length > 0 ? availableJourneys : undefined}
+                onRequestEnrollment={requestJourneyEnrollment}
               />
             ) : null}
             {/* ── Challenges sub-screen (original challenge surface) ── */}

@@ -38,6 +38,7 @@ export type DashboardPayload = {
   points: {
     gp: number;
     vp: number;
+    vp_raw?: number;
   };
   activity: {
     total_logs: number;
@@ -379,7 +380,7 @@ export type JourneyBuilderTask = {
   progressStatus?: 'not_started' | 'in_progress' | 'completed';
   completedAt?: string | null;
 };
-export type JourneyBuilderLesson = { id: string; title: string; tasks: JourneyBuilderTask[] };
+export type JourneyBuilderLesson = { id: string; title: string; tasks: JourneyBuilderTask[]; is_locked?: boolean; release_strategy?: string; release_date?: string | null };
 export type JourneyBuilderSaveState = 'idle' | 'pending' | 'saved' | 'error';
 export type LibraryAsset = { id: string; title: string; category: string; scope: string; duration: string; playbackId?: string | null };
 export type LibraryCollection = { id: string; name: string; assetIds: string[] };
@@ -615,6 +616,7 @@ export type CoachingJourneyListItem = {
   team_id?: string | null;
   created_by?: string | null;
   is_active?: boolean | null;
+  status?: 'draft' | 'active' | 'hidden' | string | null;
   created_at?: string | null;
   milestones_count?: number;
   lessons_total?: number;
@@ -638,12 +640,16 @@ export type CoachingJourneyDetailLesson = {
   sort_order?: number;
   progress_status?: 'not_started' | 'in_progress' | 'completed' | string;
   completed_at?: string | null;
+  is_locked?: boolean;
 };
 export type CoachingJourneyDetailMilestone = {
   id: string;
   journey_id?: string;
   title: string;
   sort_order?: number;
+  release_strategy?: 'immediate' | 'sequential' | 'scheduled' | string;
+  release_date?: string | null;
+  is_locked?: boolean;
   lessons?: CoachingJourneyDetailLesson[];
 };
 export type CoachingJourneyDetailResponse = {

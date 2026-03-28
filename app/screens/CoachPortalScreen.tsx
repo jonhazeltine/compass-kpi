@@ -64,12 +64,15 @@ type JourneyLesson = {
   id: string;
   title: string;
   tasks: JourneyTask[];
+  release_strategy: 'immediate' | 'sequential' | 'scheduled';
+  release_date: string | null;
 };
 
 type JourneyDraft = {
   id: string;
   name: string;
   audience: string;
+  status: 'draft' | 'active' | 'hidden';
   lessons: JourneyLesson[];
 };
 
@@ -115,6 +118,7 @@ type JourneySummaryApiRow = {
   title: string;
   description?: string | null;
   team_id?: string | null;
+  status?: 'draft' | 'active' | 'hidden';
   ownership_scope?: 'mine' | 'team' | 'global';
   created_by?: string | null;
 };
@@ -124,6 +128,8 @@ type JourneyDetailApiRow = {
     id: string;
     title?: string;
     sort_order?: number;
+    release_strategy?: 'immediate' | 'sequential' | 'scheduled';
+    release_date?: string | null;
     lessons?: Array<{
       id: string;
       title: string;
@@ -315,6 +321,8 @@ export default function CoachPortalScreen() {
   const [editingLessonTitle, setEditingLessonTitle] = useState('');
   const [editingTaskKey, setEditingTaskKey] = useState<string | null>(null);
   const [editingTaskTitle, setEditingTaskTitle] = useState('');
+  const [enrollmentRequests, setEnrollmentRequests] = useState<Array<{ id: string; journey_id: string; requester_id: string; requester_name: string; requester_avatar_url: string | null; journey_title: string; note: string | null; created_at: string }>>([]);
+  const [enrollmentRequestsBusy, setEnrollmentRequestsBusy] = useState<string | null>(null);
   const [cohorts, setCohorts] = useState<CohortDraft[]>(EMPTY_COHORTS);
   const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null);
   const [newCohortName, setNewCohortName] = useState('');
@@ -625,6 +633,8 @@ export default function CoachPortalScreen() {
             .map((milestone, idx) => ({
               id: milestone.id,
               title: milestone.title || `Lesson ${idx + 1}`,
+              release_strategy: milestone.release_strategy ?? 'immediate',
+              release_date: milestone.release_date ?? null,
               tasks: (milestone.lessons ?? [])
                 .filter((task) => task.is_active !== false)
                 .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
@@ -637,6 +647,7 @@ export default function CoachPortalScreen() {
           return {
             id: journey.id,
             name: journey.title,
+            status: journey.status ?? 'active',
             audience: `${journey.ownership_scope === 'mine' ? 'Mine' : journey.ownership_scope === 'team' ? 'Team' : 'Global'} • ${journey.description?.trim() || 'Team scoped'}`,
             lessons,
           } satisfies JourneyDraft;
@@ -679,6 +690,12 @@ export default function CoachPortalScreen() {
         setSelectedCollectionId('');
         setExpandedCollectionIds([]);
       }
+
+      // Enrollment requests (for coaches)
+      try {
+        const erPayload = await fetchCoachJson<{ requests?: typeof enrollmentRequests }>('/api/coaching/enrollment-requests', session.access_token);
+        setEnrollmentRequests(erPayload.requests ?? []);
+      } catch { /* non-fatal */ }
 
       setSaveState('idle');
       setSaveMessage(`Connected to backend coaching endpoints (${scopeLabel} scope).`);
@@ -1404,6 +1421,40 @@ export default function CoachPortalScreen() {
     markDraftChanged('Lesson deleted.');
   };
 
+  const setJourneyStatus = async (journeyId: string, status: 'draft' | 'active' | 'hidden') => {
+    // Optimistic update
+    setJourneys((prev) => prev.map((j) => j.id === journeyId ? { ...j, status } : j));
+    await runMutation('Updating status...', 'Status updated', async () => {
+      await sendCoachMutation(`/api/coaching/journeys/${journeyId}`, 'PATCH', { status });
+    });
+  };
+
+  const setMilestoneReleaseStrategy = async (milestoneId: string, strategy: 'immediate' | 'sequential' | 'scheduled', releaseDate?: string | null) => {
+    if (!selectedJourney) return;
+    // Optimistic update
+    setJourneys((prev) => prev.map((j) =>
+      j.id === selectedJourney.id
+        ? { ...j, lessons: j.lessons.map((l) => l.id === milestoneId ? { ...l, release_strategy: strategy, release_date: releaseDate ?? l.release_date } : l) }
+        : j
+    ));
+    await runMutation('Updating release...', 'Release updated', async () => {
+      await sendCoachMutation(`/api/coaching/journeys/${selectedJourney.id}/milestones/${milestoneId}`, 'PATCH', {
+        release_strategy: strategy,
+        ...(releaseDate !== undefined ? { release_date: releaseDate } : {}),
+      });
+    });
+  };
+
+  const resolveEnrollmentRequest = async (requestId: string, action: 'approve' | 'deny') => {
+    setEnrollmentRequestsBusy(requestId);
+    try {
+      await sendCoachMutation(`/api/coaching/enrollment-requests/${requestId}/${action}`, 'POST');
+      setEnrollmentRequests((prev) => prev.filter((r) => r.id !== requestId));
+    } catch { /* silent */ } finally {
+      setEnrollmentRequestsBusy(null);
+    }
+  };
+
   const confirmAndDelete = () => {
     if (!confirmDelete) return;
     if (confirmDelete.type === 'journey') void deleteJourney(confirmDelete.id);
@@ -1818,24 +1869,45 @@ export default function CoachPortalScreen() {
                   borderColor: '#BFDBFE',
                   borderRadius: 12,
                   padding: 16,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
+                  gap: 10,
                 }}>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E40AF' }} numberOfLines={1}>{selectedJourney.name}</Text>
-                    <Text style={{ fontSize: 12, color: '#3B82F6' }}>{selectedJourney.audience} · {selectedJourney.lessons.length} lesson{selectedJourney.lessons.length === 1 ? '' : 's'}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E40AF' }} numberOfLines={1}>{selectedJourney.name}</Text>
+                      <Text style={{ fontSize: 12, color: '#3B82F6' }}>{selectedJourney.audience} · {selectedJourney.lessons.length} lesson{selectedJourney.lessons.length === 1 ? '' : 's'}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      {saveState === 'pending' ? <Text style={s.autoSaveHint}>Saving...</Text> : null}
+                      {saveState === 'saved' ? <Text style={s.autoSaveHint}>✓ Saved</Text> : null}
+                      {saveState === 'error' ? <Text style={s.autoSaveError}>{saveMessage}</Text> : null}
+                      {canComposeDraft ? (
+                        <Pressable style={s.inlineAddLessonBtn} onPress={addLesson}>
+                          <Text style={s.inlineAddLessonBtnText}>+ Lesson</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
                   </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    {saveState === 'pending' ? <Text style={s.autoSaveHint}>Saving...</Text> : null}
-                    {saveState === 'saved' ? <Text style={s.autoSaveHint}>✓ Saved</Text> : null}
-                    {saveState === 'error' ? <Text style={s.autoSaveError}>{saveMessage}</Text> : null}
-                    {canComposeDraft ? (
-                      <Pressable style={s.inlineAddLessonBtn} onPress={addLesson}>
-                        <Text style={s.inlineAddLessonBtnText}>+ Lesson</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
+                  {/* ── Journey Status Toggle ── */}
+                  {canComposeDraft && (
+                    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600', marginRight: 4 }}>STATUS</Text>
+                      {(['draft', 'active', 'hidden'] as const).map((st) => {
+                        const active = selectedJourney.status === st;
+                        const colors = st === 'draft' ? { bg: '#FEF3C7', text: '#92400E', activeBg: '#F59E0B', activeText: '#FFF' }
+                          : st === 'active' ? { bg: '#DCFCE7', text: '#166534', activeBg: '#22C55E', activeText: '#FFF' }
+                          : { bg: '#F1F5F9', text: '#475569', activeBg: '#64748B', activeText: '#FFF' };
+                        return (
+                          <TouchableOpacity
+                            key={st}
+                            onPress={() => void setJourneyStatus(selectedJourney.id, st)}
+                            style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: active ? colors.activeBg : colors.bg }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: active ? colors.activeText : colors.text, textTransform: 'uppercase' as const }}>{st}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
                 </View>
               ) : (
                 <View style={{ backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 20, alignItems: 'center' }}>
@@ -1889,6 +1961,27 @@ export default function CoachPortalScreen() {
                         >⠿</Text>
                         <View style={s.stepNumber}><Text style={s.stepNumberText}>{lsIndex + 1}</Text></View>
                         <View style={s.kindBadgeLesson}><Text style={s.kindBadgeLessonText}>Lesson</Text></View>
+                        {/* Release strategy toggle */}
+                        {canComposeDraft && (
+                          <View style={{ flexDirection: 'row', gap: 3 }}>
+                            {(['immediate', 'sequential', 'scheduled'] as const).map((strat) => {
+                              const isActive = (lesson.release_strategy ?? 'immediate') === strat;
+                              const label = strat === 'immediate' ? '▶' : strat === 'sequential' ? '⛓' : '📅';
+                              const title = strat === 'immediate' ? 'Immediate' : strat === 'sequential' ? 'Sequential' : 'Scheduled';
+                              return (
+                                <TouchableOpacity
+                                  key={strat}
+                                  onPress={(e: any) => { e.stopPropagation?.(); void setMilestoneReleaseStrategy(lesson.id, strat); }}
+                                  style={{ paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, backgroundColor: isActive ? '#6366F1' : '#E2E8F0' }}
+                                  hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
+                                  {...({ title } as any)}
+                                >
+                                  <Text style={{ fontSize: 10, color: isActive ? '#FFF' : '#475569' }}>{label}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        )}
                         {editingLessonId === lesson.id && canComposeDraft ? (
                           <TextInput
                             style={[s.milestoneTitle, s.inlineEditInput]}
@@ -2224,6 +2317,40 @@ export default function CoachPortalScreen() {
           </View>
         </View>
       ) : null}
+      {/* ── Enrollment Requests Panel ── */}
+      {enrollmentRequests.length > 0 ? (
+        <View style={{ position: 'absolute' as any, bottom: 80, right: 20, width: 340, backgroundColor: '#FFF', borderRadius: 14, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 12, overflow: 'hidden' as any }}>
+          <View style={{ backgroundColor: '#1E293B', paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 13 }}>Enrollment Requests ({enrollmentRequests.length})</Text>
+          </View>
+          <ScrollView style={{ maxHeight: 280 }}>
+            {enrollmentRequests.map((r) => (
+              <View key={r.id} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B' }} numberOfLines={1}>{r.requester_name}</Text>
+                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }} numberOfLines={1}>{r.journey_title}</Text>
+                {r.note ? <Text style={{ fontSize: 11, color: '#94A3B8', marginTop: 3, fontStyle: 'italic' }} numberOfLines={2}>"{r.note}"</Text> : null}
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => void resolveEnrollmentRequest(r.id, 'approve')}
+                    disabled={enrollmentRequestsBusy === r.id}
+                    style={{ flex: 1, backgroundColor: '#22C55E', borderRadius: 6, paddingVertical: 6, alignItems: 'center' as any, opacity: enrollmentRequestsBusy === r.id ? 0.5 : 1 }}
+                  >
+                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>Approve</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => void resolveEnrollmentRequest(r.id, 'deny')}
+                    disabled={enrollmentRequestsBusy === r.id}
+                    style={{ flex: 1, backgroundColor: '#FEE2E2', borderRadius: 6, paddingVertical: 6, alignItems: 'center' as any, opacity: enrollmentRequestsBusy === r.id ? 0.5 : 1 }}
+                  >
+                    <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '700' }}>Deny</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+
       {seedPurgeConfirmOpen ? (
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>

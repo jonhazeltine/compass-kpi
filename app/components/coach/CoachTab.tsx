@@ -65,6 +65,8 @@ export interface CoachTabProps {
   createCoachEngagement: (coachId: string) => Promise<void>;
   fetchCoachMarketplace: () => Promise<void>;
   onClientPress: (clientId: string) => void;
+  availableJourneys?: Array<{ id: string; title: string; description: string | null; lesson_count: number; coach_name: string; has_pending_request: boolean }>;
+  onRequestEnrollment?: (journeyId: string) => Promise<void>;
 }
 
 export default function CoachTab({
@@ -107,7 +109,10 @@ export default function CoachTab({
   createCoachEngagement,
   fetchCoachMarketplace,
   onClientPress,
+  availableJourneys,
+  onRequestEnrollment,
 }: CoachTabProps) {
+  const [requestingId, setRequestingId] = React.useState<string | null>(null);
   return (
     <>
       {
@@ -434,10 +439,17 @@ coachTabScreen === 'coach_marketplace' ? (
         ) : (
           coachingJourneys.map((j) => {
             const pct = typeof j.completion_percent === 'number' ? j.completion_percent : 0;
+            const statusBadgeColor = j.status === 'draft' ? '#F59E0B' : j.status === 'hidden' ? '#64748B' : '#22C55E';
+            const statusLabel = j.status === 'draft' ? 'DRAFT' : j.status === 'hidden' ? 'HIDDEN' : 'ACTIVE';
             return (
               <TouchableOpacity key={j.id} style={styles.cwfJourneyCard} onPress={() => openCoachingShell('coaching_journey_detail', { selectedJourneyId: String(j.id), selectedJourneyTitle: j.title })}>
                 <View style={styles.cwfJourneyHeader}>
                   <Text style={styles.cwfJourneyTitle} numberOfLines={1}>{j.title}</Text>
+                  {j.status && j.status !== 'active' ? (
+                    <View style={{ backgroundColor: statusBadgeColor + '22', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 6 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: statusBadgeColor }}>{statusLabel}</Text>
+                    </View>
+                  ) : null}
                   <View style={styles.cwfJourneyPctWrap}>
                     <View style={[styles.cwfJourneyPctBar, { width: `${Math.min(pct, 100)}%` } as any]} />
                   </View>
@@ -843,6 +855,40 @@ coachTabScreen === 'coach_marketplace' ? (
         })
       )}
     </View>
+
+    {/* ── Available Journeys Catalog (member role) ── */}
+    {!isCoachRuntimeOperator && availableJourneys && availableJourneys.length > 0 && (
+      <View style={{ marginHorizontal: 16, marginTop: 20, marginBottom: 4 }}>
+        <Text style={{ fontSize: 16, fontWeight: '700' as const, color: '#1e1b4b', marginBottom: 10 }}>Available from Your Coach</Text>
+        {availableJourneys.map((j) => (
+          <View key={j.id} style={{ backgroundColor: '#F0F9FF', borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#BAE6FD' }}>
+            <View style={{ flexDirection: 'row' as const, alignItems: 'flex-start' as const, justifyContent: 'space-between' as const }}>
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={{ fontSize: 14, fontWeight: '600' as const, color: '#0C4A6E' }} numberOfLines={1}>{j.title}</Text>
+                {j.description ? <Text style={{ fontSize: 12, color: '#0369A1', marginTop: 2 }} numberOfLines={2}>{j.description}</Text> : null}
+                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>{j.lesson_count} lesson{j.lesson_count !== 1 ? 's' : ''} · {j.coach_name}</Text>
+              </View>
+              {j.has_pending_request ? (
+                <View style={{ backgroundColor: '#FEF3C7', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600' as const, color: '#92400E' }}>Requested</Text>
+                </View>
+              ) : onRequestEnrollment ? (
+                <TouchableOpacity
+                  style={{ backgroundColor: '#0369A1', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6, opacity: requestingId === j.id ? 0.5 : 1 }}
+                  disabled={requestingId === j.id}
+                  onPress={async () => {
+                    setRequestingId(j.id);
+                    try { await onRequestEnrollment(j.id); } finally { setRequestingId(null); }
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600' as const, color: '#FFFFFF' }}>Request</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        ))}
+      </View>
+    )}
 
     <TouchableOpacity
       style={{ marginHorizontal: 16, marginTop: 16, paddingVertical: 10, alignItems: 'center' as const }}

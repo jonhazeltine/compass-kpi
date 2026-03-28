@@ -29,6 +29,9 @@ export type JBLesson = {
   id: string;
   title: string;
   tasks: JBTask[];
+  is_locked?: boolean;
+  release_strategy?: 'immediate' | 'sequential' | 'scheduled' | string;
+  release_date?: string | null;
 };
 
 export type LibraryAsset = {
@@ -377,6 +380,7 @@ export default function CoachJourneyDetailView(props: CoachJourneyDetailProps) {
         ) : (
           lessons.map((lesson, idx) => {
             const isExpanded = expandedLessonIds.has(lesson.id);
+            const isLocked = lesson.is_locked === true && !isOperator;
             const firstVideoTask = lesson.tasks.find((t) => {
               if (!t.assetId) return false;
               const a = assetsById.get(t.assetId);
@@ -387,6 +391,34 @@ export default function CoachJourneyDetailView(props: CoachJourneyDetailProps) {
 
             const primaryTask = lesson.tasks[0];
             const progressStatus = primaryTask?.progressStatus ?? 'not_started';
+
+            // Unlock hint for locked milestones
+            const unlockHint = (() => {
+              if (!isLocked) return null;
+              if (lesson.release_strategy === 'sequential') return 'Complete the previous module to unlock';
+              if (lesson.release_strategy === 'scheduled' && lesson.release_date) {
+                const d = new Date(lesson.release_date);
+                return `Available ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+              }
+              return 'Locked';
+            })();
+
+            if (isLocked) {
+              return (
+                <View key={lesson.id} style={[s.lessonCard, { opacity: 0.6 }]}>
+                  <View style={{ backgroundColor: '#1E293B', borderRadius: 10, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <Text style={{ fontSize: 22 }}>🔒</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#CBD5E1', fontWeight: '600', fontSize: 14 }} numberOfLines={1}>{lesson.title}</Text>
+                      {unlockHint ? <Text style={{ color: '#64748B', fontSize: 12, marginTop: 2 }}>{unlockHint}</Text> : null}
+                    </View>
+                    <View style={{ backgroundColor: '#334155', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
+                      <Text style={{ color: '#94A3B8', fontSize: 11, fontWeight: '600' }}>LOCKED</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            }
 
             return (
               <View key={lesson.id} style={s.lessonCard}>

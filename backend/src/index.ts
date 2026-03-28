@@ -278,6 +278,7 @@ type CoachingJourneyCreatePayload = {
   title: string;
   description?: string;
   team_id?: string;
+  status?: 'draft' | 'active' | 'hidden';
 };
 
 type CoachingJourneyUpdatePayload = {
@@ -285,6 +286,7 @@ type CoachingJourneyUpdatePayload = {
   description?: string;
   team_id?: string | null;
   is_active?: boolean;
+  status?: 'draft' | 'active' | 'hidden';
 };
 
 type CoachingLessonCreatePayload = {
@@ -2223,6 +2225,7 @@ app.get("/dashboard", async (req, res) => {
       points: {
         gp: gpVpState.gp_current,
         vp: gpVpState.vp_current,
+        vp_raw: gpVpState.vp_raw,
       },
       activity: {
         total_logs: safeLogs.length,
@@ -3657,8 +3660,7 @@ app.get("/api/coaching/journeys", async (req, res) => {
 
     const { data: journeys, error: journeysError } = await dataClient
       .from("journeys")
-      .select("id,title,description,team_id,org_id,created_by,is_active,created_at")
-      .eq("is_active", true)
+      .select("id,title,description,team_id,org_id,created_by,is_active,status,created_at")
       .order("created_at", { ascending: false });
     if (journeysError) {
       return errorEnvelopeResponse(res, 500, "journey_fetch_failed", "Failed to fetch coaching journeys", req.headers["x-request-id"]);
@@ -3683,11 +3685,25 @@ app.get("/api/coaching/journeys", async (req, res) => {
       const teamId = String((j as { team_id?: unknown }).team_id ?? "") || null;
       const orgId = String((j as { org_id?: unknown }).org_id ?? "") || null;
       const createdBy = String((j as { created_by?: unknown }).created_by ?? "");
+      const jStatus = String((j as { status?: unknown }).status ?? "active");
 
       // Enrolled journeys are always visible
       const isEnrolled = enrolledJourneyIds.has(jId);
+      const isOwnerOrWriter = createdBy === auth.user.id || canWriteJourneyByTeam(access, teamId, orgId);
       const isMine = createdBy === auth.user.id || isEnrolled;
       const inTeamScope = Boolean(teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId)));
+
+      // Status visibility rules
+      if (isOwnerOrWriter) {
+        // owners/writers see all statuses
+      } else if (isEnrolled) {
+        // enrolled users see non-draft journeys
+        if (jStatus === 'draft') return false;
+      } else {
+        // everyone else only sees active
+        if (jStatus !== 'active') return false;
+      }
+
       const canRead = canReadJourneyByTeam(access, teamId, orgId) || isMine;
 
       if (!canRead) return false;
@@ -3865,7 +3881,7 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
 
     const { data: journey, error: journeyError } = await dataClient
       .from("journeys")
-      .select("id,title,description,team_id,org_id,created_by,is_active,created_at")
+      .select("id,title,description,team_id,org_id,created_by,is_active,status,created_at")
       .eq("id", journeyId)
       .single();
     if (journeyError) {
@@ -3886,13 +3902,14 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
     if (!enrollmentCheck.error && enrollmentCheck.data) {
       isEnrolled = true;
     }
-    if (!canReadJourneyByTeam(access, scopedTeamId || null, scopedOrgId || null) && createdBy !== auth.user.id && !isEnrolled) {
+    const isOwnerOrWriter = createdBy === auth.user.id || canWriteJourneyByTeam(access, scopedTeamId || null, scopedOrgId || null);
+    if (!isOwnerOrWriter && !isEnrolled) {
       return errorEnvelopeResponse(res, 403, "scope_denied", "You are not allowed to view this journey", req.headers["x-request-id"]);
     }
 
     const { data: milestones, error: milestonesError } = await dataClient
       .from("milestones")
-      .select("id,journey_id,title,sort_order")
+      .select("id,journey_id,title,sort_order,release_strategy,release_date")
       .eq("journey_id", journeyId)
       .order("sort_order", { ascending: true });
     if (milestonesError) return errorEnvelopeResponse(res, 500, "journey_fetch_failed", "Failed to fetch milestones", req.headers["x-request-id"]);
@@ -3970,14 +3987,40 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
       playbackId: a.playback_id,
     }));
 
+    // Compute milestone lock states (Phase C)
+    // Owner/writer always sees all milestones unlocked
+    const isOwnerOrWriterForLock = createdBy === auth.user.id || canWriteJourneyByTeam(access, scopedTeamId || null, scopedOrgId || null);
+    const milestonesWithLock = (milestones ?? []).map((m, idx) => {
+      if (isOwnerOrWriterForLock) return { ...m, is_locked: false };
+      const strategy = String((m as { release_strategy?: unknown }).release_strategy ?? 'immediate');
+      const releaseDate = (m as { release_date?: unknown }).release_date;
+      if (strategy === 'scheduled' && releaseDate) {
+        const unlockAt = new Date(String(releaseDate));
+        if (unlockAt > new Date()) return { ...m, is_locked: true };
+      }
+      if (strategy === 'sequential' && idx > 0) {
+        // Check if all lessons in the previous milestone are completed
+        const prevMilestone = (milestones ?? [])[idx - 1];
+        const prevLessons = lessons.filter((l) => String(l.milestone_id) === String(prevMilestone.id));
+        const allPrevComplete = prevLessons.length > 0 && prevLessons.every((l) => {
+          const prog = progressByLesson.get(String(l.id));
+          return prog?.status === 'completed';
+        });
+        if (!allPrevComplete) return { ...m, is_locked: true };
+      }
+      return { ...m, is_locked: false };
+    });
+
     return res.json({
       journey: {
         ...journey,
         packaging_read_model: packagingReadModelForJourney(journey as { id?: unknown; team_id?: unknown; is_active?: unknown }),
       },
-      milestones: (milestones ?? []).map((m) => ({
+      milestones: milestonesWithLock.map((m) => ({
         ...m,
-        lessons: lessonsByMilestone.get(String(m.id)) ?? [],
+        lessons: m.is_locked
+          ? (lessonsByMilestone.get(String(m.id)) ?? []).map((l) => ({ ...l, body: null, is_locked: true }))
+          : (lessonsByMilestone.get(String(m.id)) ?? []).map((l) => ({ ...l, is_locked: false })),
       })),
       assets: assetsForResponse,
     });
@@ -4030,10 +4073,11 @@ app.post("/api/coaching/journeys", async (req, res) => {
         org_id: createOrgId ?? undefined,
         created_by: auth.user.id,
         is_active: true,
+        status: payload.status ?? 'draft',
         created_at: nowIso,
         updated_at: nowIso,
       })
-      .select("id,title,description,team_id,org_id,is_active,created_by,created_at,updated_at")
+      .select("id,title,description,team_id,org_id,is_active,status,created_by,created_at,updated_at")
       .single();
     if (error) {
       return errorEnvelopeResponse(res, 500, "journey_create_failed", "Failed to create journey", req.headers["x-request-id"]);
@@ -4095,12 +4139,13 @@ app.patch("/api/coaching/journeys/:id", async (req, res) => {
     if (payload.team_id !== undefined) patch.team_id = payload.team_id;
     if (payload.team_id !== undefined && nextOrgId) patch.org_id = nextOrgId;
     if (payload.is_active !== undefined) patch.is_active = payload.is_active;
+    if (payload.status !== undefined) patch.status = payload.status;
 
     const { data: updated, error: updateError } = await dataClient
       .from("journeys")
       .update(patch)
       .eq("id", journeyId)
-      .select("id,title,description,team_id,org_id,is_active,created_by,created_at,updated_at")
+      .select("id,title,description,team_id,org_id,is_active,status,created_by,created_at,updated_at")
       .single();
     if (updateError) {
       return errorEnvelopeResponse(res, 500, "journey_update_failed", "Failed to update journey", req.headers["x-request-id"]);
@@ -4264,6 +4309,64 @@ app.patch("/api/coaching/journeys/:id/lessons/:lessonId", async (req, res) => {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Error in PATCH /api/coaching/journeys/:id/lessons/:lessonId", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+app.patch("/api/coaching/journeys/:id/milestones/:milestoneId", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const journeyId = req.params.id;
+    const milestoneId = req.params.milestoneId;
+    if (!journeyId || !milestoneId) return errorEnvelopeResponse(res, 422, "invalid_request", "journey id and milestone id are required", req.headers["x-request-id"]);
+
+    const body = req.body;
+    if (!isRecord(body)) return errorEnvelopeResponse(res, 400, "invalid_request", "Body must be a JSON object", req.headers["x-request-id"]);
+
+    const { data: journey } = await dataClient.from("journeys").select("id,team_id,org_id,created_by").eq("id", journeyId).maybeSingle();
+    if (!journey) return errorEnvelopeResponse(res, 404, "not_found", "Journey not found", req.headers["x-request-id"]);
+
+    const accessResult = await getCoachingAccessContext(auth.user.id, { superAdminElevatedEdit: parseSuperAdminElevatedEdit(req.headers["x-coach-elevated-edit"]), authUser: auth.user });
+    if (!accessResult.ok) return errorEnvelopeResponse(res, accessResult.status, "scope_denied", accessResult.error, req.headers["x-request-id"]);
+    const access = accessResult.context;
+    const teamId = String((journey as { team_id?: unknown }).team_id ?? "") || null;
+    const orgId = String((journey as { org_id?: unknown }).org_id ?? "") || null;
+    const createdBy = String((journey as { created_by?: unknown }).created_by ?? "");
+    if (createdBy !== auth.user.id && !canWriteJourneyByTeam(access, teamId, orgId)) {
+      return errorEnvelopeResponse(res, 403, "scope_denied", "Only the journey owner can update milestone settings", req.headers["x-request-id"]);
+    }
+
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (body.release_strategy !== undefined) {
+      if (!['immediate', 'sequential', 'scheduled'].includes(String(body.release_strategy))) {
+        return errorEnvelopeResponse(res, 422, "invalid_request", "release_strategy must be immediate, sequential, or scheduled", req.headers["x-request-id"]);
+      }
+      patch.release_strategy = body.release_strategy;
+    }
+    if (body.release_date !== undefined) {
+      patch.release_date = body.release_date === null ? null : body.release_date;
+    }
+    if (body.title !== undefined) {
+      if (typeof body.title !== "string" || !String(body.title).trim()) {
+        return errorEnvelopeResponse(res, 422, "invalid_request", "title must be a non-empty string", req.headers["x-request-id"]);
+      }
+      patch.title = String(body.title).trim();
+    }
+    if (Object.keys(patch).length === 1) return errorEnvelopeResponse(res, 422, "invalid_request", "At least one field is required", req.headers["x-request-id"]);
+
+    const { data: updated, error: updateError } = await dataClient
+      .from("milestones")
+      .update(patch)
+      .eq("id", milestoneId)
+      .eq("journey_id", journeyId)
+      .select("id,journey_id,title,sort_order,release_strategy,release_date")
+      .single();
+    if (updateError || !updated) return errorEnvelopeResponse(res, 500, "milestone_update_failed", "Failed to update milestone", req.headers["x-request-id"]);
+    return res.json({ milestone: updated });
+  } catch (err) {
+    console.error("Error in PATCH /api/coaching/journeys/:id/milestones/:milestoneId", err);
     return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
   }
 });
@@ -8448,6 +8551,204 @@ app.post("/api/coaching/journeys/:id/unenroll", async (req, res) => {
   }
 });
 
+/* ── GET /api/coaching/available-journeys — catalog of enrollable journeys ── */
+app.get("/api/coaching/available-journeys", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+
+    // Find all coaches this user is connected to
+    const { data: engagements } = await dataClient
+      .from("coaching_engagements")
+      .select("coach_id")
+      .eq("client_id", auth.user.id)
+      .in("status", ["active", "pending"]);
+    const coachIds = [...new Set((engagements ?? []).map((e) => String(e.coach_id)))];
+    if (coachIds.length === 0) return res.json({ journeys: [] });
+
+    // Get journey IDs user is already enrolled in
+    const { data: enrollRows } = await dataClient
+      .from("journey_enrollments")
+      .select("journey_id")
+      .eq("user_id", auth.user.id)
+      .eq("status", "active");
+    const enrolledIds = new Set((enrollRows ?? []).map((r) => String(r.journey_id)));
+
+    // Get pending enrollment requests
+    const { data: requestRows } = await dataClient
+      .from("enrollment_requests")
+      .select("journey_id")
+      .eq("requester_id", auth.user.id)
+      .eq("status", "pending");
+    const pendingRequestIds = new Set((requestRows ?? []).map((r) => String(r.journey_id)));
+
+    // Fetch active journeys from those coaches
+    const { data: journeys } = await dataClient
+      .from("journeys")
+      .select("id,title,description,created_by,created_at")
+      .in("created_by", coachIds)
+      .eq("status", "active");
+
+    // Get lesson counts per journey
+    const journeyIds = (journeys ?? []).map((j) => String(j.id));
+    const lessonCountByJourney = new Map<string, number>();
+    if (journeyIds.length > 0) {
+      const { data: milestones } = await dataClient.from("milestones").select("id,journey_id").in("journey_id", journeyIds);
+      const milestoneIds = (milestones ?? []).map((m) => String(m.id));
+      if (milestoneIds.length > 0) {
+        const { data: lessons } = await dataClient.from("lessons").select("id,milestone_id").in("milestone_id", milestoneIds).eq("is_active", true);
+        for (const l of lessons ?? []) {
+          const ms = (milestones ?? []).find((m) => String(m.id) === String(l.milestone_id));
+          if (ms) {
+            const jid = String(ms.journey_id);
+            lessonCountByJourney.set(jid, (lessonCountByJourney.get(jid) ?? 0) + 1);
+          }
+        }
+      }
+    }
+
+    // Get coach names
+    const { data: coachUsers } = await dataClient.from("users").select("id,full_name,avatar_url").in("id", coachIds);
+    const coachMap = new Map((coachUsers ?? []).map((u) => [String(u.id), u]));
+
+    const available = (journeys ?? [])
+      .filter((j) => !enrolledIds.has(String(j.id)))
+      .map((j) => {
+        const jid = String(j.id);
+        const coach = coachMap.get(String(j.created_by));
+        return {
+          id: jid,
+          title: j.title,
+          description: j.description ?? null,
+          lesson_count: lessonCountByJourney.get(jid) ?? 0,
+          coach_name: String((coach as { full_name?: unknown })?.full_name ?? "Coach"),
+          coach_avatar_url: (coach as { avatar_url?: unknown })?.avatar_url ?? null,
+          has_pending_request: pendingRequestIds.has(jid),
+        };
+      });
+
+    return res.json({ journeys: available });
+  } catch (err) {
+    console.error("Error in GET /api/coaching/available-journeys", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+/* ── POST /api/coaching/journeys/:id/request-enrollment ── */
+app.post("/api/coaching/journeys/:id/request-enrollment", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const journeyId = req.params.id;
+    const { data: journey } = await dataClient.from("journeys").select("id,created_by,status,title").eq("id", journeyId).maybeSingle();
+    if (!journey || String((journey as { status?: unknown }).status) !== 'active') {
+      return errorEnvelopeResponse(res, 404, "not_found", "Journey not found or not available", req.headers["x-request-id"]);
+    }
+    const coachId = String((journey as { created_by?: unknown }).created_by ?? "");
+    // Check user has a coaching engagement with this coach
+    const { data: engagement } = await dataClient.from("coaching_engagements").select("id").eq("client_id", auth.user.id).eq("coach_id", coachId).in("status", ["active", "pending"]).maybeSingle();
+    if (!engagement) return errorEnvelopeResponse(res, 403, "scope_denied", "You must be connected to this coach to request enrollment", req.headers["x-request-id"]);
+    // Check not already enrolled
+    const { data: existing } = await dataClient.from("journey_enrollments").select("id").eq("user_id", auth.user.id).eq("journey_id", journeyId).eq("status", "active").maybeSingle();
+    if (existing) return errorEnvelopeResponse(res, 409, "already_enrolled", "Already enrolled in this journey", req.headers["x-request-id"]);
+    const note = isRecord(req.body) && typeof req.body.note === "string" ? req.body.note.trim() : null;
+    const now = new Date().toISOString();
+    const { data: requestRow, error: insertError } = await dataClient
+      .from("enrollment_requests")
+      .upsert({ journey_id: journeyId, requester_id: auth.user.id, coach_id: coachId, status: "pending", note, created_at: now, updated_at: now }, { onConflict: "journey_id,requester_id" })
+      .select("id,journey_id,status,created_at")
+      .single();
+    if (insertError) return errorEnvelopeResponse(res, 500, "request_failed", "Failed to create enrollment request", req.headers["x-request-id"]);
+    return res.status(201).json({ request: requestRow });
+  } catch (err) {
+    console.error("Error in POST /api/coaching/journeys/:id/request-enrollment", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+/* ── GET /api/coaching/enrollment-requests — coach sees pending requests ── */
+app.get("/api/coaching/enrollment-requests", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const { data: requests } = await dataClient
+      .from("enrollment_requests")
+      .select("id,journey_id,requester_id,status,note,created_at")
+      .eq("coach_id", auth.user.id)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    const requesterIds = [...new Set((requests ?? []).map((r) => String(r.requester_id)))];
+    const journeyIds = [...new Set((requests ?? []).map((r) => String(r.journey_id)))];
+    const [{ data: users }, { data: journeys }] = await Promise.all([
+      requesterIds.length > 0 ? dataClient.from("users").select("id,full_name,avatar_url").in("id", requesterIds) : Promise.resolve({ data: [] }),
+      journeyIds.length > 0 ? dataClient.from("journeys").select("id,title").in("id", journeyIds) : Promise.resolve({ data: [] }),
+    ]);
+    const userMap = new Map((users ?? []).map((u) => [String(u.id), u]));
+    const journeyMap = new Map((journeys ?? []).map((j) => [String(j.id), j]));
+
+    const enriched = (requests ?? []).map((r) => {
+      const u = userMap.get(String(r.requester_id));
+      const j = journeyMap.get(String(r.journey_id));
+      return {
+        ...r,
+        requester_name: String((u as { full_name?: unknown })?.full_name ?? "Member"),
+        requester_avatar_url: (u as { avatar_url?: unknown })?.avatar_url ?? null,
+        journey_title: String((j as { title?: unknown })?.title ?? "Journey"),
+      };
+    });
+    return res.json({ requests: enriched });
+  } catch (err) {
+    console.error("Error in GET /api/coaching/enrollment-requests", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+/* ── POST /api/coaching/enrollment-requests/:id/approve ── */
+app.post("/api/coaching/enrollment-requests/:id/approve", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const requestId = req.params.id;
+    const { data: reqRow } = await dataClient.from("enrollment_requests").select("id,journey_id,requester_id,coach_id,status").eq("id", requestId).eq("coach_id", auth.user.id).maybeSingle();
+    if (!reqRow) return errorEnvelopeResponse(res, 404, "not_found", "Request not found", req.headers["x-request-id"]);
+    if (String((reqRow as { status?: unknown }).status) !== "pending") return errorEnvelopeResponse(res, 409, "already_resolved", "Request already resolved", req.headers["x-request-id"]);
+    const now = new Date().toISOString();
+    const journeyId = String((reqRow as { journey_id?: unknown }).journey_id ?? "");
+    const requesterId = String((reqRow as { requester_id?: unknown }).requester_id ?? "");
+    await Promise.all([
+      dataClient.from("enrollment_requests").update({ status: "approved", updated_at: now }).eq("id", requestId),
+      dataClient.from("journey_enrollments").upsert({ journey_id: journeyId, user_id: requesterId, status: "active", created_at: now, updated_at: now }, { onConflict: "journey_id,user_id" }),
+    ]);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("Error in POST /api/coaching/enrollment-requests/:id/approve", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
+/* ── POST /api/coaching/enrollment-requests/:id/deny ── */
+app.post("/api/coaching/enrollment-requests/:id/deny", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return errorEnvelopeResponse(res, 401, "unauthenticated", auth.error, req.headers["x-request-id"]);
+    if (!dataClient) return errorEnvelopeResponse(res, 500, "config_error", "Supabase data client not configured", req.headers["x-request-id"]);
+    const requestId = req.params.id;
+    const { data: reqRow } = await dataClient.from("enrollment_requests").select("id,coach_id,status").eq("id", requestId).eq("coach_id", auth.user.id).maybeSingle();
+    if (!reqRow) return errorEnvelopeResponse(res, 404, "not_found", "Request not found", req.headers["x-request-id"]);
+    if (String((reqRow as { status?: unknown }).status) !== "pending") return errorEnvelopeResponse(res, 409, "already_resolved", "Request already resolved", req.headers["x-request-id"]);
+    await dataClient.from("enrollment_requests").update({ status: "denied", updated_at: new Date().toISOString() }).eq("id", requestId);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("Error in POST /api/coaching/enrollment-requests/:id/deny", err);
+    return errorEnvelopeResponse(res, 500, "internal_error", "Internal server error", req.headers["x-request-id"]);
+  }
+});
+
 app.post("/challenges/:id/invite-codes", async (req, res) => {
   try {
     const auth = await authenticateRequest(req.headers.authorization);
@@ -12286,12 +12587,16 @@ function validateCoachingJourneyCreatePayload(body: unknown):
   if (body.team_id !== undefined && typeof body.team_id !== "string") {
     return { ok: false, status: 422, error: "team_id must be a string when provided" };
   }
+  if (body.status !== undefined && !['draft', 'active', 'hidden'].includes(String(body.status))) {
+    return { ok: false, status: 422, error: "status must be draft, active, or hidden" };
+  }
   return {
     ok: true,
     payload: {
       title,
       description: typeof body.description === "string" ? body.description.trim() : undefined,
       team_id: typeof body.team_id === "string" && body.team_id.trim() ? body.team_id.trim() : undefined,
+      status: (body.status as 'draft' | 'active' | 'hidden' | undefined) ?? 'draft',
     },
   };
 }
@@ -12324,6 +12629,12 @@ function validateCoachingJourneyUpdatePayload(body: unknown):
       return { ok: false, status: 422, error: "is_active must be boolean when provided" };
     }
     payload.is_active = body.is_active;
+  }
+  if (body.status !== undefined) {
+    if (!['draft', 'active', 'hidden'].includes(String(body.status))) {
+      return { ok: false, status: 422, error: "status must be draft, active, or hidden" };
+    }
+    payload.status = body.status as 'draft' | 'active' | 'hidden';
   }
   if (Object.keys(payload).length === 0) {
     return { ok: false, status: 422, error: "At least one mutable field is required" };
