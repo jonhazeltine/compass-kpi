@@ -65,8 +65,8 @@ type Props = {
   }) => void;
   /** All journeys the coach owns — for enroll/unenroll picker */
   availableJourneys?: Array<{ id: string; title: string }>;
-  onEnrollJourney?: (journeyId: string) => void;
-  onUnenrollJourney?: (journeyId: string) => void;
+  onEnrollJourney?: (journeyId: string) => void | Promise<void>;
+  onUnenrollJourney?: (journeyId: string) => void | Promise<void>;
 };
 
 type DrawerTab = "tasks" | "goals" | "completed";
@@ -157,6 +157,8 @@ export default function UserProfileDrawer({
   const [identityDraftName, setIdentityDraftName] = useState("");
   const [identityDraftAvatarUrl, setIdentityDraftAvatarUrl] = useState("");
   const [identityDraftAvatarPresetId, setIdentityDraftAvatarPresetId] = useState(AVATAR_PRESETS[0].id);
+  const [journeyPickerVisible, setJourneyPickerVisible] = useState(false);
+  const [journeyActionBusy, setJourneyActionBusy] = useState<string | null>(null);
   const [identityBusy, setIdentityBusy] = useState(false);
   const [identityUploading, setIdentityUploading] = useState(false);
   const [identityError, setIdentityError] = useState<string | null>(null);
@@ -503,50 +505,33 @@ export default function UserProfileDrawer({
                 ) : null}
               </View>
 
-              {/* ── Enrolled Journeys with enroll/unenroll ── */}
-              {(member.journeys.length > 0 || (availableJourneys?.length ?? 0) > 0) && (
+              {/* ── Journeys section ── */}
+              {(availableJourneys != null || member.journeys.length > 0) && (
                 <View style={styles.enrolledSection}>
-                  <Text style={styles.enrolledLabel}>Journeys</Text>
-                  {member.journeys.map((j, idx) => {
-                    const journeyMatch = availableJourneys?.find((aj) => aj.title === j || aj.id === j);
-                    // Show resolved title when possible (j may be a raw UUID)
-                    const displayName = journeyMatch?.title ?? j;
-                    return (
-                      <View key={idx} style={styles.enrolledRow}>
-                        <View style={styles.enrolledDot} />
-                        <Text style={styles.enrolledText} numberOfLines={1}>{displayName}</Text>
-                        {onUnenrollJourney && journeyMatch && (
-                          <TouchableOpacity
-                            onPress={() => onUnenrollJourney(journeyMatch.id)}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Text style={{ fontSize: 11, color: '#EF4444', fontWeight: '600' }}>Remove</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    );
-                  })}
-                  {/* Unenrolled journeys — available to add */}
-                  {availableJourneys && availableJourneys.filter((aj) => !member.journeys.includes(aj.title) && !member.journeys.includes(aj.id)).length > 0 && (
-                    <>
-                      <View style={{ height: 6 }} />
-                      {availableJourneys
-                        .filter((aj) => !member.journeys.includes(aj.title) && !member.journeys.includes(aj.id))
-                        .map((aj) => (
-                          <View key={aj.id} style={styles.enrolledRow}>
-                            <View style={[styles.enrolledDot, { backgroundColor: '#CBD5E1' }]} />
-                            <Text style={[styles.enrolledText, { color: '#94A3B8' }]} numberOfLines={1}>{aj.title}</Text>
-                            {onEnrollJourney && (
-                              <TouchableOpacity
-                                onPress={() => onEnrollJourney(aj.id)}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                              >
-                                <Text style={{ fontSize: 11, color: '#6366F1', fontWeight: '600' }}>Enroll</Text>
-                              </TouchableOpacity>
-                            )}
-                          </View>
-                        ))}
-                    </>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={styles.enrolledLabel}>Journeys</Text>
+                    {availableJourneys != null && (
+                      <TouchableOpacity
+                        onPress={() => setJourneyPickerVisible(true)}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Text style={{ fontSize: 12, color: '#6366F1', fontWeight: '600' }}>Manage</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  {member.journeys.length === 0 ? (
+                    <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>No journeys enrolled</Text>
+                  ) : (
+                    member.journeys.map((j, idx) => {
+                      const journeyMatch = availableJourneys?.find((aj) => aj.title === j || aj.id === j);
+                      const displayName = journeyMatch?.title ?? j;
+                      return (
+                        <View key={idx} style={styles.enrolledRow}>
+                          <View style={styles.enrolledDot} />
+                          <Text style={styles.enrolledText} numberOfLines={1}>{displayName}</Text>
+                        </View>
+                      );
+                    })
                   )}
                 </View>
               )}
@@ -815,6 +800,93 @@ export default function UserProfileDrawer({
               </Pressable>
             </Pressable>
           </Modal>
+
+          {/* ── Journey Picker Modal ── */}
+          {availableJourneys != null && (
+            <Modal
+              visible={journeyPickerVisible}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setJourneyPickerVisible(false)}
+            >
+              <Pressable style={styles.innerOverlay} onPress={() => setJourneyPickerVisible(false)}>
+                <Pressable style={[styles.dialogCard, { maxHeight: '80%' }]} onPress={() => {}}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#0F172A' }}>
+                      Journeys
+                    </Text>
+                    <TouchableOpacity onPress={() => setJourneyPickerVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={{ fontSize: 20, color: '#94A3B8', lineHeight: 22 }}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
+                    {member?.name}
+                  </Text>
+                  <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
+                    {availableJourneys.map((aj) => {
+                      const isEnrolled = (member?.journeys ?? []).includes(aj.id) || (member?.journeys ?? []).includes(aj.title);
+                      const isBusy = journeyActionBusy === aj.id;
+                      return (
+                        <View
+                          key={aj.id}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingVertical: 12,
+                            borderBottomWidth: 1,
+                            borderBottomColor: '#F1F5F9',
+                            gap: 12,
+                          }}
+                        >
+                          {/* Enrollment indicator */}
+                          <View style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: 11,
+                            borderWidth: 2,
+                            borderColor: isEnrolled ? '#6366F1' : '#CBD5E1',
+                            backgroundColor: isEnrolled ? '#6366F1' : 'transparent',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}>
+                            {isEnrolled && <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>✓</Text>}
+                          </View>
+                          <Text style={{ flex: 1, fontSize: 14, fontWeight: '500', color: '#1E293B' }} numberOfLines={2}>
+                            {aj.title}
+                          </Text>
+                          {isBusy ? (
+                            <ActivityIndicator size="small" color="#6366F1" />
+                          ) : isEnrolled ? (
+                            <TouchableOpacity
+                              onPress={async () => {
+                                if (!onUnenrollJourney) return;
+                                setJourneyActionBusy(aj.id);
+                                try { await onUnenrollJourney(aj.id); } finally { setJourneyActionBusy(null); }
+                              }}
+                              style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: '#FEE2E2' }}
+                            >
+                              <Text style={{ fontSize: 12, fontWeight: '600', color: '#EF4444' }}>Remove</Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity
+                              onPress={async () => {
+                                if (!onEnrollJourney) return;
+                                setJourneyActionBusy(aj.id);
+                                try { await onEnrollJourney(aj.id); } finally { setJourneyActionBusy(null); }
+                              }}
+                              style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: '#EEF2FF' }}
+                            >
+                              <Text style={{ fontSize: 12, fontWeight: '600', color: '#6366F1' }}>Enroll</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                </Pressable>
+              </Pressable>
+            </Modal>
+          )}
         </Pressable>
       </Pressable>
     </Modal>
