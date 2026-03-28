@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Image } from 'react-native';
 
 import type {
   CoachingJourneyDetailResponse,
@@ -166,9 +167,25 @@ export function useJourneyBuilder({
         id: String(l.id),
         title: l.title ?? 'Untitled Task',
         assetId: typeof (l as Record<string, unknown>).body === 'string' && ((l as Record<string, unknown>).body as string).startsWith('asset:') ? ((l as Record<string, unknown>).body as string).slice(6) : null,
+        progressStatus: (l.progress_status as 'not_started' | 'in_progress' | 'completed' | undefined) ?? 'not_started',
+        completedAt: l.completed_at ?? null,
       })),
     }));
     setJbLessons(lessons);
+    // Seed asset library from detail.assets so thumbnails work even if library endpoint is unavailable
+    if (Array.isArray(detail.assets) && detail.assets.length > 0) {
+      setJbAssets((prev) => {
+        if (prev.length > 0) return prev; // don't overwrite if library already loaded
+        return detail.assets!.map((a) => ({
+          id: a.id,
+          title: a.title,
+          category: a.category,
+          scope: a.scope,
+          duration: a.duration,
+          playbackId: a.playbackId ?? null,
+        }));
+      });
+    }
   }, []);
 
   const jbRefreshJourney = useCallback(async (journeyId: string) => {
@@ -322,6 +339,18 @@ export function useJourneyBuilder({
     const map = new Map<string, LibraryAsset>();
     for (const a of jbAssets) map.set(a.id, a);
     return map;
+  }, [jbAssets]);
+
+  // Prefetch Mux thumbnails the moment the asset list lands — so by the time
+  // the user opens a journey detail the images are already in the disk cache.
+  useEffect(() => {
+    if (jbAssets.length === 0) return;
+    for (const asset of jbAssets) {
+      if (asset.playbackId) {
+        const url = `https://image.mux.com/${asset.playbackId}/thumbnail.jpg?width=320&height=180&time=1&fit_mode=smartcrop`;
+        void Image.prefetch(url);
+      }
+    }
   }, [jbAssets]);
 
   const jbRenameLesson = useCallback(async (journeyId: string, lessonId: string, newTitle: string) => {

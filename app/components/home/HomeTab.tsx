@@ -167,8 +167,6 @@ export default function HomeTab({
   if (viewMode === 'home') {
     return (
 <>
-  {renderHudRail()}
-
   <View style={styles.homeCockpitStage}>
     <View style={styles.homeCockpitVisualShell}>
       <View style={styles.chartCard}>
@@ -226,45 +224,13 @@ export default function HomeTab({
     </View>
   </View>
 
-  <View style={styles.coachingEntryCard}>
-    <View style={styles.coachingEntryHeaderRow}>
-      <Text style={styles.coachingEntryTitle}>Coaching Nudge (W1 Allocation)</Text>
-      <Text style={styles.coachingEntryBadge}>coaching</Text>
-    </View>
-    <Text style={styles.coachingEntrySub}>
-      Coaching entry point. Home/Priority logging stays unchanged.
-    </Text>
-    {renderRuntimeStateBanner(homeRuntimeStateModel, { compact: true })}
-    {renderCoachingPackageGateBanner('Home / Priority coaching nudge', null, { compact: true })}
-    {renderCoachingNotificationSurface(
-      'Coaching notifications',
-      homeNotificationRows,
-      summarizeNotificationRows(homeNotificationRows, { sourceLabel: 'home_coaching_nudge' }),
-      { compact: true, maxRows: 2, mode: 'banner', emptyHint: 'No coaching notifications right now.' }
-    )}
-    <View style={styles.coachingEntryButtonRow}>
-      <TouchableOpacity
-        style={styles.coachingEntryPrimaryBtn}
-        onPress={() =>
-          openCoachingShell('coaching_journeys', {
-            source: 'home',
-            selectedJourneyId: null,
-            selectedJourneyTitle: null,
-            selectedLessonId: null,
-            selectedLessonTitle: null,
-          })
-        }
-      >
-        <Text style={styles.coachingEntryPrimaryBtnText}>Open Coaching Journeys</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.coachingEntrySecondaryBtn}
-        onPress={() => openCoachingShell('inbox')}
-      >
-        <Text style={styles.coachingEntrySecondaryBtnText}>Inbox</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
+  {/* TODO: Coaching Nudge (W1 Allocation) — removed from home view for now.
+   * Needs proper design placement. Was: coaching entry point with runtime state banner,
+   * coaching package gate banner, notification surface, and buttons for
+   * "Open Coaching Journeys" and "Inbox". See git history for full implementation.
+   * Props used: renderRuntimeStateBanner, renderCoachingPackageGateBanner,
+   * renderCoachingNotificationSurface, homeNotificationRows, openCoachingShell.
+   */}
 
 </>
     );
@@ -272,15 +238,6 @@ export default function HomeTab({
 
   return (
 <>
-  <View style={styles.activityHeroCard}>
-    <View style={styles.activityHeroTopRow}>
-      <Text style={styles.activityHeroEyebrow}>Activity / Logs & History</Text>
-    </View>
-    <Text style={styles.logTitle}>Activity</Text>
-    <Text style={styles.activityHeroSub}>
-      Review prior entries, backfill a selected day, and manage corrections without leaving the dashboard flow.
-    </Text>
-  </View>
   <View style={styles.logsReportsSwitchCard}>
     <TouchableOpacity
       style={[
@@ -321,6 +278,9 @@ export default function HomeTab({
       </Text>
     </TouchableOpacity>
   </View>
+
+  {/* GCI Cards — Actual & Projected */}
+  {renderHudRail()}
 
   {logsReportsSubview === 'logs' ? (
     <>

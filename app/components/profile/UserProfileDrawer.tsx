@@ -424,83 +424,83 @@ export default function UserProfileDrawer({
                   </TouchableOpacity>
                 </View>
 
-                {/* Action buttons: Message + overflow */}
+                {/* Action buttons: Message + overflow toggle */}
                 <View style={styles.headerActions}>
                   <TouchableOpacity style={styles.messageBtn} onPress={onMessage}>
                     <MaterialCommunityIcons name="message-text-outline" size={15} color="#6366F1" />
                     <Text style={styles.messageBtnText}>Message</Text>
                   </TouchableOpacity>
                   {hasOverflowActions ? (
-                    <View>
-                      <TouchableOpacity
-                        style={styles.overflowBtn}
-                        onPress={() => setActionMenuVisible((prev) => !prev)}
-                      >
-                        <MaterialCommunityIcons name="dots-horizontal" size={20} color="#526175" />
-                      </TouchableOpacity>
-                      {actionMenuVisible ? (
-                        <View style={styles.actionMenu}>
-                          {isSelfProfile ? (
-                            <TouchableOpacity
-                              style={styles.actionMenuItem}
-                              onPress={() => {
-                                setActionMenuVisible(false);
-                                setIdentityModalVisible(true);
-                              }}
-                            >
-                              <MaterialCommunityIcons name="account-edit-outline" size={16} color="#6366F1" />
-                              <Text style={styles.actionMenuItemText}>Edit Profile</Text>
-                            </TouchableOpacity>
-                          ) : null}
-                          {capabilities?.can_create_task ? (
-                            <TouchableOpacity
-                              style={styles.actionMenuItem}
-                              onPress={() => {
-                                setActionMenuVisible(false);
-                                resetTaskForm();
-                                setTaskModalVisible(true);
-                              }}
-                            >
-                              <MaterialCommunityIcons name="clipboard-plus-outline" size={16} color="#6366F1" />
-                              <Text style={styles.actionMenuItemText}>Add Task</Text>
-                            </TouchableOpacity>
-                          ) : null}
-                          {capabilities?.can_create_goal ? (
-                            <TouchableOpacity
-                              style={styles.actionMenuItem}
-                              onPress={() => {
-                                setActionMenuVisible(false);
-                                resetGoalForm();
-                                setGoalModalVisible(true);
-                              }}
-                            >
-                              <MaterialCommunityIcons name="target" size={16} color="#6366F1" />
-                              <Text style={styles.actionMenuItemText}>Add Goal</Text>
-                            </TouchableOpacity>
-                          ) : null}
-                          {canRemoveMember && onRemoveMember ? (
-                            <>
-                              <View style={styles.actionMenuDivider} />
-                              <TouchableOpacity
-                                style={[styles.actionMenuItem, removeBusy ? { opacity: 0.5 } : null]}
-                                disabled={removeBusy}
-                                onPress={() => {
-                                  setActionMenuVisible(false);
-                                  onRemoveMember();
-                                }}
-                              >
-                                <MaterialCommunityIcons name="account-remove-outline" size={16} color="#b9383d" />
-                                <Text style={styles.actionMenuDangerText}>
-                                  {removeBusy ? "Removing…" : "Remove Member"}
-                                </Text>
-                              </TouchableOpacity>
-                            </>
-                          ) : null}
-                        </View>
-                      ) : null}
-                    </View>
+                    <TouchableOpacity
+                      style={styles.overflowBtn}
+                      onPress={() => setActionMenuVisible((prev) => !prev)}
+                    >
+                      <MaterialCommunityIcons name="dots-horizontal" size={20} color="#526175" />
+                    </TouchableOpacity>
                   ) : null}
                 </View>
+
+                {/* Inline action menu — renders below the button row to avoid overflow/z-index issues */}
+                {actionMenuVisible ? (
+                  <View style={styles.actionMenu}>
+                    {isSelfProfile ? (
+                      <TouchableOpacity
+                        style={styles.actionMenuItem}
+                        onPress={() => {
+                          setActionMenuVisible(false);
+                          setIdentityModalVisible(true);
+                        }}
+                      >
+                        <MaterialCommunityIcons name="account-edit-outline" size={16} color="#6366F1" />
+                        <Text style={styles.actionMenuItemText}>Edit Profile</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {capabilities?.can_create_task ? (
+                      <TouchableOpacity
+                        style={styles.actionMenuItem}
+                        onPress={() => {
+                          setActionMenuVisible(false);
+                          resetTaskForm();
+                          setTaskModalVisible(true);
+                        }}
+                      >
+                        <MaterialCommunityIcons name="clipboard-plus-outline" size={16} color="#6366F1" />
+                        <Text style={styles.actionMenuItemText}>Add Task</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {capabilities?.can_create_goal ? (
+                      <TouchableOpacity
+                        style={styles.actionMenuItem}
+                        onPress={() => {
+                          setActionMenuVisible(false);
+                          resetGoalForm();
+                          setGoalModalVisible(true);
+                        }}
+                      >
+                        <MaterialCommunityIcons name="target" size={16} color="#6366F1" />
+                        <Text style={styles.actionMenuItemText}>Add Goal</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {canRemoveMember && onRemoveMember ? (
+                      <>
+                        <View style={styles.actionMenuDivider} />
+                        <TouchableOpacity
+                          style={[styles.actionMenuItem, removeBusy ? { opacity: 0.5 } : null]}
+                          disabled={removeBusy}
+                          onPress={() => {
+                            setActionMenuVisible(false);
+                            onRemoveMember();
+                          }}
+                        >
+                          <MaterialCommunityIcons name="account-remove-outline" size={16} color="#b9383d" />
+                          <Text style={styles.actionMenuDangerText}>
+                            {removeBusy ? "Removing…" : "Remove Member"}
+                          </Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
 
               {/* ── Enrolled Journeys with enroll/unenroll ── */}
@@ -509,10 +509,12 @@ export default function UserProfileDrawer({
                   <Text style={styles.enrolledLabel}>Journeys</Text>
                   {member.journeys.map((j, idx) => {
                     const journeyMatch = availableJourneys?.find((aj) => aj.title === j || aj.id === j);
+                    // Show resolved title when possible (j may be a raw UUID)
+                    const displayName = journeyMatch?.title ?? j;
                     return (
                       <View key={idx} style={styles.enrolledRow}>
                         <View style={styles.enrolledDot} />
-                        <Text style={styles.enrolledText} numberOfLines={1}>{j}</Text>
+                        <Text style={styles.enrolledText} numberOfLines={1}>{displayName}</Text>
                         {onUnenrollJourney && journeyMatch && (
                           <TouchableOpacity
                             onPress={() => onUnenrollJourney(journeyMatch.id)}
@@ -932,21 +934,18 @@ const styles = StyleSheet.create({
 
   /* ── Overflow action menu ── */
   actionMenu: {
-    position: "absolute",
-    top: 40,
-    right: 0,
-    minWidth: 190,
+    marginTop: 4,
+    marginHorizontal: 20,
     borderRadius: 12,
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#E2E8F0",
     paddingVertical: 4,
     shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 8,
-    zIndex: 100,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
   },
   actionMenuItem: {
     flexDirection: "row",

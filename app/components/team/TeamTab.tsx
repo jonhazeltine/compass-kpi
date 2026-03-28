@@ -12,7 +12,6 @@ import {
   View,
 } from 'react-native';
 import { Session } from '@supabase/supabase-js';
-import UserProfileDrawer from '../profile/UserProfileDrawer';
 import type {
   ChallengeFlowItem,
   ChallengeKpiGroups,
@@ -123,6 +122,7 @@ export interface TeamTabProps {
   resolveTeamMemberUserId: (member: Pick<TeamDirectoryMember, 'name' | 'email' | 'userId'>) => Promise<string | null>;
   openDirectThreadForMember: (opts: { targetUserId: string; memberName: string; source: CoachingShellEntrySource; closeTeamProfile?: boolean }) => Promise<void>;
   selfProfileDrawerMember: TeamDirectoryMember | null;
+  coachingClients?: Array<{ id: string; name: string; avatarUrl?: string | null; enrolledJourneyIds: string[]; enrolledJourneyNames?: string[] }>;
   // KPI / selector
   allSelectableKpis: DashboardPayload['loggable_kpis'];
   managedKpiIds: string[];
@@ -217,6 +217,7 @@ export default function TeamTab({
   resolveTeamMemberUserId,
   openDirectThreadForMember,
   selfProfileDrawerMember,
+  coachingClients,
   allSelectableKpis,
   managedKpiIds,
   favoriteKpiIds,
@@ -495,9 +496,6 @@ export default function TeamTab({
             )
           )
         : 0;
-    const selectedTeamProfile =
-      teamMembers.find((row) => row.id === teamProfileMemberId) ??
-      (teamProfileMemberId === SELF_PROFILE_DRAWER_ID ? selfProfileDrawerMember : null);
     const openTeamDirectThread = async (member: (typeof teamMembers)[number], source: CoachingShellEntrySource) => {
       const sessionUserId = String(session?.user?.id ?? '').trim();
       const resolvedTargetUserIdRaw = member.userId ?? (await resolveTeamMemberUserId(member));
@@ -1677,61 +1675,6 @@ export default function TeamTab({
             {teamLoggingBlock}
           </View>
         )}
-        <UserProfileDrawer
-          visible={Boolean(selectedTeamProfile)}
-          member={selectedTeamProfile ?? null}
-          accessToken={session?.access_token ?? null}
-          viewerUserId={String(session?.user?.id ?? '') || null}
-          canRemoveMember={
-            effectiveTeamPersonaVariant === 'leader' &&
-            Boolean(selectedTeamProfile?.userId) &&
-            selectedTeamProfile?.userId !== String(session?.user?.id ?? '')
-          }
-          removeBusy={teamMembershipMutationBusy}
-          onClose={() => setTeamProfileMemberId(null)}
-          onMessage={() => {
-            if (!selectedTeamProfile) return;
-            void openTeamDirectThread(
-              selectedTeamProfile,
-              effectiveTeamPersonaVariant === 'leader' ? 'team_leader_dashboard' : 'team_member_dashboard'
-            );
-          }}
-          onIdentityUpdated={(next) => {
-            setTeamRosterMembers((prev) =>
-              prev.map((row) =>
-                String(row.user_id ?? '').trim() === next.userId
-                  ? {
-                      ...row,
-                      full_name: next.name,
-                      avatar_url: next.avatarUrl,
-                      avatar_preset_id: next.avatarPresetId,
-                    }
-                  : row
-              )
-            );
-          }}
-          onRemoveMember={
-            selectedTeamProfile?.userId
-              ? () =>
-                  Alert.alert(
-                    `Remove ${selectedTeamProfile.name}?`,
-                    `${selectedTeamProfile.name} will be removed from the team, unenrolled from team challenges, and removed from team contribution metrics.`,
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Remove',
-                        style: 'destructive',
-                        onPress: () =>
-                          void removeTeamMember(
-                            String(selectedTeamProfile.userId),
-                            selectedTeamProfile.name
-                          ),
-                      },
-                    ]
-                  )
-              : undefined
-          }
-        />
       </>
     );
   })()}

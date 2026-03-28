@@ -541,9 +541,7 @@ coachTabScreen === 'coach_marketplace' ? (
             );
           })
         )}
-        <TouchableOpacity style={styles.cwfSectionCTA} onPress={() => openCoachingShell('coaching_journeys')}>
-          <Text style={styles.cwfSectionCTAText}>Open Journey Library →</Text>
-        </TouchableOpacity>
+        {/* Journey Library link removed — coach hub IS the journey list on mobile */}
       </View>
     )}
 

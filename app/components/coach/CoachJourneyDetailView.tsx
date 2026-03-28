@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
 /* ─── Types ─── */
 
@@ -20,6 +21,8 @@ export type JBTask = {
   id: string;
   title: string;
   assetId: string | null;
+  progressStatus?: 'not_started' | 'in_progress' | 'completed';
+  completedAt?: string | null;
 };
 
 export type JBLesson = {
@@ -78,13 +81,14 @@ export type CoachJourneyDetailProps = {
   onRenameTask: (lessonId: string, taskId: string, title: string) => void;
   onReorderTasks: (lessonId: string, fromIdx: number, toIdx: number) => void;
   onAddAssetAsTask: (lessonId: string, asset: LibraryAsset) => void;
-  onLessonPress: (lessonId: string, lessonTitle: string) => void;
+  onLessonPress?: (lessonId: string, lessonTitle: string) => void;
+  onMarkComplete?: (taskId: string) => void;
   onMemberPress: (memberId: string) => void;
   onShareInvite?: () => void;
   /** All coaching clients NOT yet enrolled in this journey */
   availableClients?: Array<{ id: string; name: string }>;
-  onEnrollClient?: (clientId: string) => void;
-  onUnenrollMember?: (memberId: string) => void;
+  onEnrollClient?: (clientId: string) => void | Promise<void>;
+  onUnenrollMember?: (memberId: string) => void | Promise<void>;
 
   /* Save state */
   saveState: 'idle' | 'pending' | 'saved' | 'error';
@@ -103,6 +107,41 @@ function muxThumb(playbackId: string | null | undefined, opts?: { width?: number
   const w = opts?.width ?? 320;
   const t = opts?.time ?? 1;
   return `https://image.mux.com/${playbackId}/thumbnail.jpg?width=${w}&height=${Math.round(w * 0.5625)}&time=${t}&fit_mode=smartcrop`;
+}
+
+/* ─── Inline Lesson Video Card ─── */
+
+function LessonVideoCard({ playbackId, title }: { playbackId: string; title: string }) {
+  const [playing, setPlaying] = useState(false);
+  const streamUrl = `https://stream.mux.com/${playbackId}.m3u8`;
+  const posterUrl = `https://image.mux.com/${playbackId}/thumbnail.jpg?width=640&height=360&time=1&fit_mode=smartcrop`;
+  const player = useVideoPlayer(playing ? streamUrl : null, (p) => { p.loop = false; });
+  useEffect(() => {
+    if (playing) { try { player.play(); } catch { /* ignore */ } }
+  }, [player, playing]);
+
+  return (
+    <View style={{ borderRadius: 10, overflow: 'hidden', backgroundColor: '#0F172A' }}>
+      {playing ? (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <VideoView player={player} style={s.lessonThumb} nativeControls contentFit="contain" />
+      ) : (
+        <Pressable onPress={() => setPlaying(true)} style={{ width: '100%' as any }}>
+          <Image source={{ uri: posterUrl }} style={s.lessonThumb} resizeMode="cover" />
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#FFF', fontSize: 18, marginLeft: 3 }}>▶</Text>
+            </View>
+          </View>
+          {title ? (
+            <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.45)', paddingHorizontal: 10, paddingVertical: 6 }}>
+              <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{title}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      )}
+    </View>
+  );
 }
 
 /* ─── Component ─── */
@@ -129,6 +168,7 @@ export default function CoachJourneyDetailView(props: CoachJourneyDetailProps) {
     onReorderTasks,
     onAddAssetAsTask,
     onLessonPress,
+    onMarkComplete,
     onMemberPress,
     onShareInvite,
     availableClients,
@@ -153,6 +193,15 @@ export default function CoachJourneyDetailView(props: CoachJourneyDetailProps) {
   const [expandedLessonIds, setExpandedLessonIds] = useState<Set<string>>(new Set());
   const [showEnrollPicker, setShowEnrollPicker] = useState(false);
   const screenWidth = Dimensions.get('window').width;
+
+  // Kick off the asset library fetch immediately on mount so thumbnails
+  // are available without waiting for the user to open the library picker.
+  useEffect(() => {
+    if (assetsById.size === 0) {
+      onFetchAssets();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleLesson = useCallback((id: string) => {
     setExpandedLessonIds((prev) => {
@@ -240,8 +289,11 @@ export default function CoachJourneyDetailView(props: CoachJourneyDetailProps) {
           <View style={s.membersSection}>
             <View style={s.sectionHeader}>
               <Text style={s.sectionLabel}>Enrolled Clients</Text>
-              {isOperator && (availableClients?.length ?? 0) > 0 && (
-                <TouchableOpacity style={s.addLessonBtn} onPress={() => setShowEnrollPicker((v) => !v)}>
+              {isOperator && (
+                <TouchableOpacity
+                  style={[s.addLessonBtn, (availableClients?.length ?? 0) === 0 && { opacity: 0.4 }]}
+                  onPress={() => (availableClients?.length ?? 0) > 0 && setShowEnrollPicker((v) => !v)}
+                >
                   <Text style={s.addLessonBtnText}>+ Enroll Client</Text>
                 </TouchableOpacity>
               )}
@@ -254,16 +306,19 @@ export default function CoachJourneyDetailView(props: CoachJourneyDetailProps) {
             {enrolledMembers.length > 0 ? (
               <View style={{ paddingHorizontal: 16, gap: 6 }}>
                 {enrolledMembers.map((m) => (
-                  <View key={m.id} style={{ flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: '#FFFFFF', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#F1F5F9', gap: 10 }}>
-                    <View style={[s.memberAvatar, { backgroundColor: m.avatarTone || '#E0E7FF' }]}>
-                      <Text style={s.memberAvatarText}>
-                        {m.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
-                      </Text>
-                    </View>
-                    <Text style={{ flex: 1, fontSize: 14, fontWeight: '500' as const, color: '#1E293B' }}>{m.name}</Text>
+                  // Row is a plain View — avatar+name tap opens profile, × button is a sibling (no nesting)
+                  <View key={m.id} style={{ flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: '#FFFFFF', borderRadius: 10, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden' as const }}>
+                    <TouchableOpacity style={{ flexDirection: 'row' as const, alignItems: 'center' as const, flex: 1, padding: 10, gap: 10 }} onPress={() => onMemberPress(m.id)} activeOpacity={0.7}>
+                      <View style={[s.memberAvatar, { backgroundColor: m.avatarTone || '#E0E7FF' }]}>
+                        <Text style={s.memberAvatarText}>
+                          {m.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text style={{ flex: 1, fontSize: 14, fontWeight: '500' as const, color: '#1E293B' }}>{m.name}</Text>
+                    </TouchableOpacity>
                     {onUnenrollMember && (
-                      <TouchableOpacity onPress={() => onUnenrollMember(m.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={{ fontSize: 16, color: '#CBD5E1' }}>×</Text>
+                      <TouchableOpacity onPress={() => onUnenrollMember(m.id)} style={{ paddingHorizontal: 14, paddingVertical: 10 }} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}>
+                        <Text style={{ fontSize: 18, color: '#94A3B8', lineHeight: 20 }}>×</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -326,21 +381,21 @@ export default function CoachJourneyDetailView(props: CoachJourneyDetailProps) {
             const thumbAsset = firstVideoTask?.assetId ? assetsById.get(firstVideoTask.assetId) : null;
             const thumbUrl = muxThumb(thumbAsset?.playbackId, { width: screenWidth > 400 ? 640 : 320 });
 
+            const primaryTask = lesson.tasks[0];
+            const progressStatus = primaryTask?.progressStatus ?? 'not_started';
+
             return (
               <View key={lesson.id} style={s.lessonCard}>
-                {/* Thumbnail */}
-                {thumbUrl ? (
-                  <Pressable onPress={() => toggleLesson(lesson.id)}>
-                    <Image source={{ uri: thumbUrl }} style={s.lessonThumb} resizeMode="cover" />
-                    <View style={s.lessonThumbOverlay}>
-                      <View style={s.playBadge}>
-                        <Text style={s.playIcon}>▶</Text>
-                      </View>
+                {/* Thumbnail / inline video */}
+                {thumbAsset?.playbackId ? (
+                  <View style={{ position: 'relative' }}>
+                    <View style={{ margin: 0 }}>
+                      <LessonVideoCard playbackId={thumbAsset.playbackId} title={thumbAsset.title} />
                     </View>
                     <View style={s.lessonNumberBadge}>
                       <Text style={s.lessonNumberText}>{idx + 1}</Text>
                     </View>
-                  </Pressable>
+                  </View>
                 ) : (
                   <Pressable style={s.lessonThumbPlaceholder} onPress={() => toggleLesson(lesson.id)}>
                     <View style={s.lessonNumberBadgePlain}>
@@ -376,11 +431,21 @@ export default function CoachJourneyDetailView(props: CoachJourneyDetailProps) {
                     {thumbAsset ? ` · ${thumbAsset.duration || ''}` : ''}
                   </Text>
 
-                  {/* Action row: open detail + expand/collapse */}
+                  {/* Progress status + expand toggle */}
                   <View style={s.lessonActionRow}>
-                    <Pressable style={s.openLessonBtn} onPress={() => onLessonPress(lesson.id, lesson.title)}>
-                      <Text style={s.openLessonBtnText}>Open Lesson →</Text>
-                    </Pressable>
+                    {primaryTask && (
+                      <View style={s.lessonProgressRow}>
+                        {progressStatus === 'completed' ? (
+                          <View style={s.progressPillDone}><Text style={s.progressPillDoneText}>✓ Completed</Text></View>
+                        ) : progressStatus === 'in_progress' ? (
+                          <View style={s.progressPillActive}><Text style={s.progressPillActiveText}>In Progress</Text></View>
+                        ) : onMarkComplete ? (
+                          <TouchableOpacity style={s.progressPillBtn} onPress={() => onMarkComplete(primaryTask.id)}>
+                            <Text style={s.progressPillBtnText}>Mark Complete</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    )}
                     {lesson.tasks.length > 0 && (
                       <Pressable style={s.expandBtn} onPress={() => toggleLesson(lesson.id)}>
                         <Text style={s.expandBtnText}>{isExpanded ? 'Hide tasks ▴' : 'Show tasks ▾'}</Text>
@@ -796,8 +861,13 @@ const s = StyleSheet.create({
   lessonTitleEdit: { fontSize: 16, fontWeight: '600', color: '#0F172A', borderBottomWidth: 1, borderBottomColor: '#6366F1', paddingVertical: 4 },
   lessonMeta: { fontSize: 12, color: '#94A3B8' },
   lessonActionRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 6 },
-  openLessonBtn: { backgroundColor: '#6366F1', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 5 },
-  openLessonBtnText: { fontSize: 12, color: '#FFF', fontWeight: '700' },
+  lessonProgressRow: { flexDirection: 'row' as const },
+  progressPillDone: { backgroundColor: '#DCFCE7', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
+  progressPillDoneText: { color: '#15803D', fontSize: 12, fontWeight: '600' as const },
+  progressPillActive: { backgroundColor: '#FEF3C7', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
+  progressPillActiveText: { color: '#92400E', fontSize: 12, fontWeight: '600' as const },
+  progressPillBtn: { backgroundColor: '#EEF2FF', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
+  progressPillBtnText: { color: '#4338CA', fontSize: 12, fontWeight: '600' as const },
   expandBtn: {},
   expandBtnText: { fontSize: 12, color: '#6366F1', fontWeight: '600' },
 

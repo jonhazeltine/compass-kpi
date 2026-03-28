@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   Easing,
   Image,
   Linking,
@@ -20,6 +21,7 @@ import {
   View,
 } from 'react-native';
 import * as VideoThumbnails from 'expo-video-thumbnails';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
 import LottieSlot from '../components/LottieSlot';
@@ -76,6 +78,10 @@ import ChallengeTab from '../components/challenge/ChallengeTab';
 import TeamTab from '../components/team/TeamTab';
 import CoachTab from '../components/coach/CoachTab';
 import HomeTab from '../components/home/HomeTab';
+import ProjectionBarChart from '../components/dashboard/ProjectionBarChart';
+import CoinAccumulator from '../components/dashboard/CoinAccumulator';
+import CoinOverlay from '../components/dashboard/CoinOverlay';
+import { useCoinFlight } from '../hooks/useCoinFlight';
 import { createCustomKpi, fetchCustomKpis, updateCustomKpi, type CustomKpiRow } from '../lib/customKpiApi';
 import {
   getKpiTypeIconTreatment,
@@ -307,6 +313,36 @@ import {
 
 function renderKpiIcon(kpi: DashboardPayload['loggable_kpis'][number]) {
   return <KpiIcon kpi={kpi} size={76} backgroundColor="transparent" color={kpiTypeAccent(kpi.type)} />;
+}
+
+/** Inline Mux video player for lesson detail. Tap thumbnail → plays video. */
+function LessonVideoPlayer({ playbackId, title }: { playbackId: string; title: string }) {
+  const [showPlayer, setShowPlayer] = useState(false);
+  const streamUrl = `https://stream.mux.com/${playbackId}.m3u8`;
+  const posterUrl = `https://image.mux.com/${playbackId}/thumbnail.jpg?width=640&time=0&fit_mode=smartcrop`;
+  const player = useVideoPlayer(showPlayer ? streamUrl : null, (p) => { p.loop = false; });
+  useEffect(() => {
+    if (showPlayer) { try { player.play(); } catch { /* ignore */ } }
+  }, [player, showPlayer]);
+  return (
+    <View style={{ borderRadius: 12, overflow: 'hidden', marginBottom: 12, backgroundColor: '#0F172A' }}>
+      {showPlayer ? (
+        <VideoView player={player} style={{ width: '100%' as any, aspectRatio: 16 / 9 }} nativeControls contentFit="contain" />
+      ) : (
+        <Pressable onPress={() => setShowPlayer(true)} style={{ position: 'relative' }}>
+          <Image source={{ uri: posterUrl }} style={{ width: '100%' as any, aspectRatio: 16 / 9 }} resizeMode="cover" />
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ color: '#fff', fontSize: 22, marginLeft: 3 }}>▶</Text>
+            </View>
+          </View>
+        </Pressable>
+      )}
+      <View style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+        <Text style={{ color: '#94A3B8', fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{title}</Text>
+      </View>
+    </View>
+  );
 }
 
 const isLightColor = (hex: string): boolean => {
@@ -2103,21 +2139,54 @@ export default function KPIDashboardScreen({
     if (kpi.type === 'PC' && !options?.skipOptimisticProjectionLaunch) {
       if (!kpi.requires_direct_value_input) {
         animateProjectedHudValuePop();
-        bumpChartImpactBurst(estimatePcGeneratedForKpi(kpi));
       }
+      const estPcValue = estimatePcGeneratedForKpi(kpi);
+
+      // Calculate which month bar this KPI impacts
       const delayDays = Math.max(0, Number(kpi.delay_days ?? 0));
       const holdDays = Math.max(0, Number(kpi.hold_days ?? 0));
       const optimisticPayoffDays = delayDays + holdDays;
-      const optimisticPayoffStartIso = new Date(
-        Date.now() + optimisticPayoffDays * 24 * 60 * 60 * 1000
-      ).toISOString();
-      launchedOptimisticProjection = true;
-      const shouldKeepCurrentChartViewport = homePanel !== 'PC';
-      void launchProjectionFlightFx(kpi.id, optimisticPayoffStartIso, {
-        centerOnImpact:
-          options?.sourcePagePoint && shouldKeepCurrentChartViewport ? false : undefined,
-        sourcePagePoint: options?.sourcePagePoint ?? null,
+      const payoffDate = new Date(Date.now() + optimisticPayoffDays * 24 * 60 * 60 * 1000);
+      const now = new Date();
+      const monthsAhead = (payoffDate.getFullYear() - now.getFullYear()) * 12 + (payoffDate.getMonth() - now.getMonth());
+      const targetBarIndex = chartSeries.pastActual.length + Math.max(0, monthsAhead);
+
+      // Launch coin burst: tile → accumulator → bar
+      const sourceX = options?.sourcePagePoint?.x ?? 180;
+      const sourceY = options?.sourcePagePoint?.y ?? 400;
+
+      // Accumulator is always horizontally centered on screen.
+      // measureInWindow Y is reliable (only X is corrupted by carousel transform).
+      const screenW = Dimensions.get('window').width;
+      const accBox = coinAccumulatorBoxRef.current;
+      const accX = screenW / 2;
+      // accBox.y comes from measureInWindow — correct at layout time.
+      // The chart panel is always visible when tapping KPIs, so Y is stable.
+      const accY = accBox ? accBox.y + accBox.h / 2 : 195;
+
+      // Bar position: use chart container Y offset + bar's parent-relative position.
+      // Bar X is parent-relative inside the chart — add 16px for chart padding.
+      const barLayout = coinBarLayoutsRef.current.get(targetBarIndex);
+      const chartBox = coinBarChartBoxRef.current;
+      let barTargetX = accX;
+      let barTargetY = accY + 120;
+      if (barLayout && chartBox) {
+        barTargetX = 16 + barLayout.x + barLayout.width / 2;
+        barTargetY = chartBox.y + barLayout.y;
+      }
+
+      launchCoinBurst({
+        sourceX,
+        sourceY,
+        accumulatorX: accX,
+        accumulatorY: accY,
+        barX: barTargetX,
+        barY: barTargetY,
+        dollarValue: estPcValue,
+        monthIndex: targetBarIndex,
       });
+
+      launchedOptimisticProjection = true;
     }
 
     enqueueLogTask({
@@ -2202,6 +2271,7 @@ export default function KPIDashboardScreen({
 
   const renderChartVisualPanel = (options?: { attachLiveChartRefs?: boolean }) => (
     <View style={styles.chartWrap}>
+      {/* Boost chips */}
       <View pointerEvents="none" style={styles.chartBoostOverlay}>
         <Animated.View
           style={[
@@ -2230,240 +2300,23 @@ export default function KPIDashboardScreen({
           <Text style={styles.chartBoostChipText}>{vpBoostActive ? 'Vitality Boost' : 'Vitality Boost 🔒'}</Text>
         </Animated.View>
       </View>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.chartImpactBurstOverlay,
-          {
-            opacity: chartImpactBurstOpacityAnim,
-            transform: [{ scale: chartImpactBurstScaleAnim }],
-          },
-        ]}
-      >
-        <Text style={styles.chartImpactBurstValue}>{fmtUsd(chartImpactBurstDisplay)}</Text>
-      </Animated.View>
-      <View style={styles.chartRow}>
-        <View style={styles.yAxisCol}>
-          {chartSeries.yTicks.map((tick, idx) => (
-            <Text key={`${tick}-${idx}`} style={styles.yAxisLabel}>
-              {formatUsdAxis(tick)}
-            </Text>
-          ))}
-        </View>
-        <ScrollView
-          ref={options?.attachLiveChartRefs ? chartScrollRef : undefined}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          onLayout={
-            options?.attachLiveChartRefs
-              ? (e) => {
-                  const width = e.nativeEvent.layout.width;
-                  setChartViewportWidth(width);
-                  void refreshFlightMeasureCache();
-                  if (preservePinnedChartScrollRef.current && chartPinnedScrollXRef.current != null) {
-                    const maxScroll = Math.max(0, chartSeries.chartWidth - width);
-                    const pinned = Math.min(maxScroll, Math.max(0, chartPinnedScrollXRef.current));
-                    chartScrollXRef.current = pinned;
-                    requestAnimationFrame(() => {
-                      chartScrollRef.current?.scrollTo({ x: pinned, animated: false });
-                    });
-                    setTimeout(() => {
-                      chartScrollRef.current?.scrollTo({ x: pinned, animated: false });
-                    }, 80);
-                  }
-                }
-              : undefined
-          }
-          onScroll={
-            options?.attachLiveChartRefs
-              ? (e) => {
-                  chartScrollXRef.current = e.nativeEvent.contentOffset.x;
-                }
-              : undefined
-          }
-          scrollEventThrottle={16}
-        >
-          <View
-            ref={
-              options?.attachLiveChartRefs
-                ? (node) => {
-                    chartScrollableRef.current = node;
-                  }
-                : undefined
-            }
-            style={styles.chartScrollable}
-          >
-            <Svg width={chartSeries.chartWidth} height="190">
-              {[0, 1, 2, 3, 4].map((i) => {
-                const y = 12 + i * 42;
-                return (
-                  <Line
-                    key={`h-${i}`}
-                    x1="0"
-                    y1={String(y)}
-                    x2={String(chartSeries.chartWidth)}
-                    y2={String(y)}
-                    stroke="#edf1f6"
-                    strokeWidth="1"
-                  />
-                );
-              })}
+      {/* Coin Accumulator — central counter */}
+      <CoinAccumulator
+        displayValue={fmtUsd(coinAccumulatorDisplayValue || (payload?.projection?.pc_90d ?? 0))}
+        pulseAnim={coinAccumulatorPulse}
+        sessionTotal={coinAccumulatorSessionTotal}
+        visible={coinAccumulatorVisible}
+        accumulatorRef={coinAccumulatorRef}
+        onLayout={handleAccumulatorLayout}
+      />
 
-              {(() => {
-                const boundaryX = chartSeries.step * chartSeries.splitBaseIndex;
-                const splitX = chartSeries.step * (chartSeries.splitBaseIndex + chartSeries.splitOffsetFraction);
-                const currentValue = chartSeries.pastActual[chartSeries.splitBaseIndex] ?? 0;
-                const currentY = yForValue(currentValue, 170, chartSeries.min, chartSeries.max);
-
-                const fillPoints = [
-                  ...chartSeries.pastActual.map((value, idx) => {
-                    const x = idx * chartSeries.step;
-                    const y = yForValue(value, 170, chartSeries.min, chartSeries.max);
-                    return `${x.toFixed(1)},${y.toFixed(1)}`;
-                  }),
-                  `${splitX.toFixed(1)},${currentY.toFixed(1)}`,
-                  `${splitX.toFixed(1)},170`,
-                  '0,170',
-                ].join(' ');
-
-                return (
-                  <>
-                    <Polygon points={fillPoints} fill="rgba(127, 207, 141, 0.22)" stroke="none" />
-
-                    <Polyline
-                      points={toPointsSpaced(
-                        chartSeries.pastActual,
-                        chartSeries.step,
-                        170,
-                        chartSeries.min,
-                        chartSeries.max,
-                        0
-                      )}
-                      fill="none"
-                      stroke="#48ad63"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                    />
-
-                    {splitX > boundaryX ? (
-                      <Line
-                        x1={String(boundaryX)}
-                        y1={String(currentY)}
-                        x2={String(splitX)}
-                        y2={String(currentY)}
-                        stroke="#48ad63"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                      />
-                    ) : null}
-
-                    {(() => {
-                      const deformLineY = (x: number, y: number) => {
-                        if (chartImpactLineX == null) return y;
-                        const spread = 74;
-                        const distance = Math.abs(x - chartImpactLineX);
-                        const normalized = distance / Math.max(1, spread);
-                        const primary = Math.exp(-(normalized * normalized) * 1.15);
-                        const rippleEnvelope = Math.exp(-(normalized * normalized) * 0.85);
-                        const ripple = Math.cos(normalized * Math.PI * 1.45) * 0.12 * rippleEnvelope;
-                        const influence = Math.max(-0.05, primary + ripple);
-                        const amplitude = 32;
-                        return y - chartImpactLineValue * amplitude * influence;
-                      };
-                      const monthTargetXs = chartSeries.futureProjected.map(
-                        (_, idx) => chartSeries.step * (chartSeries.firstFutureIndex + idx)
-                      );
-                      let prevX = splitX;
-                      let prevY = currentY;
-                      return chartSeries.futureProjected.map((nextValue, idx) => {
-                        const nextX = monthTargetXs[idx] ?? prevX;
-                        if (nextX <= splitX) return null;
-                        const nextYBase = yForValue(nextValue, 170, chartSeries.min, chartSeries.max);
-                        const drawPrevY = deformLineY(prevX, prevY);
-                        const drawNextY = deformLineY(nextX, nextYBase);
-                        const band =
-                          chartSeries.futureBands[idx] ?? payload?.projection.confidence.band ?? 'yellow';
-                        const subdivisions = 24;
-                        const pieces = Array.from({ length: subdivisions }, (_, subIdx) => {
-                          const t1 = subIdx / subdivisions;
-                          const t2 = (subIdx + 1) / subdivisions;
-                          const xA = prevX + (nextX - prevX) * t1;
-                          const xB = prevX + (nextX - prevX) * t2;
-                          const yABase = prevY + (nextYBase - prevY) * t1;
-                          const yBBase = prevY + (nextYBase - prevY) * t2;
-                          return (
-                            <Line
-                              key={`future-segment-${idx}-${subIdx}`}
-                              x1={String(xA)}
-                              y1={String(deformLineY(xA, yABase))}
-                              x2={String(xB)}
-                              y2={String(deformLineY(xB, yBBase))}
-                              stroke={confidenceColor(band)}
-                              strokeWidth="4"
-                              strokeLinecap="round"
-                            />
-                          );
-                        });
-                        prevX = nextX;
-                        prevY = nextYBase;
-                        return pieces;
-                      });
-                    })()}
-
-                    <Line
-                      x1={String(splitX)}
-                      y1="0"
-                      x2={String(splitX)}
-                      y2="170"
-                      stroke="#9fb3d9"
-                      strokeWidth="1.5"
-                    />
-
-                    <Circle
-                      cx={String(splitX)}
-                      cy={String(currentY)}
-                      r="4.5"
-                      fill="#fff"
-                      stroke="#2f8a4a"
-                      strokeWidth="2.5"
-                    />
-                  </>
-                );
-              })()}
-            </Svg>
-            <View style={styles.monthRow}>
-              {chartSeries.labels.map((label, idx) => (
-                <Animated.Text
-                  key={`${label}-${idx}`}
-                  style={[
-                    styles.monthLabel,
-                    idx === chartSeries.splitBaseIndex && styles.monthBoundaryLabel,
-                    idx === chartImpactMonthIndex && styles.monthImpactLabel,
-                    idx === chartImpactMonthIndex
-                      ? {
-                          opacity: chartImpactMonthPulseAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0.9, 1],
-                          }),
-                          transform: [
-                            {
-                              scale: chartImpactMonthPulseAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [1, 1.12],
-                              }),
-                            },
-                          ],
-                        }
-                      : null,
-                  ]}
-                >
-                  {label}
-                </Animated.Text>
-              ))}
-            </View>
-          </View>
-        </ScrollView>
-      </View>
+      {/* Bar Chart — replaces old SVG line chart */}
+      <ProjectionBarChart
+        series={chartSeries}
+        barBumpByIndex={coinBarBumps}
+        onBarLayout={handleBarLayout}
+        chartRef={coinBarChartRef}
+      />
     </View>
   );
 
@@ -3756,6 +3609,38 @@ export default function KPIDashboardScreen({
       profileKpiGoals: {},
     };
   }, [currentUserTeamRoleFromRoster, session?.user?.email, session?.user?.id, session?.user?.user_metadata, teamMemberDirectory, teamPersonaVariant]);
+
+  // Global team-profile drawer member — resolved from any tab (team, coach, etc.)
+  const selectedTeamProfile = useMemo<TeamDirectoryMember | null>(() => {
+    if (!teamProfileMemberId) return null;
+    return (
+      teamMemberDirectory.find((row) => row.id === teamProfileMemberId) ??
+      (teamProfileMemberId === SELF_PROFILE_DRAWER_ID ? selfProfileDrawerMember : null) ??
+      (() => {
+        const client = coachingClients.find((c) => c.id === teamProfileMemberId);
+        if (!client) return null;
+        return {
+          id: client.id,
+          userId: client.id,
+          name: client.name,
+          metric: '',
+          sub: 'Coaching Client',
+          roleLabel: 'Client',
+          avatarTone: 'blue',
+          avatarPresetId: null,
+          avatarUrl: client.avatarUrl ?? null,
+          email: '',
+          phone: '',
+          coachingGoals: [],
+          kpiGoals: [],
+          cohorts: [],
+          journeys: client.enrolledJourneyIds,
+        } satisfies TeamDirectoryMember;
+      })() ??
+      null
+    );
+  }, [coachingClients, selfProfileDrawerMember, teamMemberDirectory, teamProfileMemberId]);
+
   // challengeSelected, challengeScopedKpis, challengeScopedKpiGroups, and
   // challenge state-sync effects provided by useChallengeWorkflow (wired below)
   useEffect(() => {
@@ -4394,7 +4279,8 @@ export default function KPIDashboardScreen({
         return;
       }
       if (screenRaw === 'coaching_lesson_detail' || route?.lesson_id) {
-        openCoachingShell('coaching_lesson_detail', {
+        // coaching_lesson_detail is now inline in journey detail — redirect there
+        openCoachingShell('coaching_journey_detail', {
           selectedJourneyId: route?.journey_id ?? coachingShellContext.selectedJourneyId,
           selectedJourneyTitle: route?.journey_title ?? coachingShellContext.selectedJourneyTitle,
           selectedLessonId: route?.lesson_id ?? null,
@@ -4410,7 +4296,9 @@ export default function KPIDashboardScreen({
         return;
       }
       if (screenRaw === 'coaching_journeys') {
-        openCoachingShell('coaching_journeys');
+        // coaching_journeys shell is retired on mobile — send to the coach hub which IS the journey list
+        setActiveTab('coach');
+        setCoachTabScreen('coach_hub_primary');
         return;
       }
       openCoachingShell('inbox');
@@ -4421,6 +4309,8 @@ export default function KPIDashboardScreen({
       coachingShellContext.selectedJourneyTitle,
       coachingShellContext.threadTitle,
       openCoachingShell,
+      setActiveTab,
+      setCoachTabScreen,
     ]
   );
 
@@ -4685,6 +4575,40 @@ export default function KPIDashboardScreen({
     coachingJourneyDetail,
     fetchCoachingJourneyDetail,
   });
+
+  /* ── Coin Flight Animation (bar chart projection) ──────────────── */
+  const {
+    coins: activeCoinFx,
+    accumulatorPulse: coinAccumulatorPulse,
+    accumulatorSessionTotal: coinAccumulatorSessionTotal,
+    accumulatorDisplayValue: coinAccumulatorDisplayValue,
+    accumulatorVisible: coinAccumulatorVisible,
+    barBumps: coinBarBumps,
+    launchCoinBurst,
+    resetSession: resetCoinSession,
+  } = useCoinFlight();
+
+  const coinAccumulatorRef = useRef<View>(null);
+  const coinAccumulatorBoxRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const coinBarChartRef = useRef<View>(null);
+  const coinBarChartBoxRef = useRef<{ x: number; y: number } | null>(null);
+  const coinBarLayoutsRef = useRef<Map<number, { x: number; y: number; width: number; height: number }>>(new Map());
+
+  const handleAccumulatorLayout = useCallback(() => {
+    coinAccumulatorRef.current?.measureInWindow?.((x, y, w, h) => {
+      coinAccumulatorBoxRef.current = { x, y, w, h };
+    });
+  }, []);
+
+  const handleBarLayout = useCallback((index: number, x: number, y: number, width: number, height: number) => {
+    coinBarLayoutsRef.current.set(index, { x, y, width, height });
+    // Measure chart container screen Y position (carousel corrupts X, we only need Y)
+    if (coinBarChartRef.current) {
+      coinBarChartRef.current.measureInWindow?.((cx, cy) => {
+        coinBarChartBoxRef.current = { x: 0, y: cy };
+      });
+    }
+  }, []);
 
   const submitCoachingLessonProgress = useCallback(
     async (lessonId: string, status: 'not_started' | 'in_progress' | 'completed') => {
@@ -5862,6 +5786,15 @@ export default function KPIDashboardScreen({
     void fetchChannels();
   }, [activeTab, channelsApiRows, channelsLoading, fetchChannels]);
 
+  // Prefetch the asset library (and thus Mux thumbnails) as soon as the
+  // coach tab is first visited, so thumbnails are cached before any journey
+  // detail view opens.
+  useEffect(() => {
+    if (activeTab === 'coach' && jbAssets.length === 0) {
+      void jbFetchAssetLibrary();
+    }
+  }, [activeTab, jbAssets.length, jbFetchAssetLibrary]);
+
   useEffect(() => {
     if (activeTab !== 'team' && activeTab !== 'comms') return;
     if (teamRuntimeCandidateIds.length === 0) return;
@@ -6274,6 +6207,7 @@ export default function KPIDashboardScreen({
             resolveTeamMemberUserId={resolveTeamMemberUserId}
             openDirectThreadForMember={openDirectThreadForMember}
             selfProfileDrawerMember={selfProfileDrawerMember}
+            coachingClients={coachingClients}
             allSelectableKpis={allSelectableKpis}
             managedKpiIds={managedKpiIds}
             favoriteKpiIds={favoriteKpiIds}
@@ -7865,27 +7799,22 @@ export default function KPIDashboardScreen({
                         journeyTitle={coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? ''}
                         journeyDescription={coachingJourneyDetail?.journey?.description ?? undefined}
                         lessons={jbLessons}
-                        enrolledMembers={(() => {
-                          const journeyId = selectedJourneyId ?? '';
-                          const journeyTitle = coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? '';
-                          return teamMemberDirectory
-                            .filter((m) => m.journeys.some((j) => j === journeyTitle || j === journeyId))
-                            .map((m) => ({ id: m.id, name: m.name, roleLabel: m.roleLabel }));
-                        })()}
+                        enrolledMembers={coachingClients
+                          .filter((c) => c.enrolledJourneyIds.includes(selectedJourneyId ?? ''))
+                          .map((c) => ({ id: c.id, name: c.name }))}
+                        availableClients={coachingClients
+                          .filter((c) => !c.enrolledJourneyIds.includes(selectedJourneyId ?? ''))
+                          .map((c) => ({ id: c.id, name: c.name }))}
                         assets={jbAssets}
                         assetsById={jbAssetsById}
                         collections={jbCollections}
                         onFetchAssets={() => void jbFetchAssetLibrary()}
                         isOperator={isCoachRuntimeOperator}
-                        onBack={() =>
-                          openCoachingShell('coaching_journeys', {
-                            source: coachingShellContext.source,
-                            selectedJourneyId: selectedJourneyId ?? null,
-                            selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
-                            selectedLessonId: null,
-                            selectedLessonTitle: null,
-                          })
-                        }
+                        onBack={() => {
+                          // Always return to the coach hub — that's where journeys live
+                          setActiveTab('coach');
+                          setCoachTabScreen('coach_hub_primary');
+                        }}
                         onAddLesson={() => { if (selectedJourneyId) void jbAddLesson(selectedJourneyId); }}
                         onDeleteLesson={(lessonId) => { if (selectedJourneyId) void jbDeleteLesson(selectedJourneyId, lessonId); }}
                         onRenameLesson={(lessonId, title) => { if (selectedJourneyId) void jbRenameLesson(selectedJourneyId, lessonId, title); }}
@@ -7895,21 +7824,44 @@ export default function KPIDashboardScreen({
                         onRenameTask={(lessonId, taskId, title) => { if (selectedJourneyId) void jbRenameTask(selectedJourneyId, lessonId, taskId, title); }}
                         onReorderTasks={(lessonId, fromIdx, toIdx) => { if (selectedJourneyId) void jbReorderTasks(selectedJourneyId, lessonId, fromIdx, toIdx); }}
                         onAddAssetAsTask={(lessonId, asset) => { if (selectedJourneyId) void jbAddAssetAsTask(selectedJourneyId, lessonId, asset); }}
-                        onLessonPress={(milestoneId, lessonTitle) => {
-                          // milestoneId is a JB lesson (= API milestone). The lesson detail
-                          // lookup uses actual lesson IDs (milestone.lessons[n].id = task.id).
-                          // Use the first task under this milestone as the navigation target.
-                          const milestone = jbLessons.find((l) => l.id === milestoneId);
-                          const firstTaskId = milestone?.tasks[0]?.id ?? milestoneId;
-                          openCoachingShell('coaching_lesson_detail', {
-                            source: coachingShellContext.source,
-                            selectedJourneyId: selectedJourneyId ?? null,
-                            selectedJourneyTitle: coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
-                            selectedLessonId: firstTaskId,
-                            selectedLessonTitle: lessonTitle,
-                          });
+                        onMarkComplete={async (taskId) => {
+                          void submitCoachingLessonProgress(taskId, 'completed');
                         }}
                         onMemberPress={(memberId) => setTeamProfileMemberId(memberId)}
+                        onEnrollClient={async (clientId) => {
+                          if (!selectedJourneyId) return;
+                          const token = session?.access_token;
+                          if (!token) return;
+                          try {
+                            await fetch(`${API_URL}/api/coaching/journeys/${selectedJourneyId}/enroll`, {
+                              method: 'POST',
+                              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ user_id: clientId }),
+                            });
+                            setCoachingClients((prev) => prev.map((c) =>
+                              c.id === clientId
+                                ? { ...c, enrolledJourneyIds: [...c.enrolledJourneyIds, selectedJourneyId] }
+                                : c
+                            ));
+                          } catch { /* silent */ }
+                        }}
+                        onUnenrollMember={async (memberId) => {
+                          if (!selectedJourneyId) return;
+                          const token = session?.access_token;
+                          if (!token) return;
+                          try {
+                            await fetch(`${API_URL}/api/coaching/journeys/${selectedJourneyId}/unenroll`, {
+                              method: 'POST',
+                              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ user_id: memberId }),
+                            });
+                            setCoachingClients((prev) => prev.map((c) =>
+                              c.id === memberId
+                                ? { ...c, enrolledJourneyIds: c.enrolledJourneyIds.filter((j) => j !== selectedJourneyId) }
+                                : c
+                            ));
+                          } catch { /* silent */ }
+                        }}
                         saveState={jbSaveState}
                         saveMessage={jbSaveMessage}
                         loading={coachingJourneyDetailLoading}
@@ -7918,241 +7870,7 @@ export default function KPIDashboardScreen({
                       />
                     </View>
                   ) : null}
-                  {coachingShellScreen === 'coaching_lesson_detail' ? (
-                    <View style={styles.coachingJourneyModule}>
-                      {renderRuntimeStateBanner(journeysRuntimeStateModel, { compact: true })}
-                      {renderCoachingNotificationSurface(
-                        'Lesson notifications',
-                        selectedLesson
-                          ? [
-                              {
-                                id: `lesson-progress-notice-${selectedLesson.id}`,
-                                notification_class:
-                                  selectedLessonStatus === 'completed'
-                                    ? 'lesson_completed_status'
-                                    : selectedLessonStatus === 'in_progress'
-                                      ? 'lesson_progress_reminder'
-                                      : 'lesson_assignment_prompt',
-                                title:
-                                  selectedLessonStatus === 'completed'
-                                    ? 'Lesson completed'
-                                    : selectedLessonStatus === 'in_progress'
-                                      ? 'Lesson in progress'
-                                      : 'Lesson ready to start',
-                                body:
-                                  selectedLessonStatus === 'completed'
-                                    ? 'Progress is already recorded. Notification UI is informational only.'
-                                    : 'Use explicit progress buttons below to update status. Notification taps do not write progress.',
-                                read_state: selectedLessonStatus === 'completed' ? 'read' : 'unread',
-                                severity: selectedLessonStatus === 'completed' ? 'success' : 'info',
-                                delivery_channels: ['in_app', 'banner'],
-                                route_target: { screen: 'coaching_lesson_detail', lesson_id: String(selectedLesson.id) },
-                                source_family: 'lesson_detail_local',
-                              },
-                              ...aiApprovalNotificationRows.slice(0, 1),
-                            ]
-                          : aiApprovalNotificationRows.slice(0, 1),
-                        summarizeNotificationRows(
-                          selectedLesson
-                            ? [
-                                {
-                                  id: `lesson-progress-notice-${selectedLesson.id}`,
-                                  notification_class: 'lesson_progress_status',
-                                  title: 'Lesson progress status',
-                                },
-                                ...aiApprovalNotificationRows.slice(0, 1),
-                              ]
-                            : aiApprovalNotificationRows.slice(0, 1),
-                          { sourceLabel: 'lesson_detail' }
-                        ),
-                        {
-                          compact: true,
-                          maxRows: 2,
-                          mode: 'banner',
-                          emptyHint: 'No lesson notifications available.',
-                        }
-                      )}
-                      {!selectedLesson ? (
-                        <View style={styles.coachingJourneyEmptyCard}>
-                          <Text style={styles.coachingJourneyEmptyTitle}>Choose a lesson first</Text>
-                          <Text style={styles.coachingJourneyEmptySub}>Open a lesson from Journey Detail.</Text>
-                        </View>
-                      ) : (
-                        <View style={styles.coachingJourneyListCard}>
-                          <View style={styles.coachingLessonDetailHeader}>
-                            <View style={styles.coachingLessonActionRow}>
-                              <TouchableOpacity
-                                style={styles.coachingLessonActionBtn}
-                                onPress={() =>
-                                  openCoachingShell('coaching_journey_detail', {
-                                    source: coachingShellContext.source,
-                                    selectedJourneyId: selectedJourneyId ?? null,
-                                    selectedJourneyTitle:
-                                      coachingJourneyDetail?.journey?.title ?? selectedJourneyTitle ?? null,
-                                    selectedLessonId: String(selectedLesson.id),
-                                    selectedLessonTitle: selectedLesson.title,
-                                  })
-                                }
-                              >
-                                <Text style={styles.coachingLessonActionBtnText}>Back to Journey</Text>
-                              </TouchableOpacity>
-                            </View>
-                            <Text style={styles.coachingLessonDetailTitle}>
-                              {coachingShellContext.selectedLessonTitle ?? selectedLesson.title}
-                            </Text>
-                            <Text style={styles.coachingLessonDetailMeta}>
-                              {selectedLesson.milestoneTitle} • {selectedJourneyTitle ?? coachingJourneyDetail?.journey?.title ?? 'Journey'}
-                            </Text>
-                            <Text style={styles.coachingLessonDetailBody}>
-                              {selectedLesson.body?.trim() || 'No lesson content yet.'}
-                            </Text>
-                            {/* ── Lesson Media ── */}
-                            {lessonMediaLoading ? (
-                              <View style={{ paddingVertical: 12, alignItems: 'center' }}>
-                                <ActivityIndicator size="small" color="#64748B" />
-                                <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 4 }}>Loading media…</Text>
-                              </View>
-                            ) : lessonMediaAssets.length > 0 ? (
-                              <View style={{ marginTop: 12, gap: 8 }}>
-                                <Text style={{ fontSize: 13, fontWeight: '600', color: '#475569', marginBottom: 2 }}>
-                                  Lesson Media ({lessonMediaAssets.length})
-                                </Text>
-                                {lessonMediaAssets.map((media) => (
-                                  <View
-                                    key={media.media_id}
-                                    style={{
-                                      backgroundColor: '#F8FAFC',
-                                      borderRadius: 10,
-                                      borderWidth: 1,
-                                      borderColor: '#E2E8F0',
-                                      overflow: 'hidden',
-                                    }}
-                                  >
-                                    {/* Inline image preview */}
-                                    {media.file_url && media.content_type.startsWith('image/') ? (
-                                      <Image
-                                        source={{ uri: media.file_url }}
-                                        style={{ width: '100%' as any, aspectRatio: 16 / 9, backgroundColor: '#F1F5F9' }}
-                                        resizeMode="cover"
-                                      />
-                                    ) : null}
-                                    {/* Video placeholder */}
-                                    {media.content_type.startsWith('video/') ? (
-                                      <View
-                                        style={{
-                                          width: '100%' as any,
-                                          aspectRatio: 16 / 9,
-                                          backgroundColor: '#1E293B',
-                                          justifyContent: 'center',
-                                          alignItems: 'center',
-                                        }}
-                                      >
-                                        <Text style={{ fontSize: 32 }}>
-                                          {media.playback_ready ? '▶' : media.processing_status === 'failed' ? '✗' : '⏳'}
-                                        </Text>
-                                        <Text style={{ color: '#CBD5E1', fontSize: 12, marginTop: 4 }}>
-                                          {media.playback_ready
-                                            ? 'Video ready'
-                                            : media.processing_status === 'failed'
-                                              ? 'Processing failed'
-                                              : 'Processing…'}
-                                        </Text>
-                                      </View>
-                                    ) : null}
-                                    <View style={{ paddingHorizontal: 10, paddingVertical: 8 }}>
-                                      <Text style={{ fontSize: 13, fontWeight: '500', color: '#334155' }} numberOfLines={1}>
-                                        {media.filename || 'Media'}
-                                      </Text>
-                                      <Text style={{ fontSize: 11, color: '#94A3B8' }}>
-                                        {media.category} · {media.processing_status}
-                                      </Text>
-                                    </View>
-                                  </View>
-                                ))}
-                              </View>
-                            ) : null}
-                          </View>
-                          {shellPackageGateBlocksActions ? (
-                            renderKnownLimitedDataChip('lesson actions')
-                          ) : (
-                            <TouchableOpacity
-                              style={styles.coachingAiAssistBtn}
-                              onPress={() =>
-                                openAiAssistShell(
-                                  {
-                                    host: 'coaching_lesson_detail',
-                                    title: 'AI Lesson Reflection Draft (Approval-First)',
-                                    sub: 'Draft only. Human review required.',
-                                    targetLabel: selectedLesson.title,
-                                    approvedInsertOnly: true,
-                                  },
-                                  {
-                                    prompt: `Draft a short reflection prompt and next-step coaching note for the lesson "${selectedLesson.title}".`,
-                                  }
-                                )
-                              }
-                            >
-                              <Text style={styles.coachingAiAssistBtnText}>AI Lesson Draft</Text>
-                            </TouchableOpacity>
-                          )}
-                          <View style={styles.coachingLessonProgressCard}>
-                            <Text style={styles.coachingLessonProgressTitle}>Lesson Progress</Text>
-                            <Text style={styles.coachingLessonProgressStatus}>
-                              Current status: {selectedLessonStatus.replace('_', ' ')}
-                            </Text>
-                            {selectedLesson.completed_at ? (
-                              <Text style={styles.coachingLessonProgressTime}>
-                                Completed: {fmtMonthDayTime(selectedLesson.completed_at)}
-                              </Text>
-                            ) : null}
-                            {coachingLessonProgressError ? (
-                              <Text style={styles.coachingJourneyInlineError}>{coachingLessonProgressError}</Text>
-                            ) : null}
-                            {shellPackageGateBlocksActions ? (
-                              renderKnownLimitedDataChip('lesson progress updates')
-                            ) : (
-                              <View style={styles.coachingLessonActionRow}>
-                                {(['not_started', 'in_progress', 'completed'] as const).map((status) => {
-                                  const isCurrent = selectedLessonStatus === status;
-                                  const isSubmitting =
-                                    coachingLessonProgressSubmittingId === String(selectedLesson.id);
-                                  return (
-                                    <TouchableOpacity
-                                      key={`lesson-progress-${status}`}
-                                      style={[
-                                        styles.coachingLessonActionBtn,
-                                        isCurrent ? styles.coachingLessonActionBtnActive : null,
-                                        isSubmitting ? styles.disabled : null,
-                                      ]}
-                                      disabled={isSubmitting}
-                                      onPress={() => {
-                                        void submitCoachingLessonProgress(String(selectedLesson.id), status);
-                                      }}
-                                    >
-                                      <Text
-                                        style={[
-                                          styles.coachingLessonActionBtnText,
-                                          isCurrent ? styles.coachingLessonActionBtnTextActive : null,
-                                        ]}
-                                      >
-                                        {isSubmitting && isCurrent
-                                          ? 'Saving…'
-                                          : status === 'not_started'
-                                            ? 'Reset'
-                                            : status === 'in_progress'
-                                              ? 'Start'
-                                              : 'Complete'}
-                                      </Text>
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </View>
-                            )}
-                          </View>
-                        </View>
-                      )}
-                    </View>
-                  ) : null}
+                  {/* coaching_lesson_detail screen removed — lesson video and progress now inline in journey detail */}
                 </View>
                 ) : null}
 
@@ -8162,64 +7880,8 @@ export default function KPIDashboardScreen({
         </View>
       ) : null}
 
-      {activeFlightFx.map((flightFx) => (
-        <React.Fragment key={flightFx.key}>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.fxProjectile,
-              {
-                left: flightFx.startX,
-                top: flightFx.startY,
-                opacity: flightFx.anim.interpolate({ inputRange: [0, 0.06, 0.95, 1], outputRange: [0, 1, 1, 0] }),
-                transform: [
-                  { translateX: flightFx.anim.interpolate({ inputRange: [0, 1], outputRange: [0, flightFx.deltaX] }) },
-                  {
-                    translateY: flightFx.anim.interpolate({
-                      inputRange: [0, 0.45, 1],
-                      outputRange: [0, -flightFx.arcLift, flightFx.deltaY],
-                    }),
-                  },
-                  { rotate: '-8deg' },
-                  { scale: flightFx.anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.9, 1.08, 0.96] }) },
-                ],
-              },
-            ]}
-          >
-            <View style={styles.fxCoinOuter}>
-              <View style={styles.fxCoinInner} />
-              <View style={styles.fxCoinHighlight} />
-            </View>
-          </Animated.View>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.fxProjectile,
-              {
-                left: flightFx.startX - 8,
-                top: flightFx.startY + 6,
-                opacity: flightFx.anim.interpolate({ inputRange: [0, 0.12, 0.9, 1], outputRange: [0, 0.85, 0.85, 0] }),
-                transform: [
-                  { translateX: flightFx.anim.interpolate({ inputRange: [0, 1], outputRange: [0, flightFx.deltaX + 12] }) },
-                  {
-                    translateY: flightFx.anim.interpolate({
-                      inputRange: [0, 0.4, 1],
-                      outputRange: [0, -Math.max(24, flightFx.arcLift * 0.72), flightFx.deltaY + 4],
-                    }),
-                  },
-                  { rotate: '10deg' },
-                  { scale: flightFx.anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.75, 0.95, 0.8] }) },
-                ],
-              },
-            ]}
-          >
-            <View style={[styles.fxCoinOuter, styles.fxCoinOuterTrail]}>
-              <View style={styles.fxCoinInner} />
-              <View style={styles.fxCoinHighlight} />
-            </View>
-          </Animated.View>
-        </React.Fragment>
-      ))} 
+      {/* Coin flight overlay — streams coins from KPI tiles → accumulator → bar chart */}
+      <CoinOverlay coins={activeCoinFx} />
 
       {showUniversalAvatarTrigger ? (
         <View style={styles.avatarGlobalWrap}>
@@ -8286,6 +7948,119 @@ export default function KPIDashboardScreen({
         generateAiAssistDraft={generateAiAssistDraft}
         applyAiAssistDraftToHumanInput={applyAiAssistDraftToHumanInput}
         queueAiSuggestionForApproval={queueAiSuggestionForApproval}
+      />
+
+      {/* Global profile drawer — rendered at screen root so it works from any tab */}
+      <UserProfileDrawer
+        visible={Boolean(selectedTeamProfile)}
+        member={selectedTeamProfile ?? null}
+        accessToken={session?.access_token ?? null}
+        viewerUserId={String(session?.user?.id ?? '') || null}
+        canRemoveMember={
+          effectiveTeamPersonaVariant === 'leader' &&
+          Boolean(selectedTeamProfile?.userId) &&
+          selectedTeamProfile?.userId !== String(session?.user?.id ?? '')
+        }
+        removeBusy={teamMembershipMutationBusy}
+        onClose={() => setTeamProfileMemberId(null)}
+        onMessage={() => {
+          if (!selectedTeamProfile) return;
+          const source: CoachingShellEntrySource =
+            activeTab === 'team'
+              ? effectiveTeamPersonaVariant === 'leader'
+                ? 'team_leader_dashboard'
+                : 'team_member_dashboard'
+              : 'user_tab';
+          void openDirectThreadForMember({
+            targetUserId: String(selectedTeamProfile.userId ?? ''),
+            memberName: selectedTeamProfile.name,
+            source,
+            closeTeamProfile: true,
+          }).catch(() => {});
+        }}
+        onIdentityUpdated={(next) => {
+          setTeamRosterMembers((prev) =>
+            prev.map((row) =>
+              String(row.user_id ?? '').trim() === next.userId
+                ? { ...row, full_name: next.name, avatar_url: next.avatarUrl, avatar_preset_id: next.avatarPresetId }
+                : row
+            )
+          );
+        }}
+        onRemoveMember={
+          selectedTeamProfile?.userId &&
+          effectiveTeamPersonaVariant === 'leader' &&
+          selectedTeamProfile.userId !== String(session?.user?.id ?? '')
+            ? () =>
+                Alert.alert(
+                  `Remove ${selectedTeamProfile!.name}?`,
+                  `${selectedTeamProfile!.name} will be removed from the team, unenrolled from team challenges, and removed from team contribution metrics.`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Remove',
+                      style: 'destructive',
+                      onPress: () =>
+                        void removeTeamMember(
+                          String(selectedTeamProfile!.userId),
+                          selectedTeamProfile!.name
+                        ),
+                    },
+                  ]
+                )
+            : undefined
+        }
+        availableJourneys={
+          isCoachRuntimeOperator && Array.isArray(coachingJourneys)
+            ? coachingJourneys.map((j) => ({ id: String(j.id), title: j.title }))
+            : undefined
+        }
+        onEnrollJourney={
+          isCoachRuntimeOperator && selectedTeamProfile?.userId
+            ? async (journeyId) => {
+                const clientUserId = selectedTeamProfile!.userId!;
+                const token = session?.access_token;
+                if (!token) return;
+                try {
+                  await fetch(`${API_URL}/api/coaching/journeys/${journeyId}/enroll`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: clientUserId }),
+                  });
+                  setCoachingClients((prev) =>
+                    prev.map((c) =>
+                      c.id === clientUserId
+                        ? { ...c, enrolledJourneyIds: [...c.enrolledJourneyIds, journeyId] }
+                        : c
+                    )
+                  );
+                } catch { /* silent */ }
+              }
+            : undefined
+        }
+        onUnenrollJourney={
+          isCoachRuntimeOperator && selectedTeamProfile?.userId
+            ? async (journeyId) => {
+                const clientUserId = selectedTeamProfile!.userId!;
+                const token = session?.access_token;
+                if (!token) return;
+                try {
+                  await fetch(`${API_URL}/api/coaching/journeys/${journeyId}/unenroll`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: clientUserId }),
+                  });
+                  setCoachingClients((prev) =>
+                    prev.map((c) =>
+                      c.id === clientUserId
+                        ? { ...c, enrolledJourneyIds: c.enrolledJourneyIds.filter((id) => id !== journeyId) }
+                        : c
+                    )
+                  );
+                } catch { /* silent */ }
+              }
+            : undefined
+        }
       />
 
       <Modal visible={logOtherVisible} transparent animationType="fade" onRequestClose={() => setLogOtherVisible(false)}>

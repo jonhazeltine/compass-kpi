@@ -372,7 +372,13 @@ export type CoachSegmentPreset = {
 };
 export type CoachWorkflowAssignMode = 'none' | 'cohort' | 'individual';
 /* ── Journey Builder types (ported from CoachPortalScreen) ── */
-export type JourneyBuilderTask = { id: string; title: string; assetId: string | null };
+export type JourneyBuilderTask = {
+  id: string;
+  title: string;
+  assetId: string | null;
+  progressStatus?: 'not_started' | 'in_progress' | 'completed';
+  completedAt?: string | null;
+};
 export type JourneyBuilderLesson = { id: string; title: string; tasks: JourneyBuilderTask[] };
 export type JourneyBuilderSaveState = 'idle' | 'pending' | 'saved' | 'error';
 export type LibraryAsset = { id: string; title: string; category: string; scope: string; duration: string; playbackId?: string | null };
