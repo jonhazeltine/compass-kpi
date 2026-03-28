@@ -42,10 +42,24 @@ if (!secureStoreAny.__compassKeyPatchApplied) {
   secureStoreAny.__compassKeyPatchApplied = true;
 }
 
+// iOS SecureStore limit is 2048 bytes per value. Supabase session JSON routinely exceeds this.
+// We chunk large values across multiple keys and reassemble on read.
+const SECURE_STORE_CHUNK_SIZE = 1900;
+
 const secureStoreAdapter = {
   getItem: async (key: string): Promise<string | null> => {
     const safeKey = secureStoreKeyFor(key);
     try {
+      const chunkCountStr = await SecureStore.getItemAsync(`${safeKey}__n`);
+      if (chunkCountStr !== null) {
+        const n = parseInt(chunkCountStr, 10);
+        const parts: string[] = [];
+        for (let i = 0; i < n; i++) {
+          const part = await SecureStore.getItemAsync(`${safeKey}__c${i}`);
+          parts.push(part ?? '');
+        }
+        return parts.join('');
+      }
       return await SecureStore.getItemAsync(safeKey);
     } catch (error) {
       throw new Error(
@@ -58,7 +72,28 @@ const secureStoreAdapter = {
   setItem: async (key: string, value: string): Promise<void> => {
     const safeKey = secureStoreKeyFor(key);
     try {
-      await SecureStore.setItemAsync(safeKey, value);
+      if (value.length <= SECURE_STORE_CHUNK_SIZE) {
+        await SecureStore.setItemAsync(safeKey, value);
+        // Clean up any leftover chunks from a previous large write
+        const oldCountStr = await SecureStore.getItemAsync(`${safeKey}__n`).catch(() => null);
+        if (oldCountStr !== null) {
+          const oldN = parseInt(oldCountStr, 10);
+          await SecureStore.deleteItemAsync(`${safeKey}__n`).catch(() => {});
+          for (let i = 0; i < oldN; i++) {
+            await SecureStore.deleteItemAsync(`${safeKey}__c${i}`).catch(() => {});
+          }
+        }
+      } else {
+        const n = Math.ceil(value.length / SECURE_STORE_CHUNK_SIZE);
+        await SecureStore.setItemAsync(`${safeKey}__n`, String(n));
+        for (let i = 0; i < n; i++) {
+          await SecureStore.setItemAsync(
+            `${safeKey}__c${i}`,
+            value.slice(i * SECURE_STORE_CHUNK_SIZE, (i + 1) * SECURE_STORE_CHUNK_SIZE)
+          );
+        }
+        await SecureStore.deleteItemAsync(safeKey).catch(() => {});
+      }
     } catch (error) {
       throw new Error(
         `SecureStore setItem failed (raw="${String(key)}" safe="${safeKey}"): ${
@@ -70,7 +105,15 @@ const secureStoreAdapter = {
   removeItem: async (key: string): Promise<void> => {
     const safeKey = secureStoreKeyFor(key);
     try {
-      await SecureStore.deleteItemAsync(safeKey);
+      await SecureStore.deleteItemAsync(safeKey).catch(() => {});
+      const chunkCountStr = await SecureStore.getItemAsync(`${safeKey}__n`).catch(() => null);
+      if (chunkCountStr !== null) {
+        const n = parseInt(chunkCountStr, 10);
+        await SecureStore.deleteItemAsync(`${safeKey}__n`).catch(() => {});
+        for (let i = 0; i < n; i++) {
+          await SecureStore.deleteItemAsync(`${safeKey}__c${i}`).catch(() => {});
+        }
+      }
     } catch (error) {
       throw new Error(
         `SecureStore removeItem failed (raw="${String(key)}" safe="${safeKey}"): ${

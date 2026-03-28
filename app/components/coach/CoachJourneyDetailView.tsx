@@ -119,6 +119,10 @@ function LessonVideoCard({ playbackId, title }: { playbackId: string; title: str
   useEffect(() => {
     if (playing) { try { player.play(); } catch { /* ignore */ } }
   }, [player, playing]);
+  // Release native player on unmount to prevent CoreMedia thread leak / watchdog crashes
+  useEffect(() => {
+    return () => { try { player.release?.(); } catch { /* ignore */ } };
+  }, [player]);
 
   return (
     <View style={{ borderRadius: 10, overflow: 'hidden', backgroundColor: '#0F172A' }}>
