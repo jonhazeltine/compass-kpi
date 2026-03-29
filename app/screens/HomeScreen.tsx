@@ -7,10 +7,12 @@ import ProfileScreen from './ProfileScreen';
 import GoalsScreen from './GoalsScreen';
 import SettingsScreen from './SettingsScreen';
 import InviteCodeScreen from './InviteCodeScreen';
+import VPTreeScreen from './VPTreeScreen';
+import GPCityScreen from './GPCityScreen';
 import AvatarMenu from '../components/nav/AvatarMenu';
 import { useAuth } from '../contexts/AuthContext';
 
-type UserMenuRoute = 'dashboard' | 'profile' | 'goals' | 'settings' | 'invite';
+type UserMenuRoute = 'dashboard' | 'profile' | 'goals' | 'settings' | 'invite' | 'vp-tree' | 'gp-city';
 type DashboardRouteTarget = {
   tab?: 'team' | 'coach' | 'challenge';
   screen?: string;
@@ -46,6 +48,8 @@ export default function HomeScreen() {
             key={refreshKey}
             onOpenUserMenu={() => setMenuVisible(true)}
             onOpenInviteCode={() => routeTo('invite')}
+            onOpenVPTree={() => routeTo('vp-tree')}
+            onOpenGPCity={() => routeTo('gp-city')}
             menuRouteTarget={dashboardRouteTarget}
             onMenuRouteTargetConsumed={() => setDashboardRouteTarget(null)}
           />
@@ -56,6 +60,8 @@ export default function HomeScreen() {
         {activeRoute === 'invite' ? (
           <InviteCodeScreen onBack={() => setActiveRoute('dashboard')} onRedeemSuccess={onInviteRedeemSuccess} />
         ) : null}
+        {activeRoute === 'vp-tree' ? <VPTreeScreen onBack={() => setActiveRoute('dashboard')} /> : null}
+        {activeRoute === 'gp-city' ? <GPCityScreen onBack={() => setActiveRoute('dashboard')} /> : null}
       </View>
       <AvatarMenu
         visible={menuVisible}

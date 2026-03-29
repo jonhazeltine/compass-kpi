@@ -257,12 +257,27 @@ export type ChallengeFlowItem = {
   leaderboardPreview: ChallengeFlowLeaderboardEntry[];
 };
 export type ChallengeWizardStep = 'source' | 'basics' | 'kpis' | 'audience' | 'review';
+/** V2 wizard steps (full-screen redesign) */
+export type ChallengeWizardStepV2 = 'templates' | 'goal_timeline' | 'kpis' | 'invite_launch';
 export type ChallengeWizardGoalDraft = {
   kpi_id: string;
   label: string;
   goal_scope: ChallengeGoalScope;
   goal_target: string;
   display_order: number;
+  kpi_type?: string;
+  suggested?: boolean;
+};
+/** Phase from a challenge template (stored in template_payload.phases[]) */
+export type ChallengeTemplatePhase = {
+  phase_order: number;
+  phase_name: string;
+  starts_at_week: number;
+  kpi_goals: Array<{
+    kpi_id: string;
+    target_value: number;
+    goal_scope: ChallengeGoalScope;
+  }>;
 };
 export type TeamFlowScreen =
   | 'dashboard'

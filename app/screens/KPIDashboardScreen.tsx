@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
 import LottieSlot from '../components/LottieSlot';
 import { VPTreeInline } from '../components/vp-tree/VPTreeInline';
+import { GPCityInline } from '../components/gp-city/GPCityInline';
 import { CommsHub } from '../components/comms';
 import type { ChannelRow as CommsChannelRow } from '../components/comms';
 import { useBottomNavAnimation } from '../components/comms/useBottomNavAnimation';
@@ -76,6 +77,7 @@ import LiveBroadcastScreen from '../components/comms/LiveBroadcastScreen';
 import BottomTabBar from '../components/dashboard/BottomTabBar';
 import HudRail from '../components/dashboard/HudRail';
 import ChallengeTab from '../components/challenge/ChallengeTab';
+import { ChallengeWizard } from '../components/challenge/wizard';
 import TeamTab from '../components/team/TeamTab';
 import CoachTab from '../components/coach/CoachTab';
 import HomeTab from '../components/home/HomeTab';
@@ -357,9 +359,11 @@ const isLightColor = (hex: string): boolean => {
 export default function KPIDashboardScreen({
   onOpenUserMenu,
   onOpenInviteCode,
+  onOpenVPTree,
+  onOpenGPCity,
   menuRouteTarget,
   onMenuRouteTargetConsumed,
-}: Props) {
+}: Props & { onOpenVPTree?: () => void; onOpenGPCity?: () => void; }) {
   const { session } = useAuth();
   const { tier: entitlementTier, effectivePlan, can: entitlementCan, limit: entitlementLimitFromContext } = useEntitlements();
   const insets = useSafeAreaInsets();
@@ -372,6 +376,7 @@ export default function KPIDashboardScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [vpPulseKey, setVpPulseKey] = useState(0);
+  const [gpPulseKey, setGpPulseKey] = useState(0);
   const [submittingKpiId, setSubmittingKpiId] = useState<string | null>(null);
   const [segment, setSegment] = useState<Segment>('PC');
   const [homePanel, setHomePanel] = useState<HomePanel>('Quick');
@@ -1817,6 +1822,9 @@ export default function KPIDashboardScreen({
       if (options?.kpiType === 'VP') {
         setVpPulseKey((k) => k + 1);
       }
+      if (options?.kpiType === 'GP') {
+        setGpPulseKey((k) => k + 1);
+      }
       await fetchDashboard();
       if ((options?.kpiType ?? 'PC') === 'PC') {
         const elapsed = Date.now() - projectedHudSpinStartedAtRef.current;
@@ -2395,28 +2403,41 @@ export default function KPIDashboardScreen({
   };
 
   const vpTreeTotal = payload?.points?.vp_raw ?? payload?.points?.vp ?? 0;
+  const gpCityTotal = payload?.points?.gp ?? 0;
 
   const renderHomeVisualPlaceholder = (kind: 'GP' | 'VP') => (
     <View style={styles.chartWrap}>
       {kind === 'VP' ? (
-        <VPTreeInline
-          width={visualPageWidth}
-          height={280}
-          vpTotal={vpTreeTotal}
-          seed={42}
-          pulseKey={vpPulseKey}
-        />
-      ) : (
-        <View style={styles.visualPlaceholder}>
-          <LottieSlot
-            source={GP_LOTTIE_SOURCE}
-            size={132}
-            fallbackEmoji="🏙️"
+        <View>
+          <VPTreeInline
+            width={visualPageWidth}
+            height={280}
+            vpTotal={vpTreeTotal}
+            seed={42}
+            pulseKey={vpPulseKey}
           />
-          <Text style={styles.visualPlaceholderTitle}>Business Growth Visual</Text>
-          <Text style={styles.visualPlaceholderSub}>
-            Your business growth visual will appear here.
-          </Text>
+          {onOpenVPTree && (
+            <Pressable
+              onPress={onOpenVPTree}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            />
+          )}
+        </View>
+      ) : (
+        <View>
+          <GPCityInline
+            width={visualPageWidth}
+            height={280}
+            gpTotal={gpCityTotal}
+            seed={42}
+            pulseKey={gpPulseKey}
+          />
+          {onOpenGPCity && (
+            <Pressable
+              onPress={onOpenGPCity}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            />
+          )}
         </View>
       )}
     </View>
@@ -6178,6 +6199,38 @@ export default function KPIDashboardScreen({
                 submittingKpiId={submittingKpiId}
               />
             ) : null}
+            {/* ── V2 Challenge Wizard (full-screen modal) ── */}
+            <Modal visible={challengeWizardVisible && activeTab === 'challenge'} animationType="slide">
+              <ChallengeWizard
+                visible={challengeWizardVisible}
+                onClose={() => setChallengeWizardVisible(false)}
+                templates={challengeWizardFallbackTemplates}
+                loadingTemplates={challengeWizardLoadingTemplates ?? false}
+                allSelectableKpis={allSelectableKpis}
+                wizardName={challengeWizardName}
+                setWizardName={setChallengeWizardName}
+                wizardDescription={challengeWizardDescription}
+                setWizardDescription={setChallengeWizardDescription}
+                wizardStartAt={challengeWizardStartAt}
+                setWizardStartAt={setChallengeWizardStartAt}
+                wizardEndAt={challengeWizardEndAt}
+                setWizardEndAt={setChallengeWizardEndAt}
+                wizardGoals={challengeWizardGoals}
+                setWizardGoals={setChallengeWizardGoals}
+                wizardInviteUserIds={challengeWizardInviteUserIds}
+                setWizardInviteUserIds={setChallengeWizardInviteUserIds}
+                wizardTemplateId={challengeWizardTemplateId}
+                setWizardTemplateId={setChallengeWizardTemplateId}
+                teamMemberDirectory={teamMemberDirectory}
+                isSoloPersona={isSoloPersona}
+                hasTeamTier={entitlementNumber('can_host_team_challenges', 0) > 0}
+                challengeInviteLimit={entitlementNumber('challenge_invite_limit', 3)}
+                onSubmit={submitChallengeWizard}
+                submitting={challengeWizardSubmitting}
+                submitError={challengeWizardError}
+                showPaywall={showPaywall}
+              />
+            </Modal>
           </View>
         ) : activeTab === 'team' ? (
           <TeamTab

@@ -581,15 +581,13 @@ export default function ChallengeTab({
       </Pressable>
     </Modal>
 
-    {challengeCreateAllowed ? (
+    {/* V1 wizard removed — replaced by full-screen ChallengeWizard in wizard/ */}
+    {false ? (
       <Modal
-        visible={challengeWizardVisible}
+        visible={false}
         transparent
         animationType="fade"
-        onRequestClose={() => {
-          if (challengeWizardSubmitting) return;
-          setChallengeWizardVisible(false);
-        }}
+        onRequestClose={() => {}}
       >
         <Pressable
           style={styles.challengeMemberCreateModalBackdrop}
