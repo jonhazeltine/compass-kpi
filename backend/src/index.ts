@@ -3,6 +3,8 @@ import cors from "cors";
 import morgan from "morgan";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import path from "path";
+import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
 import { computeConfidence } from "./engines/confidenceEngine";
 import { computeGpVpState } from "./engines/gpVpEngine";
@@ -9443,6 +9445,9 @@ app.post("/challenges", async (req, res) => {
     }
 
     // ── Phase + KPI insertion ──
+    let totalKpiCount = 0;
+    let teamGoalCount = 0;
+    let individualGoalCount = 0;
     const payloadPhases = Array.isArray(payload.phases) ? payload.phases : [];
     const phaseIdByOrder = new Map<number, string>();
 
@@ -9495,6 +9500,9 @@ app.post("/challenges", async (req, res) => {
           return handleSupabaseError(res, "Failed to persist phase KPI goals", kpiInsertError);
         }
       }
+      totalKpiCount = phaseKpiRows.length;
+      teamGoalCount = phaseKpiRows.filter((r) => r.goal_scope === "team").length;
+      individualGoalCount = phaseKpiRows.filter((r) => r.goal_scope === "individual").length;
     } else {
       // Non-phased: flat KPI insertion (original behavior)
       const challengeKpiRows = kpiGoals.map((goal, index) => ({
@@ -9512,6 +9520,9 @@ app.post("/challenges", async (req, res) => {
           return handleSupabaseError(res, "Failed to persist challenge KPI goals", challengeKpiInsertError);
         }
       }
+      totalKpiCount = challengeKpiRows.length;
+      teamGoalCount = challengeKpiRows.filter((r) => r.goal_scope === "team").length;
+      individualGoalCount = challengeKpiRows.filter((r) => r.goal_scope === "individual").length;
     }
 
     await dataClient
@@ -9532,9 +9543,9 @@ app.post("/challenges", async (req, res) => {
       challenge,
       challenge_kind: payloadChallengeKind,
       kpi_goal_summary: {
-        total_kpis: challengeKpiRows.length,
-        team_goal_count: challengeKpiRows.filter((row) => row.goal_scope === "team").length,
-        individual_goal_count: challengeKpiRows.filter((row) => row.goal_scope === "individual").length,
+        total_kpis: totalKpiCount,
+        team_goal_count: teamGoalCount,
+        individual_goal_count: individualGoalCount,
       },
       invite_policy: {
         invite_limit: inviteLimit,
@@ -15991,6 +16002,111 @@ function isRecoverableAssignmentSourceGap(error: { message?: string; code?: stri
   const msg = String(error.message ?? "").toLowerCase();
   return msg.includes("does not exist") || msg.includes("could not find");
 }
+
+// ── KPI Icon Forge ──────────────────────────────────────────────────────────
+
+const FORGE_ICON_DIR = path.resolve(__dirname, "../../app/assets/figma/kpi_icon_bank");
+const FORGE_SVG_DIR = path.resolve(__dirname, "../../app/assets/figma/kpi_icon_bank/svg");
+
+app.get("/admin/kpi-forge", (_req, res) => {
+  res.sendFile(path.resolve(__dirname, "../public/kpi-forge.html"));
+});
+
+// Serve icon bank PNGs for the dedup grid
+app.use("/admin/kpi-forge/icons", express.static(FORGE_ICON_DIR));
+
+// List existing icons for dedup comparison
+app.get("/admin/kpi-forge/existing-icons", (_req, res) => {
+  try {
+    const files = fs.readdirSync(FORGE_ICON_DIR).filter(f => f.endsWith(".png") && !f.startsWith("."));
+    const icons = files.map(f => {
+      const prefix = f.match(/^(pc|gp|vp)_/i);
+      const type = prefix ? prefix[1].toUpperCase() : "Custom";
+      const label = f.replace(/^(pc|gp|vp)_/i, "").replace(/_v\d+\.png$/i, "").replace(/_/g, " ");
+      return { name: f, type, label, src: `/admin/kpi-forge/icons/${f}` };
+    });
+    res.json(icons);
+  } catch {
+    res.json([]);
+  }
+});
+
+// Proxy Claude API call for SVG generation (avoids CORS issues)
+app.post("/admin/kpi-forge/generate", async (req, res) => {
+  try {
+    const { prompt, apiKey } = req.body;
+    const key = apiKey || process.env.ANTHROPIC_API_KEY;
+    if (!key) return res.status(400).json({ error: "No API key provided" });
+    if (!prompt) return res.status(400).json({ error: "No prompt provided" });
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2048,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      return res.status(response.status).json({ error: `Claude API error: ${errBody}` });
+    }
+
+    const data = await response.json() as { content: Array<{ type: string; text?: string }> };
+    const textBlock = data.content?.find((b: { type: string }) => b.type === "text");
+    if (!textBlock || !("text" in textBlock)) {
+      return res.status(500).json({ error: "No text in Claude response" });
+    }
+
+    res.json({ svg: textBlock.text });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("KPI Forge generate error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Save generated SVG icon and optionally create the KPI record
+app.post("/admin/kpi-forge/save", async (req, res) => {
+  try {
+    const { name, slug, type, svg, seasonal } = req.body;
+    if (!name || !svg) return res.status(400).json({ error: "name and svg are required" });
+
+    // Ensure SVG output directory exists
+    if (!fs.existsSync(FORGE_SVG_DIR)) fs.mkdirSync(FORGE_SVG_DIR, { recursive: true });
+
+    // Build filename
+    const prefix = (type || "custom").toLowerCase();
+    const safeName = (slug || name).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    const version = seasonal ? `seasonal_${seasonal.replace(/[^a-z0-9]+/g, "_")}` : "v1";
+    const svgFileName = `${prefix}_${safeName}_${version}.svg`;
+    const svgPath = path.join(FORGE_SVG_DIR, svgFileName);
+
+    // Write SVG file
+    fs.writeFileSync(svgPath, svg, "utf-8");
+
+    // Also render a PNG using the SVG (placeholder — the web UI can download PNGs client-side)
+    // For now, just save the SVG and return the path
+
+    res.json({
+      iconFile: svgFileName,
+      svgPath: svgPath,
+      message: `Icon saved as ${svgFileName}`,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("KPI Forge save error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── End KPI Icon Forge ──────────────────────────────────────────────────────
 
 if (host === "0.0.0.0") {
   // eslint-disable-next-line no-console
