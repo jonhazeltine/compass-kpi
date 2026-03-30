@@ -19,6 +19,18 @@ create table if not exists public.challenge_phases (
 alter table public.challenge_kpis
   add column if not exists phase_id uuid references public.challenge_phases(id) on delete set null;
 
+-- Replace the old unique constraint with phase-aware partial indexes.
+-- Same KPI can appear in different phases, but not twice in the same phase.
+alter table public.challenge_kpis drop constraint if exists challenge_kpis_challenge_kpi_uq;
+
+create unique index if not exists challenge_kpis_challenge_kpi_phase_uq
+  on public.challenge_kpis (challenge_id, kpi_id, phase_id)
+  where phase_id is not null;
+
+create unique index if not exists challenge_kpis_challenge_kpi_nophase_uq
+  on public.challenge_kpis (challenge_id, kpi_id)
+  where phase_id is null;
+
 comment on table public.challenge_phases is
   'Phases within a challenge. Each phase has a time window and its own set of KPIs.';
 comment on column public.challenge_kpis.phase_id is
