@@ -6215,38 +6215,6 @@ export default function KPIDashboardScreen({
                 submittingKpiId={submittingKpiId}
               />
             ) : null}
-            {/* ── V2 Challenge Wizard (full-screen modal) ── */}
-            <Modal visible={challengeWizardVisible && activeTab === 'challenge'} animationType="slide">
-              <ChallengeWizard
-                visible={challengeWizardVisible}
-                onClose={() => setChallengeWizardVisible(false)}
-                templates={challengeWizardFallbackTemplates}
-                loadingTemplates={challengeWizardLoadingTemplates ?? false}
-                allSelectableKpis={allSelectableKpis}
-                wizardName={challengeWizardName}
-                setWizardName={setChallengeWizardName}
-                wizardDescription={challengeWizardDescription}
-                setWizardDescription={setChallengeWizardDescription}
-                wizardStartAt={challengeWizardStartAt}
-                setWizardStartAt={setChallengeWizardStartAt}
-                wizardEndAt={challengeWizardEndAt}
-                setWizardEndAt={setChallengeWizardEndAt}
-                wizardGoals={challengeWizardGoals}
-                setWizardGoals={setChallengeWizardGoals}
-                wizardInviteUserIds={challengeWizardInviteUserIds}
-                setWizardInviteUserIds={setChallengeWizardInviteUserIds}
-                wizardTemplateId={challengeWizardTemplateId}
-                setWizardTemplateId={setChallengeWizardTemplateId}
-                teamMemberDirectory={teamMemberDirectory}
-                isSoloPersona={isSoloPersona}
-                hasTeamTier={entitlementNumber('can_host_team_challenges', 0) > 0}
-                challengeInviteLimit={entitlementNumber('challenge_invite_limit', 3)}
-                onSubmit={submitChallengeWizard}
-                submitting={challengeWizardSubmitting}
-                submitError={challengeWizardError}
-                showPaywall={showPaywall}
-              />
-            </Modal>
           </View>
         ) : activeTab === 'team' ? (
           <TeamTab
@@ -6320,6 +6288,8 @@ export default function KPIDashboardScreen({
             setActiveTab={setActiveTab}
             setViewMode={setViewMode}
             handleOpenInviteCodeEntry={handleOpenInviteCodeEntry}
+            openChallengeWizard={openChallengeWizard}
+            setChallengeWizardInviteUserIds={setChallengeWizardInviteUserIds}
             removeTeamMember={removeTeamMember}
             leaveCurrentTeam={leaveCurrentTeam}
             createTeamInviteCode={createTeamInviteCode}
@@ -8002,6 +7972,39 @@ export default function KPIDashboardScreen({
 
       {/* Coin flight overlay — streams coins from KPI tiles → accumulator → bar chart */}
       <CoinOverlay coins={activeCoinFx} />
+
+      {/* ── V2 Challenge Wizard (full-screen modal, accessible from any tab) ── */}
+      <Modal visible={challengeWizardVisible} animationType="slide">
+        <ChallengeWizard
+          visible={challengeWizardVisible}
+          onClose={() => setChallengeWizardVisible(false)}
+          templates={challengeWizardFallbackTemplates}
+          loadingTemplates={challengeWizardLoadingTemplates ?? false}
+          allSelectableKpis={allSelectableKpis}
+          wizardName={challengeWizardName}
+          setWizardName={setChallengeWizardName}
+          wizardDescription={challengeWizardDescription}
+          setWizardDescription={setChallengeWizardDescription}
+          wizardStartAt={challengeWizardStartAt}
+          setWizardStartAt={setChallengeWizardStartAt}
+          wizardEndAt={challengeWizardEndAt}
+          setWizardEndAt={setChallengeWizardEndAt}
+          wizardGoals={challengeWizardGoals}
+          setWizardGoals={setChallengeWizardGoals}
+          wizardInviteUserIds={challengeWizardInviteUserIds}
+          setWizardInviteUserIds={setChallengeWizardInviteUserIds}
+          wizardTemplateId={challengeWizardTemplateId}
+          setWizardTemplateId={setChallengeWizardTemplateId}
+          teamMemberDirectory={teamMemberDirectory}
+          isSoloPersona={isSoloPersona}
+          hasTeamTier={entitlementNumber('can_host_team_challenges', 0) > 0}
+          challengeInviteLimit={entitlementNumber('challenge_invite_limit', 3)}
+          onSubmit={submitChallengeWizard}
+          submitting={challengeWizardSubmitting}
+          submitError={challengeWizardError}
+          showPaywall={showPaywall}
+        />
+      </Modal>
 
       {showUniversalAvatarTrigger ? (
         <View style={styles.topIconsPill}>

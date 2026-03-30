@@ -2,7 +2,8 @@
  * WizardGoalTimeline — Step 1: Challenge name, duration, phase preview.
  */
 import React, { useCallback, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { wiz } from './wizardTheme';
 import WizardPhaseTimeline from './WizardPhaseTimeline';
 import type { ChallengeTemplatePhase } from '../../../screens/kpi-dashboard/types';
@@ -87,6 +88,34 @@ export default function WizardGoalTimeline({
     return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
+  const [showPicker, setShowPicker] = useState<'start' | 'end' | null>(null);
+
+  const handleDatePickerChange = useCallback(
+    (_event: DateTimePickerEvent, selectedDate?: Date) => {
+      if (Platform.OS === 'android') setShowPicker(null);
+      if (!selectedDate) return;
+      const iso = selectedDate.toISOString().slice(0, 10);
+      if (showPicker === 'start') {
+        setStartAt(iso);
+        // Keep duration consistent
+        if (endAt) {
+          const currentDuration = Math.round(
+            (new Date(endAt + 'T00:00:00').getTime() - new Date(startAt + 'T00:00:00').getTime()) / 86400000
+          );
+          if (currentDuration > 0) {
+            const newEnd = new Date(selectedDate);
+            newEnd.setDate(newEnd.getDate() + currentDuration);
+            setEndAt(newEnd.toISOString().slice(0, 10));
+          }
+        }
+      } else if (showPicker === 'end') {
+        setEndAt(iso);
+      }
+      if (Platform.OS === 'ios') setShowPicker(null);
+    },
+    [showPicker, startAt, endAt, setStartAt, setEndAt],
+  );
+
   const canProceed = name.trim().length > 0 && startAt.length > 0 && endAt.length > 0;
 
   return (
@@ -154,20 +183,32 @@ export default function WizardGoalTimeline({
         })}
       </View>
 
-      {/* Date summary */}
+      {/* Date summary — tap to pick custom date */}
       <View style={styles.dateRow}>
-        <View style={styles.dateBlock}>
+        <TouchableOpacity style={styles.dateBlock} onPress={() => setShowPicker('start')} activeOpacity={0.7}>
           <Text style={styles.dateLabel}>Starts</Text>
           <Text style={styles.dateValue}>{formatDateDisplay(startAt)}</Text>
-        </View>
+          <Text style={styles.dateTapHint}>tap to change</Text>
+        </TouchableOpacity>
         <View style={styles.dateArrow}>
           <Text style={styles.dateArrowText}>→</Text>
         </View>
-        <View style={styles.dateBlock}>
+        <TouchableOpacity style={styles.dateBlock} onPress={() => setShowPicker('end')} activeOpacity={0.7}>
           <Text style={styles.dateLabel}>Ends</Text>
           <Text style={styles.dateValue}>{formatDateDisplay(endAt)}</Text>
-        </View>
+          <Text style={styles.dateTapHint}>tap to change</Text>
+        </TouchableOpacity>
       </View>
+
+      {showPicker ? (
+        <DateTimePicker
+          value={new Date((showPicker === 'start' ? startAt : endAt) + 'T00:00:00')}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'inline' : 'default'}
+          minimumDate={showPicker === 'end' && startAt ? new Date(startAt + 'T00:00:00') : new Date()}
+          onChange={handleDatePickerChange}
+        />
+      ) : null}
 
       {durationDays > 0 && (
         <Text style={styles.durationSummary}>{durationDays} days</Text>
@@ -282,6 +323,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: wiz.textPrimary,
+  },
+  dateTapHint: {
+    fontSize: 10,
+    color: wiz.accent,
+    fontWeight: '600',
+    marginTop: 2,
   },
   dateArrow: {
     paddingHorizontal: 4,

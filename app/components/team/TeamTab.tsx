@@ -117,6 +117,8 @@ export interface TeamTabProps {
   setActiveTab: (tab: import('../../screens/kpi-dashboard/types').BottomTab) => void;
   setViewMode: (mode: import('../../screens/kpi-dashboard/types').ViewMode) => void;
   handleOpenInviteCodeEntry: () => void;
+  openChallengeWizard: (requestedKind?: import('../../screens/kpi-dashboard/types').ChallengeKind) => void;
+  setChallengeWizardInviteUserIds: React.Dispatch<React.SetStateAction<string[]>>;
   // Team mutations
   removeTeamMember: (userId: string, name: string) => Promise<void>;
   leaveCurrentTeam: () => Promise<void>;
@@ -261,6 +263,8 @@ export default function TeamTab({
   setActiveTab,
   setViewMode,
   handleOpenInviteCodeEntry,
+  openChallengeWizard,
+  setChallengeWizardInviteUserIds,
   removeTeamMember,
   leaveCurrentTeam,
   createTeamInviteCode,
@@ -734,7 +738,13 @@ export default function TeamTab({
                     style={styles.teamIdentityControlPrimaryBtn}
                     onPress={() => {
                       setTeamIdentityControlsOpen(false);
-                      setTeamFlowScreen('team_challenges');
+                      // Pre-load all team member user IDs as invitees
+                      const memberUserIds = teamMemberDirectory
+                        .filter((m) => m.userId && m.userId !== session?.user?.id)
+                        .map((m) => m.userId!)
+                        .filter(Boolean);
+                      setChallengeWizardInviteUserIds(memberUserIds);
+                      openChallengeWizard('team');
                     }}
                     disabled={teamMembershipMutationBusy || teamInviteCodeBusy}
                   >
