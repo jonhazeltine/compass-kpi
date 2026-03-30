@@ -1495,14 +1495,7 @@ export default function KPIDashboardScreen({
   );
   const teamKpiGroups = useMemo(() => groupTeamKpisByType(teamSurfaceKpis), [teamSurfaceKpis]);
   const teamTileCount = teamKpiGroups.PC.length + teamKpiGroups.GP.length + teamKpiGroups.VP.length;
-  useEffect(() => {
-    const availableIds = new Set(teamSurfaceKpis.map((kpi) => String(kpi.id)));
-    setTeamFocusSelectedKpiIds((prev) => {
-      const stillValid = prev.filter((id) => availableIds.has(id));
-      if (stillValid.length > 0) return stillValid;
-      return teamSurfaceKpis.slice(0, 4).map((kpi) => String(kpi.id));
-    });
-  }, [teamSurfaceKpis]);
+  // NOTE: team focus KPI seeding useEffect is below useTeamRosterManager (needs teamFocusKpiIdsFromServer)
 
   const chartSeries = useMemo(() => chartFromPayload(payload), [payload]);
   const chartSplitX =
@@ -3402,9 +3395,11 @@ export default function KPIDashboardScreen({
     setTeamInviteCodeValue,
     fetchTeamRoster,
     resolveCurrentTeamContextId,
+    teamFocusKpiIdsFromServer,
     removeTeamMember: removeTeamMemberFromHook,
     leaveCurrentTeam: leaveCurrentTeamFromHook,
     createTeamInviteCode: createTeamInviteCodeFromHook,
+    saveTeamFocusKpiIds,
     lastTeamRosterFetchAtRef,
   } = useTeamRosterManager({
     accessToken: session?.access_token ?? null,
@@ -3419,6 +3414,23 @@ export default function KPIDashboardScreen({
     challengeListItems,
     fetchDashboard,
   });
+
+  // ── Seed team focus KPIs from server (leader's selection propagates to members) ──
+  useEffect(() => {
+    const availableIds = new Set(teamSurfaceKpis.map((kpi) => String(kpi.id)));
+    if (teamFocusKpiIdsFromServer.length > 0) {
+      const serverValid = teamFocusKpiIdsFromServer.filter((id) => availableIds.has(id));
+      if (serverValid.length > 0) {
+        setTeamFocusSelectedKpiIds(serverValid);
+        return;
+      }
+    }
+    setTeamFocusSelectedKpiIds((prev) => {
+      const stillValid = prev.filter((id) => availableIds.has(id));
+      if (stillValid.length > 0) return stillValid;
+      return teamSurfaceKpis.slice(0, 4).map((kpi) => String(kpi.id));
+    });
+  }, [teamSurfaceKpis, teamFocusKpiIdsFromServer]);
 
   const challengeHasSponsorSignal =
     Array.isArray(challengeApiRows) &&
@@ -3687,6 +3699,9 @@ export default function KPIDashboardScreen({
       setTeamFlowScreen('dashboard');
       if (menuRouteTarget.screen === 'profile_drawer') {
         setTeamProfileMemberId(String(menuRouteTarget.target_id ?? SELF_PROFILE_DRAWER_ID));
+      } else if (menuRouteTarget.target_id && UUID_LIKE_RE.test(menuRouteTarget.target_id)) {
+        // After invite code redemption, inject team ID so roster fetch finds it
+        setTeamRosterTeamId(menuRouteTarget.target_id);
       }
     } else if (menuRouteTarget.tab === 'coach') {
       setActiveTab('coach');
@@ -6276,6 +6291,7 @@ export default function KPIDashboardScreen({
             setTeamLeaderExpandedMemberId={setTeamLeaderExpandedMemberId}
             setTeamChallengesSegment={setTeamChallengesSegment}
             setTeamFocusSelectedKpiIds={setTeamFocusSelectedKpiIds}
+            onSaveTeamFocusKpiIds={saveTeamFocusKpiIds}
             setTeamFocusEditorOpen={setTeamFocusEditorOpen}
             setTeamFocusEditorFilter={setTeamFocusEditorFilter}
             setTeamCommsHandoffError={setTeamCommsHandoffError}
@@ -6303,6 +6319,7 @@ export default function KPIDashboardScreen({
             openCoachingShell={openCoachingShell}
             setActiveTab={setActiveTab}
             setViewMode={setViewMode}
+            handleOpenInviteCodeEntry={handleOpenInviteCodeEntry}
             removeTeamMember={removeTeamMember}
             leaveCurrentTeam={leaveCurrentTeam}
             createTeamInviteCode={createTeamInviteCode}

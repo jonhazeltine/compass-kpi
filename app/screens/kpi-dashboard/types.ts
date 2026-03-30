@@ -326,6 +326,7 @@ export type TeamDetailResponse = {
     name?: string | null;
     identity_avatar?: string | null;
     identity_background?: string | null;
+    focus_kpi_ids?: string[] | null;
     created_by?: string | null;
     created_at?: string | null;
     updated_at?: string | null;

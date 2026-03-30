@@ -84,6 +84,7 @@ export interface TeamTabProps {
   setTeamLeaderExpandedMemberId: React.Dispatch<React.SetStateAction<string | null>>;
   setTeamChallengesSegment: React.Dispatch<React.SetStateAction<'active' | 'completed'>>;
   setTeamFocusSelectedKpiIds: React.Dispatch<React.SetStateAction<string[]>>;
+  onSaveTeamFocusKpiIds?: (kpiIds: string[]) => void;
   setTeamFocusEditorOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setTeamFocusEditorFilter: React.Dispatch<React.SetStateAction<TeamFocusEditorFilter>>;
   setTeamCommsHandoffError: React.Dispatch<React.SetStateAction<string | null>>;
@@ -115,6 +116,7 @@ export interface TeamTabProps {
   // Navigation
   setActiveTab: (tab: import('../../screens/kpi-dashboard/types').BottomTab) => void;
   setViewMode: (mode: import('../../screens/kpi-dashboard/types').ViewMode) => void;
+  handleOpenInviteCodeEntry: () => void;
   // Team mutations
   removeTeamMember: (userId: string, name: string) => Promise<void>;
   leaveCurrentTeam: () => Promise<void>;
@@ -230,6 +232,7 @@ export default function TeamTab({
   setTeamLeaderExpandedMemberId,
   setTeamChallengesSegment,
   setTeamFocusSelectedKpiIds,
+  onSaveTeamFocusKpiIds,
   setTeamFocusEditorOpen,
   setTeamFocusEditorFilter,
   setTeamCommsHandoffError,
@@ -257,6 +260,7 @@ export default function TeamTab({
   openCoachingShell,
   setActiveTab,
   setViewMode,
+  handleOpenInviteCodeEntry,
   removeTeamMember,
   leaveCurrentTeam,
   createTeamInviteCode,
@@ -1006,11 +1010,13 @@ export default function TeamTab({
                               key={`team-focus-editor-${kpiId}`}
                               style={[styles.teamFocusDrawerRow, selected && styles.teamFocusDrawerRowSelected]}
                               activeOpacity={0.6}
-                              onPress={() =>
-                                setTeamFocusSelectedKpiIds((prev) =>
-                                  prev.includes(kpiId) ? prev.filter((id) => id !== kpiId) : [...prev, kpiId]
-                                )
-                              }
+                              onPress={() => {
+                                setTeamFocusSelectedKpiIds((prev) => {
+                                  const next = prev.includes(kpiId) ? prev.filter((id) => id !== kpiId) : [...prev, kpiId];
+                                  if (onSaveTeamFocusKpiIds) onSaveTeamFocusKpiIds(next);
+                                  return next;
+                                });
+                              }}
                             >
                               <View style={[styles.teamFocusDrawerCheck, selected && styles.teamFocusDrawerCheckActive]}>
                                 {selected ? <Text style={styles.teamFocusDrawerCheckMark}>✓</Text> : null}
@@ -1443,6 +1449,43 @@ export default function TeamTab({
 
     if (teamFlowScreen !== 'dashboard') {
       return renderTeamRouteScreen(teamFlowScreen);
+    }
+
+    // ── No-team empty state ──
+    if (teamMemberDirectory.length === 0 && !teamRosterName) {
+      return (
+        <View style={styles.noTeamWrap}>
+          <View style={styles.noTeamHero}>
+            <Text style={styles.noTeamEmoji}>🏟️</Text>
+            <Text style={styles.noTeamTitle}>Build Your Team</Text>
+            <Text style={styles.noTeamSub}>
+              Create a team to track KPIs together, run team challenges, and keep everyone accountable.
+            </Text>
+          </View>
+          <View style={styles.noTeamFeatures}>
+            {[
+              { icon: '📊', label: 'Shared KPI tracking', sub: 'Set focus KPIs your whole team logs daily' },
+              { icon: '🏆', label: 'Team challenges', sub: 'Compete together with leaderboards and goals' },
+              { icon: '💬', label: 'Team chat', sub: 'Built-in messaging for your whole roster' },
+              { icon: '📈', label: 'Health dashboard', sub: 'See who\'s on track, who needs support' },
+            ].map((f) => (
+              <View key={f.label} style={styles.noTeamFeatureRow}>
+                <Text style={styles.noTeamFeatureIcon}>{f.icon}</Text>
+                <View style={styles.noTeamFeatureCopy}>
+                  <Text style={styles.noTeamFeatureLabel}>{f.label}</Text>
+                  <Text style={styles.noTeamFeatureSub}>{f.sub}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity style={styles.noTeamCtaBtn} onPress={handleOpenInviteCodeEntry}>
+            <Text style={styles.noTeamCtaBtnText}>Join a Team with Invite Code</Text>
+          </TouchableOpacity>
+          <Text style={styles.noTeamCtaHint}>
+            Team creation requires a Teams subscription. Ask your team leader for an invite code to join an existing team.
+          </Text>
+        </View>
+      );
     }
 
     return (
@@ -3380,5 +3423,80 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     alignItems: 'center',
-  }
+  },
+  noTeamWrap: {
+    paddingHorizontal: 4,
+    paddingTop: 8,
+    gap: 20,
+  },
+  noTeamHero: {
+    alignItems: 'center',
+    backgroundColor: '#f0f6ff',
+    borderRadius: 20,
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    borderWidth: 1,
+    borderColor: '#d7e4f5',
+  },
+  noTeamEmoji: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  noTeamTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#1e2a47',
+    textAlign: 'center',
+  },
+  noTeamSub: {
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#5b6d8e',
+    textAlign: 'center',
+  },
+  noTeamFeatures: {
+    gap: 14,
+    paddingHorizontal: 4,
+  },
+  noTeamFeatureRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  noTeamFeatureIcon: {
+    fontSize: 22,
+    marginTop: 2,
+  },
+  noTeamFeatureCopy: {
+    flex: 1,
+  },
+  noTeamFeatureLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1e2a47',
+  },
+  noTeamFeatureSub: {
+    fontSize: 12,
+    color: '#6b7fa0',
+    marginTop: 1,
+  },
+  noTeamCtaBtn: {
+    backgroundColor: '#2f5fd0',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  noTeamCtaBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  noTeamCtaHint: {
+    textAlign: 'center',
+    fontSize: 12,
+    color: '#8d95a5',
+    lineHeight: 17,
+    paddingHorizontal: 16,
+  },
 });

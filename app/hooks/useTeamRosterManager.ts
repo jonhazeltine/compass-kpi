@@ -64,6 +64,7 @@ export interface TeamRosterManagerState {
   teamInviteCodeBusy: boolean;
   teamInviteCodeNotice: string | null;
   teamInviteCodeValue: string | null;
+  teamFocusKpiIdsFromServer: string[];
   /* derived */
   teamRuntimeCandidateIds: string[];
   teamRuntimeId: string | null;
@@ -86,6 +87,7 @@ export interface TeamRosterManagerActions {
   createTeamInviteCode: () => Promise<void>;
   leaveCurrentTeam: () => Promise<void>;
   removeTeamMember: (targetUserId: string, targetName: string) => Promise<void>;
+  saveTeamFocusKpiIds: (kpiIds: string[]) => Promise<void>;
   lastTeamRosterFetchAtRef: React.MutableRefObject<number>;
 }
 
@@ -114,6 +116,7 @@ export function useTeamRosterManager(
   const [teamRosterName, setTeamRosterName] = useState<string | null>(null);
   const [teamRosterError, setTeamRosterError] = useState<string | null>(null);
   const [teamRosterTeamId, setTeamRosterTeamId] = useState<string | null>(null);
+  const [teamFocusKpiIdsFromServer, setTeamFocusKpiIdsFromServer] = useState<string[]>([]);
   const [teamProfileMemberId, setTeamProfileMemberId] = useState<string | null>(null);
   const [teamMembershipMutationBusy, setTeamMembershipMutationBusy] = useState(false);
   const [teamMembershipMutationNotice, setTeamMembershipMutationNotice] = useState<string | null>(null);
@@ -198,6 +201,9 @@ export function useTeamRosterManager(
         setTeamRosterName(body.team?.name ? String(body.team.name) : null);
         teamIdentitySetAvatar(String(body.team?.identity_avatar ?? '🛡️').trim() || '🛡️');
         teamIdentitySetBackground(String(body.team?.identity_background ?? '#dff0da').trim() || '#dff0da');
+        setTeamFocusKpiIdsFromServer(
+          Array.isArray(body.team?.focus_kpi_ids) ? body.team!.focus_kpi_ids!.map(String) : []
+        );
         setTeamRosterTeamId(resolvedTeamId || candidateTeamId);
         setTeamRosterError(null);
         return;
@@ -392,6 +398,23 @@ export function useTeamRosterManager(
     [fetchDashboard, fetchTeamRoster, resolveCurrentTeamContextId, accessToken],
   );
 
+  // ── save team focus KPI selection (leader only) ──────────────────
+  const saveTeamFocusKpiIds = useCallback(async (kpiIds: string[]) => {
+    const token = accessToken;
+    const teamId = resolveCurrentTeamContextId();
+    if (!token || !teamId) return;
+    setTeamFocusKpiIdsFromServer(kpiIds);
+    try {
+      await fetch(`${API_URL}/teams/${encodeURIComponent(teamId)}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: teamRosterName ?? 'Team', focus_kpi_ids: kpiIds }),
+      });
+    } catch (err) {
+      console.error('[saveTeamFocusKpiIds] failed:', err);
+    }
+  }, [accessToken, resolveCurrentTeamContextId, teamRosterName]);
+
   return {
     // state
     teamFlowScreen,
@@ -405,6 +428,7 @@ export function useTeamRosterManager(
     teamInviteCodeBusy,
     teamInviteCodeNotice,
     teamInviteCodeValue,
+    teamFocusKpiIdsFromServer,
     // derived
     teamRuntimeCandidateIds,
     teamRuntimeId,
@@ -425,6 +449,7 @@ export function useTeamRosterManager(
     createTeamInviteCode,
     leaveCurrentTeam,
     removeTeamMember,
+    saveTeamFocusKpiIds,
     lastTeamRosterFetchAtRef,
   };
 }

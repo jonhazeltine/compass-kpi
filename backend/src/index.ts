@@ -7903,7 +7903,7 @@ app.get("/teams/:id", async (req, res) => {
 
     const { data: team, error: teamError } = await dataClient
       .from("teams")
-      .select("id,name,identity_avatar,identity_background,created_by,created_at,updated_at")
+      .select("id,name,identity_avatar,identity_background,focus_kpi_ids,created_by,created_at,updated_at")
       .eq("id", teamId)
       .single();
     if (teamError) {
@@ -7991,6 +7991,7 @@ app.patch("/teams/:id", async (req, res) => {
       name: string;
       identity_avatar?: string;
       identity_background?: string;
+      focus_kpi_ids?: unknown;
       updated_at: string;
     } = {
       name: payloadCheck.payload.name,
@@ -8002,12 +8003,15 @@ app.patch("/teams/:id", async (req, res) => {
     if (payloadCheck.payload.identity_background) {
       updatePayload.identity_background = payloadCheck.payload.identity_background;
     }
+    if (Array.isArray((req.body as Record<string, unknown>)?.focus_kpi_ids)) {
+      updatePayload.focus_kpi_ids = (req.body as Record<string, unknown>).focus_kpi_ids;
+    }
 
     const { data: team, error: updateError } = await dataClient
       .from("teams")
       .update(updatePayload)
       .eq("id", teamId)
-      .select("id,name,identity_avatar,identity_background,created_by,created_at,updated_at")
+      .select("id,name,identity_avatar,identity_background,focus_kpi_ids,created_by,created_at,updated_at")
       .single();
 
     if (updateError) {
@@ -8067,6 +8071,27 @@ app.post("/teams/:id/members", async (req, res) => {
 
     if (membershipError) {
       return handleSupabaseError(res, "Failed to add team member", membershipError);
+    }
+
+    // ── Auto-add new member to all active team channels ──
+    try {
+      const { data: teamChannels } = await dataClient
+        .from("channels")
+        .select("id")
+        .eq("team_id", teamId)
+        .eq("is_active", true);
+      if (teamChannels && teamChannels.length > 0) {
+        const channelMemberRows = teamChannels.map((ch: { id: string }) => ({
+          channel_id: ch.id,
+          user_id: payloadCheck.payload.user_id,
+          role: "member",
+        }));
+        await dataClient
+          .from("channel_memberships")
+          .upsert(channelMemberRows, { onConflict: "channel_id,user_id" });
+      }
+    } catch (channelSyncErr) {
+      console.error("[add-member] team channel auto-join failed:", channelSyncErr);
     }
 
     return res.status(201).json({ membership });
@@ -8936,6 +8961,26 @@ app.post("/api/invites/redeem", async (req, res) => {
           );
         if (membershipInsertError) {
           return handleSupabaseError(res, "Failed to join team from invite code", membershipInsertError);
+        }
+        // ── Auto-add new member to all active team channels ──
+        try {
+          const { data: teamChannels } = await dataClient
+            .from("channels")
+            .select("id")
+            .eq("team_id", targetId)
+            .eq("is_active", true);
+          if (teamChannels && teamChannels.length > 0) {
+            const channelMemberRows = teamChannels.map((ch: { id: string }) => ({
+              channel_id: ch.id,
+              user_id: auth.user.id,
+              role: "member",
+            }));
+            await dataClient
+              .from("channel_memberships")
+              .upsert(channelMemberRows, { onConflict: "channel_id,user_id" });
+          }
+        } catch (channelSyncErr) {
+          console.error("[invite-redeem] team channel auto-join failed:", channelSyncErr);
         }
       }
       routeTarget = { tab: "team", screen: "dashboard", target_id: targetId };
