@@ -100,11 +100,6 @@ export default function BottomTabBar({
               ) : (
                 <>
                   <View style={[styles.bottomIconSvgWrap, isActive && { backgroundColor: bottomTabTheme.activeBg }]}>
-                    {tab === 'comms' && unreadMessagesBadgeLabel ? (
-                      <View style={styles.bottomNavUnreadBadge}>
-                        <Text style={styles.bottomNavUnreadBadgeText}>{unreadMessagesBadgeLabel}</Text>
-                      </View>
-                    ) : null}
                     <TabIcon
                       width={40}
                       height={40}

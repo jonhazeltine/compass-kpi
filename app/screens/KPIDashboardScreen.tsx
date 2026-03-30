@@ -7986,7 +7986,20 @@ export default function KPIDashboardScreen({
       <CoinOverlay coins={activeCoinFx} />
 
       {showUniversalAvatarTrigger ? (
-        <View style={styles.avatarGlobalWrap}>
+        <View style={[styles.avatarGlobalWrap, { top: -(insets.top - 12) }]}>
+          <TouchableOpacity
+            style={styles.messagesBellBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Open messages"
+            onPress={() => onBottomTabPress('comms')}
+          >
+            {(() => { const MsgIcon = bottomTabIconSvgByKey.comms; return <MsgIcon width={18} height={18} color={activeTab === 'comms' ? '#1f5fe2' : '#6b7280'} />; })()}
+            {unreadMessagesBadgeLabel ? (
+              <View style={styles.messagesBellBadge}>
+                <Text style={styles.messagesBellBadgeText}>{unreadMessagesBadgeLabel}</Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.avatarBtn}
             accessibilityRole="button"
@@ -9725,8 +9738,8 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   avatarBtn: {
-    width: 34,
-    height: 34,
+    width: 28,
+    height: 28,
     borderRadius: 999,
     backgroundColor: '#dce8ff',
     borderWidth: 1,
@@ -9736,14 +9749,48 @@ const styles = StyleSheet.create({
   },
   avatarGlobalWrap: {
     position: 'absolute',
-    top: 8,
     right: 16,
     zIndex: 1600,
     elevation: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  messagesBellBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: '#f0f4fa',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messagesBellBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 15,
+    height: 15,
+    borderRadius: 999,
+    paddingHorizontal: 3,
+    backgroundColor: '#ef4444',
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 25,
+  },
+  messagesBellBadgeText: {
+    color: '#ffffff',
+    fontSize: 8,
+    lineHeight: 10,
+    fontWeight: '800',
+    letterSpacing: 0.1,
   },
   avatarText: {
     color: '#1f5fe2',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '700',
   },
   gridWrap: {

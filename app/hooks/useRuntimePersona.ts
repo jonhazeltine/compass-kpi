@@ -231,8 +231,8 @@ export function useRuntimePersona(
     !isCoachRuntimeOperator && !isChallengeSponsorRuntime && !hasExplicitTeamRole && hasExplicitSoloRole;
 
   const bottomTabOrder = useMemo<BottomTab[]>(
-    () => (isSoloPersona ? ['comms', 'challenge', 'home', 'logs', 'coach'] : ['comms', 'team', 'home', 'logs', 'coach']),
-    [isSoloPersona],
+    () => ['challenge', 'team', 'home', 'logs', 'coach'],
+    [],
   );
 
   const effectiveTeamPersonaVariant = currentUserTeamRoleFromRoster ?? teamPersonaVariant;

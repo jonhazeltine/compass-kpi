@@ -97,7 +97,7 @@ export default function VPTreeScreen({ onBack }: VPTreeScreenProps) {
   );
 
   // ── Zoom hook ───────────────────────────────────────────────────────────────
-  const { zoomTransform, zoomTo, isZooming } = useZoomAnimation(canvasWidth, canvasHeight);
+  const { zoomTransform, zoomOriginX, zoomOriginY, zoomTo, isZooming } = useZoomAnimation(canvasWidth, canvasHeight);
 
   // ── Shared values ────────────────────────────────────────────────────────────
 
@@ -421,6 +421,9 @@ export default function VPTreeScreen({ onBack }: VPTreeScreenProps) {
           tierFlashOpacity={tierFlashOpacity}
           tierScale={tierScale}
           zoomTransform={zoomTransform}
+          zoomOriginX={zoomOriginX}
+          zoomOriginY={zoomOriginY}
+          isZooming={isZooming}
         />
       </View>
 

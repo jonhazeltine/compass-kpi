@@ -229,14 +229,6 @@ export default function TeamTab({
 }: TeamTabProps) {
   return (
 <View style={styles.challengeSurfaceWrap}>
-  <View style={styles.teamChallengeTopTabsRow}>
-    <View style={[styles.teamChallengeTopTab, styles.teamChallengeTopTabActive]}>
-      <Text style={[styles.teamChallengeTopTabText, styles.teamChallengeTopTabTextActive]}>Team</Text>
-    </View>
-    <TouchableOpacity style={styles.teamChallengeTopTab} onPress={() => setActiveTab('challenge')}>
-      <Text style={styles.teamChallengeTopTabText}>Challenges</Text>
-    </TouchableOpacity>
-  </View>
   {(() => {
     const teamRouteMeta: Record<Exclude<TeamFlowScreen, 'dashboard'>, { title: string; figmaNode: string }> = {
       invite_member: { title: 'Invite Member', figmaNode: '173-4448' },
@@ -628,10 +620,34 @@ export default function TeamTab({
           <View style={styles.teamIdentityCopy}>
             <Text style={styles.teamIdentityName}>{teamIdentityName}</Text>
             <Text style={styles.teamIdentitySub}>
-              {teamMemberCount} Member{teamMemberCount === 1 ? '' : 's'} | {teamActiveChallengeCount} Ongoing challenge{teamActiveChallengeCount === 1 ? '' : 's'}
+              {teamMemberCount} Member{teamMemberCount === 1 ? '' : 's'} · {teamActiveChallengeCount} Active challenge{teamActiveChallengeCount === 1 ? '' : 's'}
             </Text>
           </View>
         </View>
+
+        {/* Stats strip */}
+        <View style={styles.teamHeroStatsRow}>
+          <View style={styles.teamHeroStat}>
+            <View style={[styles.teamHeroStatDot, { backgroundColor: '#22c55e' }]} />
+            <Text style={styles.teamHeroStatValue}>{teamLeaderStatusCounts.onTrack}</Text>
+            <Text style={styles.teamHeroStatLabel}>On Track</Text>
+          </View>
+          <View style={styles.teamHeroStat}>
+            <View style={[styles.teamHeroStatDot, { backgroundColor: '#f59e0b' }]} />
+            <Text style={styles.teamHeroStatValue}>{teamLeaderStatusCounts.watch}</Text>
+            <Text style={styles.teamHeroStatLabel}>Watch</Text>
+          </View>
+          <View style={styles.teamHeroStat}>
+            <View style={[styles.teamHeroStatDot, { backgroundColor: '#ef4444' }]} />
+            <Text style={styles.teamHeroStatValue}>{teamLeaderStatusCounts.atRisk}</Text>
+            <Text style={styles.teamHeroStatLabel}>At Risk</Text>
+          </View>
+          <View style={[styles.teamHeroStat, styles.teamHeroStatHighlight]}>
+            <Text style={[styles.teamHeroStatValue, { color: teamOverallProgressPct >= 86 ? '#16a34a' : teamOverallProgressPct >= 72 ? '#d97706' : '#dc2626' }]}>{teamOverallProgressPct}%</Text>
+            <Text style={styles.teamHeroStatLabel}>Health</Text>
+          </View>
+        </View>
+
         <View style={styles.teamIdentityCardActions}>
           <TouchableOpacity
             style={styles.teamIdentityCardChatBtn}
@@ -1836,33 +1852,6 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.55,
   },
-  teamChallengeTopTab: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#d7e0ef',
-    borderRadius: 999,
-    backgroundColor: '#f7f9fd',
-    paddingVertical: 9,
-    alignItems: 'center',
-  },
-  teamChallengeTopTabActive: {
-    backgroundColor: '#2f67da',
-    borderColor: '#2f67da',
-  },
-  teamChallengeTopTabText: {
-    color: '#57709a',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  teamChallengeTopTabTextActive: {
-    color: '#fff',
-  },
-  teamChallengeTopTabsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 10,
-    paddingRight: 56,
-  },
   teamChallengesActiveBadge: {
     borderRadius: 999,
     backgroundColor: '#a7df5f',
@@ -2280,6 +2269,44 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 4,
     elevation: 1,
+  },
+  teamHeroStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    gap: 0,
+  },
+  teamHeroStat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  teamHeroStatHighlight: {
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(0,0,0,0.08)',
+    marginLeft: 2,
+    paddingLeft: 2,
+  },
+  teamHeroStatDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    marginBottom: 1,
+  },
+  teamHeroStatValue: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#1e2a47',
+  },
+  teamHeroStatLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#6b7fa0',
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
   },
   teamIdentityCardActions: {
     flexDirection: 'row',

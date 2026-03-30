@@ -71,6 +71,9 @@ interface TreeCanvasProps {
   tierScale: SharedValue<number>;
   /** Optional zoom transform — wraps entire scene when provided */
   zoomTransform?: SharedValue<any>;
+  zoomOriginX?: SharedValue<number>;
+  zoomOriginY?: SharedValue<number>;
+  isZooming?: SharedValue<number>;
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────────
@@ -260,6 +263,9 @@ export function TreeCanvas({
   tierFlashOpacity,
   tierScale,
   zoomTransform,
+  zoomOriginX,
+  zoomOriginY,
+  isZooming,
 }: TreeCanvasProps) {
   const groundY = height * 0.85;
   const stageConfig = VP_STAGES[stage];

@@ -258,27 +258,6 @@ export default function ChallengeTab({
 }: ChallengeTabProps) {
   return (
 <>
-    {!isSoloPersona ? (
-      <TouchableOpacity
-        style={styles.coachChallengesBackBtn}
-        onPress={() => {
-          setCoachTabScreen(coachTabDefault);
-          setActiveTab('coach');
-        }}
-      >
-        <Text style={styles.coachChallengesBackText}>← Back to Coach</Text>
-      </TouchableOpacity>
-    ) : null}
-              {!isSoloPersona ? (
-  <View style={styles.teamChallengeTopTabsRow}>
-    <TouchableOpacity style={styles.teamChallengeTopTab} onPress={() => setActiveTab('team')}>
-      <Text style={styles.teamChallengeTopTabText}>Team</Text>
-    </TouchableOpacity>
-    <View style={[styles.teamChallengeTopTab, styles.teamChallengeTopTabActive]}>
-      <Text style={[styles.teamChallengeTopTabText, styles.teamChallengeTopTabTextActive]}>Challenges</Text>
-    </View>
-  </View>
-              ) : null}
               {challengeFlowScreen === 'explore' ? (
   <View style={styles.challengeExploreShell}>
     <View style={styles.challengeExploreHero}>
@@ -332,52 +311,104 @@ export default function ChallengeTab({
               ) : challengeFlowScreen === 'list' ? (
   <>
     <View style={styles.challengeListShell}>
-      {/* ── Hero Card (replaces old header) ── */}
-      <View style={styles.challengeHeroCard}>
-        <View style={styles.challengeHeroAccent} />
-        <View style={styles.challengeHeroBody}>
-          <View style={styles.challengeHeroTopRow}>
-            <Text style={styles.challengeHeroEyebrow}>
-              {challengeStateTab === 'active' ? '🏆 Active Challenges' : challengeStateTab === 'upcoming' ? '📅 Upcoming' : '✅ Completed'}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={styles.challengeHeroCount}>{challengeCurrentStateRows.length}</Text>
-              {isSoloPersona ? (
+      {/* ── Hero Card ── */}
+      {(() => {
+        const activeRows = challengeListItems.filter((r) => r.bucket === 'active' && r.joined);
+        const topChallenge = activeRows[0] ?? null;
+        const myRank = topChallenge?.leaderboardPreview?.find((e) => e.rank <= 3) ?? null;
+        const activeDaysLeft = topChallenge
+          ? Math.max(0, Math.ceil((new Date(String(topChallenge.endAtIso ?? '')).getTime() - Date.now()) / 86400000))
+          : 0;
+        const progressPct = topChallenge ? Math.min(100, Math.max(0, topChallenge.progressPct)) : 0;
+        return (
+          <View style={styles.challengeHeroCard}>
+            <View style={styles.challengeHeroAccent} />
+            <View style={styles.challengeHeroBody}>
+              {/* Top row: eyebrow + actions */}
+              <View style={styles.challengeHeroTopRow}>
+                <Text style={styles.challengeHeroEyebrow}>
+                  {challengeStateTab === 'active' ? 'CHALLENGES' : challengeStateTab === 'upcoming' ? 'UPCOMING' : 'COMPLETED'}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  {isSoloPersona ? (
+                    <TouchableOpacity style={styles.challengeListCreateBtn} onPress={handleOpenInviteCodeEntry}>
+                      <Text style={styles.challengeListCreateBtnText}>Code</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {challengeCreateAllowed ? (
+                    <TouchableOpacity
+                      style={[styles.challengeListCreateBtn, styles.challengeListCreateBtnPrimary]}
+                      onPress={() => openChallengeWizard(isSoloPersona ? 'mini' : 'team')}
+                    >
+                      <Text style={[styles.challengeListCreateBtnText, styles.challengeListCreateBtnTextPrimary]}>+ New</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
+
+              {/* Stats row */}
+              <View style={styles.challengeHeroStatsRow}>
+                <View style={styles.challengeHeroStat}>
+                  <Text style={styles.challengeHeroStatValue}>{activeRows.length}</Text>
+                  <Text style={styles.challengeHeroStatLabel}>Active</Text>
+                </View>
+                <View style={styles.challengeHeroStatDivider} />
+                <View style={styles.challengeHeroStat}>
+                  <Text style={styles.challengeHeroStatValue}>{challengeListItems.filter((r) => r.bucket === 'upcoming').length}</Text>
+                  <Text style={styles.challengeHeroStatLabel}>Upcoming</Text>
+                </View>
+                <View style={styles.challengeHeroStatDivider} />
+                <View style={styles.challengeHeroStat}>
+                  <Text style={styles.challengeHeroStatValue}>{challengeListItems.filter((r) => r.bucket === 'completed').length}</Text>
+                  <Text style={styles.challengeHeroStatLabel}>Done</Text>
+                </View>
+                {topChallenge ? (
+                  <>
+                    <View style={styles.challengeHeroStatDivider} />
+                    <View style={styles.challengeHeroStat}>
+                      <Text style={[styles.challengeHeroStatValue, { color: activeDaysLeft <= 3 ? '#dc2626' : '#4361c2' }]}>{activeDaysLeft}d</Text>
+                      <Text style={styles.challengeHeroStatLabel}>Left</Text>
+                    </View>
+                  </>
+                ) : null}
+              </View>
+
+              {/* Active challenge spotlight */}
+              {topChallenge ? (
                 <TouchableOpacity
-                  style={styles.challengeListCreateBtn}
-                  onPress={handleOpenInviteCodeEntry}
-                >
-                  <Text style={styles.challengeListCreateBtnText}>Code</Text>
-                </TouchableOpacity>
-              ) : null}
-              {challengeCreateAllowed ? (
-                <TouchableOpacity
-                  style={styles.challengeListCreateBtn}
+                  style={styles.challengeHeroSpotlight}
+                  activeOpacity={0.8}
                   onPress={() => {
-                    openChallengeWizard(isSoloPersona ? 'mini' : 'team');
+                    setChallengeSelectedId(topChallenge.id);
+                    setChallengeFlowScreen('details');
                   }}
                 >
-                  <Text style={styles.challengeListCreateBtnText}>Create</Text>
+                  <View style={styles.challengeHeroSpotlightTopRow}>
+                    <Text numberOfLines={1} style={styles.challengeHeroSpotlightTitle}>{topChallenge.title}</Text>
+                    {myRank ? (
+                      <View style={styles.challengeHeroRankBadge}>
+                        <Text style={styles.challengeHeroRankBadgeText}>#{myRank.rank}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <View style={styles.challengeHeroProgressTrack}>
+                    <View style={[styles.challengeHeroProgressFill, { width: `${progressPct}%` as `${number}%` }]} />
+                  </View>
+                  <Text style={styles.challengeHeroSpotlightSub}>{progressPct}% complete · {topChallenge.participants} participant{topChallenge.participants === 1 ? '' : 's'}</Text>
                 </TouchableOpacity>
-              ) : null}
+              ) : (
+                <Text style={styles.challengeHeroSub}>
+                  {challengeStateTab === 'active'
+                    ? 'No active challenges — start or join one!'
+                    : challengeStateTab === 'upcoming'
+                      ? 'Preview upcoming challenges and join early.'
+                      : 'Review past challenge results and rankings.'}
+                </Text>
+              )}
             </View>
           </View>
-          <Text style={styles.challengeHeroTitle}>
-            {challengeStateTab === 'active'
-              ? 'Compete, track, and win'
-              : challengeStateTab === 'upcoming'
-                ? 'Coming up next'
-                : 'Completed challenge results'}
-          </Text>
-          <Text style={styles.challengeHeroSub}>
-            {challengeStateTab === 'active'
-              ? 'Tap a challenge to preview or open your progress.'
-              : challengeStateTab === 'upcoming'
-                ? 'Preview upcoming challenges and join early.'
-                : 'Review completed challenge results and rankings.'}
-          </Text>
-        </View>
-      </View>
+        );
+      })()}
       <View style={styles.challengeMemberSegmentRow}>
         {([
           { key: 'upcoming', label: 'Upcoming' },
@@ -2356,15 +2387,15 @@ const styles = StyleSheet.create({
     columnGap: 0,
   },
   challengeHeroAccent: {
-    height: 6,
+    height: 4,
     backgroundColor: '#4361c2',
   },
   challengeHeroBody: {
     backgroundColor: '#f0f4ff',
     paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 14,
-    gap: 4,
+    paddingTop: 10,
+    paddingBottom: 12,
+    gap: 8,
   },
   challengeHeroCard: {
     borderRadius: 16,
@@ -2377,34 +2408,100 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     elevation: 3,
   },
-  challengeHeroCount: {
-    color: '#4361c2',
-    fontSize: 20,
-    fontWeight: '900',
-  },
   challengeHeroEyebrow: {
     color: '#3d5ab5',
     fontSize: 11,
     fontWeight: '800',
-    textTransform: 'uppercase',
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.8,
+  },
+  challengeHeroStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 0,
+  },
+  challengeHeroStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  challengeHeroStatValue: {
+    color: '#1e2a47',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  challengeHeroStatLabel: {
+    color: '#6b7fa0',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase' as const,
     letterSpacing: 0.3,
+    marginTop: 1,
+  },
+  challengeHeroStatDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: '#c8d6f0',
+  },
+  challengeHeroSpotlight: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#dde5f3',
+    gap: 6,
+  },
+  challengeHeroSpotlightTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  challengeHeroSpotlightTitle: {
+    flex: 1,
+    color: '#1e2a47',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  challengeHeroRankBadge: {
+    backgroundColor: '#eef2ff',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: '#c8d6f0',
+  },
+  challengeHeroRankBadgeText: {
+    color: '#4361c2',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  challengeHeroProgressTrack: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#dde5f3',
+    overflow: 'hidden',
+  },
+  challengeHeroProgressFill: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#4361c2',
+  },
+  challengeHeroSpotlightSub: {
+    color: '#6b7fa0',
+    fontSize: 11,
+    fontWeight: '600',
   },
   challengeHeroSub: {
     color: '#5b6d8e',
     fontSize: 12,
     lineHeight: 17,
   },
-  challengeHeroTitle: {
-    color: '#1e2a47',
-    fontSize: 19,
-    fontWeight: '800',
-    lineHeight: 24,
-  },
   challengeHeroTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 2,
+    marginBottom: 0,
   },
   challengeJoinErrorText: {
     color: '#b91c1c',
@@ -2497,16 +2594,25 @@ const styles = StyleSheet.create({
   },
   challengeListCreateBtn: {
     borderRadius: 999,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#e8edf6',
     paddingHorizontal: 10,
     paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#c8d6f0',
+  },
+  challengeListCreateBtnPrimary: {
+    backgroundColor: '#2f5fd0',
+    borderColor: '#2f5fd0',
   },
   challengeListCreateBtnText: {
-    color: '#fff',
+    color: '#3d5ab5',
     fontSize: 10,
     fontWeight: '800',
-    textTransform: 'uppercase',
+    textTransform: 'uppercase' as const,
     letterSpacing: 0.2,
+  },
+  challengeListCreateBtnTextPrimary: {
+    color: '#fff',
   },
   challengeListEmptyFilterCard: {
     borderRadius: 14,
@@ -3207,15 +3313,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  coachChallengesBackBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-  },
-  coachChallengesBackText: {
-    color: '#3366cc',
-    fontWeight: '600',
-    fontSize: 14,
-  },
   disabled: {
     opacity: 0.55,
   },
@@ -3331,32 +3428,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#355ca8',
-  },
-  teamChallengeTopTab: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#d7e0ef',
-    borderRadius: 999,
-    backgroundColor: '#f7f9fd',
-    paddingVertical: 9,
-    alignItems: 'center',
-  },
-  teamChallengeTopTabActive: {
-    backgroundColor: '#2f67da',
-    borderColor: '#2f67da',
-  },
-  teamChallengeTopTabText: {
-    color: '#57709a',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  teamChallengeTopTabTextActive: {
-    color: '#fff',
-  },
-  teamChallengeTopTabsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 10,
-    paddingRight: 56,
   },
 });
