@@ -25,6 +25,7 @@ interface Props {
   endAt: string;
   setEndAt: (v: string) => void;
   phases: ChallengeTemplatePhase[];
+  onRenamephase?: (phaseOrder: number, name: string) => void;
   onNext: () => void;
 }
 
@@ -38,6 +39,7 @@ export default function WizardGoalTimeline({
   endAt,
   setEndAt,
   phases,
+  onRenamephase,
   onNext,
 }: Props) {
   const durationDays = useMemo(() => {
@@ -216,7 +218,7 @@ export default function WizardGoalTimeline({
 
       {/* Phase timeline (if template has phases) */}
       {phases.length > 0 && (
-        <WizardPhaseTimeline phases={phases} totalDays={durationDays} />
+        <WizardPhaseTimeline phases={phases} totalDays={durationDays} onRenamephase={onRenamephase} />
       )}
 
       {/* Continue */}

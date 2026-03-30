@@ -148,9 +148,11 @@ export default function ChallengeWizard({
     [templates, wizardTemplateId],
   );
 
-  const phases: ChallengeTemplatePhase[] = useMemo(() => {
+  const [wizardPhases, setWizardPhases] = useState<ChallengeTemplatePhase[]>([]);
+
+  // Seed phases from template when template changes
+  const templatePhases: ChallengeTemplatePhase[] = useMemo(() => {
     if (!selectedTemplate) return [];
-    // Read phases from template (works for both API and fallback templates)
     const raw = (selectedTemplate as any).phases;
     if (!Array.isArray(raw) || raw.length === 0) return [];
     return raw.map((p: any) => ({
@@ -160,6 +162,19 @@ export default function ChallengeWizard({
       kpi_goals: p.kpi_goals ?? [],
     }));
   }, [selectedTemplate]);
+
+  // Sync when template changes
+  React.useEffect(() => {
+    setWizardPhases(templatePhases);
+  }, [templatePhases]);
+
+  const phases = wizardPhases;
+
+  const updatePhaseName = useCallback((phaseOrder: number, name: string) => {
+    setWizardPhases((prev) =>
+      prev.map((p) => (p.phase_order === phaseOrder ? { ...p, phase_name: name } : p))
+    );
+  }, []);
 
   const handleSelectTemplate = useCallback(
     (template: ChallengeTemplateDefaultRow) => {
@@ -271,6 +286,7 @@ export default function ChallengeWizard({
             endAt={wizardEndAt}
             setEndAt={setWizardEndAt}
             phases={phases}
+            onRenamephase={updatePhaseName}
             onNext={goNext}
           />
         </View>
@@ -282,6 +298,7 @@ export default function ChallengeWizard({
             setGoals={setWizardGoals}
             allSelectableKpis={allSelectableKpis}
             phases={phases.length > 0 ? phases : undefined}
+            onRenamephase={updatePhaseName}
             onNext={goNext}
           />
         </View>

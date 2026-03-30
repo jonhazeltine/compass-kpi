@@ -27,6 +27,7 @@ interface Props {
   setGoals: (v: ChallengeWizardGoalDraft[]) => void;
   allSelectableKpis: DashboardPayload['loggable_kpis'];
   phases?: ChallengeTemplatePhase[];
+  onRenamephase?: (phaseOrder: number, name: string) => void;
   onNext: () => void;
 }
 
@@ -38,10 +39,11 @@ const TYPE_META: Record<string, { label: string; order: number }> = {
   VP: { label: 'Vitality KPIs', order: 2 },
 };
 
-export default function WizardKpiSelection({ goals, setGoals, allSelectableKpis, phases, onNext }: Props) {
+export default function WizardKpiSelection({ goals, setGoals, allSelectableKpis, phases, onRenamephase, onNext }: Props) {
   const [showMore, setShowMore] = useState(false);
   const hasPhases = (phases?.length ?? 0) > 0;
   const [activePhaseOrder, setActivePhaseOrder] = useState(phases?.[0]?.phase_order ?? 0);
+  const [editingPhaseName, setEditingPhaseName] = useState<number | null>(null);
 
   // For phased: filter goals to active phase. For non-phased: show all.
   const phaseGoals = useMemo(
@@ -139,32 +141,59 @@ export default function WizardKpiSelection({ goals, setGoals, allSelectableKpis,
 
       {/* Phase tabs */}
       {hasPhases && phases && (
-        <View style={styles.phaseTabRow}>
-          {phases.map((phase) => {
-            const active = activePhaseOrder === phase.phase_order;
-            const count = phaseKpiCounts.get(phase.phase_order) ?? 0;
-            return (
-              <TouchableOpacity
-                key={phase.phase_order}
-                style={[styles.phaseTab, active && styles.phaseTabActive]}
-                onPress={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  setActivePhaseOrder(phase.phase_order);
-                  setShowMore(false);
-                }}
-              >
-                <Text style={[styles.phaseTabText, active && styles.phaseTabTextActive]} numberOfLines={1}>
-                  {phase.phase_name}
-                </Text>
-                {count > 0 && (
-                  <View style={[styles.phaseTabBadge, active && styles.phaseTabBadgeActive]}>
-                    <Text style={[styles.phaseTabBadgeText, active && styles.phaseTabBadgeTextActive]}>{count}</Text>
-                  </View>
-                )}
+        <>
+          <View style={styles.phaseTabRow}>
+            {phases.map((phase) => {
+              const active = activePhaseOrder === phase.phase_order;
+              const count = phaseKpiCounts.get(phase.phase_order) ?? 0;
+              return (
+                <TouchableOpacity
+                  key={phase.phase_order}
+                  style={[styles.phaseTab, active && styles.phaseTabActive]}
+                  onPress={() => {
+                    if (active) {
+                      // Tap active tab again to rename
+                      setEditingPhaseName(phase.phase_order);
+                    } else {
+                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                      setActivePhaseOrder(phase.phase_order);
+                      setEditingPhaseName(null);
+                      setShowMore(false);
+                    }
+                  }}
+                >
+                  <Text style={[styles.phaseTabText, active && styles.phaseTabTextActive]} numberOfLines={1}>
+                    {phase.phase_name}{active ? ' ✎' : ''}
+                  </Text>
+                  {count > 0 && (
+                    <View style={[styles.phaseTabBadge, active && styles.phaseTabBadgeActive]}>
+                      <Text style={[styles.phaseTabBadgeText, active && styles.phaseTabBadgeTextActive]}>{count}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {editingPhaseName != null && onRenamephase && (
+            <View style={styles.phaseRenameRow}>
+              <TextInput
+                style={styles.phaseRenameInput}
+                value={phases.find((p) => p.phase_order === editingPhaseName)?.phase_name ?? ''}
+                onChangeText={(v) => onRenamephase(editingPhaseName, v)}
+                onBlur={() => setEditingPhaseName(null)}
+                onSubmitEditing={() => setEditingPhaseName(null)}
+                autoFocus
+                selectTextOnFocus
+                placeholder="Phase name"
+                placeholderTextColor={wiz.textMuted}
+                returnKeyType="done"
+              />
+              <TouchableOpacity onPress={() => setEditingPhaseName(null)}>
+                <Text style={styles.phaseRenameDone}>Done</Text>
               </TouchableOpacity>
-            );
-          })}
-        </View>
+            </View>
+          )}
+        </>
       )}
 
       {/* Selected Goals */}
@@ -320,6 +349,29 @@ const styles = StyleSheet.create({
   },
   phaseTabBadgeTextActive: {
     color: wiz.textOnPrimary,
+  },
+  phaseRenameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  phaseRenameInput: {
+    flex: 1,
+    backgroundColor: wiz.surface,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: wiz.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    fontWeight: '700',
+    color: wiz.textPrimary,
+  },
+  phaseRenameDone: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: wiz.primary,
   },
   section: { marginBottom: 16 },
   sectionTitle: { fontSize: 13, fontWeight: '700', color: wiz.textSecondary, marginBottom: 8 },

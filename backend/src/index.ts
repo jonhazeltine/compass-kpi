@@ -11813,13 +11813,15 @@ function validateChallengeCreatePayload(body: unknown):
     return { ok: false, status: 422, error: "template_id must be a string when provided" };
   }
   const rawKpiGoals = body.kpi_goals;
-  if (!Array.isArray(rawKpiGoals) || rawKpiGoals.length === 0) {
+  const hasPhases = Array.isArray(body.phases) && body.phases.length > 0;
+  if (!hasPhases && (!Array.isArray(rawKpiGoals) || rawKpiGoals.length === 0)) {
     return { ok: false, status: 422, error: "kpi_goals must include at least one KPI goal" };
   }
   const kpiGoals: ChallengeCreateKpiGoalPayload[] = [];
   const dedupeKpiIds = new Set<string>();
-  for (let index = 0; index < rawKpiGoals.length; index += 1) {
-    const rawGoal = rawKpiGoals[index];
+  const safeRawKpiGoals = Array.isArray(rawKpiGoals) ? rawKpiGoals : [];
+  for (let index = 0; index < safeRawKpiGoals.length; index += 1) {
+    const rawGoal = safeRawKpiGoals[index];
     if (!isRecord(rawGoal)) {
       return { ok: false, status: 422, error: "Each kpi_goals item must be an object" };
     }
