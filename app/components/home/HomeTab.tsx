@@ -863,6 +863,7 @@ const styles = StyleSheet.create({
     padding: 4,
     flexDirection: 'row',
     gap: 4,
+    marginRight: 70,
   },
   teamLogContextBanner: {
     borderRadius: 10,

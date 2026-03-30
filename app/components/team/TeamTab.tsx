@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Alert,
   Modal,
@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { Session } from '@supabase/supabase-js';
 import type {
   ChallengeFlowItem,
@@ -140,6 +141,52 @@ export interface TeamTabProps {
   // Card metrics (for team projected revenue)
   cardMetrics: HudRailCardMetrics;
 }
+
+function TeamInviteCodeCopyable({ notice }: { notice: string }) {
+  const [copied, setCopied] = useState(false);
+  const codeMatch = notice.match(/TEAM-[A-Z0-9-]+/);
+  const code = codeMatch ? codeMatch[0] : null;
+  const handleCopy = async () => {
+    if (!code) return;
+    await Clipboard.setStringAsync(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <View style={teamInviteCopyStyles.wrap}>
+      <Text style={teamInviteCopyStyles.notice}>{notice}</Text>
+      {code ? (
+        <TouchableOpacity style={teamInviteCopyStyles.copyBtn} onPress={handleCopy}>
+          <Text style={teamInviteCopyStyles.copyBtnText}>{copied ? 'Copied!' : 'Copy Code'}</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+const teamInviteCopyStyles = StyleSheet.create({
+  wrap: {
+    marginTop: 8,
+    gap: 8,
+  },
+  notice: {
+    color: '#2f67da',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  copyBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#2f67da',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  copyBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+});
 
 export default function TeamTab({
   session,
@@ -740,7 +787,7 @@ export default function TeamTab({
                 </>
               )}
               {teamInviteCodeNotice ? (
-                <Text style={styles.teamIdentityCardInlineNotice}>{teamInviteCodeNotice}</Text>
+                <TeamInviteCodeCopyable notice={teamInviteCodeNotice} />
               ) : null}
               {teamMembershipMutationNotice ? (
                 <Text style={styles.teamIdentityCardInlineNotice}>{teamMembershipMutationNotice}</Text>

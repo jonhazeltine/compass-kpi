@@ -361,9 +361,10 @@ export default function KPIDashboardScreen({
   onOpenInviteCode,
   onOpenVPTree,
   onOpenGPCity,
+  onOpenGallery,
   menuRouteTarget,
   onMenuRouteTargetConsumed,
-}: Props & { onOpenVPTree?: () => void; onOpenGPCity?: () => void; }) {
+}: Props & { onOpenVPTree?: () => void; onOpenGPCity?: () => void; onOpenGallery?: () => void }) {
   const { session } = useAuth();
   const { tier: entitlementTier, effectivePlan, can: entitlementCan, limit: entitlementLimitFromContext } = useEntitlements();
   const insets = useSafeAreaInsets();
@@ -7986,14 +7987,14 @@ export default function KPIDashboardScreen({
       <CoinOverlay coins={activeCoinFx} />
 
       {showUniversalAvatarTrigger ? (
-        <View style={[styles.avatarGlobalWrap, { top: -(insets.top - 12) }]}>
+        <View style={styles.topIconsPill}>
           <TouchableOpacity
             style={styles.messagesBellBtn}
             accessibilityRole="button"
             accessibilityLabel="Open messages"
             onPress={() => onBottomTabPress('comms')}
           >
-            {(() => { const MsgIcon = bottomTabIconSvgByKey.comms; return <MsgIcon width={18} height={18} color={activeTab === 'comms' ? '#1f5fe2' : '#6b7280'} />; })()}
+            {(() => { const MsgIcon = bottomTabIconSvgByKey.comms; return <MsgIcon width={17} height={17} color={activeTab === 'comms' ? '#1f5fe2' : '#6b7280'} />; })()}
             {unreadMessagesBadgeLabel ? (
               <View style={styles.messagesBellBadge}>
                 <Text style={styles.messagesBellBadgeText}>{unreadMessagesBadgeLabel}</Text>
@@ -9738,31 +9739,38 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   avatarBtn: {
-    width: 28,
-    height: 28,
+    width: 26,
+    height: 26,
     borderRadius: 999,
     backgroundColor: '#dce8ff',
-    borderWidth: 1,
-    borderColor: '#c0d4ff',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarGlobalWrap: {
+  topIconsPill: {
     position: 'absolute',
-    right: 16,
+    top: 6,
+    right: 14,
     zIndex: 1600,
     elevation: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    backgroundColor: 'rgba(246,247,249,0.85)',
+    borderRadius: 999,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#1a2138',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   messagesBellBtn: {
-    width: 28,
-    height: 28,
+    width: 26,
+    height: 26,
     borderRadius: 999,
-    backgroundColor: '#f0f4fa',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
