@@ -234,6 +234,7 @@ type ChallengeCreatePayload = {
   end_at: string;
   template_id?: string;
   kpi_goals?: ChallengeCreateKpiGoalPayload[];
+  phases?: ChallengeCreatePhasePayload[];
   late_join_includes_history?: boolean;
   invite_user_ids?: string[];
 };
@@ -243,6 +244,14 @@ type ChallengeCreateKpiGoalPayload = {
   goal_scope: "team" | "individual";
   goal_target?: number | null;
   display_order: number;
+};
+
+type ChallengeCreatePhasePayload = {
+  phase_order: number;
+  phase_name: string;
+  starts_at?: string;
+  ends_at?: string;
+  kpi_goals: ChallengeCreateKpiGoalPayload[];
 };
 
 type ChannelType = "team" | "challenge" | "sponsor" | "cohort" | "direct";
@@ -9433,19 +9442,75 @@ app.post("/challenges", async (req, res) => {
       return res.status(500).json({ error: "Challenge id missing from create response" });
     }
 
-    const challengeKpiRows = kpiGoals.map((goal, index) => ({
-      challenge_id: challengeId,
-      kpi_id: goal.kpi_id,
-      goal_target: goal.goal_target ?? null,
-      goal_scope: goal.goal_scope,
-      display_order: goal.display_order ?? index,
-    }));
-    if (challengeKpiRows.length > 0) {
-      const { error: challengeKpiInsertError } = await dataClient
-        .from("challenge_kpis")
-        .upsert(challengeKpiRows, { onConflict: "challenge_id,kpi_id" });
-      if (challengeKpiInsertError) {
-        return handleSupabaseError(res, "Failed to persist challenge KPI goals", challengeKpiInsertError);
+    // ── Phase + KPI insertion ──
+    const payloadPhases = Array.isArray(payload.phases) ? payload.phases : [];
+    const phaseIdByOrder = new Map<number, string>();
+
+    if (payloadPhases.length > 0) {
+      // Create phase rows
+      const phaseRows = payloadPhases.map((phase) => ({
+        challenge_id: challengeId,
+        phase_order: phase.phase_order,
+        phase_name: phase.phase_name,
+        starts_at: phase.starts_at ?? null,
+        ends_at: phase.ends_at ?? null,
+      }));
+      const { data: insertedPhases, error: phaseInsertError } = await dataClient
+        .from("challenge_phases")
+        .insert(phaseRows)
+        .select("id,phase_order");
+      if (phaseInsertError) {
+        return handleSupabaseError(res, "Failed to create challenge phases", phaseInsertError);
+      }
+      for (const row of insertedPhases ?? []) {
+        phaseIdByOrder.set(
+          Number((row as { phase_order?: unknown }).phase_order ?? 0),
+          String((row as { id?: unknown }).id ?? "")
+        );
+      }
+
+      // Insert KPIs per phase
+      const phaseKpiRows: Array<{
+        challenge_id: string; kpi_id: string; goal_target: number | null;
+        goal_scope: string; display_order: number; phase_id: string | null;
+      }> = [];
+      for (const phase of payloadPhases) {
+        const phaseId = phaseIdByOrder.get(phase.phase_order) ?? null;
+        for (const [idx, goal] of (phase.kpi_goals ?? []).entries()) {
+          phaseKpiRows.push({
+            challenge_id: challengeId,
+            kpi_id: goal.kpi_id,
+            goal_target: goal.goal_target ?? null,
+            goal_scope: goal.goal_scope,
+            display_order: goal.display_order ?? idx,
+            phase_id: phaseId,
+          });
+        }
+      }
+      if (phaseKpiRows.length > 0) {
+        const { error: kpiInsertError } = await dataClient
+          .from("challenge_kpis")
+          .insert(phaseKpiRows);
+        if (kpiInsertError) {
+          return handleSupabaseError(res, "Failed to persist phase KPI goals", kpiInsertError);
+        }
+      }
+    } else {
+      // Non-phased: flat KPI insertion (original behavior)
+      const challengeKpiRows = kpiGoals.map((goal, index) => ({
+        challenge_id: challengeId,
+        kpi_id: goal.kpi_id,
+        goal_target: goal.goal_target ?? null,
+        goal_scope: goal.goal_scope,
+        display_order: goal.display_order ?? index,
+      }));
+      if (challengeKpiRows.length > 0) {
+        const { error: challengeKpiInsertError } = await dataClient
+          .from("challenge_kpis")
+          .upsert(challengeKpiRows, { onConflict: "challenge_id,kpi_id" });
+        if (challengeKpiInsertError) {
+          return handleSupabaseError(res, "Failed to persist challenge KPI goals", challengeKpiInsertError);
+        }
       }
     }
 

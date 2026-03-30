@@ -205,6 +205,7 @@ export type ChallengeTemplateRow = {
     suggested_target: number | null;
     display_order: number;
   }>;
+  phases?: ChallengeTemplatePhase[];
 };
 export type ChallengeListApiResponse = {
   challenges?: ChallengeApiRow[];
@@ -267,6 +268,8 @@ export type ChallengeWizardGoalDraft = {
   display_order: number;
   kpi_type?: string;
   suggested?: boolean;
+  /** Which phase this KPI belongs to (1-based). Undefined = whole-challenge scope. */
+  phase_order?: number;
 };
 /** Phase from a challenge template (stored in template_payload.phases[]) */
 export type ChallengeTemplatePhase = {

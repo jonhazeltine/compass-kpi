@@ -622,19 +622,54 @@ export function useChallengeWorkflow(
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name,
-          description: challengeWizardDescription.trim() || undefined,
-          mode,
-          challenge_kind: challengeWizardType === 'team' ? 'team' : 'mini',
-          team_id: mode === 'team' ? teamId : undefined,
-          start_at: startDate.toISOString(),
-          end_at: endDate.toISOString(),
-          template_id: challengeWizardSource === 'template' ? challengeWizardTemplateId ?? undefined : undefined,
-          kpi_goals: normalizedGoals,
-          invite_user_ids: mode === 'solo' ? challengeWizardInviteUserIds.slice(0, 3) : [],
-          late_join_includes_history: mode === 'team',
-        }),
+        body: JSON.stringify((() => {
+          // Build phases payload from goals with phase_order
+          const goalsWithPhase = challengeWizardGoals.filter((g) => g.phase_order != null);
+          const hasPhases = goalsWithPhase.length > 0;
+          const phaseOrderSet = new Set(goalsWithPhase.map((g) => g.phase_order!));
+          // Look up template phases for names/timing
+          const templatePhases = (challengeWizardTemplates.length > 0 ? challengeWizardTemplates : challengeWizardFallbackTemplates)
+            .find((t) => t.id === challengeWizardTemplateId)
+            ?.phases ?? (challengeWizardFallbackTemplates.find((t) => t.id === challengeWizardTemplateId) as any)?.phases ?? [];
+          const totalDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86400000));
+
+          const phases = hasPhases
+            ? Array.from(phaseOrderSet).sort().map((order) => {
+                const templatePhase = Array.isArray(templatePhases) ? templatePhases.find((p: any) => p.phase_order === order) : undefined;
+                const phaseName = templatePhase?.phase_name ?? `Phase ${order}`;
+                const startsAtWeek = templatePhase?.starts_at_week ?? 0;
+                const phaseStartMs = startDate.getTime() + startsAtWeek * 7 * 86400000;
+                return {
+                  phase_order: order,
+                  phase_name: phaseName,
+                  starts_at: new Date(phaseStartMs).toISOString(),
+                  kpi_goals: goalsWithPhase
+                    .filter((g) => g.phase_order === order)
+                    .map((g, idx) => ({
+                      kpi_id: String(g.kpi_id).trim(),
+                      goal_scope: g.goal_scope === 'individual' ? 'individual' : 'team',
+                      goal_target: g.goal_target.trim().length > 0 ? Number(g.goal_target) : null,
+                      display_order: idx,
+                    })),
+                };
+              })
+            : undefined;
+
+          return {
+            name,
+            description: challengeWizardDescription.trim() || undefined,
+            mode,
+            challenge_kind: challengeWizardType === 'team' ? 'team' : 'mini',
+            team_id: mode === 'team' ? teamId : undefined,
+            start_at: startDate.toISOString(),
+            end_at: endDate.toISOString(),
+            template_id: challengeWizardSource === 'template' ? challengeWizardTemplateId ?? undefined : undefined,
+            kpi_goals: hasPhases ? [] : normalizedGoals,
+            phases,
+            invite_user_ids: mode === 'solo' ? challengeWizardInviteUserIds.slice(0, 3) : [],
+            late_join_includes_history: mode === 'team',
+          };
+        })()),
       });
       const respPayload = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) {

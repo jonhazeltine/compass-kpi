@@ -281,6 +281,7 @@ export default function ChallengeWizard({
             goals={wizardGoals}
             setGoals={setWizardGoals}
             allSelectableKpis={allSelectableKpis}
+            phases={phases.length > 0 ? phases : undefined}
             onNext={goNext}
           />
         </View>
