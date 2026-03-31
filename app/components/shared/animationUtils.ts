@@ -55,20 +55,23 @@ export interface ProgressState {
   shouldTriggerTier: boolean;
 }
 
+// Front-loaded engagement: more zoom events at low tiers, fewer at high tiers
+const ZOOM_INTERVALS_BY_TIER = [3, 3, 5, 5, 8, 8];
+
 /**
  * Compute progress bar values and animation triggers.
  * @param prevTotal - total before this log
  * @param newTotal - total after this log
  * @param tierThresholds - array of tier min values (e.g. [0, 25, 100, 250, 500, 1000])
  * @param logsSinceLastZoom - how many logs since the last zoom fired
- * @param zoomInterval - how many logs between zoom animations (default 5)
+ * @param zoomIntervalOverride - override the tier-based interval (optional)
  */
 export function computeProgress(
   prevTotal: number,
   newTotal: number,
   tierThresholds: readonly number[],
   logsSinceLastZoom: number,
-  zoomInterval = 5,
+  zoomIntervalOverride?: number,
 ): ProgressState {
   // Find current and next tier
   let currentTierIdx = 0;
@@ -90,10 +93,11 @@ export function computeProgress(
   const tierRange = nextMin - currentMin;
   const slowBarValue = tierRange > 0 ? Math.min(1, (newTotal - currentMin) / tierRange) : 1;
 
-  // Fast bar: progress toward next zoom
+  // Fast bar: progress toward next zoom (tier-aware interval)
+  const zoomInterval = zoomIntervalOverride ?? (ZOOM_INTERVALS_BY_TIER[currentTierIdx] ?? 5);
   const logsNow = logsSinceLastZoom + 1;
   const shouldTriggerZoom = !shouldTriggerTier && logsNow >= zoomInterval;
-  const fastBarValue = shouldTriggerZoom ? 1 : logsNow / zoomInterval;
+  const fastBarValue = shouldTriggerZoom ? 1 : Math.min(1, logsNow / zoomInterval);
 
   return { fastBarValue, slowBarValue, shouldTriggerZoom, shouldTriggerTier };
 }

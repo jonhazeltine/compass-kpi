@@ -1,0 +1,1020 @@
+diff --git a/node_modules/@azesmway/react-native-unity/ios/RNUnityView.mm b/node_modules/@azesmway/react-native-unity/ios/RNUnityView.mm
+index a4caa74..004fee7 100644
+--- a/node_modules/@azesmway/react-native-unity/ios/RNUnityView.mm
++++ b/node_modules/@azesmway/react-native-unity/ios/RNUnityView.mm
+@@ -84,6 +84,10 @@ - (void)initUnityModule {
+ - (void)layoutSubviews {
+    [super layoutSubviews];
+ 
++   if(![self unityIsInitialized]) {
++      [self initUnityModule];
++   }
++
+    if([self unityIsInitialized]) {
+       self.ufw.appController.rootView.frame = self.bounds;
+       [self addSubview:self.ufw.appController.rootView];
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Managed/Metadata/global-metadata.dat b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Managed/Metadata/global-metadata.dat
+new file mode 100644
+index 0000000..8df0b16
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Managed/Metadata/global-metadata.dat differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Managed/Resources/mscorlib.dll-resources.dat b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Managed/Resources/mscorlib.dll-resources.dat
+new file mode 100644
+index 0000000..6d144fc
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Managed/Resources/mscorlib.dll-resources.dat differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Managed/mono/4.0/machine.config b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Managed/mono/4.0/machine.config
+new file mode 100644
+index 0000000..f3b71c4
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Managed/mono/4.0/machine.config
+@@ -0,0 +1,307 @@
++<?xml version="1.0" encoding="utf-8"?>
++
++<configuration>
++
++	<configSections>
++		<section name="configProtectedData" type="System.Configuration.ProtectedConfigurationSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++		<section name="appSettings" type="System.Configuration.AppSettingsSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++		<section name="connectionStrings" type="System.Configuration.ConnectionStringsSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++		<section name="mscorlib" type="System.Configuration.IgnoreSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowLocation="false"/>
++		<section name="runtime" type="System.Configuration.IgnoreSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowLocation="false"/>
++		<section name="assemblyBinding"  type="System.Configuration.IgnoreSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowLocation="false" />
++		<section name="satelliteassemblies" type="System.Configuration.IgnoreSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowLocation="false" />
++		<section name="startup" type="System.Configuration.IgnoreSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowLocation="false"/>
++		<section name="system.codedom" type="System.CodeDom.Compiler.CodeDomConfigurationHandler, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++		<section name="system.data" type="System.Data.Common.DbProviderFactoriesConfigurationHandler, System.Data, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++		<section name="system.diagnostics" type="System.Diagnostics.DiagnosticsConfigurationHandler, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++		<section name="system.runtime.remoting" type="System.Configuration.IgnoreSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" allowLocation="false"/>
++		<section name="system.windows.forms" type="System.Windows.Forms.WindowsFormsSection, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++		<section name="windows" type="System.Configuration.IgnoreSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowLocation="false" />
++		<section name="strongNames" type="System.Configuration.IgnoreSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" allowLocation="false"/>
++		<sectionGroup name="system.web" type="System.Web.Configuration.SystemWebSectionGroup, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
++			<section name="anonymousIdentification" type="System.Web.Configuration.AnonymousIdentificationSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++			<section name="authentication" type="System.Web.Configuration.AuthenticationSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++			<section name="authorization" type="System.Web.Configuration.AuthorizationSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="browserCaps" type="System.Configuration.IgnoreSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="clientTarget" type="System.Web.Configuration.ClientTargetSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="compilation" type="System.Web.Configuration.CompilationSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="customErrors" type="System.Web.Configuration.CustomErrorsSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="deployment" type="System.Web.Configuration.DeploymentSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineOnly" />
++			<section name="globalization" type="System.Web.Configuration.GlobalizationSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="healthMonitoring" type="System.Web.Configuration.HealthMonitoringSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++			<section name="hostingEnvironment" type="System.Web.Configuration.HostingEnvironmentSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication" />
++			<section name="httpCookies" type="System.Web.Configuration.HttpCookiesSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="httpHandlers" type="System.Web.Configuration.HttpHandlersSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="httpModules" type="System.Web.Configuration.HttpModulesSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="httpRuntime" type="System.Web.Configuration.HttpRuntimeSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="identity" type="System.Web.Configuration.IdentitySection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="machineKey" type="System.Web.Configuration.MachineKeySection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="membership" type="System.Web.Configuration.MembershipSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="mobileControls" type="System.Configuration.IgnoreSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++                        <section name="deviceFilters" type="System.Configuration.IgnoreSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="pages" type="System.Web.Configuration.PagesSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="processModel" type="System.Web.Configuration.ProcessModelSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineOnly" allowLocation="false" />
++			<section name="profile" type="System.Web.Configuration.ProfileSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++			<section name="roleManager" type="System.Web.Configuration.RoleManagerSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++			<section name="securityPolicy" type="System.Web.Configuration.SecurityPolicySection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication" />
++			<section name="sessionPageState" type="System.Web.Configuration.SessionPageStateSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="sessionState" type="System.Web.Configuration.SessionStateSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++			<section name="siteMap" type="System.Web.Configuration.SiteMapSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++			<section name="trace" type="System.Web.Configuration.TraceSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="trust" type="System.Web.Configuration.TrustSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication" />
++			<section name="urlMappings" type="System.Web.Configuration.UrlMappingsSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++			<section name="webControls" type="System.Web.Configuration.WebControlsSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="webParts" type="System.Web.Configuration.WebPartsSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="webServices" type="System.Web.Services.Configuration.WebServicesSection, System.Web.Services, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<section name="xhtmlConformance" type="System.Web.Configuration.XhtmlConformanceSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++			<sectionGroup name="caching" type="System.Web.Configuration.SystemWebCachingSectionGroup, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
++				<section name="cache" type="System.Web.Configuration.CacheSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++				<section name="outputCache" type="System.Web.Configuration.OutputCacheSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++				<section name="outputCacheSettings" type="System.Web.Configuration.OutputCacheSettingsSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++				<section name="sqlCacheDependency" type="System.Web.Configuration.OutputCacheSettingsSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++			</sectionGroup>
++			<section name="monoSettings" type="System.Web.Configuration.MonoSettingsSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++		</sectionGroup>
++		<sectionGroup name="system.web.extensions" type="System.Web.Configuration.SystemWebExtensionsSectionGroup, System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35">
++			<sectionGroup name="scripting" type="System.Web.Configuration.ScriptingSectionGroup, System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35">
++				<section name="scriptResourceHandler" type="System.Web.Configuration.ScriptingScriptResourceHandlerSection, System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35" requirePermission="false" allowDefinition="MachineToApplication"/>
++				<sectionGroup name="webServices" type="System.Web.Configuration.ScriptingWebServicesSectionGroup, System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35">
++					<section name="jsonSerialization" type="System.Web.Configuration.ScriptingJsonSerializationSection, System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35" requirePermission="false" allowDefinition="Everywhere"/>
++					<section name="profileService" type="System.Web.Configuration.ScriptingProfileServiceSection, System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35" requirePermission="false" allowDefinition="MachineToApplication"/>
++					<section name="authenticationService" type="System.Web.Configuration.ScriptingAuthenticationServiceSection, System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35" requirePermission="false" allowDefinition="MachineToApplication"/>
++					<section name="roleService" type="System.Web.Configuration.ScriptingRoleServiceSection, System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35" requirePermission="false" allowDefinition="MachineToApplication"/>
++				</sectionGroup>
++			</sectionGroup>
++		</sectionGroup>
++		<sectionGroup name="system.net" type="System.Net.Configuration.NetSectionGroup, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
++			<section name="authenticationModules" type="System.Net.Configuration.AuthenticationModulesSection, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="connectionManagement" type="System.Net.Configuration.ConnectionManagementSection, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="defaultProxy" type="System.Net.Configuration.DefaultProxySection, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<sectionGroup name="mailSettings" type="System.Net.Configuration.MailSettingsSectionGroup, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
++				<section name="smtp" type="System.Net.Configuration.SmtpSection, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			</sectionGroup>
++			<section name="requestCaching" type="System.Net.Configuration.RequestCachingSection, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="settings" type="System.Net.Configuration.SettingsSection, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="webRequestModules" type="System.Net.Configuration.WebRequestModulesSection, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++		</sectionGroup>
++		<section name="system.drawing" type="System.Configuration.NameValueSectionHandler, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++		<sectionGroup name="system.serviceModel" type="System.ServiceModel.Configuration.ServiceModelSectionGroup, System.ServiceModel, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
++			<section name="behaviors" type="System.ServiceModel.Configuration.BehaviorsSection, System.ServiceModel, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="bindings" type="System.ServiceModel.Configuration.BindingsSection, System.ServiceModel, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="client" type="System.ServiceModel.Configuration.ClientSection, System.ServiceModel, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="commonBehaviors" type="System.ServiceModel.Configuration.CommonBehaviorsSection, System.ServiceModel, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="diagnostics" type="System.ServiceModel.Configuration.DiagnosticSection, System.ServiceModel, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="extensions" type="System.ServiceModel.Configuration.ExtensionsSection, System.ServiceModel, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="serviceHostingEnvironment" type="System.ServiceModel.Configuration.ServiceHostingEnvironmentSection, System.ServiceModel, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="services" type="System.ServiceModel.Configuration.ServicesSection, System.ServiceModel, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<section name="standardEndpoints" type="System.ServiceModel.Configuration.StandardEndpointsSection, System.ServiceModel, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"/>
++			<section name="routing" type="System.ServiceModel.Routing.Configuration.RoutingSection, System.ServiceModel.Routing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"/>
++			<section name="protocolMapping" type="System.ServiceModel.Configuration.ProtocolMappingSection, System.ServiceModel, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"/>
++		</sectionGroup>
++		<sectionGroup name="system.transactions" type="System.Transactions.Configuration.TransactionsSectionGroup, System.Transactions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, Custom=null">
++			<section name="defaultSettings" type="System.Transactions.Configuration.DefaultSettingsSection, System.Transactions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, Custom=null"/>
++			<section name="machineSettings" type="System.Transactions.Configuration.MachineSettingsSection, System.Transactions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, Custom=null" allowDefinition="MachineOnly" allowExeDefinition="MachineOnly"/>
++		</sectionGroup>
++		<section name="system.webServer" type="System.Configuration.IgnoreSection, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++		<section name="uri" type="System.Configuration.UriSection, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++		<sectionGroup name="system.runtime.caching" type="System.Runtime.Caching.Configuration.CachingSectionGroup, System.Runtime.Caching, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
++		  <section name="memoryCache" type="System.Runtime.Caching.Configuration.MemoryCacheSection, System.Runtime.Caching, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" allowDefinition="MachineToApplication"/>
++                </sectionGroup>
++	</configSections>
++
++	<connectionStrings>
++		<add name="LocalSqlServer" connectionString="data source=.\SQLEXPRESS;Integrated Security=SSPI;AttachDBFilename=|DataDirectory|aspnetdb.mdf;User Instance=true" providerName="System.Data.SqlClient"/>
++		<add name="LocalSqliteServer" connectionString="Data Source=|DataDirectory|/aspnetdb.sqlite;version=3" providerName="Mono.Data.Sqlite"/>
++	</connectionStrings>
++	
++	<configProtectedData defaultProvider="RsaProtectedConfigurationProvider">
++		<providers>
++			<add name="RsaProtectedConfigurationProvider" type="System.Configuration.RsaProtectedConfigurationProvider, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a"
++                             description="" keyContainerName="MonoFrameworkConfigurationKey" cspProviderName="" useMachineContainer="true" useOAEP="false" />
++			<add name="DataProtectionConfigurationProvider" type="System.Configuration.DpapiProtectedConfigurationProvider, System.Configuration, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a"
++                             description="" useMachineProtection="true" keyEntropy="" />
++		</providers>
++	</configProtectedData>
++
++	<system.net>
++		<authenticationModules>
++			<add type="System.Net.BasicClient, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<add type="System.Net.DigestClient, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<add type="System.Net.NtlmClient, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++		</authenticationModules>
++		<webRequestModules>
++			<add prefix="http" type="System.Net.HttpRequestCreator, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<add prefix="https" type="System.Net.HttpRequestCreator, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<add prefix="file" type="System.Net.FileWebRequestCreator, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<add prefix="ftp" type="System.Net.FtpWebRequestCreator, System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++		</webRequestModules>
++	</system.net>
++	
++	<system.runtime.remoting>
++		<application>
++			<channels>
++				<channel ref="http client" displayName="http client (delay loaded)" delayLoadAsClientChannel="true" />
++				<channel ref="tcp client" displayName="tcp client (delay loaded)" delayLoadAsClientChannel="true" />
++				<channel ref="ipc client" displayName="ipc client (delay loaded)" delayLoadAsClientChannel="true" />
++			</channels>
++		</application>
++		<channels>
++			<channel id="http" type="System.Runtime.Remoting.Channels.Http.HttpChannel, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<channel id="http client" type="System.Runtime.Remoting.Channels.Http.HttpClientChannel, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<channel id="http server" type="System.Runtime.Remoting.Channels.Http.HttpServerChannel, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<channel id="tcp" type="System.Runtime.Remoting.Channels.Tcp.TcpChannel, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<channel id="tcp client" type="System.Runtime.Remoting.Channels.Tcp.TcpClientChannel, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<channel id="tcp server" type="System.Runtime.Remoting.Channels.Tcp.TcpServerChannel, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<channel id="ipc" type="System.Runtime.Remoting.Channels.Ipc.IpcChannel, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<channel id="ipc client" type="System.Runtime.Remoting.Channels.Ipc.IpcClientChannel, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++			<channel id="ipc server" type="System.Runtime.Remoting.Channels.Ipc.IpcServerChannel, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++		</channels>
++			<channelSinkProviders>
++				<clientProviders>
++					<formatter id="soap" type="System.Runtime.Remoting.Channels.SoapClientFormatterSinkProvider, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++					<formatter id="binary" type="System.Runtime.Remoting.Channels.BinaryClientFormatterSinkProvider, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++				</clientProviders>
++				<serverProviders>
++					<formatter id="soap" type="System.Runtime.Remoting.Channels.SoapServerFormatterSinkProvider, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++					<formatter id="binary" type="System.Runtime.Remoting.Channels.BinaryServerFormatterSinkProvider, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++					<provider id="wsdl" type="System.Runtime.Remoting.MetadataServices.SdlChannelSinkProvider, System.Runtime.Remoting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
++				</serverProviders>
++			</channelSinkProviders>
++	</system.runtime.remoting>
++	
++	<appSettings>
++	<!--<add key="yourkey" value="your value" /> -->
++	<!--<remove key="a key defined higher in the hierarchy" /> -->
++	<!--<clear/> Removes all defined settings -->
++	</appSettings>
++	<system.diagnostics>
++		<trace autoflush="false" indentsize="4" />
++	</system.diagnostics>
++        <system.drawing>
++        </system.drawing>
++
++	<system.data>
++	  <DbProviderFactories>
++	    <add name="Mono Sqlite Data Provider"  invariant="Mono.Data.SqliteClient" 
++		 description="Mono Framework Data Provider for SQLite (old version)" 
++		 type="Mono.Data.SqliteClient.SqliteFactory, Mono.Data.SqliteClient, Version=4.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756"/>
++	    <add name="Mono Sqlite Provider"  invariant="Mono.Data.Sqlite" 
++		 description="Mono Framework Data Provider for SQLite (new version)"
++		 type="Mono.Data.Sqlite.SqliteFactory, Mono.Data.Sqlite, Version=4.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756"/>
++	    <add name="Odbc Data Provider"         invariant="System.Data.Odbc"         
++		 description=".Net Framework Data Provider for Odbc"      
++		 type="System.Data.Odbc.OdbcFactory, System.Data, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"/>
++            <add name="OleDb Data Provider"        invariant="System.Data.OleDb"        
++		 description=".Net Framework Data Provider for OleDb"     
++		 type="System.Data.OleDb.OleDbFactory, System.Data, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"/>
++            <add name="OracleClient Data Provider" invariant="System.Data.OracleClient" 
++		 description=".Net Framework Data Provider for Oracle"    
++		 type="System.Data.OracleClient.OracleClientFactory, System.Data.OracleClient, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"/>
++            <add name="SqlClient Data Provider"    invariant="System.Data.SqlClient"    
++		 description=".Net Framework Data Provider for SqlServer" 
++		 type="System.Data.SqlClient.SqlClientFactory, System.Data, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"/>
++            <add name="Sybase Data Provider"    invariant="Mono.Data.SybaseClient"    
++		 description=".Net Framework Data Provider for Sybase" 
++		 type="Mono.Data.SybaseClient.SybaseClientFactory, Mono.Data.SybaseClient, Version=4.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756"/>
++	  </DbProviderFactories>
++	</system.data>
++
++	<mscorlib>
++		<cryptographySettings>
++			<cryptoNameMapping>
++				<cryptoClasses>
++					<cryptoClass monoMD2="Mono.Security.Cryptography.MD2Managed, Mono.Security, Version=4.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756" />
++					<cryptoClass monoMD4="Mono.Security.Cryptography.MD4Managed, Mono.Security, Version=4.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756" />
++				</cryptoClasses>
++				<nameEntry name="MD2" class="monoMD2" />
++				<nameEntry name="MD4" class="monoMD4" />
++			</cryptoNameMapping>
++			<oidMap>
++				<oidEntry OID="1.2.840.113549.2.2" name="MD2" />
++				<oidEntry OID="1.2.840.113549.2.2" name="Mono.Security.Cryptography.MD2Managed" />
++				<oidEntry OID="1.2.840.113549.2.4" name="MD4" />
++				<oidEntry OID="1.2.840.113549.2.4" name="Mono.Security.Cryptography.MD4Managed" />
++			</oidMap>
++		</cryptographySettings>
++	</mscorlib>
++
++	<strongNames>
++		<pubTokenMapping>
++			<!-- ECMA key -->
++			<map Token="b77a5c561934e089" PublicKey="002400000480000094000000060200000024000052534131000400000100010079159977d2d03a8e6bea7a2e74e8d1afcc93e8851974952bb480a12c9134474d04062447c37e0e68c080536fcf3c3fbe2ff9c979ce998475e506e8ce82dd5b0f350dc10e93bf2eeecf874b24770c5081dbea7447fddafa277b22de47d6ffea449674a4f9fccf84d15069089380284dbdd35f46cdff12a1bd78e4ef0065d016df" />
++			<!-- Microsoft (final) key -->
++			<map Token="b03f5f7f11d50a3a" PublicKey="002400000480000094000000060200000024000052534131000400000100010079159977d2d03a8e6bea7a2e74e8d1afcc93e8851974952bb480a12c9134474d04062447c37e0e68c080536fcf3c3fbe2ff9c979ce998475e506e8ce82dd5b0f350dc10e93bf2eeecf874b24770c5081dbea7447fddafa277b22de47d6ffea449674a4f9fccf84d15069089380284dbdd35f46cdff12a1bd78e4ef0065d016df" />
++			<!-- Microsoft (Web Service Enhancement) key -->
++			<map Token="31bf3856ad364e35" PublicKey="002400000480000094000000060200000024000052534131000400000100010079159977d2d03a8e6bea7a2e74e8d1afcc93e8851974952bb480a12c9134474d04062447c37e0e68c080536fcf3c3fbe2ff9c979ce998475e506e8ce82dd5b0f350dc10e93bf2eeecf874b24770c5081dbea7447fddafa277b22de47d6ffea449674a4f9fccf84d15069089380284dbdd35f46cdff12a1bd78e4ef0065d016df" />
++			<!-- IBM (DB2 Data Provider) key -->
++			<map Token="7c307b91aa13d208" PublicKey="002400000480000094000000060200000024000052534131000400000100010079159977d2d03a8e6bea7a2e74e8d1afcc93e8851974952bb480a12c9134474d04062447c37e0e68c080536fcf3c3fbe2ff9c979ce998475e506e8ce82dd5b0f350dc10e93bf2eeecf874b24770c5081dbea7447fddafa277b22de47d6ffea449674a4f9fccf84d15069089380284dbdd35f46cdff12a1bd78e4ef0065d016df" />
++			<!-- Silverlight 2.0 key -->
++			<map Token="7cec85d7bea7798e" PublicKey="002400000480000094000000060200000024000052534131000400000100010079159977d2d03a8e6bea7a2e74e8d1afcc93e8851974952bb480a12c9134474d04062447c37e0e68c080536fcf3c3fbe2ff9c979ce998475e506e8ce82dd5b0f350dc10e93bf2eeecf874b24770c5081dbea7447fddafa277b22de47d6ffea449674a4f9fccf84d15069089380284dbdd35f46cdff12a1bd78e4ef0065d016df" />
++			<!-- XNA Framework key -->                                                            
++			<map Token="6d5c3888ef60e27d" PublicKey="0024000004800000940000000602000000240000525341310004000001000100f9a2641bac9847900d92a33d652ccc4e8b529360f908e7af53e57008b2a9a1938c32a160d47f795a23590557608d2c8d0c0e8846a052d070f9298281b8185343dbe5b479bd52de256f73c2a943e1a8a42065b5c918622dc14b1c0151dbd94d9a4543e7cd03e536b1b1d2d6d99af535d227ab9bdac76af9312a21d457bdf817e6" />
++		</pubTokenMapping>
++	</strongNames>
++
++	<system.web>
++		<webServices>
++			<protocols>
++				<add name="HttpSoap"/>
++				<add name="HttpSoap12"/>
++				<add name="HttpPost"/>
++				<add name="HttpGet"/>
++				<add name="Documentation"/>
++			</protocols>
++			<conformanceWarnings>
++				<add name="BasicProfile1_1"/>
++			</conformanceWarnings>
++			<wsdlHelpGenerator href="DefaultWsdlHelpGenerator.aspx" />
++		</webServices>
++
++		<membership>
++			<providers>
++				<add name="AspNetSqlMembershipProvider" type="System.Web.Security.SqlMembershipProvider, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" connectionStringName="LocalSqlServer" enablePasswordRetrieval="false" enablePasswordReset="true" requiresQuestionAndAnswer="true" applicationName="/" requiresUniqueEmail="false" passwordFormat="Hashed" maxInvalidPasswordAttempts="5" minRequiredPasswordLength="7" minRequiredNonalphanumericCharacters="1" passwordAttemptWindow="10" passwordStrengthRegularExpression=""/>
++				<!-- <add name="AspNetSqlMembershipProvider" type="Mainsoft.Web.Security.GenericMembershipProvider, Mainsoft.Web.Security" applicationName="/" connectionStringName="LocalSqlServer" /> -->
++			</providers>
++		</membership>
++
++		<roleManager>
++			<providers>
++				<add name="AspNetSqlRoleProvider" type="System.Web.Security.SqlRoleProvider, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" applicationName="/" connectionStringName="LocalSqlServer" />
++				<!-- <add name="AspNetSqlRoleProvider" type="Mainsoft.Web.Security.GenericRoleProvider, Mainsoft.Web.Security" applicationName="/" connectionStringName="LocalSqlServer" /> -->
++			</providers>
++		</roleManager>
++
++		<profile>
++        		<providers>
++            		    <add name="AspNetSqlProfileProvider" connectionStringName="LocalSqlServer" applicationName="/" type="System.Web.Profile.SqlProfileProvider, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
++		        </providers>
++    		</profile>
++	</system.web>
++
++
++	<system.serviceModel>
++		<extensions>
++			<behaviorExtensions>
++				<add name="enableWebScript" type="System.ServiceModel.Configuration.WebScriptEnablingElement, System.ServiceModel.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"/>
++				<add name="webHttp" type="System.ServiceModel.Configuration.WebHttpElement, System.ServiceModel.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"/>
++			</behaviorExtensions>
++			<bindingElementExtensions>
++				<add name="webMessageEncoding" type="System.ServiceModel.Configuration.WebMessageEncodingElement, System.ServiceModel.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"/>
++			</bindingElementExtensions>
++			<bindingExtensions>
++				<add name="webHttpBinding" type="System.ServiceModel.Configuration.WebHttpBindingCollectionElement, System.ServiceModel.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"/>
++			</bindingExtensions>
++			<endpointExtensions>
++				<add name="dynamicEndpoint" type="System.ServiceModel.Discovery.Configuration.DynamicEndpointCollectionElement, System.ServiceModel.Discovery, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"/>
++				<add name="discoveryEndpoint" type="System.ServiceModel.Discovery.Configuration.DiscoveryEndpointCollectionElement, System.ServiceModel.Discovery, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"/>
++				<add name="udpDiscoveryEndpoint" type="System.ServiceModel.Discovery.Configuration.UdpDiscoveryEndpointCollectionElement, System.ServiceModel.Discovery, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"/>
++				<add name="announcementEndpoint" type="System.ServiceModel.Discovery.Configuration.AnnouncementEndpointCollectionElement, System.ServiceModel.Discovery, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"/>
++				<add name="udpAnnouncementEndpoint" type="System.ServiceModel.Discovery.Configuration.UdpAnnouncementEndpointCollectionElement, System.ServiceModel.Discovery, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"/>
++				<add name="webHttpEndpoint" type="System.ServiceModel.Configuration.WebHttpEndpointCollectionElement, System.ServiceModel.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"/>
++				<add name="webScriptEndpoint" type="System.ServiceModel.Configuration.WebScriptEndpointCollectionElement, System.ServiceModel.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"/>
++			</endpointExtensions>
++		</extensions>
++	</system.serviceModel>
++</configuration>
++
++
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Resources/unity default resources b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Resources/unity default resources
+new file mode 100644
+index 0000000..77fdacc
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Resources/unity default resources differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Resources/unity_builtin_extra b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Resources/unity_builtin_extra
+new file mode 100644
+index 0000000..9e6c19a
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/Resources/unity_builtin_extra differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/RuntimeInitializeOnLoads.json b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/RuntimeInitializeOnLoads.json
+new file mode 100644
+index 0000000..2f55246
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/RuntimeInitializeOnLoads.json
+@@ -0,0 +1 @@
++{"root":[{"assemblyName":"Unity.Burst","nameSpace":"","className":"$BurstDirectCallInitializer","methodName":"Initialize","loadTypes":2,"isUnityClass":true},{"assemblyName":"Unity.Cinemachine","nameSpace":"Unity.Cinemachine","className":"CinemachineStoryboard","methodName":"InitializeModule","loadTypes":0,"isUnityClass":true},{"assemblyName":"Unity.Cinemachine","nameSpace":"Unity.Cinemachine","className":"CameraUpdateManager","methodName":"InitializeModule","loadTypes":0,"isUnityClass":true},{"assemblyName":"Unity.Cinemachine","nameSpace":"Unity.Cinemachine","className":"Damper/AverageFrameRateTracker","methodName":"Initialize","loadTypes":0,"isUnityClass":true},{"assemblyName":"Unity.Cinemachine","nameSpace":"Unity.Cinemachine","className":"UpdateTracker","methodName":"InitializeModule","loadTypes":0,"isUnityClass":true},{"assemblyName":"Unity.Cinemachine","nameSpace":"Unity.Cinemachine","className":"CinemachineImpulseManager","methodName":"InitializeModule","loadTypes":0,"isUnityClass":true},{"assemblyName":"Unity.Cinemachine","nameSpace":"Unity.Cinemachine","className":"CinemachinePostProcessing","methodName":"InitializeModule","loadTypes":0,"isUnityClass":true},{"assemblyName":"Unity.Cinemachine","nameSpace":"Unity.Cinemachine","className":"CinemachineVolumeSettings","methodName":"InitializeModule","loadTypes":0,"isUnityClass":true},{"assemblyName":"Unity.Collections","nameSpace":"","className":"__JobReflectionRegistrationOutput__1652832624114795843","methodName":"EarlyInit","loadTypes":2,"isUnityClass":true},{"assemblyName":"Unity.Collections","nameSpace":"","className":"$BurstDirectCallInitializer","methodName":"Initialize","loadTypes":2,"isUnityClass":true},{"assemblyName":"Unity.RenderPipelines.Core.Runtime","nameSpace":"UnityEngine.Experimental.Rendering","className":"XRSystem","methodName":"XRSystemInit","loadTypes":3,"isUnityClass":true},{"assemblyName":"Unity.RenderPipelines.Core.Runtime","nameSpace":"UnityEngine.Rendering","className":"DebugUpdater","methodName":"RuntimeInit","loadTypes":0,"isUnityClass":true},{"assemblyName":"Unity.RenderPipelines.GPUDriven.Runtime","nameSpace":"","className":"__JobReflectionRegistrationOutput__15867191014387474753","methodName":"EarlyInit","loadTypes":2,"isUnityClass":true},{"assemblyName":"Unity.RenderPipelines.GPUDriven.Runtime","nameSpace":"","className":"$BurstDirectCallInitializer","methodName":"Initialize","loadTypes":2,"isUnityClass":true},{"assemblyName":"Unity.RenderPipelines.Universal.2D.Runtime","nameSpace":"","className":"$BurstDirectCallInitializer","methodName":"Initialize","loadTypes":2,"isUnityClass":true},{"assemblyName":"Unity.UnifiedRayTracing.Runtime","nameSpace":"","className":"__JobReflectionRegistrationOutput__1874814860780562806","methodName":"EarlyInit","loadTypes":2,"isUnityClass":true}]}
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/ScriptingAssemblies.json b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/ScriptingAssemblies.json
+new file mode 100644
+index 0000000..f215217
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/ScriptingAssemblies.json
+@@ -0,0 +1 @@
++{"names":["UnityEngine.dll","Unity.Scripting.dll","UnityEngine.AIModule.dll","UnityEngine.ARModule.dll","UnityEngine.AccessibilityModule.dll","UnityEngine.AdaptivePerformanceModule.dll","UnityEngine.AndroidJNIModule.dll","UnityEngine.AnimationModule.dll","UnityEngine.AssetBundleModule.dll","UnityEngine.AudioModule.dll","UnityEngine.ClothModule.dll","UnityEngine.ContentLoadModule.dll","UnityEngine.CoreModule.dll","UnityEngine.CrashReportingModule.dll","UnityEngine.DSPGraphModule.dll","UnityEngine.DirectorModule.dll","UnityEngine.GIModule.dll","UnityEngine.GameCenterModule.dll","UnityEngine.GraphicsStateCollectionSerializerModule.dll","UnityEngine.GridModule.dll","UnityEngine.HierarchyModule.dll","UnityEngine.HierarchyCoreModule.dll","UnityEngine.HotReloadModule.dll","UnityEngine.IMGUIModule.dll","UnityEngine.IdentifiersModule.dll","UnityEngine.ImageConversionModule.dll","UnityEngine.InputModule.dll","UnityEngine.InputForUIModule.dll","UnityEngine.InputLegacyModule.dll","UnityEngine.InsightsModule.dll","UnityEngine.JSONSerializeModule.dll","UnityEngine.LocalizationModule.dll","UnityEngine.MarshallingModule.dll","UnityEngine.MultiplayerModule.dll","UnityEngine.ParticleSystemModule.dll","UnityEngine.PerformanceReportingModule.dll","UnityEngine.PhysicsModule.dll","UnityEngine.Physics2DModule.dll","UnityEngine.PhysicsBackendPhysXModule.dll","UnityEngine.PropertiesModule.dll","UnityEngine.RenderAs2DModule.dll","UnityEngine.RuntimeInitializeOnLoadManagerInitializerModule.dll","UnityEngine.ScreenCaptureModule.dll","UnityEngine.ScriptingModule.dll","UnityEngine.ShaderVariantAnalyticsModule.dll","UnityEngine.SharedInternalsModule.dll","UnityEngine.SpriteMaskModule.dll","UnityEngine.SpriteShapeModule.dll","UnityEngine.StreamingModule.dll","UnityEngine.SubstanceModule.dll","UnityEngine.SubsystemsModule.dll","UnityEngine.TLSModule.dll","UnityEngine.TerrainModule.dll","UnityEngine.TerrainPhysicsModule.dll","UnityEngine.TextCoreFontEngineModule.dll","UnityEngine.TextCoreTextEngineModule.dll","UnityEngine.TextRenderingModule.dll","UnityEngine.TilemapModule.dll","UnityEngine.UIModule.dll","UnityEngine.UIElementsModule.dll","UnityEngine.UmbraModule.dll","UnityEngine.UnityAnalyticsModule.dll","UnityEngine.UnityAnalyticsCommonModule.dll","UnityEngine.UnityConnectModule.dll","UnityEngine.UnityConsentModule.dll","UnityEngine.UnityCurlModule.dll","UnityEngine.UnityWebRequestModule.dll","UnityEngine.UnityWebRequestAssetBundleModule.dll","UnityEngine.UnityWebRequestAudioModule.dll","UnityEngine.UnityWebRequestTextureModule.dll","UnityEngine.UnityWebRequestWWWModule.dll","UnityEngine.VFXModule.dll","UnityEngine.VRModule.dll","UnityEngine.VectorGraphicsModule.dll","UnityEngine.VehiclesModule.dll","UnityEngine.VideoModule.dll","UnityEngine.WindModule.dll","UnityEngine.XRModule.dll","Assembly-CSharp.dll","CFXRDemo.dll","CFXRRuntime.dll","KinoBloom.Runtime.dll","Unity.Burst.dll","Unity.Cinemachine.dll","Unity.Collections.dll","Unity.InternalAPIEngineBridge.004.dll","Unity.InternalAPIEngineBridge.RenderPipelines.Core.Runtime.Shared.dll","Unity.Mathematics.dll","Unity.Postprocessing.Runtime.dll","Unity.Recorder.Base.dll","Unity.Recorder.dll","Unity.RenderPipeline.Universal.ShaderLibrary.dll","Unity.RenderPipelines.Core.Runtime.dll","Unity.RenderPipelines.Core.Runtime.Shared.dll","Unity.RenderPipelines.Core.ShaderLibrary.dll","Unity.RenderPipelines.GPUDriven.Runtime.dll","Unity.RenderPipelines.ShaderGraph.ShaderGraphLibrary.dll","Unity.RenderPipelines.Universal.2D.Runtime.dll","Unity.RenderPipelines.Universal.Config.Runtime.dll","Unity.RenderPipelines.Universal.Runtime.dll","Unity.RenderPipelines.Universal.Shaders.dll","Unity.Splines.dll","Unity.SurfaceCache.Runtime.dll","Unity.TextMeshPro.dll","Unity.Timeline.dll","Unity.UnifiedRayTracing.Runtime.dll","UnityEngine.UI.dll","Unity.Collections.LowLevel.ILSupport.dll","System.IO.Hashing.dll","Unity.Burst.Unsafe.dll","System.Runtime.CompilerServices.Unsafe.dll"],"types":[2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16]}
+\ No newline at end of file
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/boot.config b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/boot.config
+new file mode 100644
+index 0000000..846b299
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/boot.config
+@@ -0,0 +1,5 @@
++gfx-threading-mode=4
++wait-for-native-debugger=0
++hdr-display-enabled=0
++gc-max-time-slice=3
++build-guid=80df0523890042cf8edb9e557016e981
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/globalgamemanagers b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/globalgamemanagers
+new file mode 100644
+index 0000000..767b861
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/globalgamemanagers differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/globalgamemanagers.assets b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/globalgamemanagers.assets
+new file mode 100644
+index 0000000..51071c1
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/globalgamemanagers.assets differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/globalgamemanagers.assets.resS b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/globalgamemanagers.assets.resS
+new file mode 100644
+index 0000000..a06d36f
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/globalgamemanagers.assets.resS differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/level0 b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/level0
+new file mode 100644
+index 0000000..32c462c
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/level0 differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/resources.assets b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/resources.assets
+new file mode 100644
+index 0000000..1b8c5cc
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/resources.assets differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/resources.assets.resS b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/resources.assets.resS
+new file mode 100644
+index 0000000..d3ee7a4
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/resources.assets.resS differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/sharedassets0.assets b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/sharedassets0.assets
+new file mode 100644
+index 0000000..e467fd5
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/sharedassets0.assets differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/sharedassets0.assets.resS b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/sharedassets0.assets.resS
+new file mode 100644
+index 0000000..d87ffba
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Data/sharedassets0.assets.resS differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/AppDelegateListener.h b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/AppDelegateListener.h
+new file mode 100644
+index 0000000..08117ac
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/AppDelegateListener.h
+@@ -0,0 +1,37 @@
++#pragma once
++
++#include "LifeCycleListener.h"
++
++
++@protocol AppDelegateListener<LifeCycleListener>
++@optional
++// these do not have apple defined notifications, so we use our own notifications
++
++// notification will be posted from
++// - (BOOL)application:(UIApplication*)application openURL:(NSURL*)url sourceApplication:(NSString*)sourceApplication annotation:(id)annotation
++// notification user data is the NSDictionary containing all the params
++- (void)onOpenURL:(NSNotification*)notification;
++
++// notification will be posted from
++// - (BOOL)application:(UIApplication*)application willFinishLaunchingWithOptions:(NSDictionary*)launchOptions
++// notification user data is the NSDictionary containing launchOptions
++- (void)applicationWillFinishLaunchingWithOptions:(NSNotification*)notification;
++// notification will be posted from
++// - (void)application:(UIApplication*)application handleEventsForBackgroundURLSession:(nonnull NSString *)identifier completionHandler:(nonnull void (^)())completionHandler
++// notification user data is NSDictionary with one item where key is session identifier and value is completion handler
++- (void)onHandleEventsForBackgroundURLSession:(NSNotification*)notification;
++
++// these are just hooks to existing notifications
++- (void)applicationDidReceiveMemoryWarning:(NSNotification*)notification;
++- (void)applicationSignificantTimeChange:(NSNotification*)notification;
++@end
++
++void UnityRegisterAppDelegateListener(id<AppDelegateListener> obj);
++void UnityUnregisterAppDelegateListener(id<AppDelegateListener> obj);
++
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityDidRegisterForRemoteNotificationsWithDeviceToken;
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityDidFailToRegisterForRemoteNotificationsWithError;
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityDidReceiveRemoteNotification;
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityOnOpenURL;
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityWillFinishLaunchingWithOptions;
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityHandleEventsForBackgroundURLSession;
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/LifeCycleListener.h b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/LifeCycleListener.h
+new file mode 100644
+index 0000000..6471baa
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/LifeCycleListener.h
+@@ -0,0 +1,29 @@
++#pragma once
++
++// important app life-cycle events
++
++@protocol LifeCycleListener<NSObject>
++@optional
++- (void)didFinishLaunching:(NSNotification*)notification;
++- (void)didBecomeActive:(NSNotification*)notification;
++- (void)willResignActive:(NSNotification*)notification;
++- (void)didEnterBackground:(NSNotification*)notification;
++- (void)willEnterForeground:(NSNotification*)notification;
++- (void)willTerminate:(NSNotification*)notification;
++- (void)unityDidUnload:(NSNotification*)notification;
++- (void)unityDidQuit:(NSNotification*)notification;
++@end
++
++void UnityRegisterLifeCycleListener(id<LifeCycleListener> obj);
++void UnityUnregisterLifeCycleListener(id<LifeCycleListener> obj);
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++extern __attribute__((visibility("default"))) NSString* const kUnityDidUnload;
++extern __attribute__((visibility("default"))) NSString* const kUnityDidQuit;
++
++#ifdef __cplusplus
++} // extern "C"
++#endif
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/NativeCallProxy.h b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/NativeCallProxy.h
+new file mode 100644
+index 0000000..aecfee6
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/NativeCallProxy.h
+@@ -0,0 +1,15 @@
++#import <Foundation/Foundation.h>
++
++@protocol NativeCallsProtocol
++@required
++
++- (void) sendMessageToMobileApp:(NSString*)message;
++
++@end
++
++__attribute__ ((visibility("default")))
++@interface FrameworkLibAPI : NSObject
++
+++(void) registerAPIforNativeCalls:(id<NativeCallsProtocol>) aApi;
++
++@end
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/RedefinePlatforms.h b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/RedefinePlatforms.h
+new file mode 100644
+index 0000000..bea750a
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/RedefinePlatforms.h
+@@ -0,0 +1,43 @@
++// DO NOT PUT #pragma once or include guard check here
++// This header is designed to be able to be included multiple times
++
++// This header is used to redefine iOS/tvOS platforms after they were temporary undefined by UndefinePlatforms.h
++// Please make sure to always use this paired with the UndefinePlatforms.h header.
++// Note: PLATFORM_IOS and PLATFORM_TVOS are redefined in 
++// /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include/mach-o/loader.h
++//
++// ex.
++//
++// #include "UndefinePlatforms.h"
++// #include "Some3rdParty.h"
++// #include "RedefinePlatforms.h"
++
++#ifndef DETAIL__PLATFORMS_HAD_BEEN_UNDEFINED_BY_UNDEFINEPLATFORMS_H
++    #error "RedefinePlatforms.h can only be used after UndefinePlatforms.h got included before."
++#endif
++
++#undef DETAIL__PLATFORMS_HAD_BEEN_UNDEFINED_BY_UNDEFINEPLATFORMS_H
++
++#undef PLATFORM_IOS
++#if defined(DETAIL__TEMP_PLATFORM_IOS_WAS_1)
++    #undef DETAIL__TEMP_PLATFORM_IOS_WAS_1
++    #define PLATFORM_IOS 1
++#else
++    #define PLATFORM_IOS 0
++#endif
++
++#undef PLATFORM_TVOS
++#if defined(DETAIL__TEMP_PLATFORM_TVOS_WAS_1)
++    #undef DETAIL__TEMP_PLATFORM_TVOS_WAS_1
++    #define PLATFORM_TVOS 1
++#else
++    #define PLATFORM_TVOS 0
++#endif
++
++#undef PLATFORM_VISIONOS
++#if defined(DETAIL__TEMP_PLATFORM_VISIONOS_WAS_1)
++#undef DETAIL__TEMP_PLATFORM_VISIONOS_WAS_1
++#define PLATFORM_VISIONOS 1
++#else
++#define PLATFORM_VISIONOS 0
++#endif
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/RenderPluginDelegate.h b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/RenderPluginDelegate.h
+new file mode 100644
+index 0000000..939265a
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/RenderPluginDelegate.h
+@@ -0,0 +1,67 @@
++#pragma once
++
++#import <UnityFramework/LifeCycleListener.h>
++
++struct UnityDisplaySurfaceBase; // Unity/UnityRendering.h
++struct RenderingSurfaceParams;  // Unity/DisplayManager.h
++
++// due to delicate nature of render loop we have just one delegate in app
++// if you need to use several rendering delegates you need to do one of:
++// 1. create custom delegate that will have code to combine effects by itself
++// 2. use helper that simply holds array of delegates (which will work only in easiest cases)
++@protocol RenderPluginDelegate<LifeCycleListener, NSObject>
++
++@required
++// this will be called right after gles intialization.
++// surface pointer will never be changed, so you should keep it.
++// the only valid fields in there as of now are layer and context
++- (void)mainDisplayInited:(struct UnityDisplaySurfaceBase*)surface;
++
++@optional
++
++// this will be called before recreating main display surface (from [UnityView recreateRenderingSurface])
++// you can tweak params here.
++- (void)onBeforeMainDisplaySurfaceRecreate:(struct RenderingSurfaceParams*)params;
++
++// this will be called right after recreating main display surface (from [UnityView recreateRenderingSurface])
++// as [UnityView recreateRenderingSurface] is the only place where unity itself will trigger surface recreate
++// you can use this method to update your rendering depending on changes
++- (void)onAfterMainDisplaySurfaceRecreate;
++
++// this will be called after frame render and msaa resolve but before blitting to system FB
++// you can expect that frame contents are ready (though still in target resolution)
++// use it for anylizing/postprocessing rendered frame, taking screenshot and the like
++// you should use targetFB if it is not 0
++// otherwise use systemFB
++- (void)onFrameResolved;
++@end
++
++
++// simple helper for common plugin stuff
++// you can implement protocol directly, but subclassing this will provide some common implementation
++@interface RenderPluginDelegate : NSObject<RenderPluginDelegate>
++{
++    struct UnityDisplaySurfaceBase* mainDisplaySurface;
++}
++- (void)mainDisplayInited:(struct UnityDisplaySurfaceBase*)surface;
++@end
++
++
++// simple helper to have an array of render delegates.
++// be warned that it works in simplest cases only, when there is no interop between delegates
++@interface RenderPluginArrayDelegate : RenderPluginDelegate
++{
++    NSArray* delegateArray;
++}
++@property(nonatomic, retain) NSArray* delegateArray;
++- (void)mainDisplayInited:(struct UnityDisplaySurfaceBase*)surface;
++- (void)onBeforeMainDisplaySurfaceRecreate:(struct RenderingSurfaceParams*)params;
++- (void)onAfterMainDisplaySurfaceRecreate;
++- (void)onFrameResolved;
++
++- (void)didBecomeActive:(NSNotification*)notification;
++- (void)willResignActive:(NSNotification*)notification;
++- (void)didEnterBackground:(NSNotification*)notification;
++- (void)willEnterForeground:(NSNotification*)notification;
++- (void)willTerminate:(NSNotification*)notification;
++@end
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/UndefinePlatforms.h b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/UndefinePlatforms.h
+new file mode 100644
+index 0000000..c8ca524
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/UndefinePlatforms.h
+@@ -0,0 +1,35 @@
++// DO NOT PUT #pragma once or include guard check here
++// This header is designed to be able to be included multiple times
++
++// This header is used to temporary undefine iOS/tvOS platform definitions in case there is a naming conflict with
++// 3rd party code. Please make sure to always use this paired with the RedefinePlatforms.h header.
++// Note: PLATFORM_IOS and PLATFORM_TVOS are redefined in 
++// /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include/mach-o/loader.h
++//
++//
++// ex.
++//
++// #include "UndefinePlatforms.h"
++// #include "Some3rdParty.h"
++// #include "RedefinePlatforms.h"
++
++#ifdef DETAIL__PLATFORMS_HAD_BEEN_UNDEFINED_BY_UNDEFINEPLATFORMS_H
++#error "UndefinePlatforms.h has been included more than once or RedefinePlatforms.h is missing."
++#endif
++
++#if PLATFORM_IOS
++    #define DETAIL__TEMP_PLATFORM_IOS_WAS_1
++#endif
++#undef PLATFORM_IOS
++
++#if PLATFORM_TVOS
++    #define DETAIL__TEMP_PLATFORM_TVOS_WAS_1
++#endif
++#undef PLATFORM_TVOS
++
++#if PLATFORM_VISIONOS
++#define DETAIL__TEMP_PLATFORM_VISIONOS_WAS_1
++#endif
++#undef PLATFORM_VISIONOS
++
++#define DETAIL__PLATFORMS_HAD_BEEN_UNDEFINED_BY_UNDEFINEPLATFORMS_H
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/UnityAppController.h b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/UnityAppController.h
+new file mode 100644
+index 0000000..89d3851
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/UnityAppController.h
+@@ -0,0 +1,175 @@
++#pragma once
++
++#import <QuartzCore/CADisplayLink.h>
++
++// we want to use CAMetalDisplayLink if it is available
++// if CADisplayLink is always preferred, this can be changed to #define UNITY_USES_METAL_DISPLAY_LINK 0
++// further, shouldUseMetalDisplayLink method can be overriden/tweaked to disable metal display link at runtime
++//   e.g. you might want to use old display link on slower devices where stable frametime cannot be guaranteed
++#define UNITY_USES_METAL_DISPLAY_LINK (UNITY_HAS_IOSSDK_17_0 || UNITY_HAS_TVOSSDK_17_0)
++#if UNITY_USES_METAL_DISPLAY_LINK
++    #import <QuartzCore/CAMetalDisplayLink.h>
++#endif
++
++#import <UnityFramework/RenderPluginDelegate.h>
++
++@class UnityView;
++@class UnityViewControllerBase;
++@class DisplayConnection;
++
++typedef enum
++{
++    kUnityEngineLoadStateNotStarted = 0,
++    // Minimal initialization done, allowing limited API use, such as reporting URL app was launched with
++    kUnityEngineLoadStateMinimal = 1,
++    // Core of Unity engine is loaded, but no graphics or first scene yet
++    kUnityEngineLoadStateCoreInitialized = 2,
++    // Rendering was initialized, nothing related to rendering should be touched before this state
++    kUnityEngineLoadStateRenderingInitialized = 3,
++    // Unity is fully initialized, it's not safe to call Unity APIs before this state
++    kUnityEngineLoadStateAppReady = 4,
++} UnityEngineLoadState;
++
++__attribute__ ((visibility("default")))
++@interface UnityAppController : NSObject<UIApplicationDelegate>
++{
++    UnityView*          _unityView;
++    CADisplayLink*      _displayLink;
++#if UNITY_USES_METAL_DISPLAY_LINK
++    CAMetalDisplayLink* _metalDisplayLink API_AVAILABLE(ios(17.0), tvos(17.0));
++#endif
++    // since we can have CAMetalDisplayLink not available both at runtime (old ios) and at compile time (old xcode)
++    //   and we can have it disabled completely (not all applications need it)
++    // the code supporting both CAMetalDisplayLink and CADisplayLink can easily become very convoluted
++    // hence we add a boolean to check CAMetalDisplayLink usage without checks for @available and preprocessor ifdefs
++    BOOL                _usesMetalDisplayLink;
++
++    UIWindow*           _window;
++    UIView*             _rootView;
++    UIViewController*   _rootController;
++    UIViewController*   _snapshotViewController;
++
++    DisplayConnection*  _mainDisplay;
++
++    // CODE ARCHEOLOGY: we were caching view controllers, both autorotation one and per-fixed-orientation ones
++    // CODE ARCHEOLOGY: we stopped doing this as the performance impact is negligible,
++    // CODE ARCHEOLOGY: yet it introduces corner cases and in general lots of code
++
++#if UNITY_SUPPORT_ROTATION
++    UIInterfaceOrientation  _curOrientation;
++#endif
++
++    id<RenderPluginDelegate>    _renderDelegate;
++}
++
++// override it to add your render plugin delegate
++- (void)shouldAttachRenderDelegate;
++
++// this one is called at the very end of didFinishLaunchingWithOptions:
++// after views have been created but before initing engine itself
++// override it to register plugins, tweak UI etc
++- (void)preStartUnity;
++
++// this one is called at at the very end of didFinishLaunchingWithOptions:
++// it will start showing unity view and rendering unity content
++- (void)initUnityWithScene:(UIWindowScene*)scene;
++
++// this one is called at at the very end of didFinishLaunchingWithOptions:
++// it will start showing unity view and rendering unity content
++- (void)startUnity;
++
++// override it if you want to have custom logic for the decision to use CAMetalDisplayLink or not
++// in any case, CAMetalDisplayLink will be used only if actually supported by the device
++// this will be called once on startup, before any rendering but after initializing unity
++- (BOOL)shouldUseMetalDisplayLink;
++
++- (BOOL)advanceEngineLoadState:(UnityEngineLoadState)newState;
++- (BOOL)downgradeEngineLoadState:(UnityEngineLoadState)newState;
++
++// this is a part of UIApplicationDelegate protocol starting with ios5
++// setter will be generated empty
++@property (retain, nonatomic) UIWindow* window;
++
++@property (readonly, copy, nonatomic) UnityView*            unityView;
++@property (readonly, copy, nonatomic) CADisplayLink*        unityDisplayLink;
++@property (readonly, nonatomic) BOOL                        unityUsesMetalDisplayLink;
++
++#if UNITY_USES_METAL_DISPLAY_LINK
++@property (readonly, copy, nonatomic) CAMetalDisplayLink*   unityMetalDisplayLink API_AVAILABLE(ios(17.0), tvos(17.0));
++#endif
++
++@property (readonly, copy, nonatomic) UIView*               rootView;
++@property (readonly, copy, nonatomic) UIViewController*     rootViewController;
++@property (readonly, copy, nonatomic) DisplayConnection*    mainDisplay;
++
++#if UNITY_SUPPORT_ROTATION
++@property (readonly, nonatomic) UIInterfaceOrientation      interfaceOrientation;
++#endif
++
++@property (readonly) UnityEngineLoadState                   engineLoadState;
++@property (readonly) bool                                   didResignActive;
++@property (nonatomic, retain) id                            renderDelegate;
++@property (nonatomic, copy)                                 void (^quitHandler)(void);
++
++@end
++
++// accessing app controller
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++extern UnityAppController* _UnityAppController;
++extern UnityAppController* GetAppController(void);
++
++#ifdef __cplusplus
++} // extern "C"
++#endif
++
++// Put this into mm file with your subclass implementation
++// pass subclass name to define
++
++#define IMPL_APP_CONTROLLER_SUBCLASS(ClassName) \
++@interface ClassName(OverrideAppDelegate)       \
++{                                               \
++}                                               \
+++(void)load;                                    \
++@end                                            \
++@implementation ClassName(OverrideAppDelegate)  \
+++(void)load                                     \
++{                                               \
++    extern const char* AppControllerClassName;  \
++    AppControllerClassName = #ClassName;        \
++}                                               \
++@end                                            \
++
++
++// plugins
++
++#define APP_CONTROLLER_RENDER_PLUGIN_METHOD(method)                         \
++do {                                                                        \
++    id<RenderPluginDelegate> delegate = GetAppController().renderDelegate;  \
++    if([delegate respondsToSelector:@selector(method)])                     \
++        [delegate method];                                                  \
++} while(0)
++
++#define APP_CONTROLLER_RENDER_PLUGIN_METHOD_ARG(method, arg)                \
++do {                                                                        \
++    id<RenderPluginDelegate> delegate = GetAppController().renderDelegate;  \
++    if([delegate respondsToSelector:@selector(method:)])                    \
++        [delegate method:arg];                                              \
++} while(0)
++
++
++// these are simple wrappers about ios api, added for convenience
++void AppController_SendNotification(NSString* name);
++void AppController_SendNotificationWithArg(NSString* name, id arg);
++
++void AppController_SendUnityViewControllerNotification(NSString* name);
++
++// in the case when apple adds new api that has easy fallback path for old ios
++// we will add new api methods at runtime on older ios, so we can switch to new api universally
++// in that case we still need actual declaration: we will do it here as it is the most convenient place
++
++// history:
++// [CADisplayLink preferredFramesPerSecond], [UIScreen maximumFramesPerSecond], [UIView safeAreaInsets]
++//   were removed after we started to enforce xcode9 (sdk 11)
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/UnityFramework.h b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/UnityFramework.h
+new file mode 100644
+index 0000000..bc9aa93
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/UnityFramework.h
+@@ -0,0 +1,69 @@
++#import <UIKit/UIKit.h>
++#import <Foundation/Foundation.h>
++
++#import <UnityFramework/UnityAppController.h>
++
++// this is coming from mach-o/ldsyms.h
++// we were including this header header here directly
++
++// alas we were including <mach-o/ldsyms.h> directly in UnityFramework.h (for mach_header definition)
++//   instead of doing forward declaration and using, say, void pointers in unity c-interface
++// and this resulted in code in the wild that uses _mh_execute_header directly without this include
++// now, with C++/ObjC++ modules support we end up in a funny situation,
++// where we need to include UndefinePlatforms/RedefinePlatforms quoted which gives a warning
++// thankfully, we can easily provide the definition of _mh_execute_header ourselves
++
++typedef struct mach_header_64 MachHeader;
++extern const struct mach_header_64 _mh_execute_header;
++
++//! Project version number for UnityFramework.
++FOUNDATION_EXPORT double UnityFrameworkVersionNumber;
++
++//! Project version string for UnityFramework.
++FOUNDATION_EXPORT const unsigned char UnityFrameworkVersionString[];
++
++// In this header, you should import all the public headers of your framework using statements like #import <UnityFramework/PublicHeader.h>
++
++#pragma once
++
++// important app life-cycle events
++__attribute__ ((visibility("default")))
++@protocol UnityFrameworkListener<NSObject>
++@optional
++- (void)unityDidUnload:(NSNotification*)notification;
++- (void)unityDidQuit:(NSNotification*)notification;
++@end
++
++__attribute__ ((visibility("default")))
++@interface UnityFramework : NSObject
++{
++}
++
++- (UnityAppController*)appController;
++
++- (UITextField*)keyboardTextField;
++
+++ (UnityFramework*)getInstance;
++
++- (void)setDataBundleId:(const char*)bundleId;
++
++- (void)runUIApplicationMainWithArgc:(int)argc argv:(char*[])argv;
++- (void)runEmbeddedWithArgc:(int)argc argv:(char*[])argv appLaunchOpts:(NSDictionary*)appLaunchOpts;
++
++- (void)unloadApplication;
++- (void)quitApplication:(int)exitCode;
++
++- (void)registerFrameworkListener:(id<UnityFrameworkListener>)obj;
++- (void)unregisterFrameworkListener:(id<UnityFrameworkListener>)obj;
++
++- (void)showUnityWindow;
++- (void)pause:(bool)pause;
++
++- (void)setAbsoluteURL:(const char *)url;
++
++- (void)setExecuteHeader:(const MachHeader*)header;
++- (void)sendMessageToGOWithName:(const char*)goName functionName:(const char*)name message:(const char*)msg;
++
++- (int)shouldRunInBackground;
++
++@end
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/UnityViewControllerListener.h b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/UnityViewControllerListener.h
+new file mode 100644
+index 0000000..0df8f21
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Headers/UnityViewControllerListener.h
+@@ -0,0 +1,51 @@
++#pragma once
++
++#import <Foundation/NSNotification.h>
++
++// view changes on the main view controller
++
++@protocol UnityViewControllerListener<NSObject>
++@optional
++- (void)viewWillLayoutSubviews:(NSNotification*)notification;
++- (void)viewDidLayoutSubviews:(NSNotification*)notification;
++- (void)viewWillDisappear:(NSNotification*)notification;
++- (void)viewDidDisappear:(NSNotification*)notification;
++- (void)viewWillAppear:(NSNotification*)notification;
++- (void)viewDidAppear:(NSNotification*)notification;
++
++- (void)interfaceWillChangeOrientation:(NSNotification*)notification;
++- (void)interfaceDidChangeOrientation:(NSNotification*)notification;
++@end
++
++@protocol UnityViewControllerNotifications<NSObject>
++@optional
++- (void)onViewWillLayoutSubviews;
++- (void)onViewDidLayoutSubviews;
++- (void)onViewDidDisappear:(BOOL)animated;
++- (void)onViewWillDisappear:(BOOL)animated;
++- (void)onViewDidAppear:(BOOL)animated;
++- (void)onViewWillAppear:(BOOL)animated;
++@end
++
++// this default delegate will send notifications for UnityViewControllerListener
++@interface UnityViewControllerNotificationsDefaultSender : NSObject<UnityViewControllerNotifications>
++- (void)onViewWillLayoutSubviews;
++- (void)onViewDidLayoutSubviews;
++- (void)onViewDidDisappear:(BOOL)animated;
++- (void)onViewWillDisappear:(BOOL)animated;
++- (void)onViewDidAppear:(BOOL)animated;
++- (void)onViewWillAppear:(BOOL)animated;
++@end
++
++
++void UnityRegisterViewControllerListener(id<UnityViewControllerListener> obj);
++void UnityUnregisterViewControllerListener(id<UnityViewControllerListener> obj);
++
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityViewWillLayoutSubviews;
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityViewDidLayoutSubviews;
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityViewWillDisappear;
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityViewDidDisappear;
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityViewWillAppear;
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityViewDidAppear;
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityInterfaceWillChangeOrientation;
++extern "C" __attribute__((visibility("default"))) NSString* const kUnityInterfaceDidChangeOrientation;
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Info.plist b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Info.plist
+new file mode 100644
+index 0000000..e671241
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Info.plist differ
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Modules/module.modulemap b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Modules/module.modulemap
+new file mode 100644
+index 0000000..7657362
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/Modules/module.modulemap
+@@ -0,0 +1,6 @@
++framework module UnityFramework {
++  umbrella header "UnityFramework.h"
++  export *
++
++  module * { export * }
++}
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/PrivacyInfo.xcprivacy b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/PrivacyInfo.xcprivacy
+new file mode 100644
+index 0000000..ecc944c
+--- /dev/null
++++ b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/PrivacyInfo.xcprivacy
+@@ -0,0 +1,17 @@
++<?xml version="1.0" encoding="utf-8"?>
++<plist version="1.0">
++  <dict>
++    <key>NSPrivacyAccessedAPITypes</key>
++    <array>
++      <dict>
++        <key>NSPrivacyAccessedAPIType</key>
++        <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
++        <key>NSPrivacyAccessedAPITypeReasons</key>
++        <array>
++          <string>0A2A.1</string>
++          <string>C617.1</string>
++        </array>
++      </dict>
++    </array>
++  </dict>
++</plist>
+diff --git a/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/UnityFramework b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/UnityFramework
+new file mode 100755
+index 0000000..1df961a
+Binary files /dev/null and b/node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework/UnityFramework differ

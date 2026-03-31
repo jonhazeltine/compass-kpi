@@ -14,3 +14,10 @@ app/.git.broken-*/
 app/.expo/
 app/dist/
 app/web-build/
+.gstack/
+
+# Unity framework build artifacts (143MB+ binary, rebuild from VPTree2 Unity project)
+app/unity/builds/ios/UnityFramework.framework/
+
+# Claude workspace
+.claude/

@@ -77,7 +77,7 @@ module.exports = ({ config }) => ({
   plugins: [
     ...(config.plugins || []).filter((p) => {
       const name = Array.isArray(p) ? p[0] : p;
-      return !['expo-audio', 'expo-secure-store', 'expo-image-picker', 'expo-video', '@react-native-community/datetimepicker'].includes(name);
+      return !['expo-audio', 'expo-secure-store', 'expo-image-picker', 'expo-video', '@react-native-community/datetimepicker', '@azesmway/react-native-unity'].includes(name);
     }),
     'expo-audio',
     'expo-secure-store',

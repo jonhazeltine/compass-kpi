@@ -56,9 +56,11 @@ const TIER_THRESHOLDS = VP_STAGES.map(s => s.min);
 
 interface VPTreeScreenProps {
   onBack?: () => void;
+  onOpenGallery?: () => void;
+  onOpenUnityTree?: () => void;
 }
 
-export default function VPTreeScreen({ onBack }: VPTreeScreenProps) {
+export default function VPTreeScreen({ onBack, onOpenGallery, onOpenUnityTree }: VPTreeScreenProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -283,7 +285,7 @@ export default function VPTreeScreen({ onBack }: VPTreeScreenProps) {
       const newStage = getStage(newTotal);
 
       // Compute progress
-      const progress = computeProgress(vpTotal, newTotal, TIER_THRESHOLDS, logsSinceZoomRef.current, 5);
+      const progress = computeProgress(vpTotal, newTotal, TIER_THRESHOLDS, logsSinceZoomRef.current);
       logsSinceZoomRef.current += 1;
 
       setVpTotal(newTotal);
@@ -385,7 +387,18 @@ export default function VPTreeScreen({ onBack }: VPTreeScreenProps) {
             </Pressable>
           )}
           <Text style={styles.headerTitle}>VP Tree</Text>
-          <View style={{ width: 60 }} />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {onOpenUnityTree ? (
+              <Pressable onPress={onOpenUnityTree} style={styles.backBtn}>
+                <Text style={styles.backText}>Unity</Text>
+              </Pressable>
+            ) : null}
+            {onOpenGallery ? (
+              <Pressable onPress={onOpenGallery} style={styles.backBtn}>
+                <Text style={styles.backText}>Gallery</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
 
         {/* Stats bar */}
