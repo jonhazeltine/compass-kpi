@@ -58,9 +58,11 @@ interface VPTreeScreenProps {
   onBack?: () => void;
   onOpenGallery?: () => void;
   onOpenUnityTree?: () => void;
+  /** Rendered on top of the canvas area — used for Unity overlay */
+  unityOverlay?: React.ReactNode;
 }
 
-export default function VPTreeScreen({ onBack, onOpenGallery, onOpenUnityTree }: VPTreeScreenProps) {
+export default function VPTreeScreen({ onBack, onOpenGallery, onOpenUnityTree, unityOverlay }: VPTreeScreenProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -411,33 +413,39 @@ export default function VPTreeScreen({ onBack, onOpenGallery, onOpenUnityTree }:
         </ScrollView>
       </View>
 
-      {/* Canvas */}
+      {/* Canvas — Unity overlay replaces the Skia tree when provided */}
       <View style={styles.canvasWrap}>
-        <TreeCanvas
-          width={canvasWidth}
-          height={canvasHeight}
-          treeData={treeData}
-          stage={stage}
-          decayProgress={decayShared}
-          orbProgress={orbProgress}
-          orbOpacity={orbOpacity}
-          trunkGlowOpacity={trunkGlowOpacity}
-          rustleOffsetX={rustleOffsetX}
-          rustleOffsetY={rustleOffsetY}
-          newLeafScale={newLeafScale}
-          newLeafIndex={newLeafIdx}
-          flowerScale={flowerScale}
-          flowerIndex={flowerIdx}
-          butterflyProgress={butterflyProgress}
-          particleProgress={particleProgress}
-          particleOpacity={particleOpacity}
-          tierFlashOpacity={tierFlashOpacity}
-          tierScale={tierScale}
-          zoomTransform={zoomTransform}
-          zoomOriginX={zoomOriginX}
-          zoomOriginY={zoomOriginY}
-          isZooming={isZooming}
-        />
+        {unityOverlay ? (
+          <View style={{ flex: 1 }}>
+            {unityOverlay}
+          </View>
+        ) : (
+          <TreeCanvas
+            width={canvasWidth}
+            height={canvasHeight}
+            treeData={treeData}
+            stage={stage}
+            decayProgress={decayShared}
+            orbProgress={orbProgress}
+            orbOpacity={orbOpacity}
+            trunkGlowOpacity={trunkGlowOpacity}
+            rustleOffsetX={rustleOffsetX}
+            rustleOffsetY={rustleOffsetY}
+            newLeafScale={newLeafScale}
+            newLeafIndex={newLeafIdx}
+            flowerScale={flowerScale}
+            flowerIndex={flowerIdx}
+            butterflyProgress={butterflyProgress}
+            particleProgress={particleProgress}
+            particleOpacity={particleOpacity}
+            tierFlashOpacity={tierFlashOpacity}
+            tierScale={tierScale}
+            zoomTransform={zoomTransform}
+            zoomOriginX={zoomOriginX}
+            zoomOriginY={zoomOriginY}
+            isZooming={isZooming}
+          />
+        )}
       </View>
 
       {/* Stage stepper controls */}

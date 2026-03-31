@@ -15,11 +15,13 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  Platform,
   TouchableOpacity,
   useColorScheme,
 
   View,
 } from 'react-native';
+import UnityView from '@azesmway/react-native-unity';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -364,10 +366,20 @@ export default function KPIDashboardScreen({
   onOpenGallery,
   menuRouteTarget,
   onMenuRouteTargetConsumed,
-}: Props & { onOpenVPTree?: () => void; onOpenGPCity?: () => void; onOpenGallery?: () => void }) {
+  onUnityViewportChange,
+  sendUnityMessage,
+}: Props & {
+  onOpenVPTree?: () => void;
+  onOpenGPCity?: () => void;
+  onOpenGallery?: () => void;
+  onUnityViewportChange?: (viewport: { x: number; y: number; width: number; height: number } | null) => void;
+  sendUnityMessage?: (message: string) => void;
+}) {
   const { session } = useAuth();
   const { tier: entitlementTier, effectivePlan, can: entitlementCan, limit: entitlementLimitFromContext } = useEntitlements();
   const insets = useSafeAreaInsets();
+
+  const unityTreeRef = useRef<any>(null);
 
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';

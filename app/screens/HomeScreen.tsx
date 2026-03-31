@@ -10,11 +10,10 @@ import InviteCodeScreen from './InviteCodeScreen';
 import VPTreeScreen from './VPTreeScreen';
 import GPCityScreen from './GPCityScreen';
 import AnimationGalleryScreen from './AnimationGalleryScreen';
-import UnityTreeTestScreen from './UnityTreeTestScreen';
 import AvatarMenu from '../components/nav/AvatarMenu';
 import { useAuth } from '../contexts/AuthContext';
 
-type UserMenuRoute = 'dashboard' | 'profile' | 'goals' | 'settings' | 'invite' | 'vp-tree' | 'gp-city' | 'animation-gallery' | 'unity-tree';
+type UserMenuRoute = 'dashboard' | 'profile' | 'goals' | 'settings' | 'invite' | 'vp-tree' | 'gp-city' | 'animation-gallery';
 type DashboardRouteTarget = {
   tab?: 'team' | 'coach' | 'challenge';
   screen?: string;
@@ -63,10 +62,9 @@ export default function HomeScreen() {
         {activeRoute === 'invite' ? (
           <InviteCodeScreen onBack={() => setActiveRoute('dashboard')} onRedeemSuccess={onInviteRedeemSuccess} />
         ) : null}
-        {activeRoute === 'vp-tree' ? <VPTreeScreen onBack={() => setActiveRoute('dashboard')} onOpenGallery={() => setActiveRoute('animation-gallery')} onOpenUnityTree={() => setActiveRoute('unity-tree')} /> : null}
+        {activeRoute === 'vp-tree' ? <VPTreeScreen onBack={() => setActiveRoute('dashboard')} onOpenGallery={() => setActiveRoute('animation-gallery')} /> : null}
         {activeRoute === 'gp-city' ? <GPCityScreen onBack={() => setActiveRoute('dashboard')} /> : null}
         {activeRoute === 'animation-gallery' ? <AnimationGalleryScreen onBack={() => setActiveRoute('dashboard')} /> : null}
-        {activeRoute === 'unity-tree' ? <UnityTreeTestScreen onBack={() => setActiveRoute('vp-tree')} /> : null}
       </View>
       <AvatarMenu
         visible={menuVisible}
