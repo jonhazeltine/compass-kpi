@@ -11,6 +11,7 @@ import AdminShellScreen from './screens/AdminShellScreen';
 import CoachPortalScreen from './screens/CoachPortalScreen';
 import HomeScreen from './screens/HomeScreen';
 import { getAdminRouteByPath, type AdminRouteKey } from './lib/adminAuthz';
+import { EffectsProvider } from './components/effects/EffectsContext';
 
 const COACH_PORTAL_ROUTE_KEYS: AdminRouteKey[] = [
   'coachingUploads',
@@ -105,15 +106,17 @@ function AppContent() {
 export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider>
-        <AuthProvider>
-          <EntitlementsProvider>
-            <AdminAuthzProvider>
-              <AppContent />
-            </AdminAuthzProvider>
-          </EntitlementsProvider>
-        </AuthProvider>
-      </SafeAreaProvider>
+      <EffectsProvider>
+        <SafeAreaProvider>
+          <AuthProvider>
+            <EntitlementsProvider>
+              <AdminAuthzProvider>
+                <AppContent />
+              </AdminAuthzProvider>
+            </EntitlementsProvider>
+          </AuthProvider>
+        </SafeAreaProvider>
+      </EffectsProvider>
     </GestureHandlerRootView>
   );
 }

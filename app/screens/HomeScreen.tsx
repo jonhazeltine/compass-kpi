@@ -14,6 +14,7 @@ import UnityLogScreen from './UnityLogScreen';
 import UnityTreeTestScreen from './UnityTreeTestScreen';
 import AvatarMenu from '../components/nav/AvatarMenu';
 import { useAuth } from '../contexts/AuthContext';
+// EffectsProvider moved to App.tsx (must be above SafeAreaView for correct coordinates)
 
 type UserMenuRoute = 'dashboard' | 'profile' | 'goals' | 'settings' | 'invite' | 'vp-tree' | 'gp-city' | 'animation-gallery' | 'unity-log';
 type DashboardRouteTarget = {

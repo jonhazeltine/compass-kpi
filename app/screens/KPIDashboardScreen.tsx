@@ -28,7 +28,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polyline, Polygon } from 'react-native-svg';
 import LottieSlot from '../components/LottieSlot';
 import { VPTreeInline } from '../components/vp-tree/VPTreeInline';
+import { PreRenderedTreeCanvas } from '../components/vp-tree/PreRenderedTreeCanvas';
+import { TreeReveal } from '../components/vp-tree/TreeReveal';
+import { CityReveal } from '../components/gp-city/CityReveal';
+import { getStage as getVPStage, type GrowthStage } from '../components/vp-tree/constants';
+import {
+  useSharedValue as useReanimatedSharedValue,
+  withTiming as reanimatedWithTiming,
+  withSequence as reanimatedWithSequence,
+  withRepeat as reanimatedWithRepeat,
+  Easing as ReanimatedEasing,
+} from 'react-native-reanimated';
 import { GPCityInline } from '../components/gp-city/GPCityInline';
+import { PreRenderedCityCanvas } from '../components/gp-city/PreRenderedCityCanvas';
+import { getTier as getGPTier, type CityTier } from '../components/gp-city/constants';
 import { CommsHub } from '../components/comms';
 import type { ChannelRow as CommsChannelRow } from '../components/comms';
 import { useBottomNavAnimation } from '../components/comms/useBottomNavAnimation';
@@ -87,6 +100,8 @@ import ProjectionBarChart from '../components/dashboard/ProjectionBarChart';
 import CoinAccumulator from '../components/dashboard/CoinAccumulator';
 import CoinOverlay from '../components/dashboard/CoinOverlay';
 import { useCoinFlight } from '../hooks/useCoinFlight';
+import { useEffects } from '../components/effects/useEffects';
+import HeaderAccumulators from '../components/effects/HeaderAccumulators';
 import { createCustomKpi, fetchCustomKpis, updateCustomKpi, type CustomKpiRow } from '../lib/customKpiApi';
 import {
   getKpiTypeIconTreatment,
@@ -378,6 +393,7 @@ export default function KPIDashboardScreen({
   const { session } = useAuth();
   const { tier: entitlementTier, effectivePlan, can: entitlementCan, limit: entitlementLimitFromContext } = useEntitlements();
   const insets = useSafeAreaInsets();
+  const { fireVortex } = useEffects();
 
   const unityTreeRef = useRef<any>(null);
 
@@ -390,6 +406,24 @@ export default function KPIDashboardScreen({
   const [submitting, setSubmitting] = useState(false);
   const [vpPulseKey, setVpPulseKey] = useState(0);
   const [gpPulseKey, setGpPulseKey] = useState(0);
+
+  // Pre-rendered VP tree shared values
+  const vpTreeDecay = useReanimatedSharedValue(0);
+  const vpTreeOrbProgress = useReanimatedSharedValue(0);
+  const vpTreeOrbOpacity = useReanimatedSharedValue(0);
+  const vpTreeTrunkGlow = useReanimatedSharedValue(0);
+  const vpTreeRustleX = useReanimatedSharedValue(0);
+  const vpTreeRustleY = useReanimatedSharedValue(0);
+  const vpTreeParticleProgress = useReanimatedSharedValue(0);
+  const vpTreeParticleOpacity = useReanimatedSharedValue(0);
+  const vpTreeTierFlash = useReanimatedSharedValue(0);
+  const vpTreeTierScale = useReanimatedSharedValue(1);
+
+  // Pre-rendered GP city shared values
+  const gpCityPulseProgress = useReanimatedSharedValue(0);
+  const gpCityPulseOpacity = useReanimatedSharedValue(0);
+  const gpCityDecay = useReanimatedSharedValue(0);
+
   const [submittingKpiId, setSubmittingKpiId] = useState<string | null>(null);
   const [segment, setSegment] = useState<Segment>('PC');
   const [homePanel, setHomePanel] = useState<HomePanel>('Quick');
@@ -2206,7 +2240,37 @@ export default function KPIDashboardScreen({
         monthIndex: targetBarIndex,
       });
 
+      // Skia vortex: coins spiral from tile → accumulator
+      fireVortex({
+        from: { x: sourceX, y: sourceY },
+        to: { x: accX, y: accY },
+        count: 30,
+      });
+
       launchedOptimisticProjection = true;
+    }
+
+    // All KPI types: fire vortex toward matching header accumulator
+    {
+      const kpiType = kpi.type as 'PC' | 'VP' | 'GP';
+      if (kpiType === 'PC' || kpiType === 'VP' || kpiType === 'GP') {
+        const sourceX = options?.sourcePagePoint?.x ?? 180;
+        const sourceY = options?.sourcePagePoint?.y ?? 400;
+        const accBox = accPositionsRef.current[kpiType];
+        const screenW = Dimensions.get('window').width;
+        const targetX = accBox ? accBox.x + accBox.w / 2 : screenW / 2;
+        const targetY = accBox ? accBox.y + accBox.h / 2 : 60;
+
+        fireVortex({
+          from: { x: sourceX, y: sourceY },
+          to: { x: targetX, y: targetY },
+          count: 30,
+          color: kpiType, // 'PC' | 'VP' | 'GP' — drives particle visual + spiral config
+        });
+
+        setAccVisible(true);
+        setAccDeposits((prev) => ({ ...prev, [kpiType]: prev[kpiType] + 1 }));
+      }
     }
 
     enqueueLogTask({
@@ -2320,7 +2384,7 @@ export default function KPIDashboardScreen({
           <Text style={styles.chartBoostChipText}>{vpBoostActive ? 'Vitality Boost' : 'Vitality Boost 🔒'}</Text>
         </Animated.View>
       </View>
-      {/* Coin Accumulator — central counter */}
+      {/* Old Coin Accumulator — PC only */}
       <CoinAccumulator
         displayValue={fmtUsd(coinAccumulatorDisplayValue || (payload?.projection?.pc_90d ?? 0))}
         pulseAnim={coinAccumulatorPulse}
@@ -2329,6 +2393,8 @@ export default function KPIDashboardScreen({
         accumulatorRef={coinAccumulatorRef}
         onLayout={handleAccumulatorLayout}
       />
+
+      {/* Header Accumulators moved to renderGameplayHeader() */}
 
       {/* Bar Chart — replaces old SVG line chart */}
       <ProjectionBarChart
@@ -2400,6 +2466,9 @@ export default function KPIDashboardScreen({
               <Text style={styles.modeRailEdgeBtnText}>›</Text>
             </TouchableOpacity>
           </View>
+          <TouchableOpacity style={styles.panelGearBtn} onPress={() => setVizDevVisible((v) => !v)} accessibilityLabel="Toggle stage controls">
+            <Text style={styles.panelGearText}>{vizDevVisible ? '🎮' : '🎮'}</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.panelGearBtn} onPress={openAddNewDrawer} accessibilityLabel="Edit log setup">
             <Text style={styles.panelGearText}>⚙︎</Text>
           </TouchableOpacity>
@@ -2408,46 +2477,97 @@ export default function KPIDashboardScreen({
     );
   };
 
-  const vpTreeTotal = payload?.points?.vp_raw ?? payload?.points?.vp ?? 0;
-  const gpCityTotal = payload?.points?.gp ?? 0;
+  const vpTreeTotalReal = payload?.points?.vp_raw ?? payload?.points?.vp ?? 0;
+  const gpCityTotalReal = payload?.points?.gp ?? 0;
 
-  const renderHomeVisualPlaceholder = (kind: 'GP' | 'VP') => (
-    <View style={styles.chartWrap}>
-      {kind === 'VP' ? (
-        <View>
-          <VPTreeInline
-            width={visualPageWidth}
-            height={280}
-            vpTotal={vpTreeTotal}
-            seed={42}
-            pulseKey={vpPulseKey}
-          />
-          {onOpenVPTree && (
+  /* ── Viz Dev Controls: override image stage for testing ──────── */
+  const [vizDevOverride, setVizDevOverride] = useState<{ vpImg: number | null; gpImg: number | null }>({ vpImg: null, gpImg: null });
+  const [vizDevVisible, setVizDevVisible] = useState(false);
+
+  const vpTreeTotal = vpTreeTotalReal;
+  const gpCityTotal = gpCityTotalReal;
+
+  // Image stage: 0-9, independent of point thresholds
+  const vpDevImageStage = vizDevOverride.vpImg;
+  const gpDevImageStage = vizDevOverride.gpImg;
+
+  const cycleVizDev = (kind: 'vp' | 'gp', dir: 1 | -1) => {
+    const key = kind === 'vp' ? 'vpImg' : 'gpImg';
+    const current = kind === 'vp' ? (vpDevImageStage ?? Math.min(getVPStage(vpTreeTotal) * 2, 9)) : (gpDevImageStage ?? Math.min(getGPTier(gpCityTotal) * 2, 9));
+    const next = Math.max(0, Math.min(9, current + dir));
+    setVizDevOverride((prev) => ({ ...prev, [key]: next }));
+  };
+
+  // Stage images for reveal components (no Skia canvas)
+  const VP_STAGE_IMAGES = [
+    require('../assets/vp-tree/stage_0.png'), require('../assets/vp-tree/stage_1.png'),
+    require('../assets/vp-tree/stage_2.png'), require('../assets/vp-tree/stage_3.png'),
+    require('../assets/vp-tree/stage_4.png'), require('../assets/vp-tree/stage_5.png'),
+    require('../assets/vp-tree/stage_6.png'), require('../assets/vp-tree/stage_7.png'),
+    require('../assets/vp-tree/stage_8.png'), require('../assets/vp-tree/stage_9.png'),
+  ];
+  const GP_STAGE_IMAGES = [
+    require('../assets/gp-city/stage_0.png'), require('../assets/gp-city/stage_1.png'),
+    require('../assets/gp-city/stage_2.png'), require('../assets/gp-city/stage_3.png'),
+    require('../assets/gp-city/stage_4.png'), require('../assets/gp-city/stage_5.png'),
+    require('../assets/gp-city/stage_6.png'), require('../assets/gp-city/stage_7.png'),
+    require('../assets/gp-city/stage_8.png'), require('../assets/gp-city/stage_9.png'),
+  ];
+
+  const renderHomeVisualPlaceholder = (kind: 'GP' | 'VP') => {
+    const imgIdx = kind === 'VP'
+      ? (vpDevImageStage ?? Math.min(getVPStage(vpTreeTotal) * 2, 9))
+      : (gpDevImageStage ?? Math.min(getGPTier(gpCityTotal) * 2, 9));
+    const images = kind === 'VP' ? VP_STAGE_IMAGES : GP_STAGE_IMAGES;
+    const safeIdx = Math.max(0, Math.min(9, imgIdx));
+
+    return (
+      <View style={styles.chartWrap}>
+        <View style={{ backgroundColor: '#000', borderRadius: 12, overflow: 'hidden' }}>
+          {kind === 'VP' ? (
+            <TreeReveal
+              source={images[safeIdx]}
+              stageIndex={safeIdx}
+              width={visualPageWidth}
+              height={280}
+              useVideoTransition={true}
+            />
+          ) : (
+            <CityReveal
+              source={images[safeIdx]}
+              stageIndex={safeIdx}
+              width={visualPageWidth}
+              height={280}
+              useVideoTransition={true}
+            />
+          )}
+          {kind === 'VP' && onOpenVPTree && !vizDevVisible && (
             <Pressable
               onPress={onOpenVPTree}
               style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
             />
           )}
-        </View>
-      ) : (
-        <View>
-          <GPCityInline
-            width={visualPageWidth}
-            height={280}
-            gpTotal={gpCityTotal}
-            seed={42}
-            pulseKey={gpPulseKey}
-          />
-          {onOpenGPCity && (
+          {kind === 'GP' && onOpenGPCity && !vizDevVisible && (
             <Pressable
               onPress={onOpenGPCity}
               style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
             />
           )}
+          {vizDevVisible && (
+            <View style={styles.vizDevStrip}>
+              <TouchableOpacity onPress={() => cycleVizDev(kind === 'VP' ? 'vp' : 'gp', -1)} style={styles.vizDevBtn}>
+                <Text style={styles.vizDevBtnText}>◀</Text>
+              </TouchableOpacity>
+              <Text style={styles.vizDevLabel}>Stage {safeIdx + 1} of 10</Text>
+              <TouchableOpacity onPress={() => cycleVizDev(kind === 'VP' ? 'vp' : 'gp', 1)} style={styles.vizDevBtn}>
+                <Text style={styles.vizDevBtnText}>▶</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
-      )}
-    </View>
-  );
+      </View>
+    );
+  };
 
   const renderHomeGridPanel = (panel: HomePanel, options?: { attachLiveTileRefs?: boolean }) => {
     const locked = (panel === 'GP' && !gpUnlocked) || (panel === 'VP' && !vpUnlocked);
@@ -4694,6 +4814,17 @@ export default function KPIDashboardScreen({
     coinAccumulatorRef.current?.measureInWindow?.((x, y, w, h) => {
       coinAccumulatorBoxRef.current = { x, y, w, h };
     });
+  }, []);
+
+  /* ── Header Accumulators (vortex targets for PC/VP/GP) ────────── */
+  const [accDeposits, setAccDeposits] = useState({ PC: 0, VP: 0, GP: 0 });
+  const [accVisible, setAccVisible] = useState(true); // always visible on log screens
+  const accPositionsRef = useRef<import('../components/effects/HeaderAccumulators').AccumulatorPositions>({
+    PC: null, VP: null, GP: null,
+  });
+
+  const handleAccPositionsMeasured = useCallback((positions: import('../components/effects/HeaderAccumulators').AccumulatorPositions) => {
+    accPositionsRef.current = positions;
   }, []);
 
   const handleBarLayout = useCallback((index: number, x: number, y: number, width: number, height: number) => {
@@ -7982,7 +8113,7 @@ export default function KPIDashboardScreen({
         </View>
       ) : null}
 
-      {/* Coin flight overlay — streams coins from KPI tiles → accumulator → bar chart */}
+      {/* Old coin flight overlay — PC only */}
       <CoinOverlay coins={activeCoinFx} />
 
       {/* ── V2 Challenge Wizard (full-screen modal, accessible from any tab) ── */}
@@ -8020,6 +8151,14 @@ export default function KPIDashboardScreen({
 
       {showUniversalAvatarTrigger ? (
         <View style={styles.topIconsPill}>
+          {/* Accumulator icons — only visible on dashboard */}
+          {activeTab === 'home' && (
+            <HeaderAccumulators
+              deposits={accDeposits}
+              visible={accVisible}
+              onPositionsMeasured={handleAccPositionsMeasured}
+            />
+          )}
           <TouchableOpacity
             style={styles.messagesBellBtn}
             accessibilityRole="button"
@@ -10333,5 +10472,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#355ca8',
+  },
+  vizDevStrip: {
+    position: 'absolute',
+    bottom: 8,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  vizDevBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vizDevBtnText: {
+    fontSize: 14,
+    color: '#fff',
+  },
+  vizDevLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+    minWidth: 120,
+    textAlign: 'center',
   },
 });
