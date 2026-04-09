@@ -425,7 +425,7 @@ type KpiFormDraft = {
   name: string;
   slug: string;
   type: AdminKpiWritePayload['type'];
-  iconSource?: 'brand_asset' | 'vector_icon' | null;
+  iconSource?: 'brand_asset' | 'vector_icon' | 'phosphor' | null;
   iconName?: string | null;
   requiresDirectValueInput: boolean;
   isActive: boolean;

@@ -1,7 +1,17 @@
 import React from 'react';
 import { Image, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import * as PhosphorIcons from 'phosphor-react-native';
 import { getKpiTypeIconTreatment, resolveKpiIcon, type KpiIconMetadata } from '../../lib/kpiIcons';
+
+/** Convert kebab-case icon name to PascalCase Phosphor component name, e.g. 'phone-call' → 'PhoneCall' */
+function getPhosphorComponent(kebabName: string): React.ComponentType<any> | null {
+  const pascal = kebabName
+    .split('-')
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join('');
+  return (PhosphorIcons as any)[pascal] ?? null;
+}
 
 type Props = {
   kpi: KpiIconMetadata;
@@ -41,6 +51,17 @@ export default function KpiIcon({
         </View>
       </View>
     );
+  }
+
+  if (resolution.kind === 'phosphor') {
+    const Icon = getPhosphorComponent(resolution.iconName);
+    if (Icon) {
+      return (
+        <View style={wrapperStyle}>
+          <Icon size={Math.max(16, size * 0.85)} color={resolvedColor} weight="regular" />
+        </View>
+      );
+    }
   }
 
   if (resolution.kind === 'vector_icon') {

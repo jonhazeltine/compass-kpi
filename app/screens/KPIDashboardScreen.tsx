@@ -31,7 +31,7 @@ import { VPTreeInline } from '../components/vp-tree/VPTreeInline';
 import { PreRenderedTreeCanvas } from '../components/vp-tree/PreRenderedTreeCanvas';
 import { TreeReveal } from '../components/vp-tree/TreeReveal';
 import { CityReveal } from '../components/gp-city/CityReveal';
-import { getStage as getVPStage, type GrowthStage } from '../components/vp-tree/constants';
+import { getStage as getVPStage, VP_STAGES, type GrowthStage } from '../components/vp-tree/constants';
 import {
   useSharedValue as useReanimatedSharedValue,
   withTiming as reanimatedWithTiming,
@@ -41,7 +41,7 @@ import {
 } from 'react-native-reanimated';
 import { GPCityInline } from '../components/gp-city/GPCityInline';
 import { PreRenderedCityCanvas } from '../components/gp-city/PreRenderedCityCanvas';
-import { getTier as getGPTier, type CityTier } from '../components/gp-city/constants';
+import { getTier as getGPTier, GP_TIERS, type CityTier } from '../components/gp-city/constants';
 import { CommsHub } from '../components/comms';
 import type { ChannelRow as CommsChannelRow } from '../components/comms';
 import { useBottomNavAnimation } from '../components/comms/useBottomNavAnimation';
@@ -96,12 +96,13 @@ import { ChallengeWizard } from '../components/challenge/wizard';
 import TeamTab from '../components/team/TeamTab';
 import CoachTab from '../components/coach/CoachTab';
 import HomeTab from '../components/home/HomeTab';
-import ProjectionBarChart from '../components/dashboard/ProjectionBarChart';
-import CoinAccumulator from '../components/dashboard/CoinAccumulator';
-import CoinOverlay from '../components/dashboard/CoinOverlay';
-import { useCoinFlight } from '../hooks/useCoinFlight';
+import ProjectionBarChart3D from '../components/dashboard/ProjectionBarChart3D';
+import KpiButtonGrid from '../components/dashboard/KpiButtonGrid';
+// CoinAccumulator, CoinOverlay, useCoinFlight removed — replaced by vortex deploy system
 import { useEffects } from '../components/effects/useEffects';
 import HeaderAccumulators from '../components/effects/HeaderAccumulators';
+import { TierProgressBar } from '../components/effects/TierProgressBar';
+import { useDeploy } from '../components/effects/useDeploy';
 import { createCustomKpi, fetchCustomKpis, updateCustomKpi, type CustomKpiRow } from '../lib/customKpiApi';
 import {
   getKpiTypeIconTreatment,
@@ -1746,6 +1747,12 @@ export default function KPIDashboardScreen({
       .sort((a, b) => b.count - a.count)
   }, [payload?.loggable_kpis, payload?.recent_logs, selectedLogDate]);
 
+  const todayCountById = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const row of todaysLogRows) map[row.kpiId] = row.count;
+    return map;
+  }, [todaysLogRows]);
+
   const recentLogEntries = useMemo(() => {
     const rows = [...(payload?.recent_logs ?? [])]
       .sort((a, b) => new Date(String(b.event_timestamp)).getTime() - new Date(String(a.event_timestamp)).getTime())
@@ -2194,59 +2201,6 @@ export default function KPIDashboardScreen({
       if (!kpi.requires_direct_value_input) {
         animateProjectedHudValuePop();
       }
-      const estPcValue = estimatePcGeneratedForKpi(kpi);
-
-      // Calculate which month bar this KPI impacts
-      const delayDays = Math.max(0, Number(kpi.delay_days ?? 0));
-      const holdDays = Math.max(0, Number(kpi.hold_days ?? 0));
-      const optimisticPayoffDays = delayDays + holdDays;
-      const payoffDate = new Date(Date.now() + optimisticPayoffDays * 24 * 60 * 60 * 1000);
-      const now = new Date();
-      const monthsAhead = (payoffDate.getFullYear() - now.getFullYear()) * 12 + (payoffDate.getMonth() - now.getMonth());
-      const targetBarIndex = chartSeries.pastActual.length + Math.max(0, monthsAhead);
-
-      // Launch coin burst: tile → accumulator → bar
-      const sourceX = options?.sourcePagePoint?.x ?? 180;
-      const sourceY = options?.sourcePagePoint?.y ?? 400;
-
-      // Accumulator is always horizontally centered on screen.
-      // measureInWindow Y is reliable (only X is corrupted by carousel transform).
-      const screenW = Dimensions.get('window').width;
-      const accBox = coinAccumulatorBoxRef.current;
-      const accX = screenW / 2;
-      // accBox.y comes from measureInWindow — correct at layout time.
-      // The chart panel is always visible when tapping KPIs, so Y is stable.
-      const accY = accBox ? accBox.y + accBox.h / 2 : 195;
-
-      // Bar position: use chart container Y offset + bar's parent-relative position.
-      // Bar X is parent-relative inside the chart — add 16px for chart padding.
-      const barLayout = coinBarLayoutsRef.current.get(targetBarIndex);
-      const chartBox = coinBarChartBoxRef.current;
-      let barTargetX = accX;
-      let barTargetY = accY + 120;
-      if (barLayout && chartBox) {
-        barTargetX = 16 + barLayout.x + barLayout.width / 2;
-        barTargetY = chartBox.y + barLayout.y;
-      }
-
-      launchCoinBurst({
-        sourceX,
-        sourceY,
-        accumulatorX: accX,
-        accumulatorY: accY,
-        barX: barTargetX,
-        barY: barTargetY,
-        dollarValue: estPcValue,
-        monthIndex: targetBarIndex,
-      });
-
-      // Skia vortex: coins spiral from tile → accumulator
-      fireVortex({
-        from: { x: sourceX, y: sourceY },
-        to: { x: accX, y: accY },
-        count: 30,
-      });
-
       launchedOptimisticProjection = true;
     }
 
@@ -2384,22 +2338,12 @@ export default function KPIDashboardScreen({
           <Text style={styles.chartBoostChipText}>{vpBoostActive ? 'Vitality Boost' : 'Vitality Boost 🔒'}</Text>
         </Animated.View>
       </View>
-      {/* Old Coin Accumulator — PC only */}
-      <CoinAccumulator
-        displayValue={fmtUsd(coinAccumulatorDisplayValue || (payload?.projection?.pc_90d ?? 0))}
-        pulseAnim={coinAccumulatorPulse}
-        sessionTotal={coinAccumulatorSessionTotal}
-        visible={coinAccumulatorVisible}
-        accumulatorRef={coinAccumulatorRef}
-        onLayout={handleAccumulatorLayout}
-      />
+      {/* Old Coin Accumulator removed — replaced by header accumulators + deploy system */}
 
-      {/* Header Accumulators moved to renderGameplayHeader() */}
-
-      {/* Bar Chart — replaces old SVG line chart */}
-      <ProjectionBarChart
+      {/* 3D Isometric Bar Chart */}
+      <ProjectionBarChart3D
         series={chartSeries}
-        barBumpByIndex={coinBarBumps}
+        width={visualPageWidth > 0 ? visualPageWidth - 16 : undefined}
         onBarLayout={handleBarLayout}
         chartRef={coinBarChartRef}
       />
@@ -2515,11 +2459,17 @@ export default function KPIDashboardScreen({
   ];
 
   const renderHomeVisualPlaceholder = (kind: 'GP' | 'VP') => {
-    const imgIdx = kind === 'VP'
-      ? (vpDevImageStage ?? Math.min(getVPStage(vpTreeTotal) * 2, 9))
-      : (gpDevImageStage ?? Math.min(getGPTier(gpCityTotal) * 2, 9));
+    // Use deploy-driven stage index (respects dev overrides + tier progression)
+    const imgIdx = kind === 'VP' ? deploy.vpStageIndex : deploy.gpStageIndex;
     const images = kind === 'VP' ? VP_STAGE_IMAGES : GP_STAGE_IMAGES;
     const safeIdx = Math.max(0, Math.min(9, imgIdx));
+
+    // Tier info for progress bar
+    const tierIdx = kind === 'VP' ? getVPStage(vpTreeTotal) : getGPTier(gpCityTotal);
+    const tiers = kind === 'VP' ? VP_STAGES : GP_TIERS;
+    const currentTierName = tiers[tierIdx]?.label ?? '';
+    const nextTierName = tierIdx < tiers.length - 1 ? tiers[tierIdx + 1]?.label ?? null : null;
+    const progress = kind === 'VP' ? deploy.vpProgress : deploy.gpProgress;
 
     return (
       <View style={styles.chartWrap}>
@@ -2529,7 +2479,7 @@ export default function KPIDashboardScreen({
               source={images[safeIdx]}
               stageIndex={safeIdx}
               width={visualPageWidth}
-              height={280}
+              height={360}
               useVideoTransition={true}
             />
           ) : (
@@ -2537,7 +2487,7 @@ export default function KPIDashboardScreen({
               source={images[safeIdx]}
               stageIndex={safeIdx}
               width={visualPageWidth}
-              height={280}
+              height={360}
               useVideoTransition={true}
             />
           )}
@@ -2565,6 +2515,13 @@ export default function KPIDashboardScreen({
             </View>
           )}
         </View>
+        {/* Tier progress bar — deploy target */}
+        <TierProgressBar
+          type={kind}
+          progress={progress}
+          currentTierName={currentTierName}
+          nextTierName={nextTierName}
+        />
       </View>
     );
   };
@@ -2594,89 +2551,29 @@ export default function KPIDashboardScreen({
     }
 
     return (
-      <View style={styles.gridWrap}>
-        {panelTiles.map(({ kpi, context }) => {
-          const successAnim = getKpiTileSuccessAnim(kpi.id);
-          const successOpacity = successAnim.interpolate({
-            inputRange: [0, 0.12, 1],
-            outputRange: [0, 1, 0],
-          });
-          const successTranslateY = successAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, -14],
-          });
-          const successScale = successAnim.interpolate({
-            inputRange: [0, 0.2, 1],
-            outputRange: [0.8, 1.02, 0.96],
-          });
-          return (
-            <Pressable
-              key={kpi.id}
-              style={styles.gridItem}
-              onPress={() => {}}
-              onPressIn={(e) => {
-                const sourcePagePoint = {
-                  x: e.nativeEvent.pageX,
-                  y: e.nativeEvent.pageY,
-                };
-                fireHomeQuickLogAtPoint(kpi, sourcePagePoint);
-                startHomeAutoFire(kpi, sourcePagePoint);
-              }}
-              onPressOut={() => {
-                stopHomeAutoFire(kpi.id);
-                runKpiTilePressOutFeedback(kpi.id);
-              }}
-            >
-              <Animated.View style={[styles.gridTileAnimatedWrap, { transform: [{ scale: getKpiTileScale(kpi.id) }] }]}>
-                <View
-                  ref={
-                    options?.attachLiveTileRefs
-                      ? (node) => {
-                          kpiTileCircleRefById.current[kpi.id] = node;
-                        }
-                      : undefined
-                  }
-                  style={styles.gridCircleWrap}
-                >
-                  <View
-                    style={[
-                      styles.gridCircle,
-                      confirmedKpiTileIds[kpi.id] && styles.gridCircleConfirmed,
-                      context.isRequired && styles.gridCircleRequired,
-                    ]}
-                  >
-                    {renderKpiIcon(kpi)}
-                  </View>
-                  {context.badges.length > 0 ? (
-                    <View pointerEvents="none" style={styles.gridContextBadgeStack}>
-                      {context.badges.map((badge) => (
-                        <View
-                          key={`${kpi.id}:${badge}`}
-                          style={[
-                            styles.gridContextBadge,
-                            badge === 'REQ' && styles.gridContextBadgeRequired,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.gridContextBadgeText,
-                              badge === 'REQ' && styles.gridContextBadgeTextRequired,
-                            ]}
-                          >
-                            {renderContextBadgeLabel(badge)}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
-                  {/* Suppress local +1 in the looping home carousel to avoid duplicate copies peeking. */}
-                </View>
-                <Text style={[styles.gridLabel, confirmedKpiTileIds[kpi.id] && styles.gridLabelConfirmed]}>{kpi.name}</Text>
-              </Animated.View>
-            </Pressable>
-          );
-        })}
-      </View>
+      <KpiButtonGrid
+        tiles={panelTiles}
+        todayCounts={todayCountById}
+        confirmedIds={confirmedKpiTileIds}
+        getScale={getKpiTileScale}
+        attachTileRef={
+          options?.attachLiveTileRefs
+            ? (kpiId, node) => { kpiTileCircleRefById.current[kpiId] = node; }
+            : undefined
+        }
+        onPressIn={(kpi, e) => {
+          const sourcePagePoint = {
+            x: e.nativeEvent.pageX,
+            y: e.nativeEvent.pageY,
+          };
+          fireHomeQuickLogAtPoint(kpi, sourcePagePoint);
+          startHomeAutoFire(kpi, sourcePagePoint);
+        }}
+        onPressOut={(kpiId) => {
+          stopHomeAutoFire(kpiId);
+          runKpiTilePressOutFeedback(kpiId);
+        }}
+      />
     );
   };
 
@@ -4792,29 +4689,10 @@ export default function KPIDashboardScreen({
     fetchCoachingJourneyDetail,
   });
 
-  /* ── Coin Flight Animation (bar chart projection) ──────────────── */
-  const {
-    coins: activeCoinFx,
-    accumulatorPulse: coinAccumulatorPulse,
-    accumulatorSessionTotal: coinAccumulatorSessionTotal,
-    accumulatorDisplayValue: coinAccumulatorDisplayValue,
-    accumulatorVisible: coinAccumulatorVisible,
-    barBumps: coinBarBumps,
-    launchCoinBurst,
-    resetSession: resetCoinSession,
-  } = useCoinFlight();
-
-  const coinAccumulatorRef = useRef<View>(null);
-  const coinAccumulatorBoxRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  /* ── Coin Flight Animation (LEGACY — removed, replaced by vortex deploy system) ── */
   const coinBarChartRef = useRef<View>(null);
   const coinBarChartBoxRef = useRef<{ x: number; y: number } | null>(null);
   const coinBarLayoutsRef = useRef<Map<number, { x: number; y: number; width: number; height: number }>>(new Map());
-
-  const handleAccumulatorLayout = useCallback(() => {
-    coinAccumulatorRef.current?.measureInWindow?.((x, y, w, h) => {
-      coinAccumulatorBoxRef.current = { x, y, w, h };
-    });
-  }, []);
 
   /* ── Header Accumulators (vortex targets for PC/VP/GP) ────────── */
   const [accDeposits, setAccDeposits] = useState({ PC: 0, VP: 0, GP: 0 });
@@ -4826,6 +4704,17 @@ export default function KPIDashboardScreen({
   const handleAccPositionsMeasured = useCallback((positions: import('../components/effects/HeaderAccumulators').AccumulatorPositions) => {
     accPositionsRef.current = positions;
   }, []);
+
+  /* ── Tier Progress + Stage Index (drives viz cards + progress bars) ── */
+  const TIER_THRESHOLDS = [0, 25, 100, 250, 500, 1000] as const;
+
+  const deploy = useDeploy({
+    vpTotal: vpTreeTotal,
+    gpTotal: gpCityTotal,
+    tierThresholds: TIER_THRESHOLDS,
+    vpDevStageOverride: vpDevImageStage,
+    gpDevStageOverride: gpDevImageStage,
+  });
 
   const handleBarLayout = useCallback((index: number, x: number, y: number, width: number, height: number) => {
     coinBarLayoutsRef.current.set(index, { x, y, width, height });
@@ -8113,8 +8002,7 @@ export default function KPIDashboardScreen({
         </View>
       ) : null}
 
-      {/* Old coin flight overlay — PC only */}
-      <CoinOverlay coins={activeCoinFx} />
+      {/* Old coin flight overlay removed — replaced by vortex deploy system */}
 
       {/* ── V2 Challenge Wizard (full-screen modal, accessible from any tab) ── */}
       <Modal visible={challengeWizardVisible} animationType="slide">
@@ -8528,13 +8416,14 @@ export default function KPIDashboardScreen({
 const styles = StyleSheet.create({
   screenRoot: {
     flex: 1,
+    backgroundColor: '#0D0F14',
   },
   content: {
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 116,
     gap: 12,
-    backgroundColor: '#f6f7f9',
+    backgroundColor: '#0D0F14',
   },
   contentComms: {
     paddingHorizontal: 0,
@@ -9683,12 +9572,12 @@ const styles = StyleSheet.create({
   },
   hello: {
     fontSize: 29,
-    color: '#2d3545',
+    color: '#F0EDE6',
     fontWeight: '700',
   },
   welcomeBack: {
     marginTop: 2,
-    color: '#7e8695',
+    color: '#7B8099',
     fontSize: 13,
   },
   gameplayHeader: {
@@ -9703,7 +9592,7 @@ const styles = StyleSheet.create({
   modeRailShell: {
     flex: 1,
     borderRadius: 999,
-    backgroundColor: '#e6e9ee',
+    backgroundColor: '#1A1D26',
     padding: 4,
     overflow: 'hidden',
     flexDirection: 'row',
@@ -9716,12 +9605,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.45)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   modeRailEdgeBtnText: {
-    color: '#43506a',
+    color: '#7B8099',
     fontSize: 21,
     lineHeight: 22,
     fontWeight: '700',
@@ -9775,13 +9664,13 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#d7dde8',
-    backgroundColor: '#f8fafc',
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: '#1A1D26',
     alignItems: 'center',
     justifyContent: 'center',
   },
   panelGearText: {
-    color: '#384154',
+    color: '#7B8099',
     fontSize: 16,
     fontWeight: '700',
     marginTop: -1,
@@ -9926,12 +9815,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(246,247,249,0.85)',
+    backgroundColor: 'rgba(26,29,38,0.85)',
     borderRadius: 999,
     paddingHorizontal: 4,
     paddingVertical: 3,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: 'rgba(255,255,255,0.08)',
     shadowColor: '#1a2138',
     shadowOpacity: 0.08,
     shadowRadius: 8,

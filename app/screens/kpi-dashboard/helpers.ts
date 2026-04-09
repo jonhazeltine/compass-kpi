@@ -1231,10 +1231,10 @@ export function chartFromPayload(payload: DashboardPayload | null) {
   const futureProjectedRows = payload?.chart?.future_projected_12m ?? [];
   const now = new Date();
   const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const axisPastMonthKeys = Array.from({ length: 2 }).map((_, idx) =>
-    monthKeyLocal(new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + (idx - 1), 1))
+  const axisPastMonthKeys = Array.from({ length: 6 }).map((_, idx) =>
+    monthKeyLocal(new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + (idx - 5), 1))
   );
-  const axisFutureMonthKeys = Array.from({ length: 6 }).map((_, idx) =>
+  const axisFutureMonthKeys = Array.from({ length: 12 }).map((_, idx) =>
     monthKeyLocal(new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + (idx + 1), 1))
   );
   const monthKeys = [...axisPastMonthKeys, ...axisFutureMonthKeys];

@@ -69,7 +69,7 @@ export const PIPELINE_LOST_ENCOURAGEMENT_MESSAGES = [
   'Lost deals happen. Your consistency restores momentum.',
   'Reset the count, keep the reps high, and the next win comes faster.',
 ] as const;
-export const MAX_KPIS_PER_TYPE = 8;
+export const MAX_KPIS_PER_TYPE = 4;
 export const UUID_LIKE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const SELF_PROFILE_DRAWER_ID = '__self_profile__';
@@ -88,6 +88,9 @@ export const feedbackAudioAssets = {
   logSuccess: require('../../assets/audio/sfx/ui_coin_success.mp3'),
   locked: require('../../assets/audio/sfx/ui_locked.mp3'),
   logError: require('../../assets/audio/sfx/ui_error.mp3'),
+  shimmer: require('../../assets/audio/sfx/shimmer_accumulate.wav'),
+  whoosh: require('../../assets/audio/sfx/whoosh_deploy.wav'),
+  comboChime: require('../../assets/audio/sfx/combo_chime.wav'),
 } as const;
 
 export const bottomTabIconSvgByKey = {

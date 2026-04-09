@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Alert,
   Animated,
+  Dimensions,
   Image,
   Pressable,
   ScrollView,
@@ -168,6 +169,7 @@ export default function HomeTab({
     return (
 <>
   <View style={styles.homeCockpitStage}>
+    {/* Viz hero area */}
     <View style={styles.homeCockpitVisualShell}>
       <View style={styles.chartCard}>
         <View
@@ -198,29 +200,28 @@ export default function HomeTab({
       {renderGameplayHeader()}
     </View>
 
-    <View style={styles.homeCockpitActionShell}>
-      <View
-        style={styles.homePanelViewport}
-        onLayout={(e) => setHomeGridViewportWidth(e.nativeEvent.layout.width)}
+    {/* KPI buttons — fill remaining space between header and tab bar */}
+    <View
+      style={styles.homePanelViewport}
+      onLayout={(e) => setHomeGridViewportWidth(e.nativeEvent.layout.width)}
+    >
+      <Animated.View
+        style={[
+          styles.homePanelTrack,
+          {
+            width: gridPageWidth * homePanelLoopItems.length,
+            transform: [{ translateX: gridTranslateX }],
+          },
+        ]}
       >
-        <Animated.View
-          style={[
-            styles.homePanelTrack,
-            {
-              width: gridPageWidth * homePanelLoopItems.length,
-              transform: [{ translateX: gridTranslateX }],
-            },
-          ]}
-        >
-          {homePanelLoopItems.map(({ panel, cycleIdx }) => (
-            <View key={`grid-${cycleIdx}-${panel}`} style={[styles.homePanelPage, { width: gridPageWidth }]}>
-              {renderHomeGridPanel(panel, {
-                attachLiveTileRefs: cycleIdx === 1 && homePanel === panel,
-              })}
-            </View>
-          ))}
-        </Animated.View>
-      </View>
+        {homePanelLoopItems.map(({ panel, cycleIdx }) => (
+          <View key={`grid-${cycleIdx}-${panel}`} style={[styles.homePanelPage, { width: gridPageWidth }]}>
+            {renderHomeGridPanel(panel, {
+              attachLiveTileRefs: cycleIdx === 1 && homePanel === panel,
+            })}
+          </View>
+        ))}
+      </Animated.View>
     </View>
   </View>
 
@@ -732,34 +733,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   chartCard: {
-    backgroundColor: '#fff',
+    backgroundColor: '#1A1D26',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#e5eaf2',
+    borderColor: 'rgba(255,255,255,0.06)',
     padding: 8,
     gap: 6,
-    shadowColor: '#223453',
-    shadowOpacity: 0.03,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   homeCockpitStage: {
-    gap: 6,
+    minHeight: Dimensions.get('window').height - 200,
+    gap: 10,
   },
   homeCockpitVisualShell: {
-    backgroundColor: '#f2f5fa',
+    backgroundColor: '#141720',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#e3e9f3',
+    borderColor: 'rgba(255,255,255,0.06)',
     padding: 6,
     gap: 4,
   },
   homeCockpitActionShell: {
-    backgroundColor: '#f2f5fa',
+    backgroundColor: '#141720',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#e3e9f3',
+    borderColor: 'rgba(255,255,255,0.06)',
     paddingHorizontal: 6,
     paddingTop: 6,
     paddingBottom: 4,

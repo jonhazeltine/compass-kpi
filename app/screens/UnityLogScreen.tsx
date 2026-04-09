@@ -4,11 +4,19 @@ import {
   ActivityIndicator, useWindowDimensions, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import UnityView from '@azesmway/react-native-unity';
 import { useAuth } from '../contexts/AuthContext';
 import { API_URL } from '../lib/supabase';
 import { useKpiLogging } from '../hooks/useKpiLogging';
 import KpiTileGrid from '../components/kpi/KpiTileGrid';
+import { PreRenderedTreeCanvas } from '../components/vp-tree/PreRenderedTreeCanvas';
+import { getStage, VP_STAGES, type GrowthStage } from '../components/vp-tree/constants';
+import {
+  useSharedValue,
+  withTiming,
+  withSequence,
+  withRepeat,
+  Easing,
+} from 'react-native-reanimated';
 import { kpiTypeAccent } from './kpi-dashboard/helpers';
 import type { DashboardPayload, BottomTab } from './kpi-dashboard/types';
 import { bottomTabIconSvgByKey, bottomTabDisplayLabel } from './kpi-dashboard/constants';
@@ -19,8 +27,15 @@ type LoggableKpi = DashboardPayload['loggable_kpis'][number];
 const LOG_MODES: LogMode[] = ['PRIORITY', 'GP', 'VP', 'PC'];
 const NAV_TABS: BottomTab[] = ['challenge', 'team', 'home', 'logs', 'coach'];
 
-// Unity camera.rect = (0, 0.35, 1, 0.65) → renders in top 65% of view
-const UNITY_CAMERA_RATIO = 0.55;
+// Tree view takes top 55% of available space (matching original Unity layout)
+const TREE_VIEW_RATIO = 0.55;
+
+// Map VP total → image stage (0-9)
+function vpToImageStage(vpTotal: number): number {
+  // VP stages 0-5 map to image stages 0-9
+  const stage = getStage(vpTotal);
+  return Math.min(stage * 2, 9);
+}
 
 function filterKpis(kpis: LoggableKpi[], mode: LogMode): LoggableKpi[] {
   if (mode === 'PRIORITY') {
@@ -36,37 +51,98 @@ interface UnityLogScreenProps {
 }
 
 export default function UnityLogScreen({ onBack, onNavigateTo }: UnityLogScreenProps) {
-  const unityRef = useRef<any>(null);
   const insets = useSafeAreaInsets();
-  const { height: windowH } = useWindowDimensions();
+  const { width: windowW, height: windowH } = useWindowDimensions();
   const { session } = useAuth();
 
   const [kpis, setKpis] = useState<LoggableKpi[]>([]);
   const [mode, setMode] = useState<LogMode>('PRIORITY');
-  const [unityReady, setUnityReady] = useState(false);
+  const [vpTotal, setVpTotal] = useState(0);
+  const [imageStage, setImageStage] = useState(0);
 
-  const sendToUnity = useCallback((message: string) => {
-    console.log('[RN → Unity]', message);
-    unityRef.current?.postMessage('VPTree', 'ReceiveMessage', message);
+  // Shared values for tree effects
+  const decayProgress = useSharedValue(0);
+  const orbProgress = useSharedValue(0);
+  const orbOpacity = useSharedValue(0);
+  const trunkGlowOpacity = useSharedValue(0);
+  const rustleOffsetX = useSharedValue(0);
+  const rustleOffsetY = useSharedValue(0);
+  const particleProgress = useSharedValue(0);
+  const particleOpacity = useSharedValue(0);
+  const tierFlashOpacity = useSharedValue(0);
+  const tierScale = useSharedValue(1);
+
+  const stage = getStage(vpTotal) as GrowthStage;
+
+  // Gentle wind sway
+  useEffect(() => {
+    if (stage < 1) return;
+    const swayAmount = 1.5 + stage * 0.5;
+    rustleOffsetX.value = withRepeat(
+      withSequence(
+        withTiming(swayAmount, { duration: 3000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(-swayAmount, { duration: 3000, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1, true,
+    );
+    rustleOffsetY.value = withRepeat(
+      withSequence(
+        withTiming(-1, { duration: 4000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 4000, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1, true,
+    );
+  }, [stage]);
+
+  // Pulse animation — called on every successful KPI log
+  const playPulse = useCallback(() => {
+    // Orb rises from ground to canopy
+    orbProgress.value = 0;
+    orbOpacity.value = withSequence(
+      withTiming(1, { duration: 80 }),
+      withTiming(0, { duration: 250 }),
+    );
+    orbProgress.value = withTiming(1, { duration: 1200, easing: Easing.out(Easing.cubic) });
+
+    // Trunk glow on absorption
+    trunkGlowOpacity.value = withSequence(
+      withTiming(0, { duration: 1100 }),
+      withTiming(0.7, { duration: 150 }),
+      withTiming(0, { duration: 500 }),
+    );
+
+    // Particle burst
+    particleOpacity.value = withSequence(
+      withTiming(0, { duration: 1100 }),
+      withTiming(1, { duration: 40 }),
+      withTiming(0, { duration: 250 }),
+    );
+    particleProgress.value = 0;
+    particleProgress.value = withSequence(
+      withTiming(0, { duration: 1100 }),
+      withTiming(1, { duration: 500 }),
+    );
   }, []);
 
-  // Full logging system — same animations, haptics, auto-fire as dashboard
+  // Full logging system
   const logging = useKpiLogging({
     token: session?.access_token,
-    gpUnlocked: true, // TODO: derive from dashboard payload
+    gpUnlocked: true,
     vpUnlocked: true,
     onLogSuccess: (_kpiId, kpi, _response) => {
-      // Pulse Unity tree on every successful log
-      sendToUnity(`pulse:${kpi.vp_value ?? 10}`);
+      playPulse();
+      // Update VP total and check for stage transition
+      const vpGain = kpi.vp_value ?? 10;
+      setVpTotal((prev) => {
+        const newTotal = prev + vpGain;
+        const newImgStage = vpToImageStage(newTotal);
+        setImageStage(newImgStage);
+        return newTotal;
+      });
     },
   });
 
-  useEffect(() => {
-    const t = setTimeout(() => setUnityReady(true), 100);
-    return () => clearTimeout(t);
-  }, []);
-
-  // Fetch loggable KPIs and VP total
+  // Fetch loggable KPIs and VP total on mount
   useEffect(() => {
     const token = session?.access_token;
     if (!token) return;
@@ -80,45 +156,52 @@ export default function UnityLogScreen({ onBack, onNavigateTo }: UnityLogScreenP
         const payload = data as DashboardPayload;
         const loggable = (payload.loggable_kpis ?? []).filter((k) => !k.requires_direct_value_input);
         setKpis(loggable);
-        const vpTotal = payload.points?.vp ?? 0;
-        const gpTotal = payload.points?.gp ?? 0;
-        sendToUnity(`setvp:${Math.round(vpTotal)}`);
-        sendToUnity(`setgp:${Math.round(gpTotal)}`);
+        const vp = payload.points?.vp ?? 0;
+        setVpTotal(Math.round(vp));
+        setImageStage(vpToImageStage(Math.round(vp)));
       } catch (e) {
         console.error('[UnityLogScreen] fetch error:', e);
       }
     })();
   }, [session?.access_token]);
 
+  // Layout
+  const navBarH = 72 + Math.max(insets.bottom, 10);
+  const availableH = windowH - navBarH;
+  const treeViewH = Math.round(availableH * TREE_VIEW_RATIO);
+  const overlayTop = treeViewH;
+  const visibleKpis = filterKpis(kpis, mode);
+
   if (Platform.OS === 'web') {
     return (
       <View style={styles.container}>
-        <Text style={styles.webMsg}>Unity view only works on device</Text>
+        <Text style={styles.webMsg}>Tree view works on device/simulator</Text>
       </View>
     );
   }
 
-  const navBarH = 72 + Math.max(insets.bottom, 10);
-  const unityViewH = windowH - navBarH;
-  const overlayTop = Math.round(unityViewH * UNITY_CAMERA_RATIO);
-  const visibleKpis = filterKpis(kpis, mode);
-
   return (
     <View style={styles.container}>
-      {/* Unity — fills above nav bar */}
-      {unityReady ? (
-        <UnityView
-          ref={unityRef}
-          style={[StyleSheet.absoluteFill, { bottom: navBarH }]}
-          onUnityMessage={(e: any) => {
-            console.log('[Unity → RN]', e.nativeEvent.message);
-          }}
+      {/* Tree visualization — top 55% */}
+      <View style={[styles.treeView, { height: treeViewH }]}>
+        <PreRenderedTreeCanvas
+          width={windowW}
+          height={treeViewH}
+          stage={stage}
+          imageStage={imageStage}
+          renderMode="transparent"
+          decayProgress={decayProgress}
+          orbProgress={orbProgress}
+          orbOpacity={orbOpacity}
+          trunkGlowOpacity={trunkGlowOpacity}
+          rustleOffsetX={rustleOffsetX}
+          rustleOffsetY={rustleOffsetY}
+          particleProgress={particleProgress}
+          particleOpacity={particleOpacity}
+          tierFlashOpacity={tierFlashOpacity}
+          tierScale={tierScale}
         />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { bottom: navBarH, justifyContent: 'center', alignItems: 'center' }]}>
-          <ActivityIndicator size="large" color="#2ecc71" />
-        </View>
-      )}
+      </View>
 
       {/* RN overlay: tabs + KPI tiles */}
       <View style={[styles.overlay, { top: overlayTop, bottom: navBarH }]}>
@@ -131,12 +214,7 @@ export default function UnityLogScreen({ onBack, onNavigateTo }: UnityLogScreenP
               <TouchableOpacity
                 key={m}
                 style={styles.tab}
-                onPress={() => {
-                setMode(m);
-                // Tell Unity to switch visualization (PRIORITY uses VP view)
-                const unityMode = m === 'PRIORITY' ? 'vp' : m.toLowerCase();
-                sendToUnity(`setmode:${unityMode}`);
-              }}
+                onPress={() => setMode(m)}
                 activeOpacity={0.7}
               >
                 <Text style={[styles.tabText, active && { color: '#fff' }]}>{m}</Text>
@@ -146,7 +224,7 @@ export default function UnityLogScreen({ onBack, onNavigateTo }: UnityLogScreenP
           })}
         </View>
 
-        {/* KPI tile grid — uses the shared component with full logging system */}
+        {/* KPI tile grid */}
         <ScrollView style={styles.gridScroll} contentContainerStyle={styles.gridContainer} showsVerticalScrollIndicator={false}>
           {kpis.length === 0 ? (
             <ActivityIndicator size="small" color="#2ecc71" style={{ marginTop: 20 }} />
@@ -207,6 +285,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
     marginTop: 100,
+  },
+  treeView: {
+    backgroundColor: '#000',
+    overflow: 'hidden',
   },
   overlay: {
     position: 'absolute',

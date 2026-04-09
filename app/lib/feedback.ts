@@ -1,8 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { createAudioPlayer, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 
-type FeedbackCue = 'logTap' | 'growthTap' | 'vitalityTap' | 'logSuccess' | 'logError' | 'locked' | 'swipe';
-type HapticCue = 'tap' | 'success' | 'error' | 'warning';
+type FeedbackCue = 'logTap' | 'growthTap' | 'vitalityTap' | 'logSuccess' | 'logError' | 'locked' | 'swipe' | 'shimmer' | 'whoosh' | 'comboChime';
+type HapticCue = 'tap' | 'success' | 'error' | 'warning' | 'accumulate' | 'deploy' | 'tierUp';
 type KpiType = 'PC' | 'GP' | 'VP' | 'Actual' | 'Pipeline_Anchor' | 'Custom';
 
 type FeedbackConfig = {
@@ -121,6 +121,20 @@ export async function triggerHapticAsync(cue: HapticCue) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
+    if (cue === 'accumulate') {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      return;
+    }
+    if (cue === 'deploy') {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      return;
+    }
+    if (cue === 'tierUp') {
+      // Heavy thud sequence for milestone
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      setTimeout(() => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 150);
+      return;
+    }
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
   } catch {
     // Ignore unsupported environments (web/simulator).
@@ -139,7 +153,7 @@ export async function playKpiTypeCueAsync(kpiType: KpiType) {
 }
 
 export async function preloadFeedbackCuesAsync(
-  cues: FeedbackCue[] = ['logTap', 'growthTap', 'vitalityTap', 'logSuccess', 'logError', 'locked', 'swipe']
+  cues: FeedbackCue[] = ['logTap', 'growthTap', 'vitalityTap', 'logSuccess', 'logError', 'locked', 'swipe', 'shimmer', 'whoosh', 'comboChime']
 ) {
   await primeFeedbackAudioAsync();
   for (const cue of cues) {

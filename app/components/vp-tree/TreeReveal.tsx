@@ -49,13 +49,16 @@ function VideoOverlay({
 
   const player = useVideoPlayer(videoSource, (p) => {
     p.loop = false;
-    p.muted = true;
+    p.muted = false;
+    p.volume = 1;
+    p.showNowPlayingNotification = false;
+    p.staysActiveInBackground = false;
+    p.audioMixingMode = 'mixWithOthers' as any;
   });
 
   useEffect(() => {
     completedRef.current = false;
-    // Fade in over 600ms
-    opacity.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) });
+    opacity.value = withTiming(1, { duration: 150, easing: Easing.out(Easing.cubic) });
 
     player.currentTime = 0;
     player.play();
@@ -87,7 +90,6 @@ function VideoOverlay({
   const style = useAnimatedStyle(() => ({
     ...StyleSheet.absoluteFillObject,
     opacity: opacity.value,
-    backgroundColor: '#000',
   }));
 
   return (
@@ -96,7 +98,7 @@ function VideoOverlay({
         player={player}
         style={{ width, height }}
         nativeControls={false}
-        contentFit="contain"
+        contentFit="cover"
       />
     </Animated.View>
   );
@@ -151,24 +153,16 @@ export function TreeReveal({ source, stageIndex, width, height, useVideoTransiti
     const hasVideo = useVideoTransition && goingUp && (toStage - fromStage === 1) && TRANSITION_VIDEOS[videoKey];
 
     if (hasVideo) {
-      // Video mode
+      // Video mode — cut straight to video, no flash
       setVideoSource(TRANSITION_VIDEOS[videoKey]);
       oldOpacity.value = 1;
       newOpacity.value = 0;
       oldOpacity.value = withTiming(0, { duration: 300 });
-      flashOpacity.value = withSequence(
-        withTiming(0.2, { duration: 80 }),
-        withTiming(0, { duration: 200 }),
-      );
     } else {
-      // Simple crossfade (no video)
+      // Simple crossfade (no video, no flash)
       setVideoSource(null);
       oldOpacity.value = 1;
       newOpacity.value = 0;
-      flashOpacity.value = withSequence(
-        withTiming(0.3, { duration: 100 }),
-        withTiming(0, { duration: 300 }),
-      );
       oldOpacity.value = withTiming(0, { duration: 600 });
       newOpacity.value = withDelay(200, withTiming(1, { duration: 600 }, (fin) => {
         if (fin) runOnJS(finishReveal)();
@@ -199,18 +193,18 @@ export function TreeReveal({ source, stageIndex, width, height, useVideoTransiti
       {/* Old tree */}
       {prevSource && isAnimating && (
         <Animated.View style={oldTreeStyle}>
-          <RNImage source={prevSource} style={{ width, height }} resizeMode="contain" />
+          <RNImage source={prevSource} style={{ width, height }} resizeMode="cover" />
         </Animated.View>
       )}
 
       {/* New tree */}
       {isAnimating ? (
         <Animated.View style={newTreeStyle}>
-          <RNImage source={displayedSource} style={{ width, height }} resizeMode="contain" />
+          <RNImage source={displayedSource} style={{ width, height }} resizeMode="cover" />
         </Animated.View>
       ) : (
         <View style={StyleSheet.absoluteFill}>
-          <RNImage source={displayedSource} style={{ width, height }} resizeMode="contain" />
+          <RNImage source={displayedSource} style={{ width, height }} resizeMode="cover" />
         </View>
       )}
 
@@ -224,8 +218,6 @@ export function TreeReveal({ source, stageIndex, width, height, useVideoTransiti
         />
       )}
 
-      {/* Flash */}
-      <Animated.View style={flashStyle} pointerEvents="none" />
     </View>
   );
 }

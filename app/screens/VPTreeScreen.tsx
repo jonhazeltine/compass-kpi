@@ -13,17 +13,21 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import LottieView from 'lottie-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
+import Animated, {
   useSharedValue,
+  useAnimatedStyle,
   withTiming,
   withSequence,
   withSpring,
   withDelay,
+  withRepeat,
   runOnJS,
   Easing,
 } from 'react-native-reanimated';
 import { TreeCanvas } from '../components/vp-tree/TreeCanvas';
+import { PreRenderedTreeCanvas } from '../components/vp-tree/PreRenderedTreeCanvas';
 import { generateTree } from '../components/vp-tree/treeGen';
 import {
   getStage,
@@ -52,6 +56,74 @@ function createTreeMicroPicker() {
 
 const TIER_THRESHOLDS = VP_STAGES.map(s => s.min);
 
+// Lottie assets — require() at module level for Metro bundling
+const LOTTIE_BIRDS = require('../assets/lottie/butterfly.json'); // birds-flying removed, using butterfly
+const LOTTIE_BUTTERFLY = require('../assets/lottie/butterfly.json');
+const LOTTIE_LEAF = require('../assets/lottie/sparkle.json'); // leaf-falling removed, using sparkle
+const LOTTIE_MAGIC = require('../assets/lottie/magic-particles.json');
+const LOTTIE_SPARKLE = require('../assets/lottie/sparkle.json');
+
+// ── Animated Lottie wrappers ──────────────────────────────────────────────────
+
+function FlyingBird({ source, canvasWidth, canvasHeight }: { source: any; canvasWidth: number; canvasHeight: number }) {
+  const translateX = useSharedValue(-120);
+  React.useEffect(() => {
+    translateX.value = -120;
+    translateX.value = withRepeat(
+      withTiming(canvasWidth + 120, { duration: 12000, easing: Easing.linear }),
+      -1,
+      false,
+    );
+  }, [canvasWidth]);
+  const style = useAnimatedStyle(() => ({
+    position: 'absolute' as const,
+    top: canvasHeight * 0.06,
+    left: 0,
+    width: 100,
+    height: 60,
+    transform: [{ translateX: translateX.value }],
+  }));
+  return (
+    <Animated.View style={style}>
+      <LottieView source={source} autoPlay loop speed={1} style={{ width: 100, height: 60 }} />
+    </Animated.View>
+  );
+}
+
+function FloatingButterfly({ source, canvasWidth, canvasHeight }: { source: any; canvasWidth: number; canvasHeight: number }) {
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  React.useEffect(() => {
+    translateX.value = withRepeat(
+      withSequence(
+        withTiming(40, { duration: 4000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(-40, { duration: 4000, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1, true,
+    );
+    translateY.value = withRepeat(
+      withSequence(
+        withTiming(-25, { duration: 3000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(25, { duration: 3000, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1, true,
+    );
+  }, []);
+  const style = useAnimatedStyle(() => ({
+    position: 'absolute' as const,
+    top: canvasHeight * 0.22,
+    right: canvasWidth * 0.15,
+    width: 55,
+    height: 55,
+    transform: [{ translateX: translateX.value }, { translateY: translateY.value }],
+  }));
+  return (
+    <Animated.View style={style}>
+      <LottieView source={source} autoPlay loop speed={0.8} style={{ width: 55, height: 55 }} />
+    </Animated.View>
+  );
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
 interface VPTreeScreenProps {
@@ -73,6 +145,9 @@ export default function VPTreeScreen({ onBack, onOpenGallery, onOpenUnityTree, u
   const [lastLoggedAt, setLastLoggedAt] = useState<Date | null>(new Date());
   const [seed] = useState(() => Math.floor(Math.random() * 99999));
   const [isAnimating, setIsAnimating] = useState(false);
+  const [usePreRendered, setUsePreRendered] = useState(true); // toggle between renderers
+  const [renderMode, setRenderMode] = useState<'bg' | 'transparent' | 'silhouette'>('bg');
+  const [imageStage, setImageStage] = useState(0); // 0-9 for image-based rendering
 
   // Micro-step rendering state
   const [newLeafIdx, setNewLeafIdx] = useState(-1);
@@ -85,14 +160,20 @@ export default function VPTreeScreen({ onBack, onOpenGallery, onOpenUnityTree, u
 
   const stage = getStage(vpTotal) as GrowthStage;
   const stageConfig = VP_STAGES[stage];
+
+  // Sync image stage directly to VP stage (0-5 maps to 0-9 with x2 scaling)
+  React.useEffect(() => {
+    const target = Math.min(stage * 2, 9);
+    setImageStage(target);
+  }, [stage]);
   const decay = getDecayProgress(lastLoggedAt);
   const nextThreshold = getNextThreshold(vpTotal);
 
-  // Canvas dimensions
-  const headerHeight = 80;
-  const controlsHeight = 150;
+  // Canvas dimensions — derived from log screen layout (computed in render section)
+  const navBarH_ = 72 + Math.max(insets.bottom, 10);
+  const availableH_ = screenHeight - navBarH_;
   const canvasWidth = screenWidth;
-  const canvasHeight = screenHeight - insets.top - headerHeight - controlsHeight - insets.bottom;
+  const canvasHeight = Math.round(availableH_ * 0.55);
 
   // Tree data (regenerates on stage or canvas size change)
   const treeData = useMemo(
@@ -123,6 +204,28 @@ export default function VPTreeScreen({ onBack, onOpenGallery, onOpenUnityTree, u
   React.useEffect(() => {
     decayShared.value = withTiming(decay, { duration: 2000 });
   }, [decay]);
+
+  // ── Continuous wind sway (gentle breathing) ─────────────────────────────────
+  React.useEffect(() => {
+    if (stage < 1) return; // no sway on dormant sprout
+    const swayAmount = 1.5 + stage * 0.5;
+    rustleOffsetX.value = withRepeat(
+      withSequence(
+        withTiming(swayAmount, { duration: 3000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(-swayAmount, { duration: 3000, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+      true,
+    );
+    rustleOffsetY.value = withRepeat(
+      withSequence(
+        withTiming(-1, { duration: 4000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 4000, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+      true,
+    );
+  }, [stage]);
 
   // ── Animation: Micro-steps ───────────────────────────────────────────────────
 
@@ -376,53 +479,72 @@ export default function VPTreeScreen({ onBack, onOpenGallery, onOpenUnityTree, u
     }
   }, []);
 
+  // ── Layout matching UnityLogScreen ───────────────────────────────────────────
+  // Tree view: top 55% of available space (above nav bar)
+  // Overlay: bottom 45% — translucent with tabs + controls
+  // Nav bar: 72px + safe area at very bottom
+
+  const navBarH = 72 + Math.max(insets.bottom, 10);
+  const availableH = screenHeight - navBarH;
+  const TREE_RATIO = 0.55;
+  const treeViewH = Math.round(availableH * TREE_RATIO);
+  const overlayH = availableH - treeViewH;
+
+  // Canvas dimensions for PreRenderedTreeCanvas (fills the tree view area)
+  const treeCanvasW = screenWidth;
+  const treeCanvasH = treeViewH;
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
     <View style={styles.root}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: 4 }]}>
-        <View style={styles.headerRow}>
-          {onBack && (
-            <Pressable onPress={onBack} style={styles.backBtn}>
-              <Text style={styles.backText}>← Back</Text>
-            </Pressable>
-          )}
-          <Text style={styles.headerTitle}>VP Tree</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {onOpenUnityTree ? (
-              <Pressable onPress={onOpenUnityTree} style={styles.backBtn}>
-                <Text style={styles.backText}>Unity</Text>
-              </Pressable>
-            ) : null}
-            {onOpenGallery ? (
-              <Pressable onPress={onOpenGallery} style={styles.backBtn}>
-                <Text style={styles.backText}>Gallery</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
-
-        {/* Stats bar */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsRow}>
-          <StatPill label="VP" value={vpTotal} />
-          <StatPill label="Stage" value={`${stage} — ${stageConfig.label}`} />
-          <StatPill label="Streak" value={`${vpStreak}d`} />
-          <StatPill label="Next" value={nextThreshold} />
-          <StatPill label="Decay" value={`${Math.round(decay * 100)}%`} />
-        </ScrollView>
-      </View>
-
-      {/* Canvas — Unity overlay replaces the Skia tree when provided */}
-      <View style={styles.canvasWrap}>
-        {unityOverlay ? (
-          <View style={{ flex: 1 }}>
-            {unityOverlay}
-          </View>
+      {/* Tree view — top 55%, black background */}
+      <View style={[styles.treeView, { height: treeViewH }]}>
+        {usePreRendered ? (
+          <>
+            <PreRenderedTreeCanvas
+              width={treeCanvasW}
+              height={treeCanvasH}
+              stage={stage}
+              imageStage={imageStage}
+              renderMode={renderMode}
+              decayProgress={decayShared}
+              orbProgress={orbProgress}
+              orbOpacity={orbOpacity}
+              trunkGlowOpacity={trunkGlowOpacity}
+              rustleOffsetX={rustleOffsetX}
+              rustleOffsetY={rustleOffsetY}
+              particleProgress={particleProgress}
+              particleOpacity={particleOpacity}
+              tierFlashOpacity={tierFlashOpacity}
+              tierScale={tierScale}
+            />
+            {/* Lottie overlay */}
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              {stage >= 2 && <FlyingBird source={LOTTIE_BIRDS} canvasWidth={treeCanvasW} canvasHeight={treeCanvasH} />}
+              {stage >= 3 && <FloatingButterfly source={LOTTIE_BUTTERFLY} canvasWidth={treeCanvasW} canvasHeight={treeCanvasH} />}
+              {stage >= 3 && (
+                <LottieView source={LOTTIE_LEAF} autoPlay loop speed={0.5}
+                  style={{ position: 'absolute', top: treeCanvasH * 0.15, left: treeCanvasW * 0.25, width: 120, height: 250 }} />
+              )}
+              {stage >= 4 && (
+                <LottieView source={LOTTIE_LEAF} autoPlay loop speed={0.35}
+                  style={{ position: 'absolute', top: treeCanvasH * 0.05, left: treeCanvasW * 0.55, width: 90, height: 200 }} />
+              )}
+              {stage >= 4 && (
+                <LottieView source={LOTTIE_MAGIC} autoPlay loop speed={0.4}
+                  style={{ position: 'absolute', top: treeCanvasH * 0.08, left: treeCanvasW * 0.05, width: treeCanvasW * 0.9, height: treeCanvasH * 0.55 }} />
+              )}
+              {stage >= 5 && (
+                <LottieView source={LOTTIE_SPARKLE} autoPlay loop speed={0.5}
+                  style={{ position: 'absolute', top: treeCanvasH * 0.12, left: treeCanvasW * 0.1, width: treeCanvasW * 0.8, height: treeCanvasH * 0.45 }} />
+              )}
+            </View>
+          </>
         ) : (
           <TreeCanvas
-            width={canvasWidth}
-            height={canvasHeight}
+            width={treeCanvasW}
+            height={treeCanvasH}
             treeData={treeData}
             stage={stage}
             decayProgress={decayShared}
@@ -448,66 +570,80 @@ export default function VPTreeScreen({ onBack, onOpenGallery, onOpenUnityTree, u
         )}
       </View>
 
-      {/* Stage stepper controls */}
-      <View style={[styles.controls, { paddingBottom: insets.bottom + 8 }]}>
-        {/* Stage nav — big prev/next */}
-        <View style={styles.stageNav}>
-          <Pressable
-            onPress={() => { if (stage > 0) setVpTotal(VP_STAGES[stage - 1].min); }}
-            style={[styles.navArrow, stage === 0 && styles.navDisabled]}
-            disabled={stage === 0}
-          >
-            <Text style={styles.navArrowText}>◀</Text>
+      {/* Overlay panel — bottom 45%, translucent like UnityLogScreen */}
+      <View style={[styles.overlay, { height: overlayH }]}>
+        {/* Mode tabs — matching UnityLogScreen tab strip */}
+        <View style={styles.tabStrip}>
+          <Pressable style={styles.tab} onPress={() => setRenderMode('transparent')}>
+            <Text style={[styles.tabText, renderMode === 'transparent' && styles.tabTextActive]}>TRANS</Text>
+            {renderMode === 'transparent' && <View style={[styles.tabUnderline, { backgroundColor: '#2ecc71' }]} />}
           </Pressable>
-          <View style={styles.stageInfo}>
-            <Text style={styles.stageNum}>Stage {stage}</Text>
-            <Text style={styles.stageName}>{stageConfig.label}</Text>
-            <Text style={styles.stageVp}>{vpTotal} VP (min {stageConfig.min})</Text>
-          </View>
-          <Pressable
-            onPress={() => { if (stage < 5) setVpTotal(VP_STAGES[stage + 1].min); }}
-            style={[styles.navArrow, stage >= 5 && styles.navDisabled]}
-            disabled={stage >= 5}
-          >
-            <Text style={styles.navArrowText}>▶</Text>
+          <Pressable style={styles.tab} onPress={() => setRenderMode('bg')}>
+            <Text style={[styles.tabText, renderMode === 'bg' && styles.tabTextActive]}>BG</Text>
+            {renderMode === 'bg' && <View style={[styles.tabUnderline, { backgroundColor: '#3b82f6' }]} />}
+          </Pressable>
+          <Pressable style={styles.tab} onPress={() => setUsePreRendered((v) => !v)}>
+            <Text style={[styles.tabText, !usePreRendered && styles.tabTextActive]}>{usePreRendered ? 'PRE' : 'PROC'}</Text>
           </Pressable>
         </View>
 
-        {/* Quick jump row */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.btnRow}>
-          {VP_STAGES.map((s, i) => (
-            <Btn
-              key={i}
-              label={`S${i}`}
-              color={i === stage ? '#1976D2' : '#90A4AE'}
-              onPress={() => setVpTotal(s.min)}
-            />
-          ))}
-        </ScrollView>
+        {/* Controls scroll area */}
+        <ScrollView style={styles.controlsScroll} showsVerticalScrollIndicator={false}>
+          {/* Image stage stepper (0-9) */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.btnRow}>
+            {Array.from({ length: 10 }, (_, i) => (
+              <Btn key={`img-${i}`} label={`${i}`}
+                color={i === imageStage ? '#2ecc71' : '#444'}
+                onPress={() => setImageStage(i)} />
+            ))}
+          </ScrollView>
 
-        {/* Action row */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.btnRow}>
-          <Btn label="+10 VP" color="#4CAF50" onPress={() => logVP(10)} disabled={isAnimating} />
-          <Btn label="Micro" color="#9C27B0" onPress={triggerMicroOnly} disabled={isAnimating} />
-          <Btn label="Tier FX" color="#E91E63" onPress={triggerTierOnly} disabled={isAnimating} />
-          <Btn label="No Decay" color="#8BC34A" onPress={() => setDecayLevel(0)} />
-          <Btn label="Full Decay" color="#795548" onPress={() => setDecayLevel(192)} />
+          {/* VP stage quick jump */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.btnRow}>
+            {VP_STAGES.map((s, i) => (
+              <Btn key={i} label={`S${i}`}
+                color={i === stage ? '#3b82f6' : '#444'}
+                onPress={() => setVpTotal(s.min)} />
+            ))}
+            <Btn label="+10" color="#2ecc71" onPress={() => logVP(10)} disabled={isAnimating} />
+          </ScrollView>
+
+          {/* Effects row */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.btnRow}>
+            <Btn label="Micro" color="#9C27B0" onPress={triggerMicroOnly} disabled={isAnimating} />
+            <Btn label="Tier FX" color="#E91E63" onPress={triggerTierOnly} disabled={isAnimating} />
+            <Btn label="No Decay" color="#4a5568" onPress={() => setDecayLevel(0)} />
+            <Btn label="Full Decay" color="#4a5568" onPress={() => setDecayLevel(192)} />
+          </ScrollView>
+
+          {/* Stage info */}
+          <View style={styles.stageInfoRow}>
+            <Text style={styles.stageInfoText}>
+              Stage {stage} — {stageConfig.label} | {vpTotal} VP | Image {imageStage} | Decay {Math.round(decay * 100)}%
+            </Text>
+          </View>
         </ScrollView>
+      </View>
+
+      {/* Nav bar — matching UnityLogScreen */}
+      <View style={[styles.navBar, { height: navBarH, paddingBottom: Math.max(insets.bottom, 10) }]}>
+        <Pressable style={styles.navItem} onPress={onBack}>
+          <Text style={styles.navLabel}>← Back</Text>
+        </Pressable>
+        <View style={styles.navLogOuter}>
+          <View style={styles.navLogBtn}>
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>LOG</Text>
+          </View>
+        </View>
+        <Pressable style={styles.navItem} onPress={onOpenGallery}>
+          <Text style={styles.navLabel}>Gallery</Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
 // ── Small reusable components ──────────────────────────────────────────────────
-
-function StatPill({ label, value }: { label: string; value: string | number }) {
-  return (
-    <View style={styles.statPill}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{String(value)}</Text>
-    </View>
-  );
-}
 
 function Btn({
   label,
@@ -536,82 +672,97 @@ function Btn({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#f0f4f8',
+    backgroundColor: '#000',
   },
-  header: {
-    paddingHorizontal: space.lg,
+  treeView: {
+    backgroundColor: '#000',
+    overflow: 'hidden',
   },
-  headerRow: {
+  // ── Overlay (matching UnityLogScreen) ──
+  overlay: {
+    backgroundColor: 'rgba(13,17,23,0.85)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+  },
+  tabStrip: {
     flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  tab: {
+    flex: 1,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
+    paddingVertical: 10,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  backBtn: {
-    paddingVertical: 4,
-    paddingRight: 8,
-    width: 60,
-  },
-  backText: {
-    fontSize: 15,
-    color: colors.brand,
+  tabText: {
+    color: '#8d95a5',
+    fontSize: 12,
     fontWeight: '600',
-  },
-  statsRow: {
-    marginBottom: 4,
-  },
-  statPill: {
-    backgroundColor: '#fff',
-    borderRadius: radii.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginRight: 6,
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#94a3b8',
-    textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  statValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
+  tabTextActive: {
+    color: '#fff',
   },
-  canvasWrap: {
+  tabUnderline: {
+    position: 'absolute',
+    bottom: 0,
+    left: 8,
+    right: 8,
+    height: 2,
+    borderRadius: 1,
+  },
+  controlsScroll: {
     flex: 1,
-  },
-  controls: {
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-    paddingTop: 8,
     paddingHorizontal: 8,
+    paddingTop: 6,
   },
-  stageNav: {
+  stageInfoRow: {
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  stageInfoText: {
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  // ── Nav bar (matching UnityLogScreen) ──
+  navBar: {
+    backgroundColor: '#0d1117',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    paddingHorizontal: 4,
+    justifyContent: 'space-around',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
   },
-  navArrow: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#1976D2',
+  navItem: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingBottom: 4,
+  },
+  navLogOuter: {
+    alignItems: 'center',
+  },
+  navLogBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#2ecc71',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -20,
+    shadowColor: '#2ecc71',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+  },
+  navLabel: {
+    color: '#8d95a5',
+    fontSize: 11,
+    fontWeight: '500',
   },
   navDisabled: {
-    backgroundColor: '#CFD8DC',
+    opacity: 0.4,
   },
   navArrowText: {
     fontSize: 20,

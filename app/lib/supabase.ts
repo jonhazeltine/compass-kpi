@@ -174,7 +174,11 @@ const getExpoHostIp = (): string | null => {
 const DEV_LAN_FALLBACK_IP = '192.168.86.32';
 
 const resolveApiUrl = (): string => {
-  const raw = String(extra.apiUrl ?? process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000');
+  let raw = String(extra.apiUrl ?? process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000');
+  // Sim shortcut: if the tunnel URL is stale/unreachable on simulator, fall back to localhost
+  if (Platform.OS === 'ios' && !Constants.isDevice && raw.includes('trycloudflare.com')) {
+    raw = 'http://localhost:4000';
+  }
   const usesLocalhost =
     raw.includes('://localhost:') || raw.includes('://127.0.0.1:') || raw.startsWith('http://localhost') || raw.startsWith('http://127.0.0.1');
   if (!usesLocalhost) return raw;
