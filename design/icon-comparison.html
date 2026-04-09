@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KPI Subtype Icon Comparison</title>
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0A0B10;
+    color: #F0EDE6;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
+    padding: 24px;
+  }
+  h1 { text-align: center; margin-bottom: 8px; font-size: 22px; color: #E8C97A; }
+  .subtitle { text-align: center; color: #7B8099; font-size: 13px; margin-bottom: 32px; }
+
+  .category-header {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 12px 0 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 12px;
+  }
+  .category-pc { color: #4ade80; }
+  .category-gp { color: #60a5fa; }
+  .category-vp { color: #fb923c; }
+
+  .row {
+    display: grid;
+    grid-template-columns: 140px 1fr 1fr 1fr;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .row-header {
+    font-weight: 600;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    color: #7B8099;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .subtype-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #F0EDE6;
+  }
+  .subtype-label small {
+    display: block;
+    font-weight: 400;
+    color: #7B8099;
+    font-size: 10px;
+    margin-top: 2px;
+  }
+
+  .icon-cell {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .icon-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 72px;
+  }
+  .icon-bubble {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: #1A1D26;
+    border: 1.5px solid rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .icon-bubble:hover {
+    border-color: rgba(201,168,76,0.3);
+    background: rgba(201,168,76,0.06);
+    box-shadow: 0 3px 12px rgba(201,168,76,0.2);
+    transform: scale(1.08);
+  }
+  .icon-bubble i, .icon-bubble .iconify {
+    font-size: 28px;
+  }
+  .icon-name {
+    font-size: 8px;
+    color: #7B8099;
+    text-align: center;
+    line-height: 1.1;
+    max-width: 72px;
+    word-break: break-all;
+  }
+
+  /* Color variants per type */
+  .pc-icon i, .pc-icon .iconify { color: #4ade80; }
+  .pc-icon .icon-bubble { background: rgba(74,222,128,0.06); border-color: rgba(74,222,128,0.12); }
+  .pc-icon .icon-bubble:hover { border-color: rgba(74,222,128,0.4); box-shadow: 0 3px 12px rgba(74,222,128,0.15); }
+
+  .gp-icon i, .gp-icon .iconify { color: #60a5fa; }
+  .gp-icon .icon-bubble { background: rgba(96,165,250,0.06); border-color: rgba(96,165,250,0.12); }
+  .gp-icon .icon-bubble:hover { border-color: rgba(96,165,250,0.4); box-shadow: 0 3px 12px rgba(96,165,250,0.15); }
+
+  .vp-icon i, .vp-icon .iconify { color: #fb923c; }
+  .vp-icon .icon-bubble { background: rgba(251,146,60,0.06); border-color: rgba(251,146,60,0.12); }
+  .vp-icon .icon-bubble:hover { border-color: rgba(251,146,60,0.4); box-shadow: 0 3px 12px rgba(251,146,60,0.15); }
+
+  /* Gold variant for selected/accent */
+  .gold-icon i, .gold-icon .iconify { color: #C9A84C; }
+  .gold-icon .icon-bubble { background: rgba(201,168,76,0.06); border-color: rgba(201,168,76,0.12); }
+
+  .section-gap { height: 24px; }
+
+  .legend {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    margin-bottom: 24px;
+    font-size: 12px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 3px;
+  }
+
+  /* Full card preview section */
+  .preview-section {
+    margin-top: 40px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .preview-title {
+    text-align: center;
+    font-size: 16px;
+    color: #E8C97A;
+    margin-bottom: 16px;
+  }
+  .card-row {
+    display: flex;
+    gap: 10px;
+    padding: 0 12px;
+    max-width: 420px;
+    margin: 0 auto 24px;
+  }
+  .preview-card {
+    flex: 1;
+    aspect-ratio: 1;
+    border-radius: 14px;
+    background: #1A1D26;
+    border: 1.5px solid rgba(255,255,255,0.06);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .preview-card:hover {
+    border-color: rgba(201,168,76,0.3);
+    background: rgba(201,168,76,0.06);
+    box-shadow: 0 3px 12px rgba(201,168,76,0.2);
+  }
+  .preview-card .card-icon { font-size: 28px; }
+  .preview-card .card-name {
+    font-size: 9px;
+    font-weight: 600;
+    color: #7B8099;
+    text-align: center;
+    line-height: 1.15;
+    padding: 0 4px;
+  }
+  .preview-card .card-count {
+    font-size: 16px;
+    font-weight: 800;
+    color: #7B8099;
+  }
+  .preview-card.logged .card-count { color: #E8C97A; }
+  .preview-card.logged { border-color: rgba(201,168,76,0.25); }
+
+  .preview-label {
+    text-align: center;
+    font-size: 11px;
+    color: #7B8099;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<h1>KPI Subtype Icon Comparison</h1>
+<p class="subtitle">Hover to see card glow state. Each row = one subtype, showing Phosphor Duotone vs Solar Bold Duotone options.</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#4ade80"></div> PC (Production)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#60a5fa"></div> GP (Growth)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#fb923c"></div> VP (Vitality)</div>
+</div>
+
+<div class="row row-header">
+  <div>Subtype</div>
+  <div>Phosphor Duotone</div>
+  <div>Solar Bold Duotone</div>
+  <div>Alt Options</div>
+</div>
+
+<!-- ==================== PC ==================== -->
+<div class="category-header category-pc">PC &mdash; Production Currency</div>
+
+<!-- Phone -->
+<div class="row">
+  <div class="subtype-label">Phone<small>Calls, voicemails, follow-ups</small></div>
+  <div class="icon-cell">
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-phone-call"></i></div><div class="icon-name">PhoneCall</div></div>
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-phone-outgoing"></i></div><div class="icon-name">PhoneOutgoing</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card pc-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:phone-calling-bold-duotone" data-width="28"></span></div><div class="icon-name">phone-calling</div></div>
+    <div class="icon-card pc-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:outgoing-call-bold-duotone" data-width="28"></span></div><div class="icon-name">outgoing-call</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-phone"></i></div><div class="icon-name">Phone</div></div>
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-voicemail"></i></div><div class="icon-name">Voicemail</div></div>
+  </div>
+</div>
+
+<!-- Digital -->
+<div class="row">
+  <div class="subtype-label">Digital<small>Emails, texts, DMs, social</small></div>
+  <div class="icon-cell">
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-chat-dots"></i></div><div class="icon-name">ChatDots</div></div>
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-paper-plane-tilt"></i></div><div class="icon-name">PaperPlaneTilt</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card pc-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:chat-round-dots-bold-duotone" data-width="28"></span></div><div class="icon-name">chat-round-dots</div></div>
+    <div class="icon-card pc-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:letter-bold-duotone" data-width="28"></span></div><div class="icon-name">letter</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-envelope-simple"></i></div><div class="icon-name">EnvelopeSimple</div></div>
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-chats"></i></div><div class="icon-name">Chats</div></div>
+  </div>
+</div>
+
+<!-- In Person -->
+<div class="row">
+  <div class="subtype-label">In Person<small>Door knocking, open houses, networking</small></div>
+  <div class="icon-cell">
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-door-open"></i></div><div class="icon-name">DoorOpen</div></div>
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-users-three"></i></div><div class="icon-name">UsersThree</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card pc-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:people-nearby-bold-duotone" data-width="28"></span></div><div class="icon-name">people-nearby</div></div>
+    <div class="icon-card pc-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:buildings-bold-duotone" data-width="28"></span></div><div class="icon-name">buildings</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-house-line"></i></div><div class="icon-name">HouseLine</div></div>
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-map-pin"></i></div><div class="icon-name">MapPin</div></div>
+  </div>
+</div>
+
+<!-- Relationship -->
+<div class="row">
+  <div class="subtype-label">Relationship<small>Referrals, contracts, client touchpoints</small></div>
+  <div class="icon-cell">
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-handshake"></i></div><div class="icon-name">Handshake</div></div>
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-hand-heart"></i></div><div class="icon-name">HandHeart</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card pc-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:handshake-bold-duotone" data-width="28"></span></div><div class="icon-name">handshake</div></div>
+    <div class="icon-card pc-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:hand-heart-bold-duotone" data-width="28"></span></div><div class="icon-name">hand-heart</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-user-circle-plus"></i></div><div class="icon-name">UserCirclePlus</div></div>
+    <div class="icon-card pc-icon"><div class="icon-bubble"><i class="ph-duotone ph-link"></i></div><div class="icon-name">Link</div></div>
+  </div>
+</div>
+
+<div class="section-gap"></div>
+
+<!-- ==================== GP ==================== -->
+<div class="category-header category-gp">GP &mdash; Growth Practices</div>
+
+<!-- Learning -->
+<div class="row">
+  <div class="subtype-label">Learning<small>Training, coaching, books</small></div>
+  <div class="icon-cell">
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-graduation-cap"></i></div><div class="icon-name">GraduationCap</div></div>
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-book-open-text"></i></div><div class="icon-name">BookOpenText</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card gp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:square-academic-cap-bold-duotone" data-width="28"></span></div><div class="icon-name">academic-cap</div></div>
+    <div class="icon-card gp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:book-bold-duotone" data-width="28"></span></div><div class="icon-name">book</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-student"></i></div><div class="icon-name">Student</div></div>
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-brain"></i></div><div class="icon-name">Brain</div></div>
+  </div>
+</div>
+
+<!-- Systems -->
+<div class="row">
+  <div class="subtype-label">Systems<small>CRM, automation, SOPs</small></div>
+  <div class="icon-cell">
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-gear-six"></i></div><div class="icon-name">GearSix</div></div>
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-faders-horizontal"></i></div><div class="icon-name">FadersHorizontal</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card gp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:settings-bold-duotone" data-width="28"></span></div><div class="icon-name">settings</div></div>
+    <div class="icon-card gp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:tuning-2-bold-duotone" data-width="28"></span></div><div class="icon-name">tuning-2</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-wrench"></i></div><div class="icon-name">Wrench</div></div>
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-database"></i></div><div class="icon-name">Database</div></div>
+  </div>
+</div>
+
+<!-- Craft -->
+<div class="row">
+  <div class="subtype-label">Craft<small>Presentations, deal analysis</small></div>
+  <div class="icon-cell">
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-presentation-chart"></i></div><div class="icon-name">PresentationChart</div></div>
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-target"></i></div><div class="icon-name">Target</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card gp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:chart-bold-duotone" data-width="28"></span></div><div class="icon-name">chart</div></div>
+    <div class="icon-card gp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:presentation-graph-bold-duotone" data-width="28"></span></div><div class="icon-name">presentation</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-chart-line-up"></i></div><div class="icon-name">ChartLineUp</div></div>
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-crosshair-simple"></i></div><div class="icon-name">CrosshairSimple</div></div>
+  </div>
+</div>
+
+<!-- Content -->
+<div class="row">
+  <div class="subtype-label">Content<small>Social media, video, marketing</small></div>
+  <div class="icon-cell">
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-megaphone"></i></div><div class="icon-name">Megaphone</div></div>
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-video-camera"></i></div><div class="icon-name">VideoCamera</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card gp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:camera-bold-duotone" data-width="28"></span></div><div class="icon-name">camera</div></div>
+    <div class="icon-card gp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:share-bold-duotone" data-width="28"></span></div><div class="icon-name">share</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-camera"></i></div><div class="icon-name">Camera</div></div>
+    <div class="icon-card gp-icon"><div class="icon-bubble"><i class="ph-duotone ph-pen-nib"></i></div><div class="icon-name">PenNib</div></div>
+  </div>
+</div>
+
+<div class="section-gap"></div>
+
+<!-- ==================== VP ==================== -->
+<div class="category-header category-vp">VP &mdash; Vitality Points</div>
+
+<!-- Body -->
+<div class="row">
+  <div class="subtype-label">Body<small>Exercise, nutrition, hydration</small></div>
+  <div class="icon-cell">
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-barbell"></i></div><div class="icon-name">Barbell</div></div>
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-person-simple-run"></i></div><div class="icon-name">PersonSimpleRun</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card vp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:running-2-bold-duotone" data-width="28"></span></div><div class="icon-name">running-2</div></div>
+    <div class="icon-card vp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:heart-pulse-bold-duotone" data-width="28"></span></div><div class="icon-name">heart-pulse</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-heartbeat"></i></div><div class="icon-name">Heartbeat</div></div>
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-orange-slice"></i></div><div class="icon-name">OrangeSlice</div></div>
+  </div>
+</div>
+
+<!-- Mind -->
+<div class="row">
+  <div class="subtype-label">Mind<small>Meditation, journaling, gratitude</small></div>
+  <div class="icon-cell">
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-flower-lotus"></i></div><div class="icon-name">FlowerLotus</div></div>
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-brain"></i></div><div class="icon-name">Brain</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card vp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:meditation-round-bold-duotone" data-width="28"></span></div><div class="icon-name">meditation</div></div>
+    <div class="icon-card vp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:mindfulness-bold-duotone" data-width="28"></span></div><div class="icon-name">mindfulness</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-note-pencil"></i></div><div class="icon-name">NotePencil</div></div>
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-peace"></i></div><div class="icon-name">Peace</div></div>
+  </div>
+</div>
+
+<!-- Rest -->
+<div class="row">
+  <div class="subtype-label">Rest<small>Sleep, screens, sabbath</small></div>
+  <div class="icon-cell">
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-moon-stars"></i></div><div class="icon-name">MoonStars</div></div>
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-bed"></i></div><div class="icon-name">Bed</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card vp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:moon-sleep-bold-duotone" data-width="28"></span></div><div class="icon-name">moon-sleep</div></div>
+    <div class="icon-card vp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:cloud-bold-duotone" data-width="28"></span></div><div class="icon-name">cloud</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-cloud-moon"></i></div><div class="icon-name">CloudMoon</div></div>
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-eye-closed"></i></div><div class="icon-name">EyeClosed</div></div>
+  </div>
+</div>
+
+<!-- Connection -->
+<div class="row">
+  <div class="subtype-label">Connection<small>Non-work social</small></div>
+  <div class="icon-cell">
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-users"></i></div><div class="icon-name">Users</div></div>
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-hands-clapping"></i></div><div class="icon-name">HandsClapping</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card vp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:users-group-rounded-bold-duotone" data-width="28"></span></div><div class="icon-name">users-group</div></div>
+    <div class="icon-card vp-icon"><div class="icon-bubble"><span class="iconify" data-icon="solar:hand-stars-bold-duotone" data-width="28"></span></div><div class="icon-name">hand-stars</div></div>
+  </div>
+  <div class="icon-cell">
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-heart"></i></div><div class="icon-name">Heart</div></div>
+    <div class="icon-card vp-icon"><div class="icon-bubble"><i class="ph-duotone ph-smiley"></i></div><div class="icon-name">Smiley</div></div>
+  </div>
+</div>
+
+<!-- ==================== CARD PREVIEW ==================== -->
+<div class="preview-section">
+  <div class="preview-title">Card Preview &mdash; How They Look in Layout D</div>
+
+  <div class="preview-label">PC Panel (Phosphor Duotone)</div>
+  <div class="card-row">
+    <div class="preview-card logged">
+      <i class="ph-duotone ph-phone-call card-icon" style="color:#4ade80"></i>
+      <div class="card-name">Phone</div>
+      <div class="card-count">3</div>
+    </div>
+    <div class="preview-card">
+      <i class="ph-duotone ph-chat-dots card-icon" style="color:#4ade80"></i>
+      <div class="card-name">Digital</div>
+      <div class="card-count">&mdash;</div>
+    </div>
+    <div class="preview-card logged">
+      <i class="ph-duotone ph-door-open card-icon" style="color:#4ade80"></i>
+      <div class="card-name">In Person</div>
+      <div class="card-count">1</div>
+    </div>
+    <div class="preview-card">
+      <i class="ph-duotone ph-handshake card-icon" style="color:#4ade80"></i>
+      <div class="card-name">Relationship</div>
+      <div class="card-count">&mdash;</div>
+    </div>
+  </div>
+
+  <div class="preview-label">GP Panel (Solar Bold Duotone)</div>
+  <div class="card-row">
+    <div class="preview-card">
+      <span class="iconify card-icon" data-icon="solar:square-academic-cap-bold-duotone" data-width="28" style="color:#60a5fa"></span>
+      <div class="card-name">Learning</div>
+      <div class="card-count">&mdash;</div>
+    </div>
+    <div class="preview-card logged">
+      <span class="iconify card-icon" data-icon="solar:settings-bold-duotone" data-width="28" style="color:#60a5fa"></span>
+      <div class="card-name">Systems</div>
+      <div class="card-count">2</div>
+    </div>
+    <div class="preview-card">
+      <span class="iconify card-icon" data-icon="solar:presentation-graph-bold-duotone" data-width="28" style="color:#60a5fa"></span>
+      <div class="card-name">Craft</div>
+      <div class="card-count">&mdash;</div>
+    </div>
+    <div class="preview-card logged">
+      <span class="iconify card-icon" data-icon="solar:camera-bold-duotone" data-width="28" style="color:#60a5fa"></span>
+      <div class="card-name">Content</div>
+      <div class="card-count">5</div>
+    </div>
+  </div>
+
+  <div class="preview-label">VP Panel (Phosphor Duotone)</div>
+  <div class="card-row">
+    <div class="preview-card logged">
+      <i class="ph-duotone ph-barbell card-icon" style="color:#fb923c"></i>
+      <div class="card-name">Body</div>
+      <div class="card-count">1</div>
+    </div>
+    <div class="preview-card">
+      <i class="ph-duotone ph-flower-lotus card-icon" style="color:#fb923c"></i>
+      <div class="card-name">Mind</div>
+      <div class="card-count">&mdash;</div>
+    </div>
+    <div class="preview-card">
+      <i class="ph-duotone ph-moon-stars card-icon" style="color:#fb923c"></i>
+      <div class="card-name">Rest</div>
+      <div class="card-count">&mdash;</div>
+    </div>
+    <div class="preview-card">
+      <i class="ph-duotone ph-users card-icon" style="color:#fb923c"></i>
+      <div class="card-name">Connection</div>
+      <div class="card-count">&mdash;</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

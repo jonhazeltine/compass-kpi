@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Challenge Wrapper Themes — Same Icons, Different Energy</title>
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0A0B10;
+    color: #F0EDE6;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
+    padding: 24px;
+  }
+  h1 { text-align: center; margin-bottom: 6px; font-size: 20px; color: #E8C97A; }
+  .subtitle { text-align: center; color: #7B8099; font-size: 12px; margin-bottom: 32px; max-width: 500px; margin-left: auto; margin-right: auto; }
+
+  .theme-section {
+    margin-bottom: 36px;
+  }
+  .theme-label {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    padding-left: 12px;
+  }
+  .theme-sublabel {
+    font-size: 10px;
+    color: #7B8099;
+    padding-left: 12px;
+    margin-bottom: 12px;
+    font-style: italic;
+  }
+
+  .card-row {
+    display: flex;
+    gap: 10px;
+    padding: 0 12px;
+    max-width: 420px;
+  }
+
+  /* ============ BASE CARD ============ */
+  .card {
+    flex: 1;
+    aspect-ratio: 1;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .card:hover { transform: scale(1.05); }
+  .card i { font-size: 28px; position: relative; z-index: 2; }
+  .card .name {
+    font-size: 9px;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.15;
+    padding: 0 4px;
+    position: relative;
+    z-index: 2;
+  }
+  .card .count {
+    font-size: 16px;
+    font-weight: 800;
+    text-align: center;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* ============ DEFAULT (no challenge) ============ */
+  .default .card {
+    background: #1A1D26;
+    border: 1.5px solid rgba(255,255,255,0.06);
+  }
+  .default .card i { color: #4ade80; }
+  .default .card .name { color: #7B8099; }
+  .default .card .count { color: #7B8099; }
+  .default .card:hover { box-shadow: 0 4px 16px rgba(74,222,128,0.15); border-color: rgba(74,222,128,0.3); }
+
+  /* ============ CHRISTMAS ============ */
+  .christmas .card {
+    background: linear-gradient(145deg, #1a0f0f, #2d1515, #1a1a0f);
+    border: 1.5px solid rgba(200,50,50,0.25);
+    box-shadow: inset 0 0 30px rgba(200,50,50,0.05);
+  }
+  .christmas .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(1.5px 1.5px at 20% 15%, rgba(255,255,255,0.5) 50%, transparent 50%),
+      radial-gradient(1px 1px at 60% 25%, rgba(255,255,255,0.4) 50%, transparent 50%),
+      radial-gradient(1.5px 1.5px at 80% 60%, rgba(255,255,255,0.3) 50%, transparent 50%),
+      radial-gradient(1px 1px at 35% 75%, rgba(255,255,255,0.4) 50%, transparent 50%),
+      radial-gradient(1px 1px at 15% 55%, rgba(255,255,255,0.3) 50%, transparent 50%),
+      radial-gradient(1.5px 1.5px at 70% 85%, rgba(255,255,255,0.35) 50%, transparent 50%);
+    z-index: 1;
+    pointer-events: none;
+  }
+  .christmas .card i { color: #ff6b6b; filter: drop-shadow(0 0 4px rgba(255,107,107,0.3)); }
+  .christmas .card .name { color: rgba(255,220,200,0.7); }
+  .christmas .card .count { color: #ff6b6b; }
+  .christmas .card:nth-child(odd) i { color: #5cb85c; filter: drop-shadow(0 0 4px rgba(92,184,92,0.3)); }
+  .christmas .card:nth-child(odd) .count { color: #5cb85c; }
+  .christmas .card:hover {
+    box-shadow: 0 4px 20px rgba(255,107,107,0.2), inset 0 0 30px rgba(200,50,50,0.08);
+    border-color: rgba(255,107,107,0.4);
+  }
+
+  /* ============ HALLOWEEN ============ */
+  .halloween .card {
+    background: linear-gradient(145deg, #1a0f00, #2a1800, #1a0a1a);
+    border: 1.5px solid rgba(255,140,0,0.2);
+    box-shadow: inset 0 -20px 30px rgba(255,100,0,0.04);
+  }
+  .halloween .card::before {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 40%;
+    background: linear-gradient(to top, rgba(255,100,0,0.06), transparent);
+    z-index: 1;
+    pointer-events: none;
+  }
+  .halloween .card i { color: #ff8c00; filter: drop-shadow(0 0 6px rgba(255,140,0,0.4)); }
+  .halloween .card .name { color: rgba(255,200,150,0.6); }
+  .halloween .card .count { color: #ff8c00; }
+  .halloween .card:hover {
+    box-shadow: 0 4px 20px rgba(255,140,0,0.25), inset 0 -20px 30px rgba(255,100,0,0.08);
+    border-color: rgba(255,140,0,0.4);
+  }
+
+  /* ============ FIRE / INTENSITY ============ */
+  .fire .card {
+    background: linear-gradient(160deg, #1a0a0a, #2d0a0a, #1a0500);
+    border: 1.5px solid rgba(255,60,30,0.2);
+  }
+  .fire .card::before {
+    content: '';
+    position: absolute;
+    bottom: -5px; left: 10%; right: 10%;
+    height: 50%;
+    background: radial-gradient(ellipse at bottom, rgba(255,80,20,0.12), transparent 70%);
+    z-index: 1;
+    pointer-events: none;
+    animation: flicker 2s ease-in-out infinite alternate;
+  }
+  @keyframes flicker {
+    0% { opacity: 0.6; transform: scaleX(0.95); }
+    50% { opacity: 1; transform: scaleX(1.05); }
+    100% { opacity: 0.8; transform: scaleX(1); }
+  }
+  .fire .card i { color: #ff4422; filter: drop-shadow(0 0 6px rgba(255,60,20,0.5)); }
+  .fire .card .name { color: rgba(255,180,150,0.6); }
+  .fire .card .count { color: #ff6644; }
+  .fire .card:hover {
+    box-shadow: 0 4px 24px rgba(255,60,20,0.3);
+    border-color: rgba(255,60,20,0.5);
+  }
+
+  /* ============ ICE / WINTER ============ */
+  .ice .card {
+    background: linear-gradient(145deg, #0a1520, #0f1a2d, #0a1525);
+    border: 1.5px solid rgba(100,180,255,0.15);
+    box-shadow: inset 0 0 20px rgba(100,180,255,0.03);
+  }
+  .ice .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(1px 1px at 25% 20%, rgba(180,220,255,0.4) 50%, transparent 50%),
+      radial-gradient(1px 1px at 65% 40%, rgba(180,220,255,0.3) 50%, transparent 50%),
+      radial-gradient(1.5px 1.5px at 45% 70%, rgba(180,220,255,0.25) 50%, transparent 50%),
+      radial-gradient(1px 1px at 80% 80%, rgba(180,220,255,0.35) 50%, transparent 50%);
+    z-index: 1;
+    pointer-events: none;
+  }
+  .ice .card i { color: #64b4ff; filter: drop-shadow(0 0 5px rgba(100,180,255,0.4)); }
+  .ice .card .name { color: rgba(180,210,240,0.6); }
+  .ice .card .count { color: #88ccff; }
+  .ice .card:hover {
+    box-shadow: 0 4px 20px rgba(100,180,255,0.2), inset 0 0 20px rgba(100,180,255,0.05);
+    border-color: rgba(100,180,255,0.35);
+  }
+
+  /* ============ NEON / CYBERPUNK ============ */
+  .neon .card {
+    background: linear-gradient(145deg, #0a0a1a, #0f0a20, #1a0a2a);
+    border: 1.5px solid rgba(180,50,255,0.2);
+  }
+  .neon .card::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(255,50,150,0.15), transparent 40%, transparent 60%, rgba(50,200,255,0.15));
+    z-index: 0;
+    pointer-events: none;
+  }
+  .neon .card i { color: #e040fb; filter: drop-shadow(0 0 6px rgba(224,64,251,0.5)); }
+  .neon .card:nth-child(even) i { color: #40e0fb; filter: drop-shadow(0 0 6px rgba(64,224,251,0.5)); }
+  .neon .card .name { color: rgba(220,180,255,0.6); }
+  .neon .card .count { color: #e040fb; }
+  .neon .card:nth-child(even) .count { color: #40e0fb; }
+  .neon .card:hover {
+    box-shadow: 0 4px 24px rgba(180,50,255,0.3);
+    border-color: rgba(180,50,255,0.5);
+  }
+
+  /* ============ GOLD / LUXURY ============ */
+  .luxury .card {
+    background: linear-gradient(145deg, #1a1508, #221a0a, #1a150a);
+    border: 1.5px solid rgba(201,168,76,0.2);
+    box-shadow: inset 0 1px 0 rgba(232,200,122,0.08);
+  }
+  .luxury .card i { color: #E8C97A; filter: drop-shadow(0 0 4px rgba(201,168,76,0.3)); }
+  .luxury .card .name { color: rgba(232,200,122,0.5); }
+  .luxury .card .count { color: #E8C97A; }
+  .luxury .card:hover {
+    box-shadow: 0 4px 20px rgba(201,168,76,0.2), inset 0 1px 0 rgba(232,200,122,0.12);
+    border-color: rgba(201,168,76,0.4);
+  }
+
+  /* ============ SPRING / NATURE ============ */
+  .nature .card {
+    background: linear-gradient(145deg, #0a1a0f, #0f2015, #0a1a10);
+    border: 1.5px solid rgba(100,220,120,0.15);
+  }
+  .nature .card::before {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 30%;
+    background: linear-gradient(to top, rgba(100,220,120,0.06), transparent);
+    z-index: 1;
+    pointer-events: none;
+  }
+  .nature .card i { color: #66dd78; filter: drop-shadow(0 0 4px rgba(100,220,120,0.3)); }
+  .nature .card .name { color: rgba(150,220,160,0.6); }
+  .nature .card .count { color: #88ee99; }
+  .nature .card:hover {
+    box-shadow: 0 4px 16px rgba(100,220,120,0.2);
+    border-color: rgba(100,220,120,0.35);
+  }
+
+  /* ============ OCEAN / SUMMER ============ */
+  .ocean .card {
+    background: linear-gradient(160deg, #0a151f, #0a1a25, #051520);
+    border: 1.5px solid rgba(0,180,200,0.15);
+  }
+  .ocean .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(180deg, transparent 60%, rgba(0,180,200,0.04) 100%);
+    z-index: 1;
+    pointer-events: none;
+    animation: wave 4s ease-in-out infinite;
+  }
+  @keyframes wave {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+  .ocean .card i { color: #00c4cc; filter: drop-shadow(0 0 5px rgba(0,196,204,0.4)); }
+  .ocean .card .name { color: rgba(150,220,230,0.6); }
+  .ocean .card .count { color: #33dddd; }
+  .ocean .card:hover {
+    box-shadow: 0 4px 20px rgba(0,180,200,0.2);
+    border-color: rgba(0,180,200,0.35);
+  }
+
+  .divider {
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+    margin: 28px 0;
+  }
+
+  .note {
+    text-align: center;
+    color: #7B8099;
+    font-size: 11px;
+    margin-top: 32px;
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
+    line-height: 1.5;
+  }
+  .note strong { color: #E8C97A; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>Same Icons, Different Wrappers</h1>
+<p class="subtitle">Every row uses the exact same 4 Phosphor icons (PhoneCall, ChatDots, DoorOpen, Handshake). Only the card wrapper changes. This is what AI-generated challenge themes could look like.</p>
+
+<!-- DEFAULT -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #7B8099;">Default — No Challenge</div>
+  <div class="theme-sublabel">Standard dark card, type-colored icons</div>
+  <div class="card-row default">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- CHRISTMAS -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #ff6b6b;">&#x1f384; Christmas Challenge</div>
+  <div class="theme-sublabel">Snow particles, red/green alternating icons, warm dark bg</div>
+  <div class="card-row christmas">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- HALLOWEEN -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #ff8c00;">&#x1f383; Halloween Challenge</div>
+  <div class="theme-sublabel">Ember glow from below, deep orange, dark shadows</div>
+  <div class="card-row halloween">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- FIRE -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #ff4422;">&#x1f525; Intensity / Fire Challenge</div>
+  <div class="theme-sublabel">Flickering fire glow, deep crimson, animated base</div>
+  <div class="card-row fire">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- ICE -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #64b4ff;">&#x2744;&#xfe0f; Winter / Ice Challenge</div>
+  <div class="theme-sublabel">Frost crystals, cool blue glow, ice particles</div>
+  <div class="card-row ice">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- NEON -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #e040fb;">&#x1f4a0; Neon / Cyberpunk Challenge</div>
+  <div class="theme-sublabel">Pink/cyan alternating neon, gradient edge glow, deep purple bg</div>
+  <div class="card-row neon">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- GOLD -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #E8C97A;">&#x1f451; Gold / Luxury Challenge</div>
+  <div class="theme-sublabel">Warm gold everything, premium feel, subtle highlight edge</div>
+  <div class="card-row luxury">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- NATURE -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #66dd78;">&#x1f33f; Spring / Nature Challenge</div>
+  <div class="theme-sublabel">Fresh green, ground-up glow, organic feel</div>
+  <div class="card-row nature">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- OCEAN -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #00c4cc;">&#x1f30a; Ocean / Summer Challenge</div>
+  <div class="theme-sublabel">Teal glow, subtle wave animation, deep water bg</div>
+  <div class="card-row ocean">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<p class="note">
+  <strong>The point:</strong> The icon never changes — it's always a Phosphor SVG component with a color prop.
+  The "wrapper" is just CSS: background gradient, border color, shadow color, glow filter, optional pseudo-element overlays (snow, fire, frost).
+  <br><br>
+  A challenge theme is literally a small JSON object:<br>
+  <code style="color:#E8C97A; font-size:10px;">{ bg, border, glow, iconColor, countColor, overlay? }</code><br><br>
+  AI generates the theme object, not the icon. Ship unlimited seasonal themes without touching the icon system.
+</p>
+
+</body>
+</html>

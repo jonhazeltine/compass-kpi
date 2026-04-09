@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Challenge Wrappers v2 — Real Character</title>
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0A0B10;
+    color: #F0EDE6;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
+    padding: 24px;
+  }
+  h1 { text-align: center; margin-bottom: 6px; font-size: 20px; color: #E8C97A; }
+  .subtitle { text-align: center; color: #7B8099; font-size: 12px; margin-bottom: 32px; max-width: 520px; margin-left: auto; margin-right: auto; line-height: 1.5; }
+
+  .theme-section { margin-bottom: 36px; }
+  .theme-label {
+    font-size: 13px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; margin-bottom: 4px; padding-left: 12px;
+  }
+  .theme-sublabel {
+    font-size: 10px; color: #7B8099; padding-left: 12px;
+    margin-bottom: 12px; font-style: italic;
+  }
+
+  .card-row {
+    display: flex; gap: 10px; padding: 0 12px; max-width: 420px;
+  }
+
+  .card {
+    flex: 1; aspect-ratio: 1; border-radius: 14px;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 4px; position: relative;
+    overflow: hidden; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .card:hover { transform: scale(1.05); }
+  .card i { font-size: 28px; position: relative; z-index: 3; }
+  .card .name {
+    font-size: 9px; font-weight: 600; text-align: center;
+    line-height: 1.15; padding: 0 4px; position: relative; z-index: 3;
+  }
+  .card .count {
+    font-size: 16px; font-weight: 800; text-align: center;
+    position: relative; z-index: 3;
+  }
+
+  /* ============================== */
+  /*  DEFAULT                       */
+  /* ============================== */
+  .default .card {
+    background: #1A1D26;
+    border: 1.5px solid rgba(255,255,255,0.06);
+  }
+  .default .card i { color: #4ade80; }
+  .default .card .name { color: #7B8099; }
+  .default .card .count { color: #7B8099; }
+
+  /* ============================== */
+  /*  CHRISTMAS — snow on top       */
+  /* ============================== */
+  .christmas .card {
+    background: linear-gradient(160deg, #1c1210, #2a1515, #1c1210);
+    border: 1.5px solid rgba(200,50,50,0.2);
+  }
+  .christmas .card i { color: #ff6b6b; filter: drop-shadow(0 0 4px rgba(255,107,107,0.3)); }
+  .christmas .card:nth-child(odd) i { color: #5cb85c; filter: drop-shadow(0 0 4px rgba(92,184,92,0.3)); }
+  .christmas .card .name { color: rgba(255,220,200,0.6); }
+  .christmas .card .count { color: #ff6b6b; }
+  .christmas .card:nth-child(odd) .count { color: #5cb85c; }
+
+  /* Snow pile on top edge */
+  .christmas .card::before {
+    content: '';
+    position: absolute;
+    top: -2px; left: -4px; right: -4px;
+    height: 16px;
+    z-index: 4;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 18px 10px at 15% 90%, rgba(255,255,255,0.95) 60%, transparent 61%),
+      radial-gradient(ellipse 22px 12px at 35% 85%, rgba(245,248,255,0.9) 60%, transparent 61%),
+      radial-gradient(ellipse 16px 9px at 55% 92%, rgba(255,255,255,0.92) 60%, transparent 61%),
+      radial-gradient(ellipse 20px 11px at 75% 87%, rgba(248,250,255,0.88) 60%, transparent 61%),
+      radial-gradient(ellipse 14px 8px at 92% 90%, rgba(255,255,255,0.85) 60%, transparent 61%);
+  }
+  /* Snow drift at bottom */
+  .christmas .card::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; left: -2px; right: -2px;
+    height: 10px;
+    z-index: 2;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 30px 8px at 25% 20%, rgba(255,255,255,0.25) 60%, transparent 61%),
+      radial-gradient(ellipse 24px 7px at 65% 30%, rgba(255,255,255,0.2) 60%, transparent 61%),
+      radial-gradient(ellipse 20px 6px at 85% 25%, rgba(255,255,255,0.18) 60%, transparent 61%);
+  }
+  /* Falling snowflakes */
+  .snow-container {
+    position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden;
+  }
+  .snowflake {
+    position: absolute;
+    width: 3px; height: 3px;
+    background: white;
+    border-radius: 50%;
+    opacity: 0;
+    animation: snowfall linear infinite;
+  }
+  @keyframes snowfall {
+    0% { transform: translateY(-5px) translateX(0); opacity: 0; }
+    10% { opacity: 0.6; }
+    90% { opacity: 0.4; }
+    100% { transform: translateY(100px) translateX(15px); opacity: 0; }
+  }
+
+  /* ============================== */
+  /*  VALENTINE'S — floating hearts */
+  /* ============================== */
+  .valentine .card {
+    background: linear-gradient(160deg, #1a0a12, #2a0f1a, #1a0a14);
+    border: 1.5px solid rgba(255,80,120,0.2);
+  }
+  .valentine .card i { color: #ff5088; filter: drop-shadow(0 0 5px rgba(255,80,136,0.4)); }
+  .valentine .card .name { color: rgba(255,180,200,0.6); }
+  .valentine .card .count { color: #ff5088; }
+
+  /* Background hearts pattern */
+  .valentine .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.12;
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='18' viewBox='0 0 20 18'%3E%3Cpath d='M10 17.5s-1-.7-2.5-1.9C4 13.2 0 9.5 0 5.8 0 2.6 2.2 0 5 0c1.7 0 3.4 1 5 3C11.6 1 13.3 0 15 0c2.8 0 5 2.6 5 5.8 0 3.7-4 7.4-7.5 9.8-1.5 1.2-2.5 1.9-2.5 1.9z' fill='%23ff5088'/%3E%3C/svg%3E");
+    background-size: 16px 14px;
+    background-position: 3px 3px;
+    animation: heartFloat 6s ease-in-out infinite;
+  }
+  @keyframes heartFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  /* Glowing heart accent */
+  .valentine .card::after {
+    content: '';
+    position: absolute;
+    bottom: 6px; right: 6px;
+    width: 12px; height: 11px;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='11' viewBox='0 0 20 18'%3E%3Cpath d='M10 17.5s-1-.7-2.5-1.9C4 13.2 0 9.5 0 5.8 0 2.6 2.2 0 5 0c1.7 0 3.4 1 5 3C11.6 1 13.3 0 15 0c2.8 0 5 2.6 5 5.8 0 3.7-4 7.4-7.5 9.8-1.5 1.2-2.5 1.9-2.5 1.9z' fill='%23ff5088'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    filter: drop-shadow(0 0 4px rgba(255,80,136,0.6));
+    animation: heartPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes heartPulse {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.2); opacity: 0.8; }
+  }
+
+  /* ============================== */
+  /*  HALLOWEEN — spooky overlays   */
+  /* ============================== */
+  .halloween .card {
+    background: linear-gradient(160deg, #1a0f00, #2a1800, #1a0a1a);
+    border: 1.5px solid rgba(255,140,0,0.2);
+  }
+  .halloween .card i { color: #ff8c00; filter: drop-shadow(0 0 6px rgba(255,140,0,0.5)); }
+  .halloween .card .name { color: rgba(255,200,150,0.5); }
+  .halloween .card .count { color: #ff8c00; }
+
+  /* Spiderweb corner */
+  .halloween .card::before {
+    content: '';
+    position: absolute;
+    top: -1px; right: -1px;
+    width: 28px; height: 28px;
+    z-index: 4;
+    pointer-events: none;
+    opacity: 0.25;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M40 0 Q30 10 20 20 Q10 10 0 0' stroke='%23aaa' fill='none' stroke-width='0.5'/%3E%3Cpath d='M40 0 Q35 15 30 30 Q15 15 0 0' stroke='%23aaa' fill='none' stroke-width='0.4'/%3E%3Cpath d='M40 0 Q38 20 36 40 Q20 20 0 0' stroke='%23aaa' fill='none' stroke-width='0.3'/%3E%3Carc cx='20' cy='10' r='8' stroke='%23aaa' fill='none' stroke-width='0.3' stroke-dasharray='2 3'/%3E%3Carc cx='25' cy='15' r='14' stroke='%23aaa' fill='none' stroke-width='0.25' stroke-dasharray='2 4'/%3E%3C/svg%3E");
+    background-size: contain;
+  }
+  /* Eerie bottom fog */
+  .halloween .card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 40%;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(to top,
+      rgba(255,100,0,0.08) 0%,
+      rgba(255,100,0,0.03) 40%,
+      transparent 100%
+    );
+    animation: fogPulse 3s ease-in-out infinite;
+  }
+  @keyframes fogPulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+  }
+
+  /* ============================== */
+  /*  SUMMER — sun rays + waves     */
+  /* ============================== */
+  .summer .card {
+    background: linear-gradient(170deg, #1a1505, #1a1808, #0f1518);
+    border: 1.5px solid rgba(255,180,50,0.15);
+  }
+  .summer .card i { color: #ffb832; filter: drop-shadow(0 0 5px rgba(255,184,50,0.4)); }
+  .summer .card .name { color: rgba(255,220,160,0.55); }
+  .summer .card .count { color: #ffb832; }
+
+  /* Sun rays from top-right corner */
+  .summer .card::before {
+    content: '';
+    position: absolute;
+    top: -20px; right: -20px;
+    width: 50px; height: 50px;
+    z-index: 1;
+    pointer-events: none;
+    background: radial-gradient(circle at center,
+      rgba(255,200,50,0.2) 0%,
+      rgba(255,200,50,0.08) 40%,
+      transparent 70%
+    );
+    animation: sunPulse 4s ease-in-out infinite;
+  }
+  @keyframes sunPulse {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.15); opacity: 1; }
+  }
+  /* Ocean wave at bottom */
+  .summer .card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: -5px; right: -5px;
+    height: 14px;
+    z-index: 2;
+    pointer-events: none;
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 12'%3E%3Cpath d='M0 8 Q15 2 30 8 Q45 14 60 8 Q75 2 90 8 Q105 14 120 8 L120 12 L0 12 Z' fill='rgba(0,160,200,0.12)'/%3E%3Cpath d='M0 10 Q15 5 30 10 Q45 15 60 10 Q75 5 90 10 Q105 15 120 10 L120 12 L0 12 Z' fill='rgba(0,160,200,0.08)'/%3E%3C/svg%3E");
+    background-size: 120px 12px;
+    background-repeat: repeat-x;
+    animation: waveMove 3s linear infinite;
+  }
+  @keyframes waveMove {
+    0% { background-position-x: 0; }
+    100% { background-position-x: 120px; }
+  }
+
+  /* ============================== */
+  /*  4TH OF JULY — stars + stripes */
+  /* ============================== */
+  .july4 .card {
+    background: linear-gradient(160deg, #0a0a1a, #12101e, #0a0a1a);
+    border: 1.5px solid rgba(100,100,200,0.15);
+  }
+  .july4 .card i { color: #e8e8ff; filter: drop-shadow(0 0 4px rgba(200,200,255,0.3)); }
+  .july4 .card .name { color: rgba(200,200,230,0.5); }
+  .july4 .card .count { color: #ff4444; }
+
+  /* Red/white stripe at bottom */
+  .july4 .card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 8px;
+    z-index: 2;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      90deg,
+      rgba(255,50,50,0.25) 0px,
+      rgba(255,50,50,0.25) 8px,
+      rgba(255,255,255,0.12) 8px,
+      rgba(255,255,255,0.12) 16px
+    );
+    border-radius: 0 0 12px 12px;
+  }
+  /* Star sparkle in top-left */
+  .july4 .card::before {
+    content: '★';
+    position: absolute;
+    top: 5px; left: 6px;
+    font-size: 8px;
+    color: rgba(255,255,255,0.3);
+    z-index: 4;
+    pointer-events: none;
+    animation: starTwinkle 2s ease-in-out infinite;
+  }
+  .july4 .card:nth-child(2)::before { top: 7px; left: 8px; animation-delay: 0.5s; }
+  .july4 .card:nth-child(3)::before { top: 4px; left: 5px; animation-delay: 1s; }
+  .july4 .card:nth-child(4)::before { top: 6px; left: 7px; animation-delay: 1.5s; }
+  @keyframes starTwinkle {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.3); }
+  }
+
+  /* ============================== */
+  /*  ST PATRICK'S — clovers        */
+  /* ============================== */
+  .stpatricks .card {
+    background: linear-gradient(160deg, #0a1a0a, #0f200f, #0a1a0a);
+    border: 1.5px solid rgba(50,200,80,0.15);
+  }
+  .stpatricks .card i { color: #44dd66; filter: drop-shadow(0 0 4px rgba(68,221,102,0.3)); }
+  .stpatricks .card .name { color: rgba(150,230,160,0.5); }
+  .stpatricks .card .count { color: #44dd66; }
+
+  /* Clover pattern background */
+  .stpatricks .card::before {
+    content: '';
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    opacity: 0.08;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ctext x='4' y='16' font-size='14'%3E%E2%98%98%3C/text%3E%3C/svg%3E");
+    background-size: 20px 20px;
+  }
+  /* Gold coin accent */
+  .stpatricks .card::after {
+    content: '';
+    position: absolute;
+    bottom: 5px; right: 5px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #E8C97A 30%, #C9A84C 70%);
+    z-index: 4;
+    pointer-events: none;
+    opacity: 0.6;
+    box-shadow: 0 0 4px rgba(201,168,76,0.4);
+    animation: coinGlint 3s ease-in-out infinite;
+  }
+  @keyframes coinGlint {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.8; }
+  }
+
+  /* ============================== */
+  /*  FALL HARVEST                  */
+  /* ============================== */
+  .harvest .card {
+    background: linear-gradient(160deg, #1a1208, #221808, #1a1008);
+    border: 1.5px solid rgba(200,120,40,0.15);
+  }
+  .harvest .card i { color: #dd8833; filter: drop-shadow(0 0 4px rgba(221,136,51,0.3)); }
+  .harvest .card .name { color: rgba(220,180,130,0.5); }
+  .harvest .card .count { color: #dd8833; }
+
+  /* Falling leaf */
+  .harvest .card::before {
+    content: '🍂';
+    position: absolute;
+    font-size: 10px;
+    z-index: 4;
+    pointer-events: none;
+    opacity: 0.4;
+    animation: leafDrift 5s ease-in-out infinite;
+  }
+  .harvest .card:nth-child(1)::before { top: 4px; left: 70%; }
+  .harvest .card:nth-child(2)::before { content: '🍁'; top: 6px; left: 65%; animation-delay: 1s; }
+  .harvest .card:nth-child(3)::before { top: 3px; left: 72%; animation-delay: 2s; }
+  .harvest .card:nth-child(4)::before { content: '🍁'; top: 5px; left: 68%; animation-delay: 0.5s; }
+  @keyframes leafDrift {
+    0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+    15% { opacity: 0.45; }
+    85% { opacity: 0.3; }
+    100% { transform: translateY(55px) rotate(45deg) translateX(-10px); opacity: 0; }
+  }
+  /* Warm glow base */
+  .harvest .card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 30%;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(to top, rgba(200,120,40,0.06), transparent);
+  }
+
+  .divider { height: 1px; background: rgba(255,255,255,0.06); margin: 28px 0; }
+
+  /* ============================== */
+  /*  APPROACH COMPARISON           */
+  /* ============================== */
+  .approaches {
+    margin-top: 32px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    max-width: 700px;
+  }
+  .approach-card {
+    background: #1A1D26;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .approach-card h3 {
+    font-size: 13px;
+    color: #E8C97A;
+    margin-bottom: 8px;
+  }
+  .approach-card p {
+    font-size: 11px;
+    color: #7B8099;
+    line-height: 1.5;
+  }
+  .approach-card .tag {
+    display: inline-block;
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 8px;
+    font-weight: 600;
+  }
+  .tag-rec { background: rgba(74,222,128,0.15); color: #4ade80; }
+  .tag-future { background: rgba(96,165,250,0.15); color: #60a5fa; }
+  .tag-stretch { background: rgba(251,146,60,0.15); color: #fb923c; }
+
+  .note {
+    text-align: center; color: #7B8099; font-size: 11px;
+    margin-top: 28px; max-width: 520px;
+    margin-left: auto; margin-right: auto; line-height: 1.6;
+  }
+  .note strong { color: #E8C97A; }
+</style>
+</head>
+<body>
+
+<h1>Challenge Wrappers v2 — Real Character</h1>
+<p class="subtitle">Same 4 Phosphor icons. Now the wrappers have actual illustrated elements — snow piles, floating hearts, spiderwebs, ocean waves, falling leaves. No icon changes. All CSS + inline SVG.</p>
+
+<!-- DEFAULT -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #7B8099;">Default — No Challenge</div>
+  <div class="card-row default">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- CHRISTMAS -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #ff6b6b;">&#x1f384; Christmas</div>
+  <div class="theme-sublabel">Snow piled on top edges, snow drift at bottom, falling snowflakes</div>
+  <div class="card-row christmas">
+    <div class="card">
+      <div class="snow-container">
+        <div class="snowflake" style="left:20%;animation-duration:3s;animation-delay:0s;width:2px;height:2px;"></div>
+        <div class="snowflake" style="left:50%;animation-duration:4s;animation-delay:1s;"></div>
+        <div class="snowflake" style="left:75%;animation-duration:3.5s;animation-delay:2s;width:2px;height:2px;"></div>
+      </div>
+      <i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div>
+    </div>
+    <div class="card">
+      <div class="snow-container">
+        <div class="snowflake" style="left:30%;animation-duration:3.5s;animation-delay:0.5s;"></div>
+        <div class="snowflake" style="left:60%;animation-duration:4.5s;animation-delay:1.5s;width:2px;height:2px;"></div>
+      </div>
+      <i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div>
+    </div>
+    <div class="card">
+      <div class="snow-container">
+        <div class="snowflake" style="left:40%;animation-duration:3s;animation-delay:0.8s;"></div>
+        <div class="snowflake" style="left:70%;animation-duration:4s;animation-delay:2.2s;width:2px;height:2px;"></div>
+        <div class="snowflake" style="left:15%;animation-duration:3.8s;animation-delay:1.2s;"></div>
+      </div>
+      <i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div>
+    </div>
+    <div class="card">
+      <div class="snow-container">
+        <div class="snowflake" style="left:25%;animation-duration:4.2s;animation-delay:0.3s;width:2px;height:2px;"></div>
+        <div class="snowflake" style="left:55%;animation-duration:3.2s;animation-delay:1.8s;"></div>
+      </div>
+      <i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div>
+    </div>
+  </div>
+</div>
+
+<!-- VALENTINE'S -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #ff5088;">&#x1f49d; Valentine's Day</div>
+  <div class="theme-sublabel">Heart pattern background, pulsing heart accent in corner, pink glow</div>
+  <div class="card-row valentine">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- HALLOWEEN -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #ff8c00;">&#x1f383; Halloween</div>
+  <div class="theme-sublabel">Spiderweb in corner, eerie fog rising from bottom, orange glow</div>
+  <div class="card-row halloween">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- SUMMER -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #ffb832;">&#x1f3d6;&#xfe0f; Summer Beach</div>
+  <div class="theme-sublabel">Sun glow from corner, animated ocean wave at bottom edge</div>
+  <div class="card-row summer">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- 4TH OF JULY -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #e8e8ff;">&#x1f1fa;&#x1f1f8; 4th of July</div>
+  <div class="theme-sublabel">Twinkling star in corner, red/white stripe bar at bottom</div>
+  <div class="card-row july4">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- ST PATRICK'S -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #44dd66;">&#x2618;&#xfe0f; St. Patrick's Day</div>
+  <div class="theme-sublabel">Shamrock pattern, gold coin accent with glint animation</div>
+  <div class="card-row stpatricks">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- FALL HARVEST -->
+<div class="theme-section">
+  <div class="theme-label" style="color: #dd8833;">&#x1f342; Fall Harvest</div>
+  <div class="theme-sublabel">Drifting leaves (emoji overlay), warm amber ground glow</div>
+  <div class="card-row harvest">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relationship</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- APPROACH COMPARISON -->
+<h1 style="font-size: 16px; margin-bottom: 16px;">How to Build This</h1>
+
+<div class="approaches">
+  <div class="approach-card">
+    <h3>A. CSS + Inline SVG</h3>
+    <p>Everything you see above. Gradients, pseudo-elements, inline SVG patterns, CSS animations. Zero external assets. Ship as a theme JSON + a small StyleSheet.</p>
+    <p style="margin-top: 6px;"><strong style="color:#4ade80;">Pro:</strong> Zero load time, tiny bundle, works offline, AI can generate themes as pure code.</p>
+    <p><strong style="color:#ff6b6b;">Con:</strong> Limited to what CSS can draw. No photorealistic snow or complex illustrations.</p>
+    <span class="tag tag-rec">RECOMMENDED START</span>
+  </div>
+
+  <div class="approach-card">
+    <h3>B. AI-Gen Card BGs</h3>
+    <p>Generate a 200x200 dark background image per theme via DALL-E/Midjourney. Snow scene, heart bokeh, spiderweb macro. Icon renders on top in white.</p>
+    <p style="margin-top: 6px;"><strong style="color:#4ade80;">Pro:</strong> Photorealistic, unlimited creativity, unique per challenge.</p>
+    <p><strong style="color:#ff6b6b;">Con:</strong> ~15KB per image x 4 cards x N themes. Need to cache/preload. Quality control on AI output.</p>
+    <span class="tag tag-future">FUTURE UPGRADE</span>
+  </div>
+
+  <div class="approach-card">
+    <h3>C. Lottie Overlays</h3>
+    <p>Animated snowfall, floating hearts, flickering flames as lightweight Lottie JSON inside each card. You already have lottie-react-native.</p>
+    <p style="margin-top: 6px;"><strong style="color:#4ade80;">Pro:</strong> Smooth 60fps animations, designer-friendly (After Effects export), small files.</p>
+    <p><strong style="color:#ff6b6b;">Con:</strong> Need to source/create each animation. 4 Lotties per card row = perf consideration.</p>
+    <span class="tag tag-stretch">STRETCH</span>
+  </div>
+</div>
+
+<p class="note" style="margin-top: 24px;">
+  <strong>Recommended approach:</strong> Start with A (CSS-only) — it covers 80% of the visual impact with zero asset overhead. The snow, hearts, webs, and waves above are all pure CSS.
+  <br><br>
+  Later, upgrade specific high-value themes to B (AI background) or C (Lottie) when you want that extra 20%. The card component just needs a <code style="color:#E8C97A;">theme</code> prop — the rendering approach is an implementation detail behind it.
+</p>
+
+</body>
+</html>

@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Challenge Wrappers — CSS vs AI Background vs Lottie</title>
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0A0B10;
+    color: #F0EDE6;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
+    padding: 24px;
+    min-width: 1100px;
+  }
+  h1 { text-align: center; margin-bottom: 6px; font-size: 22px; color: #E8C97A; }
+  .subtitle {
+    text-align: center; color: #7B8099; font-size: 12px;
+    margin-bottom: 32px; max-width: 600px; margin-left: auto; margin-right: auto; line-height: 1.5;
+  }
+
+  /* ====== COMPARISON GRID ====== */
+  .comparison {
+    display: grid;
+    grid-template-columns: 100px 1fr 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 48px;
+    align-items: start;
+  }
+  .col-label {
+    font-size: 11px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; text-align: center; padding-top: 8px;
+  }
+  .col-label.css-label { color: #7B8099; }
+  .col-label.ai-label { color: #e040fb; }
+  .col-label.lottie-label { color: #40e0fb; }
+
+  .theme-name {
+    font-size: 13px; font-weight: 700;
+    writing-mode: vertical-rl; text-orientation: mixed;
+    transform: rotate(180deg);
+    padding: 8px 0;
+    display: flex; align-items: center; justify-content: center;
+    height: 100%;
+  }
+
+  .card-row {
+    display: flex; gap: 8px; padding: 4px;
+  }
+
+  /* ====== BASE CARD ====== */
+  .card {
+    flex: 1; aspect-ratio: 1; border-radius: 14px;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 3px; position: relative;
+    overflow: hidden; cursor: pointer; transition: transform 0.2s;
+    min-width: 0;
+  }
+  .card:hover { transform: scale(1.06); }
+  .card i { font-size: 24px; position: relative; z-index: 3; }
+  .card .name {
+    font-size: 8px; font-weight: 600; text-align: center;
+    line-height: 1.1; padding: 0 3px; position: relative; z-index: 3;
+  }
+  .card .count {
+    font-size: 14px; font-weight: 800; text-align: center;
+    position: relative; z-index: 3;
+  }
+
+  /* ====== Lottie overlay inside card ====== */
+  .lottie-overlay {
+    position: absolute; inset: -20px; z-index: 1; pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .lottie-overlay lottie-player {
+    width: 160px; height: 160px;
+  }
+
+  /* ============================================ */
+  /*  CHRISTMAS                                    */
+  /* ============================================ */
+
+  /* CSS version */
+  .xmas-css .card {
+    background: linear-gradient(160deg, #1c1210, #2a1515, #1c1210);
+    border: 1.5px solid rgba(200,50,50,0.2);
+  }
+  .xmas-css .card i { color: #ff6b6b; filter: drop-shadow(0 0 4px rgba(255,107,107,0.3)); }
+  .xmas-css .card:nth-child(odd) i { color: #5cb85c; filter: drop-shadow(0 0 4px rgba(92,184,92,0.3)); }
+  .xmas-css .card .name { color: rgba(255,220,200,0.6); }
+  .xmas-css .card .count { color: #ff6b6b; }
+  .xmas-css .card:nth-child(odd) .count { color: #5cb85c; }
+  .xmas-css .card::before {
+    content: '';
+    position: absolute; top: -2px; left: -4px; right: -4px; height: 14px;
+    z-index: 4; pointer-events: none;
+    background:
+      radial-gradient(ellipse 16px 9px at 15% 90%, rgba(255,255,255,0.9) 60%, transparent 61%),
+      radial-gradient(ellipse 20px 11px at 40% 85%, rgba(245,248,255,0.85) 60%, transparent 61%),
+      radial-gradient(ellipse 14px 8px at 65% 90%, rgba(255,255,255,0.88) 60%, transparent 61%),
+      radial-gradient(ellipse 18px 10px at 85% 87%, rgba(248,250,255,0.84) 60%, transparent 61%);
+  }
+
+  /* AI background version */
+  .xmas-ai .card {
+    background: #1c1210;
+    border: 1.5px solid rgba(200,50,50,0.25);
+    background-image: url('https://images.unsplash.com/photo-1491002052546-bf38f186af56?w=200&h=200&fit=crop&q=80');
+    background-size: cover;
+    background-position: center;
+  }
+  .xmas-ai .card::before {
+    content: ''; position: absolute; inset: 0;
+    background: rgba(15,8,8,0.7);
+    z-index: 1; pointer-events: none;
+  }
+  .xmas-ai .card i { color: #ffffff; filter: drop-shadow(0 0 6px rgba(255,100,100,0.5)); z-index: 3; }
+  .xmas-ai .card:nth-child(odd) i { color: #ffffff; filter: drop-shadow(0 0 6px rgba(92,184,92,0.5)); }
+  .xmas-ai .card .name { color: rgba(255,255,255,0.7); }
+  .xmas-ai .card .count { color: #ff8888; }
+  .xmas-ai .card:nth-child(odd) .count { color: #88dd88; }
+
+  /* Lottie version */
+  .xmas-lottie .card {
+    background: linear-gradient(160deg, #1c1210, #2a1515, #1c1210);
+    border: 1.5px solid rgba(200,50,50,0.2);
+  }
+  .xmas-lottie .card i { color: #ff6b6b; filter: drop-shadow(0 0 4px rgba(255,107,107,0.4)); z-index: 3; }
+  .xmas-lottie .card:nth-child(odd) i { color: #5cb85c; filter: drop-shadow(0 0 4px rgba(92,184,92,0.4)); }
+  .xmas-lottie .card .name { color: rgba(255,220,200,0.6); }
+  .xmas-lottie .card .count { color: #ff6b6b; }
+  .xmas-lottie .card:nth-child(odd) .count { color: #5cb85c; }
+
+  /* ============================================ */
+  /*  VALENTINE'S                                  */
+  /* ============================================ */
+
+  /* CSS version */
+  .val-css .card {
+    background: linear-gradient(160deg, #1a0a12, #2a0f1a, #1a0a14);
+    border: 1.5px solid rgba(255,80,120,0.2);
+  }
+  .val-css .card i { color: #ff5088; filter: drop-shadow(0 0 5px rgba(255,80,136,0.4)); }
+  .val-css .card .name { color: rgba(255,180,200,0.6); }
+  .val-css .card .count { color: #ff5088; }
+  .val-css .card::before {
+    content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    opacity: 0.1;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='18' viewBox='0 0 20 18'%3E%3Cpath d='M10 17.5s-1-.7-2.5-1.9C4 13.2 0 9.5 0 5.8 0 2.6 2.2 0 5 0c1.7 0 3.4 1 5 3C11.6 1 13.3 0 15 0c2.8 0 5 2.6 5 5.8 0 3.7-4 7.4-7.5 9.8-1.5 1.2-2.5 1.9-2.5 1.9z' fill='%23ff5088'/%3E%3C/svg%3E");
+    background-size: 16px 14px;
+    animation: heartFloat 6s ease-in-out infinite;
+  }
+  @keyframes heartFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+
+  /* AI background version */
+  .val-ai .card {
+    background: #1a0a12;
+    border: 1.5px solid rgba(255,80,120,0.25);
+    background-image: url('https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=200&h=200&fit=crop&q=80');
+    background-size: cover;
+    background-position: center;
+  }
+  .val-ai .card::before {
+    content: ''; position: absolute; inset: 0;
+    background: rgba(20,5,10,0.75);
+    z-index: 1; pointer-events: none;
+  }
+  .val-ai .card i { color: #ffffff; filter: drop-shadow(0 0 6px rgba(255,80,136,0.6)); z-index: 3; }
+  .val-ai .card .name { color: rgba(255,200,220,0.7); }
+  .val-ai .card .count { color: #ff88aa; }
+
+  /* Lottie version */
+  .val-lottie .card {
+    background: linear-gradient(160deg, #1a0a12, #2a0f1a, #1a0a14);
+    border: 1.5px solid rgba(255,80,120,0.2);
+  }
+  .val-lottie .card i { color: #ff5088; filter: drop-shadow(0 0 5px rgba(255,80,136,0.5)); z-index: 3; }
+  .val-lottie .card .name { color: rgba(255,180,200,0.6); }
+  .val-lottie .card .count { color: #ff5088; }
+
+  /* ============================================ */
+  /*  HALLOWEEN                                    */
+  /* ============================================ */
+
+  /* CSS version */
+  .hween-css .card {
+    background: linear-gradient(160deg, #1a0f00, #2a1800, #1a0a1a);
+    border: 1.5px solid rgba(255,140,0,0.2);
+  }
+  .hween-css .card i { color: #ff8c00; filter: drop-shadow(0 0 6px rgba(255,140,0,0.5)); }
+  .hween-css .card .name { color: rgba(255,200,150,0.5); }
+  .hween-css .card .count { color: #ff8c00; }
+  .hween-css .card::before {
+    content: ''; position: absolute; top: -1px; right: -1px;
+    width: 24px; height: 24px; z-index: 4; pointer-events: none; opacity: 0.25;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M40 0 Q30 10 20 20 Q10 10 0 0' stroke='%23aaa' fill='none' stroke-width='0.5'/%3E%3Cpath d='M40 0 Q35 15 30 30 Q15 15 0 0' stroke='%23aaa' fill='none' stroke-width='0.4'/%3E%3Cpath d='M40 0 Q38 20 36 40 Q20 20 0 0' stroke='%23aaa' fill='none' stroke-width='0.3'/%3E%3C/svg%3E");
+    background-size: contain;
+  }
+  .hween-css .card::after {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 40%;
+    z-index: 1; pointer-events: none;
+    background: linear-gradient(to top, rgba(255,100,0,0.08), transparent);
+    animation: fogPulse 3s ease-in-out infinite;
+  }
+  @keyframes fogPulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+
+  /* AI background version */
+  .hween-ai .card {
+    background: #1a0f00;
+    border: 1.5px solid rgba(255,140,0,0.25);
+    background-image: url('https://images.unsplash.com/photo-1509557965875-b88c97052f0e?w=200&h=200&fit=crop&q=80');
+    background-size: cover;
+    background-position: center;
+  }
+  .hween-ai .card::before {
+    content: ''; position: absolute; inset: 0;
+    background: rgba(15,8,0,0.72);
+    z-index: 1; pointer-events: none;
+  }
+  .hween-ai .card i { color: #ffaa33; filter: drop-shadow(0 0 8px rgba(255,140,0,0.6)); z-index: 3; }
+  .hween-ai .card .name { color: rgba(255,200,150,0.7); }
+  .hween-ai .card .count { color: #ffaa33; }
+
+  /* Lottie version */
+  .hween-lottie .card {
+    background: linear-gradient(160deg, #1a0f00, #2a1800, #1a0a1a);
+    border: 1.5px solid rgba(255,140,0,0.2);
+  }
+  .hween-lottie .card i { color: #ff8c00; filter: drop-shadow(0 0 6px rgba(255,140,0,0.5)); z-index: 3; }
+  .hween-lottie .card .name { color: rgba(255,200,150,0.5); }
+  .hween-lottie .card .count { color: #ff8c00; }
+
+  /* ============================================ */
+  /*  SUMMER                                       */
+  /* ============================================ */
+
+  /* CSS version */
+  .summer-css .card {
+    background: linear-gradient(170deg, #1a1505, #1a1808, #0f1518);
+    border: 1.5px solid rgba(255,180,50,0.15);
+  }
+  .summer-css .card i { color: #ffb832; filter: drop-shadow(0 0 5px rgba(255,184,50,0.4)); }
+  .summer-css .card .name { color: rgba(255,220,160,0.55); }
+  .summer-css .card .count { color: #ffb832; }
+  .summer-css .card::before {
+    content: ''; position: absolute; top: -15px; right: -15px;
+    width: 40px; height: 40px; z-index: 1; pointer-events: none;
+    background: radial-gradient(circle, rgba(255,200,50,0.2), rgba(255,200,50,0.05) 50%, transparent 70%);
+    animation: sunPulse 4s ease-in-out infinite;
+  }
+  @keyframes sunPulse { 0%, 100% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.15); opacity: 1; } }
+  .summer-css .card::after {
+    content: ''; position: absolute; bottom: 0; left: -5px; right: -5px; height: 12px;
+    z-index: 2; pointer-events: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 12'%3E%3Cpath d='M0 8 Q15 2 30 8 Q45 14 60 8 Q75 2 90 8 Q105 14 120 8 L120 12 L0 12 Z' fill='rgba(0,160,200,0.12)'/%3E%3C/svg%3E");
+    background-size: 120px 12px; background-repeat: repeat-x;
+    animation: waveMove 3s linear infinite;
+  }
+  @keyframes waveMove { 0% { background-position-x: 0; } 100% { background-position-x: 120px; } }
+
+  /* AI background version */
+  .summer-ai .card {
+    background: #0f1518;
+    border: 1.5px solid rgba(255,180,50,0.2);
+    background-image: url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=200&h=200&fit=crop&q=80');
+    background-size: cover;
+    background-position: center;
+  }
+  .summer-ai .card::before {
+    content: ''; position: absolute; inset: 0;
+    background: rgba(5,10,15,0.72);
+    z-index: 1; pointer-events: none;
+  }
+  .summer-ai .card i { color: #ffcc44; filter: drop-shadow(0 0 6px rgba(255,200,50,0.5)); z-index: 3; }
+  .summer-ai .card .name { color: rgba(255,230,180,0.7); }
+  .summer-ai .card .count { color: #ffcc44; }
+
+  /* Lottie version */
+  .summer-lottie .card {
+    background: linear-gradient(170deg, #0a1520, #0f1a2d, #0a1525);
+    border: 1.5px solid rgba(0,180,200,0.15);
+  }
+  .summer-lottie .card i { color: #00c4cc; filter: drop-shadow(0 0 5px rgba(0,196,204,0.5)); z-index: 3; }
+  .summer-lottie .card .name { color: rgba(150,220,230,0.6); }
+  .summer-lottie .card .count { color: #33dddd; }
+
+  /* ====== SECTION DIVIDERS ====== */
+  .divider { height: 1px; background: rgba(255,255,255,0.06); margin: 4px 0; }
+  .section-label {
+    grid-column: 1 / -1;
+    padding: 16px 0 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .section-label span {
+    font-size: 14px; font-weight: 700; letter-spacing: 1px;
+  }
+
+  /* ====== VERDICT ====== */
+  .verdict {
+    max-width: 800px; margin: 32px auto 0;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;
+  }
+  .verdict-card {
+    background: #1A1D26; border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px; padding: 16px;
+  }
+  .verdict-card h3 { font-size: 13px; margin-bottom: 8px; }
+  .verdict-card p { font-size: 11px; color: #7B8099; line-height: 1.5; }
+  .verdict-card ul { font-size: 10px; color: #7B8099; line-height: 1.6; padding-left: 14px; margin-top: 6px; }
+  .tag {
+    display: inline-block; font-size: 9px; padding: 2px 6px;
+    border-radius: 4px; margin-top: 8px; font-weight: 600;
+  }
+  .tag-css { background: rgba(123,128,153,0.2); color: #7B8099; }
+  .tag-ai { background: rgba(224,64,251,0.15); color: #e040fb; }
+  .tag-lottie { background: rgba(64,224,251,0.15); color: #40e0fb; }
+
+  .note {
+    text-align: center; color: #7B8099; font-size: 11px;
+    margin-top: 28px; line-height: 1.6; max-width: 550px;
+    margin-left: auto; margin-right: auto;
+  }
+  .note strong { color: #E8C97A; }
+</style>
+</head>
+<body>
+
+<h1>CSS vs AI Background vs Lottie</h1>
+<p class="subtitle">Same 4 Phosphor icons across all 3 approaches. Compare the energy, texture, and character each method brings to the same card layout.</p>
+
+<!-- COLUMN HEADERS -->
+<div class="comparison">
+  <div></div>
+  <div class="col-label css-label">CSS Only<br><span style="font-size:9px;font-weight:400;color:#555;">Gradients + pseudo-elements</span></div>
+  <div class="col-label ai-label">AI Background<br><span style="font-size:9px;font-weight:400;color:#555;">Photo texture + dark overlay</span></div>
+  <div class="col-label lottie-label">Lottie Overlay<br><span style="font-size:9px;font-weight:400;color:#555;">Animated particles on dark card</span></div>
+
+  <!-- ====== CHRISTMAS ROW ====== -->
+  <div class="theme-name" style="color:#ff6b6b;">Christmas</div>
+
+  <div class="card-row xmas-css">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relshp</div><div class="count">&mdash;</div></div>
+  </div>
+
+  <div class="card-row xmas-ai">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relshp</div><div class="count">&mdash;</div></div>
+  </div>
+
+  <div class="card-row xmas-lottie">
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/631176b2-a3c8-11ef-95e5-db63b70bff50/FkPsvxyqEb.json" background="transparent" speed="0.5" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/631176b2-a3c8-11ef-95e5-db63b70bff50/FkPsvxyqEb.json" background="transparent" speed="0.4" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/631176b2-a3c8-11ef-95e5-db63b70bff50/FkPsvxyqEb.json" background="transparent" speed="0.6" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/631176b2-a3c8-11ef-95e5-db63b70bff50/FkPsvxyqEb.json" background="transparent" speed="0.45" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-handshake"></i><div class="name">Relshp</div><div class="count">&mdash;</div></div>
+  </div>
+
+  <!-- ====== VALENTINE'S ROW ====== -->
+  <div class="theme-name" style="color:#ff5088;">Valentine's</div>
+
+  <div class="card-row val-css">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relshp</div><div class="count">&mdash;</div></div>
+  </div>
+
+  <div class="card-row val-ai">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relshp</div><div class="count">&mdash;</div></div>
+  </div>
+
+  <div class="card-row val-lottie">
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/f3a3ab8c-116b-11ee-85a2-f71f87293d77/n6iJCBtFXH.json" background="transparent" speed="0.5" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/f3a3ab8c-116b-11ee-85a2-f71f87293d77/n6iJCBtFXH.json" background="transparent" speed="0.4" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/f3a3ab8c-116b-11ee-85a2-f71f87293d77/n6iJCBtFXH.json" background="transparent" speed="0.6" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/f3a3ab8c-116b-11ee-85a2-f71f87293d77/n6iJCBtFXH.json" background="transparent" speed="0.45" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-handshake"></i><div class="name">Relshp</div><div class="count">&mdash;</div></div>
+  </div>
+
+  <!-- ====== HALLOWEEN ROW ====== -->
+  <div class="theme-name" style="color:#ff8c00;">Halloween</div>
+
+  <div class="card-row hween-css">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relshp</div><div class="count">&mdash;</div></div>
+  </div>
+
+  <div class="card-row hween-ai">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relshp</div><div class="count">&mdash;</div></div>
+  </div>
+
+  <div class="card-row hween-lottie">
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/fb6f6f60-1808-11ee-921b-13f4e092fc59/XKmB95Wu6z.json" background="transparent" speed="0.4" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/fb6f6f60-1808-11ee-921b-13f4e092fc59/XKmB95Wu6z.json" background="transparent" speed="0.35" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/fb6f6f60-1808-11ee-921b-13f4e092fc59/XKmB95Wu6z.json" background="transparent" speed="0.5" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/fb6f6f60-1808-11ee-921b-13f4e092fc59/XKmB95Wu6z.json" background="transparent" speed="0.45" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-handshake"></i><div class="name">Relshp</div><div class="count">&mdash;</div></div>
+  </div>
+
+  <!-- ====== SUMMER ROW ====== -->
+  <div class="theme-name" style="color:#ffb832;">Summer</div>
+
+  <div class="card-row summer-css">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relshp</div><div class="count">&mdash;</div></div>
+  </div>
+
+  <div class="card-row summer-ai">
+    <div class="card"><i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card"><i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card"><i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card"><i class="ph-duotone ph-handshake"></i><div class="name">Relshp</div><div class="count">&mdash;</div></div>
+  </div>
+
+  <div class="card-row summer-lottie">
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/7e40b936-1182-11ee-a92e-d3197f2f33d3/yaxeImOOZ1.json" background="transparent" speed="0.5" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-phone-call"></i><div class="name">Phone</div><div class="count">3</div></div>
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/7e40b936-1182-11ee-a92e-d3197f2f33d3/yaxeImOOZ1.json" background="transparent" speed="0.4" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-chat-dots"></i><div class="name">Digital</div><div class="count">&mdash;</div></div>
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/7e40b936-1182-11ee-a92e-d3197f2f33d3/yaxeImOOZ1.json" background="transparent" speed="0.6" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-door-open"></i><div class="name">In Person</div><div class="count">1</div></div>
+    <div class="card">
+      <div class="lottie-overlay"><lottie-player src="https://assets-v2.lottiefiles.com/a/7e40b936-1182-11ee-a92e-d3197f2f33d3/yaxeImOOZ1.json" background="transparent" speed="0.45" loop autoplay></lottie-player></div>
+      <i class="ph-duotone ph-handshake"></i><div class="name">Relshp</div><div class="count">&mdash;</div></div>
+  </div>
+</div>
+
+<!-- VERDICT -->
+<div class="verdict">
+  <div class="verdict-card">
+    <h3 style="color:#7B8099;">CSS Only</h3>
+    <p>What you saw in v2. Gradients, pseudo-elements, inline SVG patterns, CSS keyframes.</p>
+    <ul>
+      <li>Zero assets, zero load time</li>
+      <li>Works offline instantly</li>
+      <li>AI generates a theme as a JSON object</li>
+      <li>Limited to what CSS can draw</li>
+      <li>No photorealism, no complex illustrations</li>
+    </ul>
+    <span class="tag tag-css">BASELINE — ALWAYS SHIP THIS</span>
+  </div>
+  <div class="verdict-card">
+    <h3 style="color:#e040fb;">AI Background</h3>
+    <p>Real photo/AI-generated texture as card background, darkened overlay keeps icon readable.</p>
+    <ul>
+      <li>Real texture — frost, bokeh, pumpkins, sand</li>
+      <li>~15KB per image (200x200 WebP)</li>
+      <li>Unique per challenge (AI generates on create)</li>
+      <li>Static — no motion</li>
+      <li>Need dark overlay to keep icon contrast</li>
+    </ul>
+    <span class="tag tag-ai">UPGRADE — PER CHALLENGE</span>
+  </div>
+  <div class="verdict-card">
+    <h3 style="color:#40e0fb;">Lottie Overlay</h3>
+    <p>Animated particles (snow, hearts, smoke, waves) running inside each card.</p>
+    <ul>
+      <li>60fps smooth animation</li>
+      <li>~5-20KB per Lottie JSON</li>
+      <li>Thousands of free seasonal Lotties available</li>
+      <li>4 Lotties per card row = perf cost</li>
+      <li>Most alive, most premium feel</li>
+    </ul>
+    <span class="tag tag-lottie">PREMIUM — HIGH-VALUE THEMES</span>
+  </div>
+</div>
+
+<p class="note" style="margin-top: 24px;">
+  <strong>They're not mutually exclusive.</strong> The card component takes a <code style="color:#E8C97A;">theme</code> prop. A theme can specify CSS-only styling, an AI background URL, a Lottie overlay URL, or all three layered together. Ship CSS as the default, upgrade individual challenges to AI/Lottie when they deserve it.
+</p>
+
+</body>
+</html>
