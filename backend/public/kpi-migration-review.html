@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KPI Slug Migration — Review & Approve</title>
+<style>
+  :root {
+    --bg: #0D0F14; --surface: #1A1D26; --surface2: #22252f; --border: rgba(255,255,255,0.06);
+    --text: #F0EDE6; --muted: #7B8099; --gold: #C9A84C; --gold-dim: rgba(201,168,76,0.3);
+    --pc: #2f9f56; --gp: #2158d5; --vp: #C9A84C;
+    --green: #2f9f56; --red: #d94444; --orange: #d98a2b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 0; }
+
+  header {
+    padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; gap: 16px; background: var(--surface);
+    position: sticky; top: 0; z-index: 100;
+  }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header .badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: var(--red); color: #fff; }
+  .stats { display: flex; gap: 16px; margin-left: auto; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  .stats .stat { display: flex; align-items: center; gap: 4px; }
+  .stats .stat-val { font-weight: 700; color: var(--text); }
+
+  .auth-gate { padding: 40px; max-width: 400px; margin: 0 auto; text-align: center; }
+  .auth-gate h2 { font-size: 16px; margin-bottom: 16px; }
+  .auth-gate input { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: var(--surface); color: var(--text); font-size: 14px; margin-bottom: 8px; }
+  .auth-gate button { padding: 10px 24px; border-radius: 8px; border: none; background: var(--gold); color: #000; font-weight: 700; cursor: pointer; font-size: 14px; }
+
+  .toolbar {
+    padding: 12px 24px; background: rgba(26,29,38,0.8); border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; gap: 12px; position: sticky; top: 56px; z-index: 99;
+  }
+  .toolbar button {
+    padding: 8px 16px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  }
+  .btn-approve-all { background: var(--green); color: #fff; }
+  .btn-approve-all:hover { filter: brightness(1.15); }
+  .btn-execute { background: var(--gold); color: #000; }
+  .btn-execute:hover { filter: brightness(1.15); }
+  .btn-execute:disabled { opacity: 0.4; cursor: not-allowed; }
+  .toolbar .approved-count { font-size: 13px; color: var(--muted); margin-left: auto; }
+
+  .legend {
+    padding: 12px 24px; background: rgba(26,29,38,0.4); border-bottom: 1px solid rgba(255,255,255,0.04);
+    display: flex; gap: 24px; font-size: 12px; color: var(--muted); align-items: center;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.1); }
+
+  .section { padding: 16px 24px; }
+  .section h2 {
+    font-size: 15px; font-weight: 700; margin-bottom: 12px; padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 8px;
+  }
+  .section h2 .count { font-size: 12px; color: var(--muted); font-weight: 400; }
+  .section-desc { font-size: 12px; color: var(--muted); margin-bottom: 12px; line-height: 1.5; }
+
+  /* ── Mapping Row: 2-column OLD → NEW layout ── */
+  .mapping-row {
+    display: grid; grid-template-columns: 32px 1fr 32px 1fr 60px;
+    gap: 0; align-items: stretch; margin-bottom: 6px;
+    border-radius: 10px; background: var(--surface); border: 1px solid var(--border);
+    transition: all 0.15s; font-size: 13px; overflow: hidden;
+  }
+  .mapping-row:hover { border-color: rgba(255,255,255,0.12); }
+  .mapping-row.approved { border-color: rgba(47,159,86,0.4); background: rgba(47,159,86,0.05); }
+  .mapping-row.rejected { opacity: 0.4; }
+  .mapping-row.exact { border-left: 3px solid var(--green); }
+  .mapping-row.known_rename { border-left: 3px solid var(--gp); }
+  .mapping-row.type_change { border-left: 3px solid #c040c0; }
+  .mapping-row.contains { border-left: 3px solid var(--orange); }
+  .mapping-row.fuzzy { border-left: 3px solid var(--red); }
+  .mapping-row.none { border-left: 3px solid var(--muted); }
+
+  .mapping-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--green); cursor: pointer; align-self: center; justify-self: center; }
+
+  .col-old, .col-new {
+    padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .col-old { background: rgba(217,68,68,0.04); }
+  .col-new { background: rgba(47,159,86,0.04); }
+
+  .col-label {
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 2px;
+  }
+  .col-label.old { color: var(--red); }
+  .col-label.new { color: var(--green); }
+
+  .slug-line { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 4px; }
+  .name-line { font-size: 12px; color: var(--muted); }
+  .name-line.db-name { font-style: italic; }
+
+  .app-preview {
+    margin-top: 4px; padding: 3px 8px; border-radius: 6px;
+    background: rgba(255,255,255,0.04); font-size: 10px; color: var(--muted);
+    display: inline-flex; align-items: center; gap: 4px; max-width: fit-content;
+  }
+  .app-preview .preview-label { font-size: 9px; color: rgba(255,255,255,0.3); font-weight: 600; }
+  .app-preview .preview-name { color: var(--text); font-weight: 600; }
+
+  .params {
+    display: flex; flex-wrap: wrap; gap: 3px; font-size: 10px; font-family: 'SF Mono', Monaco, monospace;
+    margin-top: 4px;
+  }
+  .param-tag {
+    padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.05);
+    color: var(--muted); white-space: nowrap;
+  }
+  .param-tag.has-value { color: var(--text); background: rgba(201,168,76,0.12); }
+
+  .arrow-col {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: var(--muted); background: var(--surface);
+  }
+
+  .match-col {
+    display: flex; align-items: center; justify-content: center; background: var(--surface);
+  }
+  .match-badge {
+    font-size: 9px; font-weight: 700; padding: 3px 6px; border-radius: 6px;
+    text-transform: uppercase; text-align: center; writing-mode: vertical-rl;
+    letter-spacing: 0.5px;
+  }
+  .match-badge.exact { background: rgba(47,159,86,0.2); color: var(--green); }
+  .match-badge.known_rename { background: rgba(33,88,213,0.2); color: var(--gp); }
+  .match-badge.type_change { background: rgba(192,64,192,0.2); color: #c040c0; }
+  .match-badge.contains { background: rgba(217,138,43,0.2); color: var(--orange); }
+  .match-badge.fuzzy { background: rgba(217,68,68,0.2); color: var(--red); }
+  .match-badge.none { background: rgba(123,128,153,0.2); color: var(--muted); }
+
+  .type-change-warning {
+    margin-top: 4px; padding: 3px 8px; border-radius: 6px;
+    background: rgba(192,64,192,0.1); border: 1px solid rgba(192,64,192,0.2);
+    font-size: 10px; color: #c040c0; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+
+  .type-dot { display: inline-block; width: 8px; height: 8px; border-radius: 3px; margin-right: 4px; flex-shrink: 0; }
+  .type-dot.PC { background: var(--pc); }
+  .type-dot.GP { background: var(--gp); }
+  .type-dot.VP { background: var(--vp); }
+  .type-dot.Pipeline_Anchor { background: var(--red); }
+  .type-dot.Actual { background: var(--orange); }
+  .type-dot.Custom { background: var(--muted); }
+
+  /* ── Editable fields ── */
+  .edit-slug, .edit-name {
+    font-family: 'SF Mono', Monaco, monospace; font-size: 12px; color: var(--text);
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px; padding: 3px 6px; width: 100%; max-width: 260px;
+    outline: none; transition: border-color 0.15s;
+  }
+  .edit-name { font-family: inherit; }
+  .edit-slug:focus, .edit-name:focus { border-color: var(--gold); }
+  .edit-slug.changed, .edit-name.changed { border-color: var(--orange); background: rgba(217,138,43,0.08); }
+
+  /* ── DB-only rows ── */
+  .db-only-row {
+    display: grid; grid-template-columns: 1fr 180px 80px;
+    gap: 8px; align-items: center; padding: 10px 12px; margin-bottom: 4px;
+    border-radius: 10px; background: var(--surface); border: 1px solid var(--border);
+    font-size: 13px; opacity: 0.7;
+  }
+  .db-only-row .slug { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; }
+  .db-only-row .name { font-size: 11px; color: var(--muted); }
+  .db-only-row .type-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
+
+  .result-banner {
+    padding: 16px 24px; margin: 16px 24px; border-radius: 10px; font-size: 14px; font-weight: 600;
+    display: none;
+  }
+  .result-banner.success { display: block; background: rgba(47,159,86,0.15); color: var(--green); border: 1px solid rgba(47,159,86,0.3); }
+  .result-banner.error { display: block; background: rgba(217,68,68,0.15); color: var(--red); border: 1px solid rgba(217,68,68,0.3); }
+
+  .loading { padding: 60px; text-align: center; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>KPI Slug Migration</h1>
+  <span class="badge">REVIEW REQUIRED</span>
+  <div class="stats" id="stats"></div>
+</header>
+
+<div id="auth-gate" class="auth-gate">
+  <h2>Admin Login</h2>
+  <input type="email" id="login-email" placeholder="Email" />
+  <input type="password" id="login-password" placeholder="Password" />
+  <button onclick="doLogin()">Sign In</button>
+  <p id="login-error" style="color: var(--red); font-size: 12px; margin-top: 8px;"></p>
+</div>
+
+<div id="main-content" style="display:none;">
+  <div class="toolbar" id="toolbar">
+    <button class="btn-approve-all" onclick="approveAllFuzzy()">Approve All Suggested</button>
+    <button class="btn-execute" id="btn-execute" onclick="executeMigration()" disabled>Execute Approved Mappings</button>
+    <span class="approved-count" id="approved-count">0 approved</span>
+  </div>
+
+  <div class="legend">
+    <span style="font-weight:600;color:var(--text)">How to read each row:</span>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(217,68,68,0.15)"></div> OLD (current DB value)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(47,159,86,0.15)"></div> NEW (what it will become) — editable</div>
+    <div class="legend-item" style="margin-left:auto; color:var(--text)">Algorithm params are NEVER changed. Only slug + name + icon.</div>
+  </div>
+
+  <div id="result-banner" class="result-banner"></div>
+
+  <div id="loading" class="loading">Loading migration preview...</div>
+  <div id="content"></div>
+</div>
+
+<script>
+const API_BASE = window.location.origin;
+let TOKEN = null;
+let SUPABASE_URL = null;
+let mappingData = null;
+
+// Track edits per catalog slug
+const edits = {};
+
+// ── Auth ──
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+
+  try {
+    const configResp = await fetch(API_BASE + '/api/config');
+    const config = await configResp.json();
+    SUPABASE_URL = config.supabaseUrl;
+  } catch {
+    errEl.textContent = 'Failed to reach backend';
+    return;
+  }
+
+  try {
+    const resp = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': await getAnonKey() },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.access_token) {
+      errEl.textContent = data.error_description || data.msg || 'Login failed';
+      return;
+    }
+    TOKEN = data.access_token;
+    sessionStorage.setItem('kpi_admin_token', TOKEN);
+    document.getElementById('auth-gate').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    loadPreview();
+  } catch (e) {
+    errEl.textContent = 'Network error: ' + e.message;
+  }
+}
+
+async function getAnonKey() {
+  const resp = await fetch(API_BASE + '/api/config');
+  const data = await resp.json();
+  return data.supabaseAnonKey;
+}
+
+// Check for existing session
+(function() {
+  const saved = sessionStorage.getItem('kpi_admin_token');
+  if (saved) {
+    TOKEN = saved;
+    document.getElementById('auth-gate').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    loadPreview();
+  }
+})();
+
+// ── Load Preview ──
+async function loadPreview() {
+  const loadingEl = document.getElementById('loading');
+
+  try {
+    const resp = await fetch(API_BASE + '/admin/kpi-migration/preview', {
+      headers: { 'Authorization': 'Bearer ' + TOKEN },
+    });
+    if (resp.status === 401) {
+      sessionStorage.removeItem('kpi_admin_token');
+      location.reload();
+      return;
+    }
+    mappingData = await resp.json();
+    if (!mappingData.ok) throw new Error(mappingData.error);
+
+    loadingEl.style.display = 'none';
+    renderStats(mappingData.summary);
+    renderMappings(mappingData.mappings, mappingData.unmatched_db);
+  } catch (e) {
+    loadingEl.innerHTML = '<span style="color:var(--red)">Error: ' + e.message + '</span>';
+  }
+}
+
+function renderStats(s) {
+  document.getElementById('stats').innerHTML = `
+    <div class="stat">Catalog: <span class="stat-val">${s.catalog_total}</span></div>
+    <div class="stat">DB: <span class="stat-val">${s.db_total}</span></div>
+    <div class="stat" style="color:var(--green)">Exact: <span class="stat-val">${s.exact}</span></div>
+    <div class="stat" style="color:var(--gp)">Renamed: <span class="stat-val">${s.known_rename || 0}</span></div>
+    <div class="stat" style="color:#c040c0">Type Change: <span class="stat-val">${s.type_change || 0}</span></div>
+    <div class="stat" style="color:var(--orange)">Fuzzy: <span class="stat-val">${s.fuzzy}</span></div>
+    <div class="stat" style="color:var(--red)">No Match: <span class="stat-val">${s.no_match}</span></div>
+    <div class="stat">DB Only: <span class="stat-val">${s.db_only}</span></div>
+  `;
+}
+
+function renderMappings(mappings, unmatchedDb) {
+  const contentEl = document.getElementById('content');
+  let html = '';
+
+  const exact = mappings.filter(m => m.match_type === 'exact');
+  const knownRenames = mappings.filter(m => m.match_type === 'known_rename');
+  const typeChanges = mappings.filter(m => m.match_type === 'type_change');
+  const suggested = mappings.filter(m => m.match_type === 'contains' || m.match_type === 'fuzzy');
+  const noMatch = mappings.filter(m => m.match_type === 'none');
+
+  if (exact.length) {
+    html += renderSection(
+      'Exact Matches — slug already identical',
+      'These DB slugs match the catalog exactly. Check them to also update the display name and icon if the catalog version is better.',
+      exact
+    );
+  }
+  if (knownRenames.length) {
+    html += renderSection(
+      'Known Renames — same KPI, cleaner slug',
+      'These are confirmed matches where the DB slug is being renamed to a cleaner version. Algorithm params stay on the same row.',
+      knownRenames
+    );
+  }
+  if (typeChanges.length) {
+    html += renderSection(
+      'Type Changes — GP → PC (intentional reclassification)',
+      'These KPIs were GP in the database but are being reclassified to PC because they are pipeline-generating activities. They will need pc_weight and timing params set after migration.',
+      typeChanges
+    );
+  }
+  if (suggested.length) {
+    html += renderSection(
+      'Fuzzy Matches — REVIEW EACH ONE',
+      'The system found a likely DB match but isn\'t confident. Verify these are correct before approving.',
+      suggested
+    );
+  }
+  if (noMatch.length) {
+    html += renderSection(
+      'No DB Match — new KPIs, will be created fresh',
+      'These exist in the catalog but have no DB row yet. They won\'t be changed by migration. Create them via the admin panel afterward with proper algorithm params.',
+      noMatch
+    );
+  }
+  if (unmatchedDb.length) {
+    // Split DB-only into system KPIs vs regular unmatched
+    const systemTypes = ['Pipeline_Anchor', 'Actual'];
+    const systemKpis = unmatchedDb.filter(r => systemTypes.includes(r.db_type));
+    const regularUnmatched = unmatchedDb.filter(r => !systemTypes.includes(r.db_type));
+
+    if (systemKpis.length) {
+      html += renderDbOnlySection(
+        'System KPIs — Pipeline Anchors & Actuals (DO NOT TOUCH)',
+        'These are system-level KPIs with special wiring. Pipeline Anchors store current pipeline status (upsert, not append) and generate synthetic projection events. Actuals track realized GCI. They are NOT button cards and should NEVER be in the designer catalog. This migration will not touch them.',
+        systemKpis,
+        true /* isSystem */
+      );
+    }
+
+    if (regularUnmatched.length) {
+      html += renderDbOnlySection(
+        'DB-Only — no catalog entry, untouched by migration',
+        'These exist in the database but not in the button designer catalog. They keep working in-app but won\'t show in the designer. Consider adding them to the catalog if they should have button cards.',
+        regularUnmatched,
+        false
+      );
+    }
+  }
+
+  contentEl.innerHTML = html;
+  updateApprovedCount();
+}
+
+function renderSection(title, description, items) {
+  let html = `<div class="section">
+    <h2>${title} <span class="count">(${items.length})</span></h2>
+    <p class="section-desc">${description}</p>`;
+
+  for (const m of items) {
+    const hasDb = !!m.db_id;
+    const isExact = m.match_type === 'exact';
+    const rowClass = m.match_type + (isExact ? ' approved' : '');
+    const checked = isExact ? 'checked' : '';
+    const escaped = JSON.stringify(m).replace(/'/g, "&#39;").replace(/"/g, '&quot;');
+    const safeId = m.catalog_slug.replace(/[^a-z0-9_]/g, '_');
+
+    html += `<div class="mapping-row ${rowClass}" id="row-${safeId}" data-mapping="${escaped}" data-catalog-slug="${m.catalog_slug}">`;
+
+    // Checkbox
+    html += `<input type="checkbox" ${checked} ${!hasDb ? 'disabled title="No DB row to update"' : ''} onchange="toggleRow('${safeId}', this.checked)" />`;
+
+    // OLD side (current DB)
+    if (hasDb) {
+      html += `<div class="col-old">
+        <div class="col-label old">OLD (current in DB)${m.type_change ? ' — <span style="color:#c040c0">' + m.db_type + '</span>' : ''}</div>
+        <div class="slug-line"><span class="type-dot ${m.db_type}"></span>${m.db_slug}</div>
+        <div class="name-line db-name">${m.db_name} (${m.db_type})</div>
+        <div class="params">`;
+      if (m.db_params) {
+        const p = m.db_params;
+        if (p.pc_weight != null) html += `<span class="param-tag has-value">wt:${p.pc_weight}</span>`;
+        if (p.delay_days != null) html += `<span class="param-tag has-value">delay:${p.delay_days}d</span>`;
+        if (p.hold_days != null) html += `<span class="param-tag has-value">hold:${p.hold_days}d</span>`;
+        if (p.decay_days != null) html += `<span class="param-tag has-value">decay:${p.decay_days}d</span>`;
+        if (p.gp_value != null) html += `<span class="param-tag has-value">gp:${p.gp_value}</span>`;
+        if (p.vp_value != null) html += `<span class="param-tag has-value">vp:${p.vp_value}</span>`;
+      }
+      html += `</div></div>`;
+    } else {
+      html += `<div class="col-old">
+        <div class="col-label old">OLD (no DB row)</div>
+        <div style="color:var(--muted);font-style:italic;font-size:12px;padding:8px 0">No matching row found in database</div>
+      </div>`;
+    }
+
+    // Arrow
+    html += `<div class="arrow-col">→</div>`;
+
+    // NEW side (editable — what it will become)
+    html += `<div class="col-new">
+      <div class="col-label new">NEW (after migration)</div>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:10px;color:var(--muted);width:32px">slug</span>
+          <input class="edit-slug" type="text" value="${m.catalog_slug}" data-original="${m.catalog_slug}" data-id="${safeId}" oninput="onEditField(this)" />
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:10px;color:var(--muted);width:32px">name</span>
+          <input class="edit-name" type="text" value="${m.catalog_name}" data-original="${m.catalog_name}" data-id="${safeId}" oninput="onEditField(this)" />
+        </div>
+      </div>
+      ${m.type_change ? '<div class="type-change-warning">TYPE CHANGE: ' + m.type_change.from + ' → ' + m.type_change.to + ' (will need new algorithm params)</div>' : ''}
+      <div class="app-preview" id="preview-${safeId}">
+        <span class="preview-label">App shows:</span>
+        <span class="type-dot ${m.catalog_type}"></span>
+        <span class="preview-name">${m.catalog_name}</span>
+      </div>
+    </div>`;
+
+    // Match badge
+    html += `<div class="match-col"><div class="match-badge ${m.match_type}">${m.match_type}</div></div>`;
+
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function renderDbOnlySection(title, description, items, isSystem) {
+  const sectionStyle = isSystem ? 'border: 1px solid rgba(217,68,68,0.2); border-radius: 12px; padding: 16px; margin: 0 24px 16px; background: rgba(217,68,68,0.03);' : '';
+  let html = `<div class="section" style="${sectionStyle}">
+    <h2>${isSystem ? '&#x1f6d1; ' : ''}${title} <span class="count">(${items.length})</span></h2>
+    <p class="section-desc">${description}</p>`;
+
+  for (const r of items) {
+    const typeColor = r.db_type === 'PC' ? 'var(--pc)' : r.db_type === 'GP' ? 'var(--gp)' : r.db_type === 'VP' ? 'var(--vp)' : r.db_type === 'Pipeline_Anchor' ? 'var(--red)' : r.db_type === 'Actual' ? 'var(--orange)' : 'var(--muted)';
+    const rowStyle = isSystem ? 'opacity:0.6; border-color: rgba(217,68,68,0.15);' : '';
+    html += `<div class="db-only-row" style="${rowStyle}">
+      <div>
+        <div class="slug" style="font-family:'SF Mono',Monaco,monospace;font-size:12px"><span class="type-dot ${r.db_type}"></span>${r.db_slug}</div>
+        <div class="name">${r.db_name} ${r.db_is_active ? '' : '<span style="color:var(--red)">(inactive)</span>'}</div>
+      </div>
+      <div class="params">`;
+    const p = r.db_params;
+    if (p.pc_weight != null) html += `<span class="param-tag has-value">wt:${p.pc_weight}</span>`;
+    if (p.delay_days != null) html += `<span class="param-tag has-value">delay:${p.delay_days}d</span>`;
+    if (p.hold_days != null) html += `<span class="param-tag has-value">hold:${p.hold_days}d</span>`;
+    if (p.decay_days != null) html += `<span class="param-tag has-value">decay:${p.decay_days}d</span>`;
+    if (p.gp_value != null) html += `<span class="param-tag has-value">gp:${p.gp_value}</span>`;
+    if (p.vp_value != null) html += `<span class="param-tag has-value">vp:${p.vp_value}</span>`;
+    html += `</div>
+      <div class="type-badge" style="color:${typeColor};font-size:11px;font-weight:600">${r.db_type}</div>
+    </div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+// ── Inline Editing ──
+function onEditField(input) {
+  const id = input.dataset.id;
+  const original = input.dataset.original;
+  const isChanged = input.value !== original;
+  input.classList.toggle('changed', isChanged);
+
+  // Update the app preview for this row
+  const row = document.getElementById('row-' + id);
+  if (!row) return;
+  const nameInput = row.querySelector('.edit-name');
+  const preview = document.getElementById('preview-' + id);
+  if (nameInput && preview) {
+    preview.querySelector('.preview-name').textContent = nameInput.value;
+  }
+
+  // Track edits
+  const slugInput = row.querySelector('.edit-slug');
+  if (slugInput && nameInput) {
+    edits[id] = {
+      slug: slugInput.value,
+      name: nameInput.value,
+    };
+  }
+}
+
+// ── Row Approval ──
+function toggleRow(id, checked) {
+  const row = document.getElementById('row-' + id);
+  if (!row) return;
+  row.classList.toggle('approved', checked);
+  row.classList.toggle('rejected', !checked);
+  updateApprovedCount();
+}
+
+function approveAllFuzzy() {
+  document.querySelectorAll('.mapping-row').forEach(row => {
+    const cb = row.querySelector('input[type="checkbox"]');
+    if (cb && !cb.disabled) {
+      cb.checked = true;
+      row.classList.add('approved');
+      row.classList.remove('rejected');
+    }
+  });
+  updateApprovedCount();
+}
+
+function updateApprovedCount() {
+  const checked = document.querySelectorAll('.mapping-row input[type="checkbox"]:checked:not(:disabled)');
+  const total = checked.length;
+  document.getElementById('approved-count').textContent = total + ' approved';
+  document.getElementById('btn-execute').disabled = total === 0;
+}
+
+// ── Execute ──
+async function executeMigration() {
+  const btn = document.getElementById('btn-execute');
+  const banner = document.getElementById('result-banner');
+
+  const approved = [];
+  document.querySelectorAll('.mapping-row input[type="checkbox"]:checked').forEach(cb => {
+    const row = cb.closest('.mapping-row');
+    if (!row) return;
+    const m = JSON.parse(row.dataset.mapping.replace(/&quot;/g, '"'));
+    if (!m.db_id) return;
+
+    const safeId = m.catalog_slug.replace(/[^a-z0-9_]/g, '_');
+
+    // Use edited values if present, otherwise use catalog defaults
+    const slugInput = row.querySelector('.edit-slug');
+    const nameInput = row.querySelector('.edit-name');
+    const newSlug = slugInput ? slugInput.value.trim() : m.catalog_slug;
+    const newName = nameInput ? nameInput.value.trim() : m.catalog_name;
+
+    approved.push({
+      db_id: m.db_id,
+      new_slug: newSlug,
+      new_name: newName,
+      new_icon_name: m.catalog_icon || null,
+      new_type: m.type_change ? m.type_change.to : null,
+      // For the confirmation dialog
+      _old_slug: m.db_slug,
+      _old_name: m.db_name,
+      _type_change: m.type_change,
+    });
+  });
+
+  if (approved.length === 0) return;
+
+  // Build a readable summary for confirmation
+  const changedSlugs = approved.filter(a => a.new_slug !== a._old_slug);
+  const changedNames = approved.filter(a => a.new_name !== a._old_name);
+  const typeChanges = approved.filter(a => a._type_change);
+
+  let confirmMsg = `You are about to update ${approved.length} KPI rows.\n\n`;
+  confirmMsg += `Slug changes: ${changedSlugs.length}\n`;
+  confirmMsg += `Name changes: ${changedNames.length}\n`;
+  confirmMsg += `Type changes: ${typeChanges.length}\n\n`;
+  if (changedSlugs.length <= 15) {
+    confirmMsg += `Slug changes:\n`;
+    for (const a of changedSlugs) {
+      confirmMsg += `  ${a._old_slug} → ${a.new_slug}\n`;
+    }
+    confirmMsg += `\n`;
+  }
+  if (typeChanges.length) {
+    confirmMsg += `Type changes:\n`;
+    for (const a of typeChanges) {
+      confirmMsg += `  ${a._old_slug}: ${a._type_change.from} → ${a._type_change.to}\n`;
+    }
+    confirmMsg += `\n`;
+  }
+  confirmMsg += `Algorithm params (weights, timing, values) are NOT modified.\nType-changed KPIs will need new params set afterward.\n\nProceed?`;
+
+  if (!confirm(confirmMsg)) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Executing...';
+
+  // Strip display-only fields before sending
+  const payload = approved.map(({ db_id, new_slug, new_name, new_icon_name, new_type }) => ({ db_id, new_slug, new_name, new_icon_name, new_type }));
+
+  try {
+    const resp = await fetch(API_BASE + '/admin/kpi-migration/execute', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + TOKEN,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ approved_mappings: payload }),
+    });
+    const data = await resp.json();
+
+    if (data.ok) {
+      banner.className = 'result-banner success';
+      banner.textContent = `Migration complete: ${data.updated} of ${data.total_submitted} rows updated.` +
+        (data.errors ? ` Errors: ${data.errors.join(', ')}` : '');
+      banner.style.display = 'block';
+
+      document.querySelectorAll('.mapping-row input[type="checkbox"]').forEach(cb => cb.disabled = true);
+      document.querySelectorAll('.edit-slug, .edit-name').forEach(el => el.disabled = true);
+      btn.textContent = 'Done';
+    } else {
+      throw new Error(data.error);
+    }
+  } catch (e) {
+    banner.className = 'result-banner error';
+    banner.textContent = 'Migration failed: ' + e.message;
+    banner.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Execute Approved Mappings';
+  }
+}
+</script>
+
+</body>
+</html>

@@ -1370,6 +1370,14 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "compasskpi-backend" });
 });
 
+// Public config endpoint (only exposes values the browser already needs)
+app.get("/api/config", (_req, res) => {
+  res.json({
+    supabaseUrl: supabaseUrl || "",
+    supabaseAnonKey: supabaseAnonKey || "",
+  });
+});
+
 app.get("/me", async (req, res) => {
   try {
     const auth = await authenticateRequest(req.headers.authorization);
@@ -16008,6 +16016,80 @@ function isRecoverableAssignmentSourceGap(error: { message?: string; code?: stri
 const FORGE_ICON_DIR = path.resolve(__dirname, "../../app/assets/figma/kpi_icon_bank");
 const FORGE_SVG_DIR = path.resolve(__dirname, "../../app/assets/figma/kpi_icon_bank/svg");
 
+// ── Unified Admin Portal ──
+app.get("/admin/portal", (_req, res) => {
+  res.sendFile(path.resolve(__dirname, "../public/admin.html"));
+});
+
+// ── Admin Coaching Overview ──
+app.get("/admin/coaching/journeys", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    if (!(await isPlatformAdmin(auth.user.id))) return res.status(403).json({ error: "Admin access required" });
+
+    const { data: journeys, error: jErr } = await dataClient
+      .from("journeys")
+      .select("id,title,description,team_id,org_id,created_by,is_active,status,created_at,updated_at")
+      .order("created_at", { ascending: false });
+    if (jErr) return res.status(500).json({ error: "Failed to fetch journeys: " + jErr.message });
+
+    // Fetch milestone + lesson counts in bulk
+    const { data: milestones } = await dataClient
+      .from("milestones")
+      .select("id,journey_id,title,sort_order,release_strategy");
+    const { data: lessons } = await dataClient
+      .from("lessons")
+      .select("id,milestone_id,title,sort_order,is_active");
+    const { data: enrollments } = await dataClient
+      .from("journey_enrollments")
+      .select("id,journey_id,user_id,status");
+
+    const milestonesByJourney = new Map<string, any[]>();
+    for (const m of milestones ?? []) {
+      const jid = String(m.journey_id ?? "");
+      if (!milestonesByJourney.has(jid)) milestonesByJourney.set(jid, []);
+      milestonesByJourney.get(jid)!.push(m);
+    }
+
+    const lessonsByMilestone = new Map<string, any[]>();
+    for (const l of lessons ?? []) {
+      const mid = String(l.milestone_id ?? "");
+      if (!lessonsByMilestone.has(mid)) lessonsByMilestone.set(mid, []);
+      lessonsByMilestone.get(mid)!.push(l);
+    }
+
+    const enrollmentsByJourney = new Map<string, any[]>();
+    for (const e of enrollments ?? []) {
+      const jid = String(e.journey_id ?? "");
+      if (!enrollmentsByJourney.has(jid)) enrollmentsByJourney.set(jid, []);
+      enrollmentsByJourney.get(jid)!.push(e);
+    }
+
+    const enriched = (journeys ?? []).map((j: any) => {
+      const jMilestones = milestonesByJourney.get(j.id) || [];
+      let lessonCount = 0;
+      for (const m of jMilestones) {
+        lessonCount += (lessonsByMilestone.get(m.id) || []).length;
+      }
+      const jEnrollments = enrollmentsByJourney.get(j.id) || [];
+      return {
+        ...j,
+        milestone_count: jMilestones.length,
+        lesson_count: lessonCount,
+        enrollment_count: jEnrollments.length,
+        active_enrollments: jEnrollments.filter((e: any) => e.status === "active").length,
+      };
+    });
+
+    return res.json({ journeys: enriched });
+  } catch (err) {
+    console.error("Error in GET /admin/coaching/journeys", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.get("/admin/kpi-forge", (_req, res) => {
   res.sendFile(path.resolve(__dirname, "../public/kpi-forge.html"));
 });
@@ -16103,6 +16185,360 @@ app.post("/admin/kpi-forge/save", async (req, res) => {
     // eslint-disable-next-line no-console
     console.error("KPI Forge save error:", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── KPI Catalog (Button Designer) ────────────────────────────────────────────
+
+const CATALOG_PATH = path.resolve(__dirname, "../public/kpi-catalog.json");
+
+// Serve local Lottie JSON files for the designer preview
+app.use("/admin/lottie", express.static(path.resolve(__dirname, "../../app/assets/lottie")));
+
+app.get("/admin/kpi-catalog", (_req, res) => {
+  res.sendFile(path.resolve(__dirname, "../public/kpi-catalog-forge.html"));
+});
+
+app.get("/kpi-catalog.json", (_req, res) => {
+  res.sendFile(CATALOG_PATH);
+});
+
+app.post("/admin/kpi-catalog/save", async (req, res) => {
+  try {
+    const data = req.body;
+    if (!data || !Array.isArray(data.kpis)) {
+      return res.status(400).json({ error: "Invalid catalog format — must have a kpis array" });
+    }
+    await fs.promises.writeFile(CATALOG_PATH, JSON.stringify(data, null, 2), "utf-8");
+    res.json({ ok: true, count: data.kpis.length });
+  } catch (err) {
+    console.error("KPI Catalog save error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/admin/kpi-catalog/sync", async (req, res) => {
+  try {
+    if (!dataClient) {
+      return res.status(500).json({ error: "Supabase dataClient not configured" });
+    }
+    const raw = await fs.promises.readFile(CATALOG_PATH, "utf-8");
+    const catalog = JSON.parse(raw);
+    if (!catalog || !Array.isArray(catalog.kpis)) {
+      return res.status(400).json({ error: "Invalid catalog on disk" });
+    }
+
+    const { data: dbKpis, error: fetchErr } = await dataClient
+      .from("kpis")
+      .select("id, slug, icon_source, icon_name, icon_emoji");
+    if (fetchErr) {
+      return res.status(500).json({ error: `DB fetch failed: ${fetchErr.message}` });
+    }
+
+    const catalogBySlug = new Map<string, any>();
+    for (const entry of catalog.kpis) {
+      if (entry.slug) catalogBySlug.set(entry.slug, entry);
+    }
+
+    let matched = 0;
+    let updated = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (const dbRow of dbKpis ?? []) {
+      const catalogEntry = catalogBySlug.get(dbRow.slug);
+      if (!catalogEntry) { skipped++; continue; }
+      matched++;
+
+      const updates: Record<string, any> = {};
+      const catIcon = catalogEntry.phosphor_icon || catalogEntry.icon;
+      if (catIcon && (dbRow.icon_source !== "phosphor" || dbRow.icon_name !== catIcon)) {
+        updates.icon_source = "phosphor";
+        updates.icon_name = catIcon;
+      }
+      if (Object.keys(updates).length === 0) continue;
+
+      const { error: updateErr } = await dataClient
+        .from("kpis")
+        .update(updates)
+        .eq("id", dbRow.id);
+      if (updateErr) { errors.push(`${dbRow.slug}: ${updateErr.message}`); }
+      else { updated++; }
+    }
+
+    res.json({ ok: true, matched, updated, skipped, total_catalog: catalog.kpis.length, total_db: dbKpis?.length ?? 0, errors: errors.length > 0 ? errors : undefined });
+  } catch (err: any) {
+    console.error("KPI Catalog sync error:", err);
+    res.status(500).json({ error: err.message || "Internal server error" });
+  }
+});
+
+// ── KPI Slug Migration Review ─────────────────────────────────────────────
+
+app.get("/admin/kpi-migration", (_req, res) => {
+  res.sendFile(path.resolve(__dirname, "../public/kpi-migration-review.html"));
+});
+
+// Preview: builds a proposed mapping between catalog slugs and DB slugs
+app.get("/admin/kpi-migration/preview", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    if (!(await isPlatformAdmin(auth.user.id))) return res.status(403).json({ error: "Admin access required" });
+
+    // Fetch all DB KPIs with full algorithm params
+    const { data: dbKpis, error: fetchErr } = await dataClient
+      .from("kpis")
+      .select("id, name, slug, type, is_active, pc_weight, ttc_days, ttc_definition, delay_days, hold_days, decay_days, gp_value, vp_value, icon_source, icon_name")
+      .order("type")
+      .order("name");
+    if (fetchErr) return res.status(500).json({ error: `DB fetch failed: ${fetchErr.message}` });
+
+    // Load catalog JSON
+    const raw = await fs.promises.readFile(CATALOG_PATH, "utf-8");
+    const catalog = JSON.parse(raw);
+    if (!catalog?.kpis) return res.status(400).json({ error: "Invalid catalog on disk" });
+
+    // Build fuzzy matching suggestions
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    // Known cross-type mappings (DB slug → catalog slug) where type intentionally changed
+    const KNOWN_TYPE_CHANGES: Record<string, string> = {
+      listing_presentation_given: "listing_presentation",  // GP → PC
+      buyer_consult_held: "buyer_consultation",            // GP → PC
+      cma_created_practice_or_live: "cma_prepared",        // GP → PC
+    };
+
+    // Known slug renames where DB slug differs but it's the same KPI
+    const KNOWN_RENAMES: Record<string, string> = {
+      phone_call_logged: "phone_call",
+      door_knock_logged: "door_knock",
+      open_house_logged: "open_house",
+      exercise_session: "exercise",
+      prayer_meditation_time: "meditation",
+      hydration_goal_met: "water_intake",
+      good_night_of_sleep: "sleep_goal",
+      whole_food_meal_logged: "healthy_meal",
+      steps_goal_met_walk_completed: "walk_steps",
+      stretching_mobility_session: "stretch_yoga",
+      screen_curfew_honored: "screen_break",
+      mindfulness_breath_reset: "deep_breathing",
+      journal_entry_non_gratitude: "journaling",
+      social_connection_non_work: "family_time",
+      outdoor_time_logged: "outdoor_time",
+      sabbath_block_honored_rest: "sabbath_rest",
+      instagram_post_shared: "social_posts_shared",
+      facebook_post_shared: "social_posts_shared",
+      tiktok_post_shared: "social_posts_shared",
+      x_post_shared: "social_posts_shared",
+      linkedin_post_shared: "social_posts_shared",
+      youtube_short_posted: "social_posts_shared",
+      listing_video_created: "listing_video",
+      script_practice_session: "script_practiced",
+      market_stats_review_weekly: "market_update",
+      training_module_completed: "training_attended",
+      coaching_session_attended: "training_attended",
+      business_book_completed: "book_chapter_read",
+      roleplay_session_completed: "roleplay_session",
+      deal_review_postmortem_completed: "deal_review_postmortem",
+    };
+
+    const mappings: any[] = [];
+    const usedDbIds = new Set<string>();
+
+    for (const catEntry of catalog.kpis) {
+      const catNorm = normalize(catEntry.slug);
+
+      let bestMatch: any = null;
+      let bestScore = 0;
+      let matchType = "none";
+      let typeChange = false;
+
+      for (const dbRow of dbKpis ?? []) {
+        if (usedDbIds.has(dbRow.id)) continue;
+
+        // Check known type change mappings first (cross-type allowed)
+        const knownTarget = KNOWN_TYPE_CHANGES[dbRow.slug];
+        if (knownTarget === catEntry.slug) {
+          bestMatch = dbRow;
+          bestScore = 95;
+          matchType = "type_change";
+          typeChange = true;
+          break;
+        }
+
+        // Check known rename mappings
+        const knownRename = KNOWN_RENAMES[dbRow.slug];
+        if (knownRename === catEntry.slug && (dbRow.type === catEntry.type || knownTarget)) {
+          bestMatch = dbRow;
+          bestScore = 90;
+          matchType = "known_rename";
+          break;
+        }
+
+        // For normal fuzzy matching, require same type
+        if (dbRow.type !== catEntry.type) continue;
+
+        const dbNorm = normalize(dbRow.slug);
+
+        // Exact slug match
+        if (dbRow.slug === catEntry.slug) {
+          bestMatch = dbRow;
+          bestScore = 100;
+          matchType = "exact";
+          break;
+        }
+
+        // Check if one contains the other
+        if (dbNorm.includes(catNorm) || catNorm.includes(dbNorm)) {
+          const score = 80;
+          if (score > bestScore) {
+            bestMatch = dbRow;
+            bestScore = score;
+            matchType = "contains";
+          }
+          continue;
+        }
+
+        // Word overlap scoring
+        const catWords = catEntry.slug.split("_");
+        const dbWords = dbRow.slug.split("_");
+        const overlap = catWords.filter((w: string) => dbWords.includes(w)).length;
+        const score = Math.round((overlap / Math.max(catWords.length, dbWords.length)) * 70);
+        if (score > bestScore && score >= 30) {
+          bestMatch = dbRow;
+          bestScore = score;
+          matchType = "fuzzy";
+        }
+      }
+
+      if (bestMatch) {
+        usedDbIds.add(bestMatch.id);
+      }
+
+      mappings.push({
+        catalog_slug: catEntry.slug,
+        catalog_name: catEntry.name,
+        catalog_type: catEntry.type,
+        catalog_icon: catEntry.icon,
+        db_id: bestMatch?.id ?? null,
+        db_slug: bestMatch?.slug ?? null,
+        db_name: bestMatch?.name ?? null,
+        db_type: bestMatch?.type ?? null,
+        db_params: bestMatch ? {
+          pc_weight: bestMatch.pc_weight,
+          ttc_days: bestMatch.ttc_days,
+          ttc_definition: bestMatch.ttc_definition,
+          delay_days: bestMatch.delay_days,
+          hold_days: bestMatch.hold_days,
+          decay_days: bestMatch.decay_days,
+          gp_value: bestMatch.gp_value,
+          vp_value: bestMatch.vp_value,
+        } : null,
+        db_is_active: bestMatch?.is_active ?? null,
+        match_type: matchType,
+        match_score: bestScore,
+        type_change: typeChange ? { from: bestMatch?.type, to: catEntry.type } : null,
+      });
+    }
+
+    // Also list DB-only rows (no catalog match)
+    const unmatchedDb = (dbKpis ?? [])
+      .filter((r: any) => !usedDbIds.has(r.id))
+      .map((r: any) => ({
+        db_id: r.id,
+        db_slug: r.slug,
+        db_name: r.name,
+        db_type: r.type,
+        db_is_active: r.is_active,
+        db_params: {
+          pc_weight: r.pc_weight,
+          ttc_days: r.ttc_days,
+          ttc_definition: r.ttc_definition,
+          delay_days: r.delay_days,
+          hold_days: r.hold_days,
+          decay_days: r.decay_days,
+          gp_value: r.gp_value,
+          vp_value: r.vp_value,
+        },
+      }));
+
+    res.json({
+      ok: true,
+      mappings,
+      unmatched_db: unmatchedDb,
+      summary: {
+        catalog_total: catalog.kpis.length,
+        db_total: dbKpis?.length ?? 0,
+        exact: mappings.filter((m: any) => m.match_type === "exact").length,
+        known_rename: mappings.filter((m: any) => m.match_type === "known_rename").length,
+        type_change: mappings.filter((m: any) => m.match_type === "type_change").length,
+        fuzzy: mappings.filter((m: any) => m.match_type === "contains" || m.match_type === "fuzzy").length,
+        no_match: mappings.filter((m: any) => m.match_type === "none").length,
+        db_only: unmatchedDb.length,
+      },
+    });
+  } catch (err: any) {
+    console.error("Migration preview error:", err);
+    res.status(500).json({ error: err.message || "Internal server error" });
+  }
+});
+
+// Execute: applies only the approved mappings (slug + name + icon updates on existing DB rows)
+app.post("/admin/kpi-migration/execute", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    if (!(await isPlatformAdmin(auth.user.id))) return res.status(403).json({ error: "Admin access required" });
+
+    const { approved_mappings } = req.body;
+    if (!Array.isArray(approved_mappings) || approved_mappings.length === 0) {
+      return res.status(400).json({ error: "No approved mappings provided" });
+    }
+
+    let updated = 0;
+    const errors: string[] = [];
+    const changes: any[] = [];
+
+    for (const mapping of approved_mappings) {
+      const { db_id, new_slug, new_name, new_icon_name, new_type } = mapping;
+      if (!db_id) continue;
+
+      const updates: Record<string, any> = {};
+      if (new_slug) updates.slug = new_slug;
+      if (new_name) updates.name = new_name;
+      if (new_type) updates.type = new_type;
+      if (new_icon_name) {
+        updates.icon_source = "phosphor";
+        updates.icon_name = new_icon_name;
+      }
+      if (Object.keys(updates).length === 0) continue;
+
+      const { error: updateErr } = await dataClient
+        .from("kpis")
+        .update(updates)
+        .eq("id", db_id);
+
+      if (updateErr) {
+        errors.push(`${db_id} (${new_slug}): ${updateErr.message}`);
+      } else {
+        updated++;
+        changes.push({ db_id, ...updates });
+      }
+    }
+
+    res.json({
+      ok: true,
+      updated,
+      total_submitted: approved_mappings.length,
+      errors: errors.length > 0 ? errors : undefined,
+      changes,
+    });
+  } catch (err: any) {
+    console.error("Migration execute error:", err);
+    res.status(500).json({ error: err.message || "Internal server error" });
   }
 });
 

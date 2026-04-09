@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KPI Button Designer</title>
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+<style>
+  :root {
+    --bg: #0D0F14; --surface: #1A1D26; --border: rgba(255,255,255,0.06);
+    --text: #F0EDE6; --muted: #7B8099; --gold: #C9A84C; --gold-dim: rgba(201,168,76,0.3);
+    --pc: #2f9f56; --pc-bg: #d8f1e2; --pc-dim: rgba(47,159,86,0.15);
+    --gp: #2158d5; --gp-bg: #c8dbf8; --gp-dim: rgba(33,88,213,0.15);
+    --vp: #C9A84C; --vp-bg: #fdf3de; --vp-dim: rgba(201,168,76,0.15);
+    --green: #2f9f56; --red: #d94444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* ── Auth Gate ── */
+  .auth-gate { padding: 40px; max-width: 400px; margin: 60px auto; text-align: center; }
+  .auth-gate h2 { font-size: 16px; margin-bottom: 16px; }
+  .auth-gate input { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: var(--surface); color: var(--text); font-size: 14px; margin-bottom: 8px; }
+  .auth-gate button { padding: 10px 24px; border-radius: 8px; border: none; background: var(--gold); color: #000; font-weight: 700; cursor: pointer; font-size: 14px; }
+  .auth-gate .error { color: var(--red); font-size: 12px; margin-top: 8px; }
+
+  /* ── Header ── */
+  header { padding: 12px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; gap: 16px; background: var(--surface); }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header .badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: var(--green); color: #fff; }
+  header .subtitle { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  /* ── Stats bar ── */
+  .stats-bar { display: flex; gap: 24px; padding: 8px 24px; background: var(--surface); border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 12px; color: var(--muted); }
+  .stats-bar .stat { display: flex; align-items: center; gap: 6px; }
+  .stats-bar .stat-dot { width: 8px; height: 8px; border-radius: 3px; }
+  .stats-bar .stat b { color: var(--text); }
+
+  /* ── Catalog Tab ── */
+  .catalog { padding: 24px; }
+  .type-section { margin-bottom: 32px; }
+  .type-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .type-dot { width: 12px; height: 12px; border-radius: 4px; }
+  .type-header h2 { font-size: 15px; font-weight: 700; }
+  .type-header .count { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  .card-grid { display: grid; grid-template-columns: repeat(4, 82px); gap: 8px; }
+
+  .kpi-card {
+    width: 82px; height: 82px; border-radius: 14px;
+    background: var(--surface); border: 1.5px solid var(--border);
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 2px;
+    position: relative; overflow: hidden;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .kpi-card:hover { transform: scale(1.06); border-color: rgba(255,255,255,0.15); }
+  .kpi-card.selected { outline: 2.5px solid var(--gold); outline-offset: 3px; }
+  .kpi-card .card-icon { font-size: 26px; color: var(--text); opacity: 0.9; z-index: 2; line-height: 1; }
+  .kpi-card .card-name { font-size: 8px; font-weight: 600; text-align: center; color: var(--muted); line-height: 1.15; padding: 0 3px; max-width: 100%; overflow: hidden; z-index: 2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .kpi-card .card-count { font-size: 14px; font-weight: 800; color: var(--muted); z-index: 2; line-height: 1; }
+  .kpi-card .card-type-dot { position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: 50%; z-index: 2; }
+  .kpi-card[data-type="PC"] .card-icon { color: var(--pc); }
+  .kpi-card[data-type="GP"] .card-icon { color: var(--gp); }
+  .kpi-card[data-type="VP"] .card-icon { color: var(--vp); }
+  .kpi-card[data-type="PC"]:hover { border-color: rgba(201,168,76,0.3); }
+  .kpi-card[data-type="GP"]:hover { border-color: rgba(33,88,213,0.3); }
+  .kpi-card[data-type="VP"]:hover { border-color: rgba(47,159,86,0.3); }
+
+  .add-card { width: 82px; height: 82px; border-radius: 14px; border: 1.5px dashed rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; transition: all 0.2s; background: transparent; }
+  .add-card:hover { border-color: var(--gold-dim); background: rgba(201,168,76,0.04); }
+  .add-card i { font-size: 20px; color: var(--muted); }
+  .add-card span { font-size: 8px; color: var(--muted); font-weight: 600; }
+
+  /* ── Editor Panel ── */
+  .editor-layout { display: grid; grid-template-columns: 1fr 400px; min-height: calc(100vh - 100px); }
+  .editor-panel { padding: 20px; border-left: 1px solid rgba(255,255,255,0.06); background: rgba(26,29,38,0.5); overflow-y: auto; position: sticky; top: 0; height: calc(100vh - 100px); }
+  .editor-panel h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--gold); }
+  .editor-panel .empty { font-size: 13px; color: var(--muted); text-align: center; padding: 40px 20px; }
+
+  .edit-field { margin-bottom: 10px; }
+  .edit-field label { display: block; font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+  .edit-field input, .edit-field select { width: 100%; background: var(--bg); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 7px 10px; color: var(--text); font-size: 13px; outline: none; }
+  .edit-field input:focus { border-color: var(--gold); }
+  .edit-field input[type="number"] { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; }
+
+  .field-row { display: flex; gap: 8px; }
+  .field-row .edit-field { flex: 1; }
+
+  /* ── Algorithm params section ── */
+  .algo-section { margin: 12px 0; padding: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; }
+  .algo-section .algo-title { font-size: 10px; font-weight: 700; color: var(--gold); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .algo-section .algo-title .algo-type { padding: 1px 6px; border-radius: 4px; font-size: 9px; }
+  .algo-section .algo-title .algo-type.PC { background: rgba(201,168,76,0.15); color: var(--pc); }
+  .algo-section .algo-title .algo-type.GP { background: rgba(33,88,213,0.15); color: var(--gp); }
+  .algo-section .algo-title .algo-type.VP { background: rgba(47,159,86,0.15); color: var(--vp); }
+
+  /* ── Preview ── */
+  .preview-compare { width: 100%; margin: 0 auto 12px; background: var(--bg); border-radius: 16px; padding: 12px; border: 1px solid rgba(255,255,255,0.06); }
+  .preview-compare .frame-label { font-size: 9px; color: var(--muted); text-align: center; margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .preview-states { display: flex; gap: 10px; justify-content: center; }
+  .preview-state { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .preview-state .state-label { font-size: 7px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .pv-card { width: 82px; height: 82px; border-radius: 14px; background: var(--surface); border: 1.5px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; position: relative; overflow: hidden; }
+  .pv-card .pv-icon { font-size: 26px; z-index: 2; line-height: 1; }
+  .pv-card .pv-name { font-size: 7px; font-weight: 600; color: var(--muted); text-align: center; padding: 0 3px; z-index: 2; line-height: 1.15; }
+  .pv-card .pv-count { font-size: 13px; font-weight: 800; z-index: 2; line-height: 1; }
+
+  /* ── Icon Picker ── */
+  .icon-search-wrap { position: relative; margin-bottom: 6px; }
+  .icon-search-wrap input { padding-left: 32px; }
+  .icon-search-wrap .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; }
+  .icon-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; max-height: 200px; overflow-y: auto; padding: 4px; background: var(--bg); border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); }
+  .icon-option { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 6px; cursor: pointer; transition: all 0.15s; font-size: 18px; color: var(--muted); }
+  .icon-option:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+  .icon-option.active { background: var(--gold-dim); color: var(--gold); }
+
+  .editor-section { margin-bottom: 12px; }
+  .editor-section summary { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; padding: 4px 0; margin-bottom: 6px; }
+  .editor-section summary:hover { color: var(--text); }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+  .btn { flex: 1; padding: 8px; border-radius: 8px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.85; }
+  .btn-gold { background: var(--gold); color: #000; }
+  .btn-muted { background: rgba(255,255,255,0.08); color: var(--text); }
+  .btn-danger { background: rgba(248,81,73,0.15); color: #f85149; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; background: var(--surface); border: 1px solid var(--gold-dim); border-radius: 10px; font-size: 13px; color: var(--gold); transform: translateY(80px); opacity: 0; transition: all 0.3s; z-index: 100; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  .save-indicator { font-size: 11px; padding: 3px 10px; border-radius: 6px; font-weight: 600; }
+  .save-indicator.saving { color: var(--gold); background: rgba(201,168,76,0.1); }
+  .save-indicator.saved { color: var(--green); background: rgba(47,159,86,0.1); }
+  .save-indicator.error { color: var(--red); background: rgba(217,68,68,0.1); }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════ AUTH GATE ═══════ -->
+<div id="auth-gate" class="auth-gate">
+  <h2>KPI Button Designer</h2>
+  <p style="color:var(--muted); font-size:12px; margin-bottom:16px;">Admin login required</p>
+  <input type="email" id="login-email" placeholder="Email" />
+  <input type="password" id="login-password" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()" />
+  <button onclick="doLogin()">Sign In</button>
+  <p class="error" id="login-error"></p>
+</div>
+
+<!-- ═══════ MAIN APP ═══════ -->
+<div id="main-app" style="display:none;">
+
+<header>
+  <h1>KPI Button Designer</h1>
+  <span class="badge">LIVE</span>
+  <span class="subtitle">Connected to Supabase &middot; Changes save directly to database</span>
+</header>
+
+<div class="stats-bar" id="statsBar"></div>
+
+<div class="editor-layout">
+  <div class="catalog" id="catalogGrid"></div>
+  <div class="editor-panel" id="editorPanel">
+    <h3>KPI Editor</h3>
+    <div class="empty" id="editorEmpty">Click a card to edit its icon, name, type, and algorithm params.</div>
+    <div id="editorForm" style="display:none;">
+
+      <div class="edit-field">
+        <label>KPI Name (shown in app)</label>
+        <input type="text" id="editName">
+      </div>
+      <div class="field-row">
+        <div class="edit-field">
+          <label>Slug (internal ID)</label>
+          <input type="text" id="editSlug" style="font-family:monospace;font-size:11px;">
+        </div>
+        <div class="edit-field" style="flex:0 0 130px;">
+          <label>Type</label>
+          <select id="editType" onchange="onTypeChange()">
+            <option value="PC">PC — Projections</option>
+            <option value="GP">GP — Growth</option>
+            <option value="VP">VP — Vitality</option>
+          </select>
+        </div>
+      </div>
+      <div class="edit-field">
+        <label>Description</label>
+        <input type="text" id="editDesc">
+      </div>
+
+      <!-- ── Algorithm Params ── -->
+      <div class="algo-section" id="algoSection">
+        <div class="algo-title">Algorithm Params <span class="algo-type" id="algoTypeBadge"></span></div>
+        <div id="algoFields"></div>
+      </div>
+
+      <!-- ── Preview ── -->
+      <div class="preview-compare">
+        <div class="frame-label">Card Preview (actual size)</div>
+        <div class="preview-states" id="previewStates"></div>
+      </div>
+
+      <!-- ── Icon Picker ── -->
+      <details class="editor-section" open>
+        <summary>Phosphor Icon</summary>
+        <div class="icon-search-wrap">
+          <i class="ph ph-magnifying-glass search-icon"></i>
+          <input type="text" id="iconSearch" placeholder="Search icons..." oninput="filterIcons()">
+        </div>
+        <div class="icon-grid" id="iconGrid"></div>
+      </details>
+
+      <div class="btn-row">
+        <button class="btn btn-gold" id="btnSave" onclick="saveKpi()">Save to Database</button>
+        <button class="btn btn-danger" onclick="deleteKpi()">Deactivate</button>
+      </div>
+      <div id="saveStatus" style="text-align:center;margin-top:6px;"></div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.origin;
+let TOKEN = null;
+let kpis = []; // Array of DB rows
+let selectedId = null; // selected KPI id
+
+const TYPE_COLORS = {
+  PC: { color: '#2f9f56', bg: '#d8f1e2', dim: 'rgba(47,159,86,0.15)' },
+  GP: { color: '#2158d5', bg: '#c8dbf8', dim: 'rgba(33,88,213,0.15)' },
+  VP: { color: '#C9A84C', bg: '#fdf3de', dim: 'rgba(201,168,76,0.15)' },
+};
+
+const POPULAR_ICONS = [
+  'phone-call','phone-outgoing','phone-x','phone','phone-incoming','megaphone-simple','user-focus','user-plus','users-three',
+  'calendar-check','calendar-plus','presentation-chart','sign-post','handshake','file-text',
+  'house-line','door-open','pencil-line','check-circle','seal-check','chart-bar','newspaper',
+  'envelope-simple','envelope-open','hand-waving','gift','package','coffee','chats-circle','chat-dots',
+  'share-network','article','chart-line-up','video-camera','flag-banner','trophy','star','chat-circle-text',
+  'graduation-cap','book-open-text','headphones','microphone-stage','clipboard-text','map-pin-area',
+  'tag','lightning','stack','broom','rocket-launch','user-list','file-doc','list-checks','users',
+  'magnifying-glass','certificate','clock-countdown',
+  'barbell','flower-lotus','heart','drop','bowl-food','moon-stars','house','book-bookmark',
+  'notebook','sneaker-move','person-simple-tai-chi','prohibit','eye','wind','palette','sun',
+  'tree','couch',
+  'target','money','credit-card','bank','crown','medal-military',
+  'fire','globe-simple','rocket','airplane','car','bicycle','mountains','cloud-sun',
+  'camera','paint-brush','music-note','game-controller','puzzle-piece','lightbulb','timer',
+  'alarm','bell','smiley','thumbs-up','hand-heart','sparkle','shield-check',
+  'lock-simple','key','gear','wrench',
+  'currency-dollar','coins','piggy-bank','receipt','shopping-cart','storefront',
+  'percent','trend-up','trend-down',
+  'map-pin','navigation-arrow','compass','binoculars','flag','bookmark',
+  'clock','hourglass','calendar-blank',
+  'brain','flask',
+  'chalkboard-teacher','student','exam',
+  'buildings','factory',
+  'voicemail','chat','chat-circle','chat-teardrop','chats',
+  'link','paperclip','download','upload',
+  'image','film-strip','monitor-play',
+  'megaphone','broadcast','radio',
+  'hand-fist','hand-palm','hand-pointing','hands-clapping',
+];
+
+// ── Auth ──
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+  try {
+    const cfg = await (await fetch(API + '/api/config')).json();
+    const resp = await fetch(cfg.supabaseUrl + '/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': cfg.supabaseAnonKey },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.access_token) { errEl.textContent = data.error_description || 'Login failed'; return; }
+    TOKEN = data.access_token;
+    sessionStorage.setItem('kpi_admin_token', TOKEN);
+    showApp();
+  } catch (e) { errEl.textContent = 'Network error: ' + e.message; }
+}
+
+function showApp() {
+  document.getElementById('auth-gate').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  loadKpis();
+}
+
+// Check existing session
+(function() {
+  const saved = sessionStorage.getItem('kpi_admin_token');
+  if (saved) { TOKEN = saved; showApp(); }
+})();
+
+async function apiFetch(path, opts = {}) {
+  const resp = await fetch(API + path, {
+    ...opts,
+    headers: { ...opts.headers, 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+  });
+  if (resp.status === 401) { sessionStorage.removeItem('kpi_admin_token'); location.reload(); return null; }
+  return resp;
+}
+
+// ── Load from Supabase ──
+async function loadKpis() {
+  try {
+    const resp = await apiFetch('/admin/kpis');
+    const data = await resp.json();
+    // Filter to active, loggable types only
+    kpis = (data.kpis || data || []).filter(k => k.is_active && ['PC','GP','VP'].includes(k.type));
+    kpis.sort((a, b) => {
+      const typeOrder = { PC: 0, GP: 1, VP: 2 };
+      if (typeOrder[a.type] !== typeOrder[b.type]) return typeOrder[a.type] - typeOrder[b.type];
+      return (a.name || '').localeCompare(b.name || '');
+    });
+    render();
+  } catch (e) { showToast('Failed to load KPIs: ' + e.message); }
+}
+
+// ── Render ──
+function render() {
+  renderCatalog();
+  renderStats();
+}
+
+function renderStats() {
+  const pc = kpis.filter(k => k.type === 'PC').length;
+  const gp = kpis.filter(k => k.type === 'GP').length;
+  const vp = kpis.filter(k => k.type === 'VP').length;
+  document.getElementById('statsBar').innerHTML = `
+    <div class="stat"><div class="stat-dot" style="background:var(--pc);"></div> PC <b>${pc}</b></div>
+    <div class="stat"><div class="stat-dot" style="background:var(--gp);"></div> GP <b>${gp}</b></div>
+    <div class="stat"><div class="stat-dot" style="background:var(--vp);"></div> VP <b>${vp}</b></div>
+    <div class="stat">Total: <b>${kpis.length}</b></div>
+  `;
+}
+
+function renderCatalog() {
+  const el = document.getElementById('catalogGrid');
+  let html = '';
+  for (const typeKey of ['PC', 'GP', 'VP']) {
+    const typeKpis = kpis.filter(k => k.type === typeKey);
+    const labels = { PC: 'Projections', GP: 'Growth', VP: 'Vitality' };
+    html += `<div class="type-section">
+      <div class="type-header">
+        <div class="type-dot" style="background: ${TYPE_COLORS[typeKey].color};"></div>
+        <h2>${labels[typeKey]}</h2>
+        <span class="count">${typeKpis.length} KPIs</span>
+      </div>
+      <div class="card-grid">`;
+    for (const kpi of typeKpis) {
+      const sel = kpi.id === selectedId ? ' selected' : '';
+      const iconName = kpi.icon_name || 'circle';
+      const iconColor = TYPE_COLORS[kpi.type]?.color || 'var(--muted)';
+      html += `
+        <div class="kpi-card${sel}" data-type="${kpi.type}" onclick="selectKpi('${kpi.id}')" title="${kpi.slug || ''}">
+          <div class="card-type-dot" style="background: ${iconColor};"></div>
+          <i class="ph ph-${iconName} card-icon" style="color:${iconColor};"></i>
+          <div class="card-name">${kpi.name || ''}</div>
+          <div class="card-count">&mdash;</div>
+        </div>`;
+    }
+    html += `
+        <div class="add-card" onclick="addKpi('${typeKey}')">
+          <i class="ph ph-plus"></i>
+          <span>Add ${typeKey}</span>
+        </div>
+      </div>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ── Select / Edit ──
+function selectKpi(id) {
+  selectedId = id;
+  const kpi = kpis.find(k => k.id === id);
+  if (!kpi) return;
+
+  document.getElementById('editorEmpty').style.display = 'none';
+  document.getElementById('editorForm').style.display = 'block';
+  document.getElementById('editName').value = kpi.name || '';
+  document.getElementById('editSlug').value = kpi.slug || '';
+  document.getElementById('editType').value = kpi.type;
+  document.getElementById('editDesc').value = kpi.description || '';
+  document.getElementById('saveStatus').innerHTML = '';
+
+  renderAlgoFields(kpi);
+  renderPreview(kpi);
+  renderIconGrid(kpi.icon_name);
+  renderCatalog();
+}
+
+function renderAlgoFields(kpi) {
+  const container = document.getElementById('algoFields');
+  const badge = document.getElementById('algoTypeBadge');
+  badge.textContent = kpi.type;
+  badge.className = 'algo-type ' + kpi.type;
+
+  let html = '';
+  if (kpi.type === 'PC') {
+    html = `
+      <div class="field-row">
+        <div class="edit-field"><label>PC Weight</label><input type="number" id="algoPcWeight" step="0.0001" min="0" value="${kpi.pc_weight ?? ''}"></div>
+        <div class="edit-field"><label>TTC Definition</label><input type="text" id="algoTtcDef" value="${kpi.ttc_definition || ''}" placeholder="e.g. 30-60 days"></div>
+      </div>
+      <div class="field-row">
+        <div class="edit-field"><label>Delay Days</label><input type="number" id="algoDelay" min="0" value="${kpi.delay_days ?? ''}"></div>
+        <div class="edit-field"><label>Hold Days</label><input type="number" id="algoHold" min="0" value="${kpi.hold_days ?? ''}"></div>
+        <div class="edit-field"><label>Decay Days</label><input type="number" id="algoDecay" min="0" value="${kpi.decay_days ?? ''}"></div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:4px;">TTC = delay + hold = <b id="ttcCalc">${(kpi.delay_days || 0) + (kpi.hold_days || 0)}</b> days</div>
+    `;
+  } else if (kpi.type === 'GP') {
+    html = `<div class="edit-field" style="max-width:120px;"><label>GP Value</label><input type="number" id="algoGpValue" step="0.1" min="0" value="${kpi.gp_value ?? 1}"></div>`;
+  } else if (kpi.type === 'VP') {
+    html = `<div class="edit-field" style="max-width:120px;"><label>VP Value</label><input type="number" id="algoVpValue" step="0.1" min="0" value="${kpi.vp_value ?? 1}"></div>`;
+  }
+  container.innerHTML = html;
+
+  // TTC auto-calc
+  const delayEl = document.getElementById('algoDelay');
+  const holdEl = document.getElementById('algoHold');
+  if (delayEl && holdEl) {
+    const updateTtc = () => {
+      const calc = document.getElementById('ttcCalc');
+      if (calc) calc.textContent = (parseInt(delayEl.value)||0) + (parseInt(holdEl.value)||0);
+    };
+    delayEl.addEventListener('input', updateTtc);
+    holdEl.addEventListener('input', updateTtc);
+  }
+}
+
+function onTypeChange() {
+  if (!selectedId) return;
+  const kpi = kpis.find(k => k.id === selectedId);
+  if (!kpi) return;
+  kpi.type = document.getElementById('editType').value;
+  renderAlgoFields(kpi);
+  renderPreview(kpi);
+  renderCatalog();
+}
+
+function renderPreview(kpi) {
+  const el = document.getElementById('previewStates');
+  const iconColor = TYPE_COLORS[kpi.type]?.color || 'var(--muted)';
+  const iconName = kpi.icon_name || 'circle';
+  el.innerHTML = `
+    <div class="preview-state">
+      <div class="pv-card">
+        <i class="ph ph-${iconName} pv-icon" style="font-size:26px; color:${iconColor};"></i>
+        <div class="pv-name">${kpi.name || ''}</div>
+        <div class="pv-count" style="color:${iconColor};">3</div>
+      </div>
+      <span class="state-label">In App</span>
+    </div>
+  `;
+}
+
+function renderIconGrid(currentIcon) {
+  const el = document.getElementById('iconGrid');
+  const search = (document.getElementById('iconSearch')?.value || '').toLowerCase();
+  const icons = search ? POPULAR_ICONS.filter(n => n.includes(search)) : POPULAR_ICONS;
+  el.innerHTML = icons.slice(0, 140).map(name => `
+    <div class="icon-option${name === currentIcon ? ' active' : ''}" onclick="pickIcon('${name}')" title="${name}">
+      <i class="ph ph-${name}"></i>
+    </div>
+  `).join('');
+}
+
+function filterIcons() {
+  if (!selectedId) return;
+  const kpi = kpis.find(k => k.id === selectedId);
+  renderIconGrid(kpi?.icon_name);
+}
+
+function pickIcon(name) {
+  if (!selectedId) return;
+  const kpi = kpis.find(k => k.id === selectedId);
+  if (!kpi) return;
+  kpi.icon_name = name;
+  kpi.icon_source = 'phosphor';
+  renderPreview(kpi);
+  renderIconGrid(name);
+  renderCatalog();
+}
+
+// ── Save KPI to Supabase ──
+async function saveKpi() {
+  if (!selectedId) return;
+  const kpi = kpis.find(k => k.id === selectedId);
+  if (!kpi) return;
+
+  const statusEl = document.getElementById('saveStatus');
+  const btn = document.getElementById('btnSave');
+  btn.disabled = true;
+  statusEl.innerHTML = '<span class="save-indicator saving">Saving...</span>';
+
+  // Collect form values
+  const payload = {
+    name: document.getElementById('editName').value.trim(),
+    slug: document.getElementById('editSlug').value.trim(),
+    type: document.getElementById('editType').value,
+    icon_source: kpi.icon_source || 'phosphor',
+    icon_name: kpi.icon_name || null,
+  };
+
+  // Algorithm params
+  if (payload.type === 'PC') {
+    payload.pc_weight = parseFloat(document.getElementById('algoPcWeight')?.value) || null;
+    payload.delay_days = parseInt(document.getElementById('algoDelay')?.value) ?? null;
+    payload.hold_days = parseInt(document.getElementById('algoHold')?.value) ?? null;
+    payload.decay_days = parseInt(document.getElementById('algoDecay')?.value) ?? null;
+    payload.ttc_days = (payload.delay_days || 0) + (payload.hold_days || 0);
+    payload.ttc_definition = document.getElementById('algoTtcDef')?.value?.trim() || null;
+    payload.gp_value = null;
+    payload.vp_value = null;
+  } else if (payload.type === 'GP') {
+    payload.gp_value = parseFloat(document.getElementById('algoGpValue')?.value) ?? 1;
+    payload.vp_value = null;
+    payload.pc_weight = null;
+    payload.delay_days = null;
+    payload.hold_days = null;
+    payload.decay_days = null;
+    payload.ttc_days = null;
+    payload.ttc_definition = null;
+  } else if (payload.type === 'VP') {
+    payload.vp_value = parseFloat(document.getElementById('algoVpValue')?.value) ?? 1;
+    payload.gp_value = null;
+    payload.pc_weight = null;
+    payload.delay_days = null;
+    payload.hold_days = null;
+    payload.decay_days = null;
+    payload.ttc_days = null;
+    payload.ttc_definition = null;
+  }
+
+  try {
+    const resp = await apiFetch('/admin/kpis/' + selectedId, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    if (!resp || !resp.ok) {
+      const err = resp ? await resp.json() : { error: 'Network error' };
+      throw new Error(err.error || 'Save failed');
+    }
+    // Update local state
+    Object.assign(kpi, payload);
+    statusEl.innerHTML = '<span class="save-indicator saved">Saved</span>';
+    showToast('Saved to database');
+    render();
+  } catch (e) {
+    statusEl.innerHTML = '<span class="save-indicator error">Error: ' + e.message + '</span>';
+    showToast('Save failed: ' + e.message);
+  }
+  btn.disabled = false;
+}
+
+// ── Add KPI ──
+async function addKpi(type) {
+  const name = prompt('New ' + type + ' KPI name:');
+  if (!name) return;
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+  const payload = {
+    name, slug, type,
+    is_active: true,
+    icon_source: 'phosphor',
+    icon_name: 'circle',
+  };
+  if (type === 'PC') {
+    payload.pc_weight = 0.001;
+    payload.delay_days = 30;
+    payload.hold_days = 30;
+    payload.decay_days = 180;
+    payload.ttc_days = 60;
+  } else if (type === 'GP') {
+    payload.gp_value = 1;
+  } else if (type === 'VP') {
+    payload.vp_value = 1;
+  }
+
+  try {
+    const resp = await apiFetch('/admin/kpis', { method: 'POST', body: JSON.stringify(payload) });
+    if (!resp || !resp.ok) {
+      const err = resp ? await resp.json() : { error: 'Network error' };
+      throw new Error(err.error || 'Create failed');
+    }
+    showToast('Created "' + name + '"');
+    await loadKpis();
+  } catch (e) {
+    showToast('Create failed: ' + e.message);
+  }
+}
+
+// ── Delete (deactivate) KPI ──
+async function deleteKpi() {
+  if (!selectedId) return;
+  const kpi = kpis.find(k => k.id === selectedId);
+  if (!kpi || !confirm('Deactivate "' + kpi.name + '"? It will be hidden but not deleted.')) return;
+
+  try {
+    const resp = await apiFetch('/admin/kpis/' + selectedId, { method: 'DELETE' });
+    if (!resp || !resp.ok) {
+      const err = resp ? await resp.json() : { error: 'Network error' };
+      throw new Error(err.error || 'Delete failed');
+    }
+    selectedId = null;
+    document.getElementById('editorForm').style.display = 'none';
+    document.getElementById('editorEmpty').style.display = 'block';
+    showToast('Deactivated "' + kpi.name + '"');
+    await loadKpis();
+  } catch (e) {
+    showToast('Deactivate failed: ' + e.message);
+  }
+}
+
+// ── Toast ──
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+</script>
+</body>
+</html>

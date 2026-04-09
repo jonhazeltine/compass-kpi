@@ -1,7 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 
-export type KpiIconSource = 'brand_asset' | 'vector_icon' | 'emoji';
-export type KpiAuthoringIconSource = 'brand_asset' | 'vector_icon';
+export type KpiIconSource = 'brand_asset' | 'vector_icon' | 'emoji' | 'phosphor';
+export type KpiAuthoringIconSource = 'brand_asset' | 'vector_icon' | 'phosphor';
 export type KpiType = 'PC' | 'GP' | 'VP' | 'Actual' | 'Pipeline_Anchor' | 'Custom';
 
 export type KpiIconMetadata = {
@@ -16,12 +16,13 @@ export type KpiIconMetadata = {
 
 type KpiIconResolution =
   | { kind: 'brand_asset'; imageSource: ImageSourcePropType; resolvedSource: 'metadata' | 'icon_file' | 'legacy' }
-  | { kind: 'vector_icon'; iconName: string; resolvedSource: 'metadata' | 'legacy' | 'default' };
+  | { kind: 'vector_icon'; iconName: string; resolvedSource: 'metadata' | 'legacy' | 'default' }
+  | { kind: 'phosphor'; iconName: string; resolvedSource: 'metadata' };
 
 const KPI_TYPE_ICON_TREATMENTS = {
   PC: { background: '#e4f7ea', foreground: '#2f9f56' },
   GP: { background: '#e5efff', foreground: '#2158d5' },
-  VP: { background: '#fff0e2', foreground: '#e38a1f' },
+  VP: { background: '#fdf3de', foreground: '#C9A84C' },
   Custom: { background: '#f3e8ff', foreground: '#7a4cc8' },
   default: { background: '#eceff3', foreground: '#48505f' },
 } as const;
@@ -191,6 +192,9 @@ export function resolveKpiIcon(metadata: KpiIconMetadata): KpiIconResolution {
   const iconEmoji = typeof metadata.icon_emoji === 'string' ? metadata.icon_emoji.trim() : '';
   const iconFile = typeof metadata.icon_file === 'string' ? metadata.icon_file.trim() : '';
 
+  if (iconSource === 'phosphor' && iconName) {
+    return { kind: 'phosphor', iconName, resolvedSource: 'metadata' };
+  }
   if (iconSource === 'vector_icon' && iconName) {
     return { kind: 'vector_icon', iconName, resolvedSource: 'metadata' };
   }

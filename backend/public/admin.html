@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compass KPI — Admin</title>
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+  :root {
+    --bg: #0D0F14; --surface: #1A1D26; --surface2: #22252f; --border: rgba(255,255,255,0.06);
+    --text: #F0EDE6; --muted: #7B8099; --gold: #C9A84C; --gold-dim: rgba(201,168,76,0.3);
+    --pc: #2f9f56; --pc-bg: #d8f1e2; --pc-dim: rgba(47,159,86,0.15);
+    --gp: #2158d5; --gp-bg: #c8dbf8; --gp-dim: rgba(33,88,213,0.15);
+    --vp: #C9A84C; --vp-bg: #fdf3de; --vp-dim: rgba(201,168,76,0.15);
+    --green: #2f9f56; --red: #d94444; --accent: #C9A84C;
+    --sidebar-w: 220px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow: hidden; }
+
+  /* ══ Auth Gate ══ */
+  .auth-gate { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .auth-box { width: 360px; padding: 40px 32px; background: var(--surface); border-radius: 16px; border: 1px solid var(--border); text-align: center; }
+  .auth-box .logo { font-size: 28px; margin-bottom: 4px; }
+  .auth-box h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .auth-box .sub { font-size: 12px; color: var(--muted); margin-bottom: 24px; }
+  .auth-box input { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: var(--bg); color: var(--text); font-size: 14px; margin-bottom: 8px; outline: none; }
+  .auth-box input:focus { border-color: var(--accent); }
+  .auth-box .btn-login { width: 100%; padding: 10px; border-radius: 8px; border: none; background: var(--accent); color: #000; font-weight: 700; cursor: pointer; font-size: 14px; margin-top: 4px; }
+  .auth-box .btn-login:hover { filter: brightness(1.1); }
+  .auth-box .error { color: var(--red); font-size: 12px; margin-top: 8px; min-height: 18px; }
+
+  /* ══ Shell Layout ══ */
+  .shell { display: flex; height: 100vh; }
+
+  /* ── Sidebar ── */
+  .sidebar { width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-brand { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
+  .sidebar-brand .brand-name { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .sidebar-brand .brand-name i { color: var(--accent); }
+  .sidebar-brand .brand-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  .sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; }
+  .nav-section { padding: 0 12px; margin-bottom: 4px; }
+  .nav-section-label { font-size: 9px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; padding: 12px 8px 4px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--muted); transition: all 0.15s; position: relative; }
+  .nav-item:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+  .nav-item.active { background: rgba(201,168,76,0.1); color: var(--accent); }
+  .nav-item i { font-size: 18px; width: 20px; text-align: center; }
+  .nav-item .badge { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 8px; background: var(--accent); color: #000; margin-left: auto; }
+  .nav-item .soon { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.06); color: var(--muted); margin-left: auto; }
+
+  .sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .sidebar-footer .user-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  .sidebar-footer .logout { margin-left: auto; cursor: pointer; color: var(--muted); font-size: 11px; background: none; border: none; }
+  .sidebar-footer .logout:hover { color: var(--red); }
+
+  /* ── Main Content ── */
+  .main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  .main-header { padding: 12px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; background: var(--surface); flex-shrink: 0; }
+  .main-header h2 { font-size: 16px; font-weight: 700; }
+  .main-header .status { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: var(--green); color: #fff; }
+  .main-header .info { font-size: 11px; color: var(--muted); margin-left: auto; }
+
+  .main-content { flex: 1; overflow-y: auto; }
+
+  /* ── Panel: KPI Designer ── */
+  .stats-bar { display: flex; gap: 24px; padding: 8px 24px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); flex-shrink: 0; }
+  .stats-bar .stat { display: flex; align-items: center; gap: 6px; }
+  .stats-bar .stat-dot { width: 8px; height: 8px; border-radius: 3px; }
+  .stats-bar .stat b { color: var(--text); }
+
+  .designer-layout { display: grid; grid-template-columns: 1fr 400px; height: 100%; }
+  .catalog { padding: 24px; overflow-y: auto; }
+  .type-section { margin-bottom: 32px; }
+  .type-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .type-dot { width: 12px; height: 12px; border-radius: 4px; }
+  .type-header h2 { font-size: 15px; font-weight: 700; }
+  .type-header .count { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  .card-grid { display: grid; grid-template-columns: repeat(4, 82px); gap: 8px; }
+  .kpi-card {
+    width: 82px; height: 82px; border-radius: 14px;
+    background: var(--surface); border: 1.5px solid var(--border);
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 2px;
+    position: relative; overflow: hidden;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .kpi-card:hover { transform: scale(1.06); border-color: rgba(255,255,255,0.15); }
+  .kpi-card.selected { outline: 2.5px solid var(--accent); outline-offset: 3px; }
+  .kpi-card .card-icon { font-size: 26px; z-index: 2; line-height: 1; }
+  .kpi-card .card-name { font-size: 8px; font-weight: 600; text-align: center; color: var(--muted); line-height: 1.15; padding: 0 3px; max-width: 100%; overflow: hidden; z-index: 2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .kpi-card .card-count { font-size: 14px; font-weight: 800; color: var(--muted); z-index: 2; line-height: 1; }
+  .kpi-card .card-type-dot { position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: 50%; z-index: 2; }
+
+  .add-card { width: 82px; height: 82px; border-radius: 14px; border: 1.5px dashed rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; transition: all 0.2s; background: transparent; color: var(--text); }
+  .add-card:hover { border-color: var(--gold-dim); background: rgba(201,168,76,0.04); }
+  .add-card i { font-size: 20px; color: var(--muted); }
+  .add-card span { font-size: 8px; color: var(--muted); font-weight: 600; }
+
+  .editor-panel { padding: 20px; border-left: 1px solid var(--border); background: rgba(26,29,38,0.5); overflow-y: auto; }
+  .editor-panel h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--accent); }
+  .editor-panel .empty { font-size: 13px; color: var(--muted); text-align: center; padding: 40px 20px; }
+
+  .edit-field { margin-bottom: 10px; }
+  .edit-field label { display: block; font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+  .edit-field input, .edit-field select, .edit-field textarea { width: 100%; background: var(--bg); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 7px 10px; color: var(--text); font-size: 13px; outline: none; }
+  .edit-field input:focus, .edit-field select:focus { border-color: var(--accent); }
+  .edit-field input[type="number"] { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; }
+  .field-row { display: flex; gap: 8px; }
+  .field-row .edit-field { flex: 1; }
+
+  .algo-section { margin: 12px 0; padding: 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 10px; }
+  .algo-section .algo-title { font-size: 10px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .algo-section .algo-type { padding: 1px 6px; border-radius: 4px; font-size: 9px; }
+  .algo-type.PC { background: var(--pc-dim); color: var(--pc); }
+  .algo-type.GP { background: var(--gp-dim); color: var(--gp); }
+  .algo-type.VP { background: var(--vp-dim); color: var(--vp); }
+
+  .preview-compare { width: 100%; margin: 0 auto 12px; background: var(--bg); border-radius: 16px; padding: 12px; border: 1px solid var(--border); }
+  .preview-compare .frame-label { font-size: 9px; color: var(--muted); text-align: center; margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .preview-states { display: flex; gap: 10px; justify-content: center; }
+  .preview-state { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .preview-state .state-label { font-size: 7px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .pv-card { width: 82px; height: 82px; border-radius: 14px; background: var(--surface); border: 1.5px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; position: relative; overflow: hidden; }
+  .pv-card .pv-icon { font-size: 26px; z-index: 2; line-height: 1; }
+  .pv-card .pv-name { font-size: 7px; font-weight: 600; color: var(--muted); text-align: center; padding: 0 3px; z-index: 2; line-height: 1.15; }
+  .pv-card .pv-count { font-size: 13px; font-weight: 800; z-index: 2; line-height: 1; }
+
+  .icon-search-wrap { position: relative; margin-bottom: 6px; }
+  .icon-search-wrap input { padding-left: 32px; }
+  .icon-search-wrap .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; }
+  .icon-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; max-height: 200px; overflow-y: auto; padding: 4px; background: var(--bg); border-radius: 10px; border: 1px solid var(--border); }
+  .icon-option { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 6px; cursor: pointer; transition: all 0.15s; font-size: 18px; color: var(--muted); }
+  .icon-option:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+  .icon-option.active { background: var(--gold-dim); color: var(--accent); }
+
+  .editor-section { margin-bottom: 12px; }
+  .editor-section summary { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; padding: 4px 0; margin-bottom: 6px; }
+  .editor-section summary:hover { color: var(--text); }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+  .btn { flex: 1; padding: 8px; border-radius: 8px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.85; }
+  .btn-gold { background: var(--accent); color: #000; }
+  .btn-muted { background: rgba(255,255,255,0.08); color: var(--text); }
+  .btn-danger { background: rgba(248,81,73,0.15); color: #f85149; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .save-indicator { font-size: 11px; padding: 3px 10px; border-radius: 6px; font-weight: 600; }
+  .save-indicator.saving { color: var(--accent); background: rgba(201,168,76,0.1); }
+  .save-indicator.saved { color: var(--green); background: rgba(47,159,86,0.1); }
+  .save-indicator.error { color: var(--red); background: rgba(217,68,68,0.1); }
+
+  /* ── View Toggle ── */
+  .view-toggle { display: flex; gap: 2px; background: rgba(255,255,255,0.04); border-radius: 6px; padding: 2px; margin-left: auto; }
+  .view-toggle button { padding: 4px 10px; border-radius: 4px; border: none; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.15s; }
+  .view-toggle button:hover { color: var(--text); }
+  .view-toggle button.active { background: rgba(255,255,255,0.08); color: var(--text); }
+
+  /* ── Table View ── */
+  .table-wrap { padding: 0 24px 24px; overflow: auto; }
+  .kpi-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .kpi-table th { text-align: left; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; background: var(--bg); z-index: 5; }
+  .kpi-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
+  .kpi-table tr:hover { background: rgba(255,255,255,0.02); }
+  .kpi-table tr.selected-row { background: rgba(201,168,76,0.08); }
+  .kpi-table tr { cursor: pointer; transition: background 0.1s; }
+  .kpi-table .type-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+  .kpi-table .type-badge.PC { background: var(--pc-dim); color: var(--pc); }
+  .kpi-table .type-badge.GP { background: var(--gp-dim); color: var(--gp); }
+  .kpi-table .type-badge.VP { background: var(--vp-dim); color: var(--vp); }
+  .kpi-table .icon-cell { display: flex; align-items: center; gap: 6px; }
+  .kpi-table .icon-cell i { font-size: 16px; }
+  .kpi-table .mono { font-family: 'SF Mono', Monaco, monospace; font-size: 11px; color: var(--muted); }
+  .kpi-table .num { font-family: 'SF Mono', Monaco, monospace; font-size: 11px; text-align: right; }
+  .kpi-table .dim { color: var(--muted); }
+  .kpi-table .type-section-row td { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 16px 10px 6px; border-bottom: none; }
+  .table-designer-layout { display: grid; grid-template-columns: 1fr 400px; height: 100%; }
+
+  /* ── Filter pills for table ── */
+  .table-toolbar { display: flex; gap: 8px; padding: 8px 24px; align-items: center; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+  .filter-pill { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+  .filter-pill:hover { border-color: rgba(255,255,255,0.15); color: var(--text); }
+  .filter-pill.active { border-color: var(--accent); color: var(--accent); background: rgba(201,168,76,0.06); }
+  .table-toolbar .sort-label { font-size: 10px; color: var(--muted); margin-left: auto; }
+  .table-toolbar select { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 11px; padding: 4px 8px; outline: none; }
+
+  /* ── Stub panels ── */
+  .stub-panel { display: flex; align-items: center; justify-content: center; height: 100%; }
+  .stub-content { text-align: center; max-width: 400px; padding: 40px; }
+  .stub-content .stub-icon { font-size: 48px; color: var(--muted); opacity: 0.4; margin-bottom: 16px; }
+  .stub-content h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .stub-content p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .stub-content .stub-items { text-align: left; margin-top: 16px; }
+  .stub-content .stub-items li { font-size: 12px; color: var(--muted); margin-bottom: 6px; list-style: none; padding-left: 20px; position: relative; }
+  .stub-content .stub-items li::before { content: ''; position: absolute; left: 0; top: 6px; width: 8px; height: 8px; border-radius: 2px; background: rgba(255,255,255,0.06); }
+
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; background: var(--surface); border: 1px solid var(--gold-dim); border-radius: 10px; font-size: 13px; color: var(--accent); transform: translateY(80px); opacity: 0; transition: all 0.3s; z-index: 200; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════ AUTH GATE ═══════ -->
+<div id="auth-gate" class="auth-gate">
+  <div class="auth-box">
+    <div class="logo"><i class="ph ph-compass"></i></div>
+    <h1>Compass KPI</h1>
+    <p class="sub">Admin Portal</p>
+    <input type="email" id="login-email" placeholder="Email" />
+    <input type="password" id="login-password" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()" />
+    <button class="btn-login" onclick="doLogin()">Sign In</button>
+    <p class="error" id="login-error"></p>
+  </div>
+</div>
+
+<!-- ═══════ SHELL ═══════ -->
+<div id="shell" class="shell" style="display:none;">
+
+  <!-- ── Sidebar ── -->
+  <div class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-name"><i class="ph ph-compass"></i> Compass KPI</div>
+      <div class="brand-sub">Admin Portal</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-label">Operations</div>
+        <div class="nav-item active" data-panel="kpi-designer" onclick="switchPanel(this)">
+          <i class="ph ph-squares-four"></i> KPI Designer
+          <span class="badge">LIVE</span>
+        </div>
+        <div class="nav-item" data-panel="users" onclick="switchPanel(this)">
+          <i class="ph ph-users"></i> Users
+          <span class="badge">LIVE</span>
+        </div>
+        <div class="nav-item" data-panel="challenges" onclick="switchPanel(this)">
+          <i class="ph ph-trophy"></i> Challenges
+          <span class="badge">LIVE</span>
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Tools</div>
+        <div class="nav-item" data-panel="projection-lab" onclick="switchPanel(this)">
+          <i class="ph ph-chart-line"></i> Projection Lab
+          <span class="badge">LIVE</span>
+        </div>
+        <div class="nav-item" data-panel="coaching" onclick="switchPanel(this)">
+          <i class="ph ph-graduation-cap"></i> Coaching
+          <span class="badge">LIVE</span>
+        </div>
+        <div class="nav-item" data-panel="migration" onclick="switchPanel(this)">
+          <i class="ph ph-git-merge"></i> Migration Log
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="user-dot"></div>
+      <span id="userEmail">admin</span>
+      <button class="logout" onclick="doLogout()">Sign out</button>
+    </div>
+  </div>
+
+  <!-- ── Main ── -->
+  <div class="main">
+    <div class="main-header" id="mainHeader">
+      <h2 id="panelTitle">KPI Designer</h2>
+      <span class="status" id="panelStatus">LIVE</span>
+      <span class="info" id="panelInfo">Connected to Supabase</span>
+    </div>
+
+    <div class="main-content" id="mainContent">
+
+      <!-- ════ Panel: KPI Designer ════ -->
+      <div class="panel" id="panel-kpi-designer">
+        <div class="stats-bar" id="statsBar">
+          <!-- Stats rendered by JS; view toggle appended -->
+        </div>
+
+        <!-- Card view -->
+        <div id="cardView" class="designer-layout">
+          <div class="catalog" id="catalogGrid"></div>
+          <div class="editor-panel" id="editorPanel">
+            <h3>KPI Editor</h3>
+            <div class="empty" id="editorEmpty">Click a card to edit its icon, name, type, and algorithm params.</div>
+            <div id="editorForm" style="display:none;">
+              <div class="edit-field">
+                <label>KPI Name (shown in app)</label>
+                <input type="text" id="editName">
+              </div>
+              <div class="field-row">
+                <div class="edit-field">
+                  <label>Slug (internal ID)</label>
+                  <input type="text" id="editSlug" style="font-family:monospace;font-size:11px;">
+                </div>
+                <div class="edit-field" style="flex:0 0 130px;">
+                  <label>Type</label>
+                  <select id="editType" onchange="onTypeChange()">
+                    <option value="PC">PC — Projections</option>
+                    <option value="GP">GP — Growth</option>
+                    <option value="VP">VP — Vitality</option>
+                  </select>
+                </div>
+              </div>
+              <div class="edit-field">
+                <label>Description</label>
+                <input type="text" id="editDesc">
+              </div>
+              <div class="algo-section" id="algoSection">
+                <div class="algo-title">Algorithm Params <span class="algo-type" id="algoTypeBadge"></span></div>
+                <div id="algoFields"></div>
+              </div>
+              <div class="preview-compare">
+                <div class="frame-label">Card Preview (actual size)</div>
+                <div class="preview-states" id="previewStates"></div>
+              </div>
+              <details class="editor-section" open>
+                <summary>Phosphor Icon</summary>
+                <div class="icon-search-wrap">
+                  <i class="ph ph-magnifying-glass search-icon"></i>
+                  <input type="text" id="iconSearch" placeholder="Search icons..." oninput="filterIcons()">
+                </div>
+                <div class="icon-grid" id="iconGrid"></div>
+              </details>
+              <div class="btn-row">
+                <button class="btn btn-gold" id="btnSave" onclick="saveKpi()">Save to Database</button>
+                <button class="btn btn-danger" onclick="deleteKpi()">Deactivate</button>
+              </div>
+              <div id="saveStatus" style="text-align:center;margin-top:6px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table view -->
+        <div id="tableView" style="display:none;">
+          <div class="table-toolbar">
+            <button class="filter-pill active" data-filter="all" onclick="setTableFilter(this,'all')">All</button>
+            <button class="filter-pill" data-filter="PC" onclick="setTableFilter(this,'PC')">PC</button>
+            <button class="filter-pill" data-filter="GP" onclick="setTableFilter(this,'GP')">GP</button>
+            <button class="filter-pill" data-filter="VP" onclick="setTableFilter(this,'VP')">VP</button>
+            <span class="sort-label">Sort:</span>
+            <select id="tableSort" onchange="renderTable()">
+              <option value="type">By Type</option>
+              <option value="name">By Name</option>
+              <option value="slug">By Slug</option>
+              <option value="pc_weight">By PC Weight</option>
+              <option value="delay_days">By Delay Days</option>
+              <option value="decay_days">By Decay Days</option>
+            </select>
+          </div>
+          <div class="table-designer-layout">
+            <div class="table-wrap" id="tableWrap"></div>
+            <div class="editor-panel" id="editorPanelTable">
+              <!-- Editor content moved here dynamically when in table view -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════ Panel: Users ════ -->
+      <div class="panel" id="panel-users" style="display:none;">
+        <div class="table-toolbar" id="usersToolbar">
+          <button class="filter-pill active" onclick="setUserFilter(this,'all')">All</button>
+          <button class="filter-pill" onclick="setUserFilter(this,'active')">Active</button>
+          <button class="filter-pill" onclick="setUserFilter(this,'deactivated')">Deactivated</button>
+          <span class="sort-label" style="margin-left:12px;">Role:</span>
+          <button class="filter-pill" onclick="setUserRoleFilter(this,'all')">All Roles</button>
+          <button class="filter-pill" onclick="setUserRoleFilter(this,'agent')">Agent</button>
+          <button class="filter-pill" onclick="setUserRoleFilter(this,'coach')">Coach</button>
+          <button class="filter-pill" onclick="setUserRoleFilter(this,'admin')">Admin</button>
+          <span id="usersCount" style="margin-left:auto;font-size:11px;color:var(--muted);"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 340px;height:100%;">
+          <div class="table-wrap" id="usersTableWrap" style="overflow:auto;"></div>
+          <div class="editor-panel" id="userEditorPanel">
+            <h3>User Details</h3>
+            <div class="empty" id="userEditorEmpty">Select a user to view details and manage role/tier.</div>
+            <div id="userEditorForm" style="display:none;">
+              <div class="edit-field"><label>Email</label><input type="text" id="userEmail2" readonly style="opacity:0.6;"></div>
+              <div class="edit-field"><label>Name</label><input type="text" id="userName" readonly style="opacity:0.6;"></div>
+              <div class="edit-field"><label>User ID</label><input type="text" id="userId" readonly style="font-family:monospace;font-size:10px;opacity:0.5;"></div>
+              <div class="field-row">
+                <div class="edit-field">
+                  <label>Role</label>
+                  <select id="userRole">
+                    <option value="agent">Agent</option>
+                    <option value="team_leader">Team Leader</option>
+                    <option value="coach">Coach</option>
+                    <option value="challenge_sponsor">Challenge Sponsor</option>
+                    <option value="admin">Admin</option>
+                    <option value="super_admin">Super Admin</option>
+                  </select>
+                </div>
+                <div class="edit-field">
+                  <label>Tier</label>
+                  <select id="userTier">
+                    <option value="free">Free</option>
+                    <option value="basic">Basic</option>
+                    <option value="teams">Teams</option>
+                    <option value="enterprise">Enterprise</option>
+                  </select>
+                </div>
+              </div>
+              <div class="edit-field">
+                <label>Account Status</label>
+                <select id="userStatus">
+                  <option value="active">Active</option>
+                  <option value="deactivated">Deactivated</option>
+                </select>
+              </div>
+              <div class="edit-field"><label>Created</label><input type="text" id="userCreated" readonly style="opacity:0.6;font-size:11px;"></div>
+              <div class="edit-field"><label>Last Activity</label><input type="text" id="userLastActivity" readonly style="opacity:0.6;font-size:11px;"></div>
+              <div class="btn-row">
+                <button class="btn btn-gold" onclick="saveUserRole()">Save Role</button>
+                <button class="btn btn-muted" onclick="saveUserTier()">Save Tier</button>
+              </div>
+              <div class="btn-row" style="margin-top:4px;">
+                <button class="btn btn-danger" id="btnToggleStatus" onclick="toggleUserStatus()">Deactivate</button>
+              </div>
+              <div id="userSaveStatus" style="text-align:center;margin-top:6px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════ Panel: Challenges ════ -->
+      <div class="panel" id="panel-challenges" style="display:none;">
+        <div class="table-toolbar">
+          <button class="filter-pill active" onclick="setChallengeFilter(this,'all')">All</button>
+          <button class="filter-pill" onclick="setChallengeFilter(this,'active')">Active</button>
+          <button class="filter-pill" onclick="setChallengeFilter(this,'inactive')">Inactive</button>
+          <button class="btn btn-gold" style="margin-left:auto;padding:5px 14px;font-size:11px;" onclick="createChallengeTemplate()"><i class="ph ph-plus" style="margin-right:4px;"></i> New Template</button>
+          <span id="challengesCount" style="font-size:11px;color:var(--muted);"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 380px;height:100%;">
+          <div class="table-wrap" id="challengesTableWrap" style="overflow:auto;"></div>
+          <div class="editor-panel" id="challengeEditorPanel">
+            <h3>Template Details</h3>
+            <div class="empty" id="challengeEditorEmpty">Select a template to view phases and KPI goals.</div>
+            <div id="challengeEditorForm" style="display:none;">
+              <div class="edit-field"><label>Template Name</label><input type="text" id="ctName"></div>
+              <div class="edit-field"><label>Description</label><input type="text" id="ctDesc"></div>
+              <div class="edit-field"><label>Default Challenge Name</label><input type="text" id="ctDefaultName" placeholder="Name shown to users"></div>
+              <div class="field-row">
+                <div class="edit-field"><label>Duration (weeks)</label><input type="number" id="ctWeeks" min="1"></div>
+                <div class="edit-field"><label>Duration (days)</label><input type="number" id="ctDays" min="1"></div>
+              </div>
+              <div id="ctPhasesContainer" style="margin:12px 0;"></div>
+              <div class="btn-row">
+                <button class="btn btn-gold" onclick="saveChallengeTemplate()">Save Template</button>
+                <button class="btn btn-danger" onclick="deactivateChallengeTemplate()">Deactivate</button>
+              </div>
+              <div id="challengeSaveStatus" style="text-align:center;margin-top:6px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════ Panel: Projection Lab ════ -->
+      <div class="panel" id="panel-projection-lab" style="display:none;">
+        <div class="table-toolbar">
+          <span style="font-size:12px;font-weight:600;color:var(--text);">PC Algorithm Parameters</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:8px;">How each KPI contributes to projected GCI</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--muted);" id="projLabInfo"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 340px;height:100%;">
+          <div class="table-wrap" id="projLabTableWrap" style="overflow:auto;"></div>
+          <div class="editor-panel" id="projLabSidebar">
+            <h3>Algorithm Reference</h3>
+            <div style="font-size:12px;color:var(--muted);line-height:1.6;">
+              <p style="margin-bottom:10px;"><b style="color:var(--text);">Formula per KPI event:</b></p>
+              <code style="display:block;background:var(--bg);padding:10px;border-radius:8px;font-size:11px;line-height:1.5;margin-bottom:12px;border:1px solid var(--border);">
+initialPC = avg_price &times; commission_rate &times; (pc_weight / 100)<br><br>
+Phase 1: DELAY (0 &rarr; delay_days)<br>
+&nbsp;&nbsp;value = $0<br><br>
+Phase 2: HOLD (delay &rarr; delay + hold)<br>
+&nbsp;&nbsp;value = initialPC (full)<br><br>
+Phase 3: DECAY (hold_end &rarr; + decay_days)<br>
+&nbsp;&nbsp;value = initialPC &times; (1 - elapsed/decay)<br><br>
+Phase 4: EXPIRED<br>
+&nbsp;&nbsp;value = $0
+              </code>
+              <p style="margin-bottom:8px;"><b style="color:var(--text);">TTC (Time to Close)</b> = delay + hold days. Represents when this activity typically converts to a closing.</p>
+              <p style="margin-bottom:8px;"><b style="color:var(--text);">PC Weight</b> = what fraction of a deal this activity represents. A "Listing Taken" (7.0) is worth 280x more than a "Phone Call" (0.025).</p>
+              <p style="margin-bottom:8px;"><b style="color:var(--text);">Decay</b> is linear. Value drops to $0 over decay_days after the hold period ends.</p>
+              <div style="margin-top:16px;padding:12px;background:rgba(201,168,76,0.06);border:1px solid var(--gold-dim);border-radius:8px;">
+                <p style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:6px;">Full Simulation</p>
+                <p style="font-size:11px;color:var(--muted);">The full Projection Lab with scenario builder, decay curve visualizer, A/B testing, and 12-month projection charts is coming soon. The existing simulation engine (2500+ lines) will be ported from the native app.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════ Panel: Coaching ════ -->
+      <div class="panel" id="panel-coaching" style="display:none;">
+        <div class="table-toolbar" id="coachingToolbar">
+          <button class="filter-pill active" onclick="setCoachingFilter(this,'all')">All</button>
+          <button class="filter-pill" onclick="setCoachingFilter(this,'active')">Active</button>
+          <button class="filter-pill" onclick="setCoachingFilter(this,'draft')">Draft</button>
+          <button class="filter-pill" onclick="setCoachingFilter(this,'has_lessons')">Has Lessons</button>
+          <span id="coachingCount" style="margin-left:auto;font-size:11px;color:var(--muted);"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 360px;height:100%;">
+          <div class="table-wrap" id="coachingTableWrap" style="overflow:auto;"></div>
+          <div class="editor-panel" id="coachingDetailPanel">
+            <h3>Journey Details</h3>
+            <div class="empty" id="coachingDetailEmpty">Select a journey to view milestones and lessons.</div>
+            <div id="coachingDetailContent" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════ Panel: Migration Log ════ -->
+      <div class="panel" id="panel-migration" style="display:none;">
+        <div class="stub-panel">
+          <div class="stub-content">
+            <div class="stub-icon"><i class="ph ph-git-merge"></i></div>
+            <h3>Migration Log</h3>
+            <p>KPI slug migration was completed on 2026-04-08. All legacy slugs have been mapped to their canonical forms.</p>
+            <ul class="stub-items">
+              <li>23 slugs renamed to canonical form</li>
+              <li>3 type changes (GP &rarr; PC)</li>
+              <li>13 legacy/duplicate slugs deactivated</li>
+              <li>25 icons updated to Phosphor</li>
+              <li>10 seed/test rows cleaned up</li>
+            </ul>
+            <p style="margin-top:16px; font-size:11px; color:var(--muted);">This was a one-time operation. The migration review tool is archived at <code style="color:var(--text);font-size:11px;">/admin/kpi-migration</code>.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// Core state
+// ══════════════════════════════════════════════════════
+const API = window.location.origin;
+let TOKEN = null;
+let USER_EMAIL = '';
+let kpis = [];
+let selectedId = null;
+let activePanel = 'kpi-designer';
+let designerView = 'cards'; // 'cards' | 'table'
+let tableFilter = 'all'; // 'all' | 'PC' | 'GP' | 'VP'
+
+const TYPE_COLORS = {
+  PC: { color: '#2f9f56', bg: '#d8f1e2', dim: 'rgba(47,159,86,0.15)' },
+  GP: { color: '#2158d5', bg: '#c8dbf8', dim: 'rgba(33,88,213,0.15)' },
+  VP: { color: '#C9A84C', bg: '#fdf3de', dim: 'rgba(201,168,76,0.15)' },
+};
+
+const PANEL_META = {
+  'kpi-designer': { title: 'KPI Designer', status: 'LIVE', info: 'Connected to Supabase — changes save directly to database' },
+  'users': { title: 'User Management', status: 'LIVE', info: 'Roles, tiers, and account status' },
+  'challenges': { title: 'Challenge Templates', status: 'LIVE', info: 'Template CRUD with phase/KPI goal viewer' },
+  'projection-lab': { title: 'Projection Lab', status: 'LIVE', info: 'PC algorithm parameter overview + per-event $ calculation' },
+  'coaching': { title: 'Coaching Portal', status: 'LIVE', info: 'Journeys, milestones, lessons, and enrollments' },
+  'migration': { title: 'Migration Log', status: 'DONE', info: 'Completed 2026-04-08' },
+};
+
+const POPULAR_ICONS = [
+  'phone-call','phone-outgoing','phone-x','phone','phone-incoming','megaphone-simple','user-focus','user-plus','users-three',
+  'calendar-check','calendar-plus','presentation-chart','sign-post','handshake','file-text',
+  'house-line','door-open','pencil-line','check-circle','seal-check','chart-bar','newspaper',
+  'envelope-simple','envelope-open','hand-waving','gift','package','coffee','chats-circle','chat-dots',
+  'share-network','article','chart-line-up','video-camera','flag-banner','trophy','star','chat-circle-text',
+  'graduation-cap','book-open-text','headphones','microphone-stage','clipboard-text','map-pin-area',
+  'tag','lightning','stack','broom','rocket-launch','user-list','file-doc','list-checks','users',
+  'magnifying-glass','certificate','clock-countdown',
+  'barbell','flower-lotus','heart','drop','bowl-food','moon-stars','house','book-bookmark',
+  'notebook','sneaker-move','person-simple-tai-chi','prohibit','eye','wind','palette','sun',
+  'tree','couch',
+  'target','money','credit-card','bank','crown','medal-military',
+  'fire','globe-simple','rocket','airplane','car','bicycle','mountains','cloud-sun',
+  'camera','paint-brush','music-note','game-controller','puzzle-piece','lightbulb','timer',
+  'alarm','bell','smiley','thumbs-up','hand-heart','sparkle','shield-check',
+  'lock-simple','key','gear','wrench',
+  'currency-dollar','coins','piggy-bank','receipt','shopping-cart','storefront',
+  'percent','trend-up','trend-down',
+  'map-pin','navigation-arrow','compass','binoculars','flag','bookmark',
+  'clock','hourglass','calendar-blank',
+  'brain','flask',
+  'chalkboard-teacher','student','exam',
+  'buildings','factory',
+  'voicemail','chat','chat-circle','chat-teardrop','chats',
+  'link','paperclip','download','upload',
+  'image','film-strip','monitor-play',
+  'megaphone','broadcast','radio',
+  'hand-fist','hand-palm','hand-pointing','hands-clapping',
+];
+
+// ══════════════════════════════════════════════════════
+// Auth
+// ══════════════════════════════════════════════════════
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+  try {
+    const cfg = await (await fetch(API + '/api/config')).json();
+    const resp = await fetch(cfg.supabaseUrl + '/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': cfg.supabaseAnonKey },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.access_token) { errEl.textContent = data.error_description || 'Login failed'; return; }
+    TOKEN = data.access_token;
+    USER_EMAIL = email;
+    sessionStorage.setItem('compass_admin_token', TOKEN);
+    sessionStorage.setItem('compass_admin_email', email);
+    // Also set the old key so standalone pages pick it up
+    sessionStorage.setItem('kpi_admin_token', TOKEN);
+    showShell();
+  } catch (e) { errEl.textContent = 'Network error: ' + e.message; }
+}
+
+function doLogout() {
+  sessionStorage.removeItem('compass_admin_token');
+  sessionStorage.removeItem('compass_admin_email');
+  sessionStorage.removeItem('kpi_admin_token');
+  TOKEN = null;
+  location.reload();
+}
+
+function showShell() {
+  document.getElementById('auth-gate').style.display = 'none';
+  document.getElementById('shell').style.display = 'flex';
+  document.getElementById('userEmail').textContent = USER_EMAIL || 'admin';
+  loadKpis();
+}
+
+// Check existing session
+(function() {
+  const saved = sessionStorage.getItem('compass_admin_token');
+  const email = sessionStorage.getItem('compass_admin_email');
+  if (saved) { TOKEN = saved; USER_EMAIL = email || ''; showShell(); }
+})();
+
+async function apiFetch(path, opts = {}) {
+  const resp = await fetch(API + path, {
+    ...opts,
+    headers: { ...opts.headers, 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+  });
+  if (resp.status === 401) { doLogout(); return null; }
+  return resp;
+}
+
+// ══════════════════════════════════════════════════════
+// Navigation
+// ══════════════════════════════════════════════════════
+function switchPanel(el) {
+  const panel = el.dataset.panel;
+  if (panel === activePanel) return;
+
+  // Update sidebar
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+
+  // Update panels
+  document.querySelectorAll('.panel').forEach(p => p.style.display = 'none');
+  const target = document.getElementById('panel-' + panel);
+  if (target) target.style.display = '';
+
+  // Update header
+  const meta = PANEL_META[panel] || {};
+  document.getElementById('panelTitle').textContent = meta.title || panel;
+  const statusEl = document.getElementById('panelStatus');
+  statusEl.textContent = meta.status || '';
+  statusEl.style.background = meta.status === 'LIVE' ? 'var(--green)' : meta.status === 'DONE' ? 'var(--gp)' : 'var(--muted)';
+  document.getElementById('panelInfo').textContent = meta.info || '';
+
+  activePanel = panel;
+}
+
+// ══════════════════════════════════════════════════════
+// KPI Designer
+// ══════════════════════════════════════════════════════
+async function loadKpis() {
+  try {
+    const resp = await apiFetch('/admin/kpis');
+    if (!resp) return;
+    const data = await resp.json();
+    kpis = (data.kpis || data || []).filter(k => k.is_active && ['PC','GP','VP'].includes(k.type));
+    kpis.sort((a, b) => {
+      const order = { PC: 0, GP: 1, VP: 2 };
+      if (order[a.type] !== order[b.type]) return order[a.type] - order[b.type];
+      return (a.name || '').localeCompare(b.name || '');
+    });
+    renderDesigner();
+  } catch (e) { showToast('Failed to load KPIs: ' + e.message); }
+}
+
+function renderDesigner() {
+  renderStats();
+  if (designerView === 'cards') {
+    renderCatalog();
+  } else {
+    renderTable();
+  }
+}
+
+function renderStats() {
+  const pc = kpis.filter(k => k.type === 'PC').length;
+  const gp = kpis.filter(k => k.type === 'GP').length;
+  const vp = kpis.filter(k => k.type === 'VP').length;
+  document.getElementById('statsBar').innerHTML = `
+    <div class="stat"><div class="stat-dot" style="background:var(--pc);"></div> PC <b>${pc}</b></div>
+    <div class="stat"><div class="stat-dot" style="background:var(--gp);"></div> GP <b>${gp}</b></div>
+    <div class="stat"><div class="stat-dot" style="background:var(--vp);"></div> VP <b>${vp}</b></div>
+    <div class="stat">Total: <b>${kpis.length}</b></div>
+    <div class="view-toggle">
+      <button class="${designerView==='cards'?'active':''}" onclick="setDesignerView('cards')"><i class="ph ph-squares-four"></i> Cards</button>
+      <button class="${designerView==='table'?'active':''}" onclick="setDesignerView('table')"><i class="ph ph-list"></i> Table</button>
+    </div>
+  `;
+}
+
+function setDesignerView(view) {
+  designerView = view;
+  document.getElementById('cardView').style.display = view === 'cards' ? '' : 'none';
+  document.getElementById('tableView').style.display = view === 'table' ? '' : 'none';
+
+  // Move the editor panel DOM node into the active view's container
+  const editorPanel = document.getElementById('editorPanel');
+  if (view === 'table') {
+    const tableContainer = document.getElementById('editorPanelTable');
+    // Move all children
+    while (editorPanel.firstChild) tableContainer.appendChild(editorPanel.firstChild);
+    renderTable();
+  } else {
+    const tableContainer = document.getElementById('editorPanelTable');
+    while (tableContainer.firstChild) editorPanel.appendChild(tableContainer.firstChild);
+    renderCatalog();
+  }
+  if (selectedId) selectKpi(selectedId);
+  renderStats();
+}
+
+function setTableFilter(el, filter) {
+  tableFilter = filter;
+  document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  renderTable();
+}
+
+function renderTable() {
+  const el = document.getElementById('tableWrap');
+  if (!el) return;
+
+  const sortBy = document.getElementById('tableSort')?.value || 'type';
+  let filtered = tableFilter === 'all' ? [...kpis] : kpis.filter(k => k.type === tableFilter);
+
+  // Sort
+  filtered.sort((a, b) => {
+    if (sortBy === 'type') {
+      const order = { PC: 0, GP: 1, VP: 2 };
+      if (order[a.type] !== order[b.type]) return order[a.type] - order[b.type];
+      return (a.name || '').localeCompare(b.name || '');
+    }
+    if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '');
+    if (sortBy === 'slug') return (a.slug || '').localeCompare(b.slug || '');
+    if (sortBy === 'pc_weight') return (b.pc_weight || 0) - (a.pc_weight || 0);
+    if (sortBy === 'delay_days') return (b.delay_days || 0) - (a.delay_days || 0);
+    if (sortBy === 'decay_days') return (b.decay_days || 0) - (a.decay_days || 0);
+    return 0;
+  });
+
+  let html = `<table class="kpi-table">
+    <thead><tr>
+      <th style="width:30px;"></th>
+      <th>Name</th>
+      <th>Slug</th>
+      <th>Type</th>
+      <th style="text-align:right;">PC Wt</th>
+      <th style="text-align:right;">Delay</th>
+      <th style="text-align:right;">Hold</th>
+      <th style="text-align:right;">Decay</th>
+      <th style="text-align:right;">TTC</th>
+      <th style="text-align:right;">GP Val</th>
+      <th style="text-align:right;">VP Val</th>
+    </tr></thead><tbody>`;
+
+  let lastType = '';
+  for (const kpi of filtered) {
+    if (sortBy === 'type' && kpi.type !== lastType) {
+      const labels = { PC: 'Projections', GP: 'Growth', VP: 'Vitality' };
+      html += `<tr class="type-section-row" style="pointer-events:none;"><td colspan="11" style="color:${TYPE_COLORS[kpi.type]?.color};">${labels[kpi.type]} (${filtered.filter(k=>k.type===kpi.type).length})</td></tr>`;
+      lastType = kpi.type;
+    }
+    const sel = kpi.id === selectedId ? ' selected-row' : '';
+    const iconColor = TYPE_COLORS[kpi.type]?.color || 'var(--muted)';
+    const iconName = kpi.icon_name || 'circle';
+    const ttc = kpi.type === 'PC' ? ((kpi.delay_days||0) + (kpi.hold_days||0)) : '';
+    html += `<tr class="${sel}" onclick="selectKpi('${kpi.id}')">
+      <td><i class="ph ph-${iconName}" style="font-size:16px;color:${iconColor};"></i></td>
+      <td><span style="color:${iconColor};font-weight:600;">${kpi.name || ''}</span></td>
+      <td class="mono">${kpi.slug || ''}</td>
+      <td><span class="type-badge ${kpi.type}">${kpi.type}</span></td>
+      <td class="num">${kpi.type==='PC' && kpi.pc_weight ? kpi.pc_weight.toFixed(4) : '<span class="dim">—</span>'}</td>
+      <td class="num">${kpi.type==='PC' && kpi.delay_days != null ? kpi.delay_days : '<span class="dim">—</span>'}</td>
+      <td class="num">${kpi.type==='PC' && kpi.hold_days != null ? kpi.hold_days : '<span class="dim">—</span>'}</td>
+      <td class="num">${kpi.type==='PC' && kpi.decay_days != null ? kpi.decay_days : '<span class="dim">—</span>'}</td>
+      <td class="num">${kpi.type==='PC' && ttc ? '<b>'+ttc+'</b>' : '<span class="dim">—</span>'}</td>
+      <td class="num">${kpi.type==='GP' && kpi.gp_value != null ? kpi.gp_value : '<span class="dim">—</span>'}</td>
+      <td class="num">${kpi.type==='VP' && kpi.vp_value != null ? kpi.vp_value : '<span class="dim">—</span>'}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function renderCatalog() {
+  const el = document.getElementById('catalogGrid');
+  let html = '';
+  for (const typeKey of ['PC', 'GP', 'VP']) {
+    const typeKpis = kpis.filter(k => k.type === typeKey);
+    const labels = { PC: 'Projections', GP: 'Growth', VP: 'Vitality' };
+    html += `<div class="type-section">
+      <div class="type-header">
+        <div class="type-dot" style="background: ${TYPE_COLORS[typeKey].color};"></div>
+        <h2>${labels[typeKey]}</h2>
+        <span class="count">${typeKpis.length} KPIs</span>
+      </div>
+      <div class="card-grid">`;
+    for (const kpi of typeKpis) {
+      const sel = kpi.id === selectedId ? ' selected' : '';
+      const iconName = kpi.icon_name || 'circle';
+      const iconColor = TYPE_COLORS[kpi.type]?.color || 'var(--muted)';
+      html += `
+        <div class="kpi-card${sel}" data-type="${kpi.type}" onclick="selectKpi('${kpi.id}')" title="${kpi.slug || ''}">
+          <div class="card-type-dot" style="background: ${iconColor};"></div>
+          <i class="ph ph-${iconName} card-icon" style="color:${iconColor};"></i>
+          <div class="card-name">${kpi.name || ''}</div>
+          <div class="card-count">&mdash;</div>
+        </div>`;
+    }
+    html += `
+        <div class="add-card" onclick="addKpi('${typeKey}')">
+          <i class="ph ph-plus"></i>
+          <span>Add ${typeKey}</span>
+        </div>
+      </div>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+function selectKpi(id) {
+  selectedId = id;
+  const kpi = kpis.find(k => k.id === id);
+  if (!kpi) return;
+
+  const empty = document.getElementById('editorEmpty');
+  const form = document.getElementById('editorForm');
+  if (empty) empty.style.display = 'none';
+  if (form) form.style.display = 'block';
+
+  const el = (eid) => document.getElementById(eid);
+  if (el('editName')) el('editName').value = kpi.name || '';
+  if (el('editSlug')) el('editSlug').value = kpi.slug || '';
+  if (el('editType')) el('editType').value = kpi.type;
+  if (el('editDesc')) el('editDesc').value = kpi.description || '';
+  if (el('saveStatus')) el('saveStatus').innerHTML = '';
+
+  renderAlgoFields(kpi);
+  renderPreview(kpi);
+  renderIconGrid(kpi.icon_name);
+
+  if (designerView === 'table') {
+    renderTable();
+  } else {
+    renderCatalog();
+  }
+}
+
+function renderAlgoFields(kpi) {
+  const container = document.getElementById('algoFields');
+  const badge = document.getElementById('algoTypeBadge');
+  badge.textContent = kpi.type;
+  badge.className = 'algo-type ' + kpi.type;
+  let html = '';
+  if (kpi.type === 'PC') {
+    html = `
+      <div class="field-row">
+        <div class="edit-field"><label>PC Weight</label><input type="number" id="algoPcWeight" step="0.0001" min="0" value="${kpi.pc_weight ?? ''}"></div>
+        <div class="edit-field"><label>TTC Definition</label><input type="text" id="algoTtcDef" value="${kpi.ttc_definition || ''}" placeholder="e.g. 30-60 days"></div>
+      </div>
+      <div class="field-row">
+        <div class="edit-field"><label>Delay Days</label><input type="number" id="algoDelay" min="0" value="${kpi.delay_days ?? ''}"></div>
+        <div class="edit-field"><label>Hold Days</label><input type="number" id="algoHold" min="0" value="${kpi.hold_days ?? ''}"></div>
+        <div class="edit-field"><label>Decay Days</label><input type="number" id="algoDecay" min="0" value="${kpi.decay_days ?? ''}"></div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:4px;">TTC = delay + hold = <b id="ttcCalc">${(kpi.delay_days || 0) + (kpi.hold_days || 0)}</b> days</div>`;
+  } else if (kpi.type === 'GP') {
+    html = `<div class="edit-field" style="max-width:120px;"><label>GP Value</label><input type="number" id="algoGpValue" step="0.1" min="0" value="${kpi.gp_value ?? 1}"></div>`;
+  } else if (kpi.type === 'VP') {
+    html = `<div class="edit-field" style="max-width:120px;"><label>VP Value</label><input type="number" id="algoVpValue" step="0.1" min="0" value="${kpi.vp_value ?? 1}"></div>`;
+  }
+  container.innerHTML = html;
+  const delayEl = document.getElementById('algoDelay');
+  const holdEl = document.getElementById('algoHold');
+  if (delayEl && holdEl) {
+    const updateTtc = () => { const c = document.getElementById('ttcCalc'); if (c) c.textContent = (parseInt(delayEl.value)||0) + (parseInt(holdEl.value)||0); };
+    delayEl.addEventListener('input', updateTtc);
+    holdEl.addEventListener('input', updateTtc);
+  }
+}
+
+function onTypeChange() {
+  if (!selectedId) return;
+  const kpi = kpis.find(k => k.id === selectedId);
+  if (!kpi) return;
+  kpi.type = document.getElementById('editType').value;
+  renderAlgoFields(kpi);
+  renderPreview(kpi);
+  renderCatalog();
+}
+
+function renderPreview(kpi) {
+  const el = document.getElementById('previewStates');
+  const iconColor = TYPE_COLORS[kpi.type]?.color || 'var(--muted)';
+  const iconName = kpi.icon_name || 'circle';
+  el.innerHTML = `
+    <div class="preview-state">
+      <div class="pv-card">
+        <i class="ph ph-${iconName} pv-icon" style="font-size:26px; color:${iconColor};"></i>
+        <div class="pv-name">${kpi.name || ''}</div>
+        <div class="pv-count" style="color:${iconColor};">3</div>
+      </div>
+      <span class="state-label">In App</span>
+    </div>`;
+}
+
+function renderIconGrid(currentIcon) {
+  const el = document.getElementById('iconGrid');
+  const search = (document.getElementById('iconSearch')?.value || '').toLowerCase();
+  const icons = search ? POPULAR_ICONS.filter(n => n.includes(search)) : POPULAR_ICONS;
+  el.innerHTML = icons.slice(0, 140).map(name => `
+    <div class="icon-option${name === currentIcon ? ' active' : ''}" onclick="pickIcon('${name}')" title="${name}">
+      <i class="ph ph-${name}"></i>
+    </div>`).join('');
+}
+
+function filterIcons() {
+  if (!selectedId) return;
+  const kpi = kpis.find(k => k.id === selectedId);
+  renderIconGrid(kpi?.icon_name);
+}
+
+function pickIcon(name) {
+  if (!selectedId) return;
+  const kpi = kpis.find(k => k.id === selectedId);
+  if (!kpi) return;
+  kpi.icon_name = name;
+  kpi.icon_source = 'phosphor';
+  renderPreview(kpi);
+  renderIconGrid(name);
+  renderCatalog();
+}
+
+async function saveKpi() {
+  if (!selectedId) return;
+  const kpi = kpis.find(k => k.id === selectedId);
+  if (!kpi) return;
+  const statusEl = document.getElementById('saveStatus');
+  const btn = document.getElementById('btnSave');
+  btn.disabled = true;
+  statusEl.innerHTML = '<span class="save-indicator saving">Saving...</span>';
+
+  const payload = {
+    name: document.getElementById('editName').value.trim(),
+    slug: document.getElementById('editSlug').value.trim(),
+    type: document.getElementById('editType').value,
+    description: document.getElementById('editDesc').value.trim() || null,
+    icon_source: kpi.icon_source || 'phosphor',
+    icon_name: kpi.icon_name || null,
+  };
+
+  if (payload.type === 'PC') {
+    payload.pc_weight = parseFloat(document.getElementById('algoPcWeight')?.value) || null;
+    payload.delay_days = parseInt(document.getElementById('algoDelay')?.value) ?? null;
+    payload.hold_days = parseInt(document.getElementById('algoHold')?.value) ?? null;
+    payload.decay_days = parseInt(document.getElementById('algoDecay')?.value) ?? null;
+    payload.ttc_days = (payload.delay_days || 0) + (payload.hold_days || 0);
+    payload.ttc_definition = document.getElementById('algoTtcDef')?.value?.trim() || null;
+    payload.gp_value = null; payload.vp_value = null;
+  } else if (payload.type === 'GP') {
+    payload.gp_value = parseFloat(document.getElementById('algoGpValue')?.value) ?? 1;
+    payload.vp_value = null; payload.pc_weight = null; payload.delay_days = null;
+    payload.hold_days = null; payload.decay_days = null; payload.ttc_days = null; payload.ttc_definition = null;
+  } else if (payload.type === 'VP') {
+    payload.vp_value = parseFloat(document.getElementById('algoVpValue')?.value) ?? 1;
+    payload.gp_value = null; payload.pc_weight = null; payload.delay_days = null;
+    payload.hold_days = null; payload.decay_days = null; payload.ttc_days = null; payload.ttc_definition = null;
+  }
+
+  try {
+    const resp = await apiFetch('/admin/kpis/' + selectedId, { method: 'PUT', body: JSON.stringify(payload) });
+    if (!resp || !resp.ok) { const err = resp ? await resp.json() : { error: 'Network error' }; throw new Error(err.error || 'Save failed'); }
+    Object.assign(kpi, payload);
+    statusEl.innerHTML = '<span class="save-indicator saved">Saved</span>';
+    showToast('Saved to database');
+    renderDesigner();
+  } catch (e) {
+    statusEl.innerHTML = '<span class="save-indicator error">Error: ' + e.message + '</span>';
+    showToast('Save failed: ' + e.message);
+  }
+  btn.disabled = false;
+}
+
+async function addKpi(type) {
+  const name = prompt('New ' + type + ' KPI name:');
+  if (!name) return;
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const payload = { name, slug, type, is_active: true, icon_source: 'phosphor', icon_name: 'circle' };
+  if (type === 'PC') { payload.pc_weight = 0.001; payload.delay_days = 30; payload.hold_days = 30; payload.decay_days = 180; payload.ttc_days = 60; }
+  else if (type === 'GP') { payload.gp_value = 1; }
+  else if (type === 'VP') { payload.vp_value = 1; }
+
+  try {
+    const resp = await apiFetch('/admin/kpis', { method: 'POST', body: JSON.stringify(payload) });
+    if (!resp || !resp.ok) { const err = resp ? await resp.json() : { error: 'Network error' }; throw new Error(err.error || 'Create failed'); }
+    showToast('Created "' + name + '"');
+    await loadKpis();
+  } catch (e) { showToast('Create failed: ' + e.message); }
+}
+
+async function deleteKpi() {
+  if (!selectedId) return;
+  const kpi = kpis.find(k => k.id === selectedId);
+  if (!kpi || !confirm('Deactivate "' + kpi.name + '"? It will be hidden but not deleted.')) return;
+  try {
+    const resp = await apiFetch('/admin/kpis/' + selectedId, { method: 'DELETE' });
+    if (!resp || !resp.ok) { const err = resp ? await resp.json() : { error: 'Network error' }; throw new Error(err.error || 'Delete failed'); }
+    selectedId = null;
+    document.getElementById('editorForm').style.display = 'none';
+    document.getElementById('editorEmpty').style.display = 'block';
+    showToast('Deactivated "' + kpi.name + '"');
+    await loadKpis();
+  } catch (e) { showToast('Deactivate failed: ' + e.message); }
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ══════════════════════════════════════════════════════
+// Users Panel
+// ══════════════════════════════════════════════════════
+let users = [];
+let selectedUserId = null;
+let userStatusFilter = 'all';
+let userRoleFilter = 'all';
+
+async function loadUsers() {
+  try {
+    const resp = await apiFetch('/admin/users');
+    if (!resp) return;
+    const data = await resp.json();
+    users = data.users || data || [];
+    users.sort((a, b) => (a.email || '').localeCompare(b.email || ''));
+    renderUsers();
+  } catch (e) { showToast('Failed to load users: ' + e.message); }
+}
+
+function setUserFilter(el, filter) {
+  userStatusFilter = filter;
+  document.querySelectorAll('#usersToolbar .filter-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  renderUsers();
+}
+
+function setUserRoleFilter(el, filter) {
+  userRoleFilter = filter;
+  // Only toggle role pills (the last 4)
+  const pills = document.querySelectorAll('#usersToolbar .filter-pill');
+  pills.forEach((p, i) => { if (i >= 3) p.classList.remove('active'); });
+  el.classList.add('active');
+  renderUsers();
+}
+
+function renderUsers() {
+  const el = document.getElementById('usersTableWrap');
+  if (!el) return;
+  let filtered = [...users];
+  if (userStatusFilter !== 'all') filtered = filtered.filter(u => u.account_status === userStatusFilter);
+  if (userRoleFilter !== 'all') filtered = filtered.filter(u => u.role === userRoleFilter);
+
+  document.getElementById('usersCount').textContent = filtered.length + ' of ' + users.length + ' users';
+
+  const roleBadge = (r) => {
+    const colors = { agent: 'var(--muted)', team_leader: 'var(--gp)', coach: 'var(--pc)', admin: 'var(--accent)', super_admin: '#d94444', challenge_sponsor: '#9b59b6' };
+    return `<span class="type-badge" style="background:${colors[r] || 'var(--muted)'}22;color:${colors[r] || 'var(--muted)'};">${r}</span>`;
+  };
+  const tierBadge = (t) => {
+    const colors = { free: 'var(--muted)', basic: 'var(--pc)', teams: 'var(--gp)', enterprise: 'var(--accent)' };
+    return `<span class="type-badge" style="background:${colors[t] || 'var(--muted)'}22;color:${colors[t] || 'var(--muted)'};">${t}</span>`;
+  };
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString() : '—';
+
+  let html = `<table class="kpi-table"><thead><tr>
+    <th>Email</th><th>Name</th><th>Role</th><th>Tier</th><th>Status</th><th>Created</th><th>Last Active</th>
+  </tr></thead><tbody>`;
+  for (const u of filtered) {
+    const sel = u.id === selectedUserId ? ' selected-row' : '';
+    const statusColor = u.account_status === 'active' ? 'var(--green)' : 'var(--red)';
+    html += `<tr class="${sel}" onclick="selectUser('${u.id}')">
+      <td>${u.email || '<span class="dim">no email</span>'}</td>
+      <td>${u.name || u.full_name || '<span class="dim">—</span>'}</td>
+      <td>${roleBadge(u.role)}</td>
+      <td>${tierBadge(u.tier)}</td>
+      <td><span style="color:${statusColor};font-weight:600;font-size:11px;">${u.account_status}</span></td>
+      <td class="mono" style="font-size:10px;">${fmtDate(u.created_at)}</td>
+      <td class="mono" style="font-size:10px;">${fmtDate(u.last_activity_timestamp)}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function selectUser(id) {
+  selectedUserId = id;
+  const u = users.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('userEditorEmpty').style.display = 'none';
+  document.getElementById('userEditorForm').style.display = 'block';
+  document.getElementById('userEmail2').value = u.email || '';
+  document.getElementById('userName').value = u.name || u.full_name || '';
+  document.getElementById('userId').value = u.id;
+  document.getElementById('userRole').value = u.role || 'agent';
+  document.getElementById('userTier').value = u.tier || 'free';
+  document.getElementById('userStatus').value = u.account_status || 'active';
+  document.getElementById('userCreated').value = u.created_at ? new Date(u.created_at).toLocaleString() : '—';
+  document.getElementById('userLastActivity').value = u.last_activity_timestamp ? new Date(u.last_activity_timestamp).toLocaleString() : 'Never';
+  document.getElementById('btnToggleStatus').textContent = u.account_status === 'active' ? 'Deactivate' : 'Reactivate';
+  document.getElementById('userSaveStatus').innerHTML = '';
+  renderUsers();
+}
+
+async function saveUserRole() {
+  if (!selectedUserId) return;
+  const role = document.getElementById('userRole').value;
+  const statusEl = document.getElementById('userSaveStatus');
+  try {
+    const resp = await apiFetch('/admin/users/' + selectedUserId + '/role', {
+      method: 'PUT', body: JSON.stringify({ role }),
+    });
+    if (!resp || !resp.ok) throw new Error((await resp?.json())?.error || 'Failed');
+    const u = users.find(x => x.id === selectedUserId);
+    if (u) u.role = role;
+    statusEl.innerHTML = '<span class="save-indicator saved">Role updated</span>';
+    showToast('Role updated');
+    renderUsers();
+  } catch (e) { statusEl.innerHTML = '<span class="save-indicator error">' + e.message + '</span>'; }
+}
+
+async function saveUserTier() {
+  if (!selectedUserId) return;
+  const tier = document.getElementById('userTier').value;
+  const statusEl = document.getElementById('userSaveStatus');
+  try {
+    const resp = await apiFetch('/admin/users/' + selectedUserId + '/tier', {
+      method: 'PUT', body: JSON.stringify({ tier }),
+    });
+    if (!resp || !resp.ok) throw new Error((await resp?.json())?.error || 'Failed');
+    const u = users.find(x => x.id === selectedUserId);
+    if (u) u.tier = tier;
+    statusEl.innerHTML = '<span class="save-indicator saved">Tier updated</span>';
+    showToast('Tier updated');
+    renderUsers();
+  } catch (e) { statusEl.innerHTML = '<span class="save-indicator error">' + e.message + '</span>'; }
+}
+
+async function toggleUserStatus() {
+  if (!selectedUserId) return;
+  const u = users.find(x => x.id === selectedUserId);
+  if (!u) return;
+  const newStatus = u.account_status === 'active' ? 'deactivated' : 'active';
+  if (!confirm((newStatus === 'deactivated' ? 'Deactivate' : 'Reactivate') + ' ' + (u.email || u.id) + '?')) return;
+  const statusEl = document.getElementById('userSaveStatus');
+  try {
+    const resp = await apiFetch('/admin/users/' + selectedUserId + '/status', {
+      method: 'PUT', body: JSON.stringify({ account_status: newStatus }),
+    });
+    if (!resp || !resp.ok) throw new Error((await resp?.json())?.error || 'Failed');
+    u.account_status = newStatus;
+    statusEl.innerHTML = '<span class="save-indicator saved">Status: ' + newStatus + '</span>';
+    showToast('User ' + newStatus);
+    selectUser(selectedUserId);
+    renderUsers();
+  } catch (e) { statusEl.innerHTML = '<span class="save-indicator error">' + e.message + '</span>'; }
+}
+
+// ══════════════════════════════════════════════════════
+// Challenges Panel
+// ══════════════════════════════════════════════════════
+let challenges = [];
+let selectedChallengeId = null;
+let challengeFilter = 'all';
+
+async function loadChallenges() {
+  try {
+    const resp = await apiFetch('/admin/challenge-templates');
+    if (!resp) return;
+    const data = await resp.json();
+    challenges = data.challenge_templates || data || [];
+    challenges.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    renderChallenges();
+  } catch (e) { showToast('Failed to load challenges: ' + e.message); }
+}
+
+function setChallengeFilter(el, filter) {
+  challengeFilter = filter;
+  document.querySelectorAll('#panel-challenges .filter-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  renderChallenges();
+}
+
+function renderChallenges() {
+  const el = document.getElementById('challengesTableWrap');
+  if (!el) return;
+  let filtered = [...challenges];
+  if (challengeFilter === 'active') filtered = filtered.filter(c => c.is_active);
+  if (challengeFilter === 'inactive') filtered = filtered.filter(c => !c.is_active);
+
+  document.getElementById('challengesCount').textContent = filtered.length + ' templates';
+
+  const phaseCount = (c) => c.template_payload?.phases?.length || 0;
+  const kpiCount = (c) => {
+    const phases = c.template_payload?.phases || [];
+    const ids = new Set();
+    phases.forEach(p => (p.kpi_goals || []).forEach(g => ids.add(g.kpi_id)));
+    return ids.size;
+  };
+
+  let html = `<table class="kpi-table"><thead><tr>
+    <th>Name</th><th>Default Name</th><th style="text-align:right;">Weeks</th><th style="text-align:right;">Days</th>
+    <th style="text-align:right;">Phases</th><th style="text-align:right;">KPIs</th><th>Active</th><th>Updated</th>
+  </tr></thead><tbody>`;
+  for (const c of filtered) {
+    const sel = c.id === selectedChallengeId ? ' selected-row' : '';
+    const activeColor = c.is_active ? 'var(--green)' : 'var(--red)';
+    html += `<tr class="${sel}" onclick="selectChallenge('${c.id}')">
+      <td style="font-weight:600;">${c.name || ''}</td>
+      <td class="dim">${c.default_challenge_name || '—'}</td>
+      <td class="num">${c.duration_weeks || '—'}</td>
+      <td class="num">${c.suggested_duration_days || '—'}</td>
+      <td class="num">${phaseCount(c)}</td>
+      <td class="num">${kpiCount(c)}</td>
+      <td><span style="color:${activeColor};font-size:11px;font-weight:600;">${c.is_active ? 'Yes' : 'No'}</span></td>
+      <td class="mono" style="font-size:10px;">${c.updated_at ? new Date(c.updated_at).toLocaleDateString() : '—'}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function selectChallenge(id) {
+  selectedChallengeId = id;
+  const c = challenges.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('challengeEditorEmpty').style.display = 'none';
+  document.getElementById('challengeEditorForm').style.display = 'block';
+  document.getElementById('ctName').value = c.name || '';
+  document.getElementById('ctDesc').value = c.description || '';
+  document.getElementById('ctDefaultName').value = c.default_challenge_name || '';
+  document.getElementById('ctWeeks').value = c.duration_weeks || '';
+  document.getElementById('ctDays').value = c.suggested_duration_days || '';
+  document.getElementById('challengeSaveStatus').innerHTML = '';
+  renderChallengePhases(c);
+  renderChallenges();
+}
+
+function renderChallengePhases(c) {
+  const el = document.getElementById('ctPhasesContainer');
+  const phases = c.template_payload?.phases || [];
+  if (!phases.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">No phases defined.</div>';
+    return;
+  }
+  let html = '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Phases (' + phases.length + ')</div>';
+  for (const phase of phases) {
+    const goals = phase.kpi_goals || [];
+    html += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="font-size:12px;font-weight:600;">${phase.phase_name || 'Phase ' + phase.phase_order}</span>
+        <span style="font-size:10px;color:var(--muted);">Week ${phase.starts_at_week}+</span>
+      </div>`;
+    if (goals.length) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
+      for (const g of goals) {
+        const kpi = kpis.find(k => k.id === g.kpi_id);
+        const name = kpi ? kpi.name : g.kpi_id.slice(0, 8);
+        const typeColor = kpi ? (TYPE_COLORS[kpi.type]?.color || 'var(--muted)') : 'var(--muted)';
+        html += `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${typeColor}22;color:${typeColor};">${name}: ${g.target_value}/${g.goal_scope}</span>`;
+      }
+      html += '</div>';
+    } else {
+      html += '<div style="font-size:10px;color:var(--muted);">No KPI goals</div>';
+    }
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+async function saveChallengeTemplate() {
+  if (!selectedChallengeId) return;
+  const statusEl = document.getElementById('challengeSaveStatus');
+  const payload = {
+    name: document.getElementById('ctName').value.trim(),
+    description: document.getElementById('ctDesc').value.trim() || null,
+    default_challenge_name: document.getElementById('ctDefaultName').value.trim() || null,
+    duration_weeks: parseInt(document.getElementById('ctWeeks').value) || null,
+    suggested_duration_days: parseInt(document.getElementById('ctDays').value) || 30,
+  };
+  try {
+    const resp = await apiFetch('/admin/challenge-templates/' + selectedChallengeId, {
+      method: 'PUT', body: JSON.stringify(payload),
+    });
+    if (!resp || !resp.ok) throw new Error((await resp?.json())?.error || 'Save failed');
+    const c = challenges.find(x => x.id === selectedChallengeId);
+    if (c) Object.assign(c, payload);
+    statusEl.innerHTML = '<span class="save-indicator saved">Saved</span>';
+    showToast('Template saved');
+    renderChallenges();
+  } catch (e) { statusEl.innerHTML = '<span class="save-indicator error">' + e.message + '</span>'; }
+}
+
+async function createChallengeTemplate() {
+  const name = prompt('New template name:');
+  if (!name) return;
+  try {
+    const resp = await apiFetch('/admin/challenge-templates', {
+      method: 'POST',
+      body: JSON.stringify({ name, suggested_duration_days: 30 }),
+    });
+    if (!resp || !resp.ok) throw new Error((await resp?.json())?.error || 'Create failed');
+    showToast('Created "' + name + '"');
+    await loadChallenges();
+  } catch (e) { showToast('Create failed: ' + e.message); }
+}
+
+async function deactivateChallengeTemplate() {
+  if (!selectedChallengeId) return;
+  const c = challenges.find(x => x.id === selectedChallengeId);
+  if (!c || !confirm('Deactivate "' + c.name + '"?')) return;
+  try {
+    const resp = await apiFetch('/admin/challenge-templates/' + selectedChallengeId, { method: 'DELETE' });
+    if (!resp || !resp.ok) throw new Error((await resp?.json())?.error || 'Failed');
+    showToast('Deactivated "' + c.name + '"');
+    selectedChallengeId = null;
+    document.getElementById('challengeEditorForm').style.display = 'none';
+    document.getElementById('challengeEditorEmpty').style.display = 'block';
+    await loadChallenges();
+  } catch (e) { showToast('Deactivate failed: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════════════
+// Projection Lab Panel
+// ══════════════════════════════════════════════════════
+function renderProjLab() {
+  const el = document.getElementById('projLabTableWrap');
+  if (!el) return;
+  const pcKpis = kpis.filter(k => k.type === 'PC').sort((a, b) => (b.pc_weight || 0) - (a.pc_weight || 0));
+  document.getElementById('projLabInfo').textContent = pcKpis.length + ' PC KPIs sorted by weight (highest first)';
+
+  // Example user profile for illustration
+  const avgPrice = 425000;
+  const commRate = 0.03;
+
+  let html = `<table class="kpi-table"><thead><tr>
+    <th></th><th>KPI Name</th><th style="text-align:right;">PC Weight</th>
+    <th style="text-align:right;">Delay</th><th style="text-align:right;">Hold</th>
+    <th style="text-align:right;">Decay</th><th style="text-align:right;">TTC</th>
+    <th style="text-align:right;">$ per Event</th>
+    <th style="text-align:left;padding-left:12px;">Timeline</th>
+  </tr></thead><tbody>`;
+
+  for (const kpi of pcKpis) {
+    const w = kpi.pc_weight || 0;
+    const d = kpi.delay_days || 0;
+    const h = kpi.hold_days || 0;
+    const dc = kpi.decay_days || 0;
+    const ttc = d + h;
+    const totalDays = d + h + dc;
+    const perEvent = avgPrice * commRate * (w / 100);
+
+    // Timeline bar: delay (gray) + hold (green) + decay (fade)
+    const maxDays = 400;
+    const delayPct = Math.min((d / maxDays) * 100, 40);
+    const holdPct = Math.min((h / maxDays) * 100, 40);
+    const decayPct = Math.min((dc / maxDays) * 100, 50);
+    const iconName = kpi.icon_name || 'circle';
+
+    html += `<tr onclick="selectKpi('${kpi.id}');setDesignerView('cards');" style="cursor:pointer;">
+      <td><i class="ph ph-${iconName}" style="font-size:16px;color:var(--pc);"></i></td>
+      <td style="font-weight:600;color:var(--pc);">${kpi.name || ''}</td>
+      <td class="num" style="font-weight:700;">${w.toFixed(4)}</td>
+      <td class="num">${d}d</td>
+      <td class="num">${h}d</td>
+      <td class="num">${dc}d</td>
+      <td class="num"><b>${ttc}d</b></td>
+      <td class="num" style="color:var(--pc);font-weight:600;">$${perEvent >= 1000 ? (perEvent/1000).toFixed(1) + 'k' : perEvent.toFixed(0)}</td>
+      <td style="padding-left:12px;">
+        <div style="display:flex;height:12px;border-radius:3px;overflow:hidden;width:200px;background:rgba(255,255,255,0.03);">
+          <div style="width:${delayPct}%;background:rgba(255,255,255,0.08);" title="Delay: ${d}d ($0)"></div>
+          <div style="width:${holdPct}%;background:var(--pc);" title="Hold: ${h}d (full value)"></div>
+          <div style="width:${decayPct}%;background:linear-gradient(90deg, var(--pc), transparent);" title="Decay: ${dc}d (linear to $0)"></div>
+        </div>
+        <div style="font-size:9px;color:var(--muted);margin-top:1px;">${totalDays}d total lifecycle</div>
+      </td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════
+// Panel data loading on switch
+// ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// Coaching Panel
+// ══════════════════════════════════════════════════════
+let journeys = [];
+let selectedJourneyId = null;
+let coachingFilter = 'all';
+
+async function loadCoaching() {
+  try {
+    const resp = await apiFetch('/admin/coaching/journeys');
+    if (!resp) return;
+    const data = await resp.json();
+    journeys = data.journeys || data || [];
+    renderCoaching();
+  } catch (e) { showToast('Failed to load journeys: ' + e.message); }
+}
+
+function setCoachingFilter(el, filter) {
+  coachingFilter = filter;
+  document.querySelectorAll('#coachingToolbar .filter-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  renderCoaching();
+}
+
+function renderCoaching() {
+  const el = document.getElementById('coachingTableWrap');
+  if (!el) return;
+  let filtered = [...journeys];
+  if (coachingFilter === 'active') filtered = filtered.filter(j => j.is_active && j.status === 'active');
+  if (coachingFilter === 'draft') filtered = filtered.filter(j => j.status === 'draft' || !j.is_active);
+  if (coachingFilter === 'has_lessons') filtered = filtered.filter(j => j.lesson_count > 0);
+
+  document.getElementById('coachingCount').textContent = filtered.length + ' of ' + journeys.length + ' journeys';
+
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString() : '—';
+  const statusBadge = (j) => {
+    const s = j.status || 'active';
+    const colors = { active: 'var(--green)', draft: 'var(--accent)', hidden: 'var(--muted)', archived: 'var(--red)' };
+    return `<span class="type-badge" style="background:${colors[s] || 'var(--muted)'}22;color:${colors[s] || 'var(--muted)'};">${s}</span>`;
+  };
+
+  let html = `<table class="kpi-table"><thead><tr>
+    <th>Title</th><th>Status</th><th style="text-align:right;">Milestones</th>
+    <th style="text-align:right;">Lessons</th><th style="text-align:right;">Enrolled</th>
+    <th>Active</th><th>Created</th>
+  </tr></thead><tbody>`;
+  for (const j of filtered) {
+    const sel = j.id === selectedJourneyId ? ' selected-row' : '';
+    const activeColor = j.is_active ? 'var(--green)' : 'var(--red)';
+    html += `<tr class="${sel}" onclick="selectJourney('${j.id}')">
+      <td style="font-weight:600;max-width:250px;overflow:hidden;text-overflow:ellipsis;">${j.title || ''}</td>
+      <td>${statusBadge(j)}</td>
+      <td class="num">${j.milestone_count || 0}</td>
+      <td class="num">${j.lesson_count || 0}</td>
+      <td class="num">${j.active_enrollments || 0}<span class="dim">/${j.enrollment_count || 0}</span></td>
+      <td><span style="color:${activeColor};font-size:11px;font-weight:600;">${j.is_active ? 'Yes' : 'No'}</span></td>
+      <td class="mono" style="font-size:10px;">${fmtDate(j.created_at)}</td>
+    </tr>`;
+  }
+  if (!filtered.length) {
+    html += '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">No journeys match this filter</td></tr>';
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function selectJourney(id) {
+  selectedJourneyId = id;
+  const j = journeys.find(x => x.id === id);
+  if (!j) return;
+  document.getElementById('coachingDetailEmpty').style.display = 'none';
+  const content = document.getElementById('coachingDetailContent');
+  content.style.display = 'block';
+
+  let html = '';
+  html += `<div class="edit-field"><label>Title</label><input type="text" value="${(j.title || '').replace(/"/g, '&quot;')}" readonly style="opacity:0.8;"></div>`;
+  html += `<div class="edit-field"><label>Description</label><input type="text" value="${(j.description || '').replace(/"/g, '&quot;')}" readonly style="opacity:0.8;"></div>`;
+  html += `<div class="field-row">`;
+  html += `<div class="edit-field"><label>Status</label><input type="text" value="${j.status || 'active'}" readonly style="opacity:0.7;"></div>`;
+  html += `<div class="edit-field"><label>Active</label><input type="text" value="${j.is_active ? 'Yes' : 'No'}" readonly style="opacity:0.7;"></div>`;
+  html += `</div>`;
+  html += `<div class="field-row">`;
+  html += `<div class="edit-field"><label>Created</label><input type="text" value="${j.created_at ? new Date(j.created_at).toLocaleString() : '—'}" readonly style="opacity:0.6;font-size:11px;"></div>`;
+  html += `</div>`;
+
+  // Stats summary
+  html += `<div style="display:flex;gap:12px;margin:12px 0;">`;
+  html += `<div style="flex:1;text-align:center;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+    <div style="font-size:20px;font-weight:800;color:var(--accent);">${j.milestone_count || 0}</div>
+    <div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase;">Milestones</div></div>`;
+  html += `<div style="flex:1;text-align:center;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+    <div style="font-size:20px;font-weight:800;color:var(--gp);">${j.lesson_count || 0}</div>
+    <div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase;">Lessons</div></div>`;
+  html += `<div style="flex:1;text-align:center;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+    <div style="font-size:20px;font-weight:800;color:var(--pc);">${j.active_enrollments || 0}</div>
+    <div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase;">Enrolled</div></div>`;
+  html += `</div>`;
+
+  // IDs for reference
+  html += `<div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">`;
+  html += `<div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Reference</div>`;
+  html += `<div style="font-size:10px;color:var(--muted);font-family:monospace;">ID: ${j.id}</div>`;
+  if (j.team_id) html += `<div style="font-size:10px;color:var(--muted);font-family:monospace;">Team: ${j.team_id}</div>`;
+  if (j.org_id) html += `<div style="font-size:10px;color:var(--muted);font-family:monospace;">Org: ${j.org_id}</div>`;
+  if (j.created_by) html += `<div style="font-size:10px;color:var(--muted);font-family:monospace;">Author: ${j.created_by}</div>`;
+  html += `</div>`;
+
+  content.innerHTML = html;
+  renderCoaching();
+}
+
+// ══════════════════════════════════════════════════════
+// Panel data loading on switch
+// ══════════════════════════════════════════════════════
+const _origSwitchPanel = switchPanel;
+switchPanel = function(el) {
+  const panel = el.dataset.panel;
+  _origSwitchPanel(el);
+  // Lazy-load data for panels
+  if (panel === 'users' && users.length === 0) loadUsers();
+  if (panel === 'challenges' && challenges.length === 0) loadChallenges();
+  if (panel === 'projection-lab') renderProjLab();
+  if (panel === 'coaching' && journeys.length === 0) loadCoaching();
+};
+
+</script>
+</body>
+</html>

@@ -10,6 +10,8 @@ import {
   UIManager,
 } from 'react-native';
 
+import QuickReports from './QuickReports';
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -124,14 +126,14 @@ function fmtPct(v: number) {
 function kpiTypeTint(type: KpiType) {
   if (type === 'PC') return '#e4f7ea';
   if (type === 'GP') return '#e5efff';
-  if (type === 'VP') return '#fff0e2';
+  if (type === 'VP') return '#fdf3de';
   if (type === 'Custom') return '#f3e8ff';
   return '#eceff3';
 }
 function kpiTypeAccent(type: KpiType) {
   if (type === 'PC') return '#2f9f56';
   if (type === 'GP') return '#2158d5';
-  if (type === 'VP') return '#e38a1f';
+  if (type === 'VP') return '#C9A84C';
   if (type === 'Custom') return '#7a4cc8';
   return '#48505f';
 }
@@ -598,6 +600,9 @@ export default function ReportsTabV2({ payload, challengeApiRows, runtimeMeUserI
           rangeDays={RANGE_DAYS[range]}
         />
       </SectionCard>
+
+      {/* ── Quick Reports ──────────────────────────────────────────── */}
+      <QuickReports payload={payload} />
 
       {/* ── 2. Most Logged KPIs ────────────────────────────────────── */}
       <SectionCard fadeAnim={fadeAnims[1]}>
