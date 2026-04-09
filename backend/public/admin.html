@@ -203,6 +203,108 @@
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+  /* ══ Coaching Panel ══ */
+  .coaching-layout { display: grid; grid-template-columns: 1fr 420px; height: 100%; }
+  .coaching-layout.has-media { grid-template-columns: 1fr 420px 340px; }
+
+  .tree-node { padding: 0; }
+  .tree-milestone { padding: 8px 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; }
+  .tree-milestone-header { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .tree-milestone-header .expand-icon { font-size: 12px; color: var(--muted); transition: transform 0.15s; width: 16px; text-align: center; }
+  .tree-milestone-header .expand-icon.open { transform: rotate(90deg); }
+  .tree-milestone-header .ms-title { font-size: 12px; font-weight: 700; flex: 1; }
+  .tree-milestone-header .ms-meta { font-size: 10px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  .tree-milestone-header .release-badge { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+  .release-badge.immediate { background: rgba(47,159,86,0.15); color: var(--green); }
+  .release-badge.sequential { background: rgba(201,168,76,0.15); color: var(--accent); }
+  .release-badge.scheduled { background: rgba(33,88,213,0.15); color: var(--gp); }
+
+  .tree-lessons { padding: 6px 0 2px 24px; }
+  .tree-lesson { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 6px; margin-bottom: 2px; cursor: pointer; transition: background 0.1s; }
+  .tree-lesson:hover { background: rgba(255,255,255,0.03); }
+  .tree-lesson.selected { background: rgba(201,168,76,0.08); }
+  .tree-lesson .lesson-icon { font-size: 14px; color: var(--gp); }
+  .tree-lesson .lesson-title { font-size: 12px; flex: 1; }
+  .tree-lesson .lesson-actions { display: none; gap: 4px; }
+  .tree-lesson:hover .lesson-actions { display: flex; }
+  .tree-lesson .task-count { font-size: 10px; color: var(--muted); }
+
+  .tree-tasks { padding: 2px 0 4px 28px; }
+  .tree-task { display: flex; align-items: center; gap: 6px; padding: 3px 8px; font-size: 11px; color: var(--muted); border-radius: 4px; margin-bottom: 1px; }
+  .tree-task:hover { background: rgba(255,255,255,0.02); }
+  .tree-task .task-icon { font-size: 12px; }
+  .tree-task .task-title { flex: 1; }
+  .tree-task .task-actions { display: none; gap: 4px; }
+  .tree-task:hover .task-actions { display: flex; }
+
+  .tree-add-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); cursor: pointer; padding: 3px 8px; border-radius: 4px; border: none; background: none; transition: all 0.15s; }
+  .tree-add-btn:hover { color: var(--accent); background: rgba(201,168,76,0.06); }
+  .tree-icon-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px; border-radius: 3px; display: flex; align-items: center; }
+  .tree-icon-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+  .tree-icon-btn.danger:hover { color: var(--red); background: rgba(217,68,68,0.1); }
+
+  .enrollment-list { margin-top: 12px; }
+  .enrollment-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; margin-bottom: 2px; font-size: 12px; }
+  .enrollment-item:hover { background: rgba(255,255,255,0.02); }
+  .enrollment-item .enroll-avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--muted); }
+  .enrollment-item .enroll-name { flex: 1; }
+  .enrollment-item .enroll-status { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+
+  /* Coaching detail sections */
+  .coaching-section { margin-bottom: 16px; }
+  .coaching-section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .coaching-section-header h4 { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .coaching-section-header .section-count { font-size: 10px; color: var(--muted); margin-left: auto; }
+
+  /* Inline edit */
+  .inline-edit { background: none; border: 1px solid transparent; border-radius: 6px; padding: 4px 8px; color: var(--text); font-size: 13px; width: 100%; outline: none; transition: border-color 0.15s; }
+  .inline-edit:hover { border-color: rgba(255,255,255,0.08); }
+  .inline-edit:focus { border-color: var(--accent); background: var(--bg); }
+  .inline-edit.title { font-size: 16px; font-weight: 700; }
+
+  /* Modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: flex; align-items: center; justify-content: center; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; width: 420px; max-width: 90vw; }
+  .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+  .modal .modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+  .modal .modal-actions .btn { flex: unset; padding: 8px 16px; }
+
+  /* Media library panel */
+  .media-panel { padding: 16px; border-left: 1px solid var(--border); background: rgba(26,29,38,0.5); overflow-y: auto; }
+  .media-panel h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--accent); }
+  .media-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .media-card { border-radius: 8px; border: 1px solid var(--border); overflow: hidden; cursor: pointer; transition: all 0.15s; background: var(--bg); }
+  .media-card:hover { border-color: rgba(255,255,255,0.15); }
+  .media-card.selected { border-color: var(--accent); }
+  .media-card .media-thumb { width: 100%; aspect-ratio: 16/9; background: var(--surface2); display: flex; align-items: center; justify-content: center; }
+  .media-card .media-thumb i { font-size: 24px; color: var(--muted); }
+  .media-card .media-info { padding: 6px 8px; }
+  .media-card .media-name { font-size: 10px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .media-card .media-status { font-size: 9px; color: var(--muted); }
+  .media-upload-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; margin-bottom: 12px; transition: all 0.15s; }
+  .media-upload-zone:hover { border-color: var(--accent); background: rgba(201,168,76,0.04); }
+  .media-upload-zone.dragging { border-color: var(--accent); background: rgba(201,168,76,0.08); }
+  .media-upload-zone i { font-size: 24px; color: var(--muted); }
+  .media-upload-zone p { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* Coaching toolbar buttons */
+  .coaching-toolbar-actions { display: flex; gap: 6px; margin-left: 12px; }
+  .toolbar-btn { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+  .toolbar-btn:hover { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.04); }
+  .toolbar-btn.primary { border-color: var(--accent); color: var(--accent); }
+  .toolbar-btn.primary:hover { background: rgba(201,168,76,0.1); }
+  .toolbar-btn i { font-size: 14px; }
+
+  /* Tabs in detail panel */
+  .detail-tabs { display: flex; gap: 2px; margin-bottom: 12px; background: rgba(255,255,255,0.03); border-radius: 6px; padding: 2px; }
+  .detail-tab { flex: 1; padding: 6px 8px; border-radius: 4px; border: none; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.15s; }
+  .detail-tab:hover { color: var(--text); }
+  .detail-tab.active { background: rgba(255,255,255,0.06); color: var(--text); }
+
+  /* Progress bar for uploads */
+  .upload-progress { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+  .upload-progress .bar { height: 100%; background: var(--accent); transition: width 0.3s; border-radius: 2px; }
 </style>
 </head>
 <body>
@@ -506,16 +608,32 @@ Phase 4: EXPIRED<br>
           <button class="filter-pill" onclick="setCoachingFilter(this,'draft')">Draft</button>
           <button class="filter-pill" onclick="setCoachingFilter(this,'has_lessons')">Has Lessons</button>
           <span id="coachingCount" style="margin-left:auto;font-size:11px;color:var(--muted);"></span>
+          <div class="coaching-toolbar-actions">
+            <button class="toolbar-btn" onclick="toggleMediaPanel()"><i class="ph ph-image-square"></i> Media</button>
+            <button class="toolbar-btn primary" onclick="showCreateJourneyModal()"><i class="ph ph-plus"></i> New Journey</button>
+          </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 360px;height:100%;">
+        <div class="coaching-layout" id="coachingLayout">
           <div class="table-wrap" id="coachingTableWrap" style="overflow:auto;"></div>
           <div class="editor-panel" id="coachingDetailPanel">
             <h3>Journey Details</h3>
             <div class="empty" id="coachingDetailEmpty">Select a journey to view milestones and lessons.</div>
             <div id="coachingDetailContent" style="display:none;"></div>
           </div>
+          <div class="media-panel" id="coachingMediaPanel" style="display:none;">
+            <h3><i class="ph ph-image-square"></i> Media Library</h3>
+            <div class="media-upload-zone" id="mediaUploadZone">
+              <i class="ph ph-cloud-arrow-up"></i>
+              <p>Drop files here or click to upload</p>
+              <input type="file" id="mediaFileInput" accept="image/*,video/*" style="display:none;" multiple>
+            </div>
+            <div id="mediaAssetsList"></div>
+          </div>
         </div>
       </div>
+
+      <!-- ════ Modal Container ════ -->
+      <div id="modalOverlay" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeModal()"></div>
 
       <!-- ════ Panel: Migration Log ════ -->
       <div class="panel" id="panel-migration" style="display:none;">

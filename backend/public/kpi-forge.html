@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KPI Icon Forge — Compass</title>
+<style>
+  :root {
+    --bg: #0e1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --pc-bg: #e4f7ea; --pc-fg: #2f9f56;
+    --gp-bg: #e5efff; --gp-fg: #2158d5;
+    --vp-bg: #fff0e2; --vp-fg: #e38a1f;
+    --icon-charcoal: #2D3443;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  header { padding: 20px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; }
+  header h1 { font-size: 20px; font-weight: 600; }
+  header .badge { background: var(--accent); color: #000; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+
+  .layout { display: grid; grid-template-columns: 400px 1fr; min-height: calc(100vh - 65px); }
+
+  /* --- Left Panel: Controls --- */
+  .controls { padding: 24px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+  .field label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .field input, .field textarea, .field select {
+    width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; color: var(--text); font-size: 14px; outline: none; transition: border-color 0.15s;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
+  .field textarea { resize: vertical; min-height: 80px; font-family: inherit; }
+
+  .type-selector { display: flex; gap: 8px; }
+  .type-btn {
+    flex: 1; padding: 10px 8px; border-radius: 10px; border: 2px solid var(--border);
+    background: var(--surface); cursor: pointer; text-align: center; transition: all 0.15s;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .type-btn:hover { border-color: var(--muted); }
+  .type-btn.active { border-color: var(--accent); background: #1c2333; }
+  .type-btn .dot { width: 20px; height: 20px; border-radius: 6px; }
+  .type-btn .name { font-size: 11px; font-weight: 600; color: var(--muted); }
+  .type-btn.active .name { color: var(--text); }
+
+  .generate-btn {
+    width: 100%; padding: 14px; border-radius: 10px; border: none;
+    background: var(--accent); color: #000; font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: opacity 0.15s;
+  }
+  .generate-btn:hover { opacity: 0.9; }
+  .generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .seasonal-toggle { display: flex; align-items: center; gap: 10px; }
+  .seasonal-toggle input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
+  .seasonal-toggle label { font-size: 13px; color: var(--muted); cursor: pointer; }
+  .seasonal-field { margin-top: 8px; }
+
+  .api-key-field { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); }
+  .api-key-field input { font-family: monospace; font-size: 12px; }
+  .api-key-field .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* --- Right Panel: Preview --- */
+  .preview-area { padding: 32px; overflow-y: auto; }
+
+  .status-bar { padding: 12px 16px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 24px; font-size: 13px; color: var(--muted); }
+  .status-bar.generating { color: var(--accent); }
+  .status-bar.error { color: #f85149; }
+  .status-bar.success { color: var(--pc-fg); }
+
+  .preview-grid { display: flex; gap: 32px; flex-wrap: wrap; margin-bottom: 32px; }
+  .preview-card {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; min-width: 160px;
+  }
+  .preview-card .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  .preview-card.pc .label { color: var(--pc-fg); }
+  .preview-card.gp .label { color: var(--gp-fg); }
+  .preview-card.vp .label { color: var(--vp-fg); }
+
+  .orb-container { position: relative; }
+  .orb {
+    width: 96px; height: 96px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    position: relative; overflow: hidden;
+  }
+  .orb svg { width: 52px; height: 52px; }
+
+  .size-row { display: flex; gap: 16px; align-items: flex-end; }
+  .size-row .orb-sm { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+  .size-row .orb-sm svg { width: 30px; height: 30px; }
+  .size-row .orb-xs { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 6px rgba(0,0,0,0.1); }
+  .size-row .orb-xs svg { width: 22px; height: 22px; }
+
+  /* --- SVG Code Panel --- */
+  .svg-code-panel { margin-top: 24px; }
+  .svg-code-panel summary { cursor: pointer; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .svg-code-panel pre {
+    margin-top: 8px; padding: 16px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; font-size: 12px; color: var(--muted); overflow-x: auto; white-space: pre-wrap;
+  }
+
+  /* --- Existing Icons Dedup --- */
+  .dedup-section { margin-top: 32px; border-top: 1px solid var(--border); padding-top: 24px; }
+  .dedup-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--muted); }
+  .dedup-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px;
+  }
+  .dedup-item {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 8px 4px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border);
+  }
+  .dedup-item img { width: 48px; height: 48px; border-radius: 12px; }
+  .dedup-item .name { font-size: 9px; color: var(--muted); text-align: center; line-height: 1.2; max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dedup-filter { display: flex; gap: 6px; margin-bottom: 12px; }
+  .dedup-filter button {
+    padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--muted); font-size: 11px; font-weight: 600; cursor: pointer;
+  }
+  .dedup-filter button.active { border-color: var(--accent); color: var(--text); }
+
+  /* --- History --- */
+  .history-section { margin-top: 32px; border-top: 1px solid var(--border); padding-top: 24px; }
+  .history-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--muted); }
+  .history-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+  .history-item {
+    width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; border: 2px solid transparent; transition: border-color 0.15s;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  }
+  .history-item:hover { border-color: var(--accent); }
+  .history-item svg { width: 38px; height: 38px; }
+
+  /* --- Save Bar --- */
+  .save-bar {
+    margin-top: 32px; padding: 20px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; display: none; flex-direction: column; gap: 12px;
+  }
+  .save-bar.visible { display: flex; }
+  .save-bar h3 { font-size: 14px; font-weight: 600; }
+  .save-row { display: flex; gap: 12px; }
+  .save-row input, .save-row select { flex: 1; }
+  .save-btn {
+    padding: 12px 24px; border-radius: 8px; border: none;
+    background: var(--pc-fg); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  .save-btn:hover { opacity: 0.9; }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    .controls { border-right: none; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>KPI Icon Forge</h1>
+  <span class="badge">AI</span>
+</header>
+
+<div class="layout">
+  <!-- Left: Controls -->
+  <div class="controls">
+    <div class="field">
+      <label>KPI Type / Color Theme</label>
+      <div class="type-selector">
+        <button class="type-btn active" data-type="PC" onclick="selectType('PC')">
+          <div class="dot" style="background: var(--pc-bg); border: 2px solid var(--pc-fg);"></div>
+          <span class="name">PC</span>
+        </button>
+        <button class="type-btn" data-type="GP" onclick="selectType('GP')">
+          <div class="dot" style="background: var(--gp-bg); border: 2px solid var(--gp-fg);"></div>
+          <span class="name">GP</span>
+        </button>
+        <button class="type-btn" data-type="VP" onclick="selectType('VP')">
+          <div class="dot" style="background: var(--vp-bg); border: 2px solid var(--vp-fg);"></div>
+          <span class="name">VP</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Describe the KPI Icon</label>
+      <textarea id="description" placeholder="e.g., &quot;A person holding a megaphone at an open house event&quot; or &quot;A handwritten thank-you card with a heart seal&quot;"></textarea>
+    </div>
+
+    <div class="field">
+      <label>KPI Name</label>
+      <input type="text" id="kpiName" placeholder="e.g., Thank You Card Sent">
+    </div>
+
+    <div class="seasonal-toggle">
+      <input type="checkbox" id="seasonalMode">
+      <label for="seasonalMode">Seasonal / Promotional variant</label>
+    </div>
+    <div class="field seasonal-field" id="seasonalField" style="display:none;">
+      <label>Season / Theme</label>
+      <select id="seasonalTheme">
+        <option value="spring">Spring</option>
+        <option value="summer">Summer</option>
+        <option value="fall">Fall / Harvest</option>
+        <option value="winter-holiday">Winter Holiday</option>
+        <option value="valentines">Valentine's Day</option>
+        <option value="halloween">Halloween</option>
+        <option value="new-year">New Year</option>
+        <option value="custom">Custom Theme...</option>
+      </select>
+    </div>
+    <div class="field seasonal-field" id="seasonalCustomField" style="display:none;">
+      <label>Custom Theme Name</label>
+      <input type="text" id="seasonalCustom" placeholder="e.g., Team Kickoff 2026">
+    </div>
+
+    <button class="generate-btn" id="generateBtn" onclick="generate()">Generate Icon</button>
+
+    <div class="field" style="margin-top: 8px;">
+      <label>Refinement (optional)</label>
+      <textarea id="refinement" placeholder="e.g., &quot;Make the lines thicker&quot; or &quot;Add a small star accent&quot;" rows="2"></textarea>
+      <button class="generate-btn" style="margin-top:8px; background:#30363d; color:var(--text); font-size:13px; padding:10px;" id="refineBtn" onclick="refine()" disabled>Refine Current Icon</button>
+    </div>
+
+    <div class="api-key-field field">
+      <label>Anthropic API Key (optional)</label>
+      <input type="password" id="apiKey" placeholder="Uses server env key if blank">
+      <div class="hint">Leave blank to use ANTHROPIC_API_KEY from backend env. Override here if needed.</div>
+    </div>
+  </div>
+
+  <!-- Right: Preview -->
+  <div class="preview-area">
+    <div class="status-bar" id="status">Ready — describe an icon and click Generate.</div>
+
+    <div class="preview-grid" id="previewGrid" style="display:none;">
+      <div class="preview-card pc">
+        <span class="label">PC — Projections</span>
+        <div class="orb-container">
+          <div class="orb" id="orbPC"></div>
+        </div>
+        <div class="size-row">
+          <div class="orb-sm" id="orbPC_sm"></div>
+          <div class="orb-xs" id="orbPC_xs"></div>
+        </div>
+      </div>
+      <div class="preview-card gp">
+        <span class="label">GP — Growth</span>
+        <div class="orb-container">
+          <div class="orb" id="orbGP"></div>
+        </div>
+        <div class="size-row">
+          <div class="orb-sm" id="orbGP_sm"></div>
+          <div class="orb-xs" id="orbGP_xs"></div>
+        </div>
+      </div>
+      <div class="preview-card vp">
+        <span class="label">VP — Vitality</span>
+        <div class="orb-container">
+          <div class="orb" id="orbVP"></div>
+        </div>
+        <div class="size-row">
+          <div class="orb-sm" id="orbVP_sm"></div>
+          <div class="orb-xs" id="orbVP_xs"></div>
+        </div>
+      </div>
+    </div>
+
+    <details class="svg-code-panel" id="svgCodePanel" style="display:none;">
+      <summary>SVG Source Code</summary>
+      <pre id="svgCode"></pre>
+    </details>
+
+    <!-- Save Bar -->
+    <div class="save-bar" id="saveBar">
+      <h3>Save this KPI</h3>
+      <div class="save-row">
+        <input type="text" id="saveName" placeholder="KPI Name">
+        <select id="saveType">
+          <option value="PC">PC — Projections</option>
+          <option value="GP">GP — Growth</option>
+          <option value="VP">VP — Vitality</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="save-btn" onclick="saveKpi()">Save to Database</button>
+        <button class="save-btn" style="background:var(--accent); color:#000;" onclick="downloadSvg()">Download SVG</button>
+        <button class="save-btn" style="background:var(--border); color:var(--text);" onclick="downloadPng()">Download PNG</button>
+      </div>
+      <div id="saveStatus" style="font-size:12px; color:var(--muted);"></div>
+    </div>
+
+    <!-- History -->
+    <div class="history-section" id="historySection" style="display:none;">
+      <h3>Session History</h3>
+      <div class="history-grid" id="historyGrid"></div>
+    </div>
+
+    <!-- Dedup -->
+    <div class="dedup-section">
+      <h3>Existing Icon Bank — Check for Duplicates</h3>
+      <div class="dedup-filter">
+        <button class="active" data-filter="all" onclick="filterDedup('all')">All</button>
+        <button data-filter="PC" onclick="filterDedup('PC')">PC</button>
+        <button data-filter="GP" onclick="filterDedup('GP')">GP</button>
+        <button data-filter="VP" onclick="filterDedup('VP')">VP</button>
+      </div>
+      <div class="dedup-grid" id="dedupGrid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let selectedType = 'PC';
+let currentSvg = null;
+let history = [];
+let existingIcons = [];
+
+const TREATMENTS = {
+  PC:  { bg: '#d8f1e2', fg: '#2f9f56', orbEdge: 'rgba(47,159,86,0.22)' },
+  GP:  { bg: '#c8dbf8', fg: '#2158d5', orbEdge: 'rgba(33,88,213,0.25)' },
+  VP:  { bg: '#fcddc3', fg: '#e38a1f', orbEdge: 'rgba(227,138,31,0.26)' },
+};
+const CHARCOAL = '#2D3443';
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', () => {
+  const savedKey = localStorage.getItem('compass_anthropic_key');
+  if (savedKey) document.getElementById('apiKey').value = savedKey;
+  document.getElementById('apiKey').addEventListener('change', e => {
+    localStorage.setItem('compass_anthropic_key', e.target.value);
+  });
+  document.getElementById('seasonalMode').addEventListener('change', e => {
+    document.getElementById('seasonalField').style.display = e.target.checked ? 'block' : 'none';
+  });
+  document.getElementById('seasonalTheme').addEventListener('change', e => {
+    document.getElementById('seasonalCustomField').style.display = e.target.value === 'custom' ? 'block' : 'none';
+  });
+  loadExistingIcons();
+});
+
+function selectType(type) {
+  selectedType = type;
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+}
+
+// ── Claude SVG Generation ──
+function buildPrompt(description, kpiName, seasonal) {
+  const t = TREATMENTS[selectedType];
+  let seasonalHint = '';
+  if (seasonal) {
+    seasonalHint = `\n\nThis is a SEASONAL/PROMOTIONAL variant with theme: "${seasonal}". Add a small, tasteful seasonal element (e.g., a tiny snowflake, leaf, heart, pumpkin) as an additional accent — but keep it subtle and professional. The seasonal element should use the accent color.`;
+  }
+
+  return `You are an expert SVG icon designer for a mobile app called Compass KPI. You create icons that match an exact visual style system. Study the examples below carefully — your output must be indistinguishable from them.
+
+STYLE RULES — follow these precisely:
+1. Canvas: 64×64 SVG viewBox. No background — just the icon shapes.
+2. TWO COLORS ONLY:
+   - PRIMARY: ${CHARCOAL} — the main icon shape. Bold rounded strokes: stroke-width="3.5", stroke-linecap="round", stroke-linejoin="round". Use fill="none" for outlines.
+   - SECONDARY: ${t.fg} — ONE small accent: a checkmark, dot, arc, small filled circle, or short stroke. Roughly 10-20% of the icon area. Adds brand color pop.
+3. Shapes are BOLD and SIMPLE. Think: 1-2 main stroked paths forming a recognizable silhouette, plus 1 small accent element. That's it.
+4. NO thin lines, no fine detail, no dashes, no complex curves. Everything must read clearly at 40px.
+5. Fill is used ONLY for small accent shapes (dots, circles). The main icon shape is always stroke-only with fill="none".
+6. Center the icon in the viewBox. Use coordinates roughly 12-52 (leaving ~12px margin on each side for the orb padding).
+7. Maximum 4 elements total. Fewer is better.
+8. Rounded corners on everything — use rx on rects, round stroke-linecap/linejoin everywhere.
+
+REFERENCE EXAMPLES — match this exact style:
+
+Example 1 — Phone Call (PC type, accent ${selectedType === 'PC' ? t.fg : '#2f9f56'}):
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <path d="M24 40 C24 40 18 36 16 28 C14 20 18 16 22 14 L26 18 L24 24 C24 24 30 28 34 32 L40 30 L44 34 C44 34 42 40 34 42 C28 44 24 40 24 40Z" fill="none" stroke="${CHARCOAL}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M38 14 C42 16 44 20 44 20" fill="none" stroke="${selectedType === 'PC' ? t.fg : '#2f9f56'}" stroke-width="3.5" stroke-linecap="round"/>
+</svg>
+
+Example 2 — Price Tag (GP type, accent ${selectedType === 'GP' ? t.fg : '#2158d5'}):
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <path d="M20 16 L38 16 L50 28 L32 48 L14 28 Z" fill="none" stroke="${CHARCOAL}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="28" cy="26" r="2" fill="${CHARCOAL}"/>
+  <circle cx="38" cy="38" r="3" fill="${selectedType === 'GP' ? t.fg : '#2158d5'}"/>
+</svg>
+
+Example 3 — Water Drop (VP type, accent ${selectedType === 'VP' ? t.fg : '#e38a1f'}):
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <path d="M32 12 C32 12 18 30 18 40 C18 48 24 54 32 54 C40 54 46 48 46 40 C46 30 32 12 32 12Z" fill="none" stroke="${CHARCOAL}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M30 38 C31 42 34 43 36 40" fill="none" stroke="${selectedType === 'VP' ? t.fg : '#e38a1f'}" stroke-width="3" stroke-linecap="round"/>
+</svg>
+${seasonalHint}
+
+WHAT TO DRAW:
+KPI Name: "${kpiName || 'unnamed'}"
+Description: "${description}"
+Type: ${selectedType} (${selectedType === 'PC' ? 'Projections/Production — business development activities' : selectedType === 'GP' ? 'Growth — business improvement & learning' : 'Vitality — personal wellness & balance'})
+
+Return ONLY the <svg>...</svg> tag. No explanation, no markdown, no wrapping.`;
+}
+
+async function callClaude(prompt) {
+  const apiKey = document.getElementById('apiKey').value.trim();
+
+  // Use backend proxy to avoid CORS — server uses its own env key if apiKey is blank
+  const res = await fetch('/admin/kpi-forge/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, apiKey: apiKey || undefined }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || 'Generation failed');
+  }
+
+  const data = await res.json();
+  return data.svg;
+}
+
+function getSeasonalTheme() {
+  if (!document.getElementById('seasonalMode').checked) return null;
+  const theme = document.getElementById('seasonalTheme').value;
+  if (theme === 'custom') return document.getElementById('seasonalCustom').value || 'custom';
+  return theme;
+}
+
+async function generate() {
+  const desc = document.getElementById('description').value.trim();
+  const name = document.getElementById('kpiName').value.trim();
+  if (!desc) { setStatus('Please describe the icon first.', 'error'); return; }
+
+  setStatus('Generating icon with Claude...', 'generating');
+  document.getElementById('generateBtn').disabled = true;
+
+  try {
+    const prompt = buildPrompt(desc, name, getSeasonalTheme());
+    const svgRaw = await callClaude(prompt);
+    currentSvg = cleanSvg(svgRaw);
+    renderPreviews(currentSvg);
+    addToHistory(currentSvg, selectedType, name || desc.slice(0, 30));
+    setStatus('Icon generated! Preview all treatments below.', 'success');
+    document.getElementById('refineBtn').disabled = false;
+    document.getElementById('saveBar').classList.add('visible');
+    document.getElementById('saveName').value = name;
+    document.getElementById('saveType').value = selectedType;
+  } catch (err) {
+    setStatus(err.message, 'error');
+  } finally {
+    document.getElementById('generateBtn').disabled = false;
+  }
+}
+
+async function refine() {
+  const refinement = document.getElementById('refinement').value.trim();
+  if (!refinement || !currentSvg) return;
+
+  setStatus('Refining icon...', 'generating');
+  document.getElementById('refineBtn').disabled = true;
+
+  try {
+    const t = TREATMENTS[selectedType];
+    const prompt = `You previously generated this SVG icon:\n\n${currentSvg}\n\nThe user wants this refinement: "${refinement}"\n\nIMPORTANT STYLE RULES (must maintain):\n- Main shapes: stroke-only in ${CHARCOAL}, stroke-width="3.5", stroke-linecap="round", stroke-linejoin="round", fill="none"\n- ONE accent color: ${t.fg} — small element only (dot, arc, checkmark). 10-20% of icon area.\n- Bold, simple, recognizable at 40px. No thin lines, no dashes, no fine detail.\n- 64×64 viewBox, centered with ~12px margin on each side\n- Maximum 4 elements total\n\nReturn ONLY the updated <svg>...</svg> tag. No explanation.`;
+    const svgRaw = await callClaude(prompt);
+    currentSvg = cleanSvg(svgRaw);
+    renderPreviews(currentSvg);
+    const name = document.getElementById('kpiName').value.trim() || 'refined';
+    addToHistory(currentSvg, selectedType, name);
+    setStatus('Refinement applied!', 'success');
+  } catch (err) {
+    setStatus(err.message, 'error');
+  } finally {
+    document.getElementById('refineBtn').disabled = false;
+  }
+}
+
+function cleanSvg(raw) {
+  let svg = raw.trim();
+  // Strip markdown fences if present
+  svg = svg.replace(/^```(?:xml|svg)?\s*/i, '').replace(/\s*```$/i, '');
+  // Ensure it starts with <svg
+  const svgStart = svg.indexOf('<svg');
+  if (svgStart > 0) svg = svg.slice(svgStart);
+  const svgEnd = svg.lastIndexOf('</svg>');
+  if (svgEnd > 0) svg = svg.slice(0, svgEnd + 6);
+  return svg;
+}
+
+// ── Rendering ──
+function renderPreviews(svg) {
+  document.getElementById('previewGrid').style.display = 'flex';
+  document.getElementById('svgCodePanel').style.display = 'block';
+  document.getElementById('svgCode').textContent = svg;
+
+  for (const [type, t] of Object.entries(TREATMENTS)) {
+    renderOrb(`orb${type}`, svg, t, 96);
+    renderOrb(`orb${type}_sm`, svg, t, 56);
+    renderOrb(`orb${type}_xs`, svg, t, 40);
+  }
+}
+
+function renderOrb(elementId, svg, treatment, size) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  // Frosted orb — soft pastel wash matched to Figma originals
+  const orbBg = `radial-gradient(circle at 42% 38%, #ffffff 0%, ${treatment.bg} 72%, ${treatment.orbEdge} 100%)`;
+  el.style.background = orbBg;
+  el.style.width = size + 'px';
+  el.style.height = size + 'px';
+  el.style.borderRadius = '50%';
+  el.style.boxShadow = `0 ${size*0.04}px ${size*0.2}px rgba(0,0,0,0.12)`;
+
+  // Recolor SVG: main stays charcoal, accent gets this treatment's color
+  const recolored = recolorSvgForTreatment(svg, treatment);
+  const iconSize = Math.round(size * 0.68);
+  el.innerHTML = `<div style="width:${iconSize}px;height:${iconSize}px;display:flex;align-items:center;justify-content:center;">${recolored}</div>`;
+  // Make inner SVG fill container
+  const innerSvg = el.querySelector('svg');
+  if (innerSvg) { innerSvg.style.width = '100%'; innerSvg.style.height = '100%'; }
+}
+
+function recolorSvgForTreatment(svg, treatment) {
+  // The SVG from Claude should use CHARCOAL and the selected type's accent color.
+  // When previewing in other treatments, swap the accent color.
+  const origFg = TREATMENTS[selectedType].fg;
+  if (origFg === treatment.fg) return svg;
+  // Replace the original accent color with the new treatment's accent
+  return svg.replaceAll(origFg, treatment.fg);
+}
+
+// ── History ──
+function addToHistory(svg, type, label) {
+  history.unshift({ svg, type, label, time: Date.now() });
+  if (history.length > 20) history.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  const section = document.getElementById('historySection');
+  const grid = document.getElementById('historyGrid');
+  section.style.display = 'block';
+  grid.innerHTML = '';
+  for (const item of history) {
+    const t = TREATMENTS[item.type];
+    const el = document.createElement('div');
+    el.className = 'history-item';
+    el.title = item.label;
+    el.style.background = `radial-gradient(circle at 40% 35%, #ffffff 0%, ${t.bg} 70%, ${t.orbEdge} 100%)`;
+    el.innerHTML = item.svg;
+    el.onclick = () => {
+      currentSvg = item.svg;
+      selectedType = item.type;
+      document.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === item.type));
+      renderPreviews(item.svg);
+      document.getElementById('saveBar').classList.add('visible');
+      document.getElementById('saveName').value = item.label;
+      document.getElementById('saveType').value = item.type;
+      document.getElementById('refineBtn').disabled = false;
+      setStatus(`Loaded "${item.label}" from history.`, 'success');
+    };
+    grid.appendChild(el);
+  }
+}
+
+// ── Existing Icons (Dedup) ──
+async function loadExistingIcons() {
+  try {
+    const res = await fetch('/admin/kpi-forge/existing-icons');
+    if (res.ok) {
+      existingIcons = await res.json();
+      renderDedup('all');
+    }
+  } catch (e) { /* silent — dedup is optional */ }
+}
+
+function filterDedup(filter) {
+  document.querySelectorAll('.dedup-filter button').forEach(b => b.classList.toggle('active', b.dataset.filter === filter));
+  renderDedup(filter);
+}
+
+function renderDedup(filter) {
+  const grid = document.getElementById('dedupGrid');
+  const icons = filter === 'all' ? existingIcons : existingIcons.filter(i => i.type === filter);
+  grid.innerHTML = icons.map(i => `
+    <div class="dedup-item" title="${i.name}">
+      <img src="${i.src}" alt="${i.name}">
+      <span class="name">${i.label}</span>
+    </div>
+  `).join('');
+}
+
+// ── Save / Export ──
+function downloadSvg() {
+  if (!currentSvg) return;
+  const blob = new Blob([currentSvg], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const name = (document.getElementById('saveName').value || 'kpi_icon').replace(/\s+/g, '_').toLowerCase();
+  a.download = `${name}.svg`;
+  a.href = url;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function downloadPng() {
+  if (!currentSvg) return;
+  const type = document.getElementById('saveType').value;
+  const t = TREATMENTS[type];
+  const size = 256; // High-res export
+
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  // Frosted orb — soft pastel wash matched to Figma originals
+  const grad = ctx.createRadialGradient(size*0.42, size*0.38, 0, size/2, size/2, size/2);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.72, t.bg);
+  grad.addColorStop(1, t.orbEdge);
+  ctx.beginPath();
+  ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Draw shadow
+  ctx.shadowColor = 'rgba(0,0,0,0.15)';
+  ctx.shadowBlur = size * 0.08;
+  ctx.shadowOffsetY = size * 0.02;
+
+  // Draw SVG icon
+  const svgBlob = new Blob([currentSvg], { type: 'image/svg+xml' });
+  const svgUrl = URL.createObjectURL(svgBlob);
+  const img = new Image();
+  img.onload = () => {
+    const iconSize = size * 0.68;
+    const offset = (size - iconSize) / 2;
+    ctx.drawImage(img, offset, offset, iconSize, iconSize);
+    URL.revokeObjectURL(svgUrl);
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const name = (document.getElementById('saveName').value || 'kpi_icon').replace(/\s+/g, '_').toLowerCase();
+      a.download = `${name}.png`;
+      a.href = url;
+      a.click();
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  };
+  img.src = svgUrl;
+}
+
+async function saveKpi() {
+  const name = document.getElementById('saveName').value.trim();
+  const type = document.getElementById('saveType').value;
+  if (!name) { document.getElementById('saveStatus').textContent = 'Name is required.'; return; }
+  if (!currentSvg) { document.getElementById('saveStatus').textContent = 'No icon to save.'; return; }
+
+  const slug = name.toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  document.getElementById('saveStatus').textContent = 'Saving...';
+
+  try {
+    // Save SVG to backend storage
+    const saveRes = await fetch('/admin/kpi-forge/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, slug, type, svg: currentSvg, seasonal: getSeasonalTheme() }),
+    });
+    if (!saveRes.ok) {
+      const err = await saveRes.json().catch(() => ({}));
+      throw new Error(err.error || 'Save failed');
+    }
+    const result = await saveRes.json();
+    document.getElementById('saveStatus').textContent = `Saved! KPI ID: ${result.kpi?.id || 'pending'}. Icon file: ${result.iconFile}`;
+    document.getElementById('saveStatus').style.color = 'var(--pc-fg)';
+  } catch (err) {
+    document.getElementById('saveStatus').textContent = err.message;
+    document.getElementById('saveStatus').style.color = '#f85149';
+  }
+}
+
+// ── Utility ──
+function setStatus(msg, cls) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status-bar' + (cls ? ' ' + cls : '');
+}
+</script>
+</body>
+</html>
