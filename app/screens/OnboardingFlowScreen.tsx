@@ -124,15 +124,6 @@ const KPI_CATALOG: {
     pcWeightPercent: 0.001,
   },
   {
-    key: 'listing_taken',
-    title: 'Listing Taken',
-    description: 'New listings secured',
-    recommended: true,
-    tier: 'core',
-    type: 'PC',
-    pcWeightPercent: 0.07,
-  },
-  {
     key: 'buyer_contract_signed',
     title: 'Buyer Contract Signed',
     description: 'Buyer agency agreements signed',
@@ -685,13 +676,13 @@ export default function OnboardingFlowScreen({ onBack, onComplete, onAlreadyHave
   const [selectedKpis, setSelectedKpis] = useState<KpiKey[]>([
     'sphere_call',
     'appointment_set_buyer',
-    'listing_taken',
+    'buyer_contract_signed',
   ]);
   const [showFullCatalog, setShowFullCatalog] = useState(false);
   const [kpiInputs, setKpiInputs] = useState<Record<KpiKey, KpiInputState>>({
     sphere_call: { historicalWeeklyAverage: 25, targetWeeklyCount: 30 },
     appointment_set_buyer: { historicalWeeklyAverage: 8, targetWeeklyCount: 10 },
-    listing_taken: { historicalWeeklyAverage: 3, targetWeeklyCount: 4 },
+    buyer_contract_signed: { historicalWeeklyAverage: 2, targetWeeklyCount: 3 },
   });
   const [teamMode, setTeamMode] = useState<TeamMode>('solo');
   const [teamCode, setTeamCode] = useState('');

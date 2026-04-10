@@ -3959,6 +3959,37 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
     }
     const progressByLesson = new Map(progressRows.map((p) => [String(p.lesson_id), p]));
 
+    // Join coaching_media_assets.lesson_id → lessons.id so coach portal (and admin tree) get per-lesson media
+    const mediaByLesson = new Map<string, Array<Record<string, unknown>>>();
+    if (lessonIds.length > 0) {
+      const { data: mediaLinkedRows } = await dataClient
+        .from("coaching_media_assets")
+        .select("media_id,lesson_id,filename,content_type,provider,playback_id,playback_ready,processing_status")
+        .in("lesson_id", lessonIds)
+        .not("processing_status", "eq", "deleted");
+      for (const row of mediaLinkedRows ?? []) {
+        const lessonId = String((row as { lesson_id?: unknown }).lesson_id ?? "");
+        if (!lessonId) continue;
+        const contentType = String((row as { content_type?: unknown }).content_type ?? "").toLowerCase();
+        const provider = String((row as { provider?: unknown }).provider ?? "mux");
+        const playbackId = String((row as { playback_id?: unknown }).playback_id ?? "");
+        const asset = {
+          media_id: String((row as { media_id?: unknown }).media_id ?? ""),
+          filename: String((row as { filename?: unknown }).filename ?? ""),
+          content_type: contentType,
+          category: contentType.startsWith("video/") ? "Video" : contentType.startsWith("image/") ? "Image" : "Resource",
+          provider,
+          playback_id: provider === "mux" ? playbackId || null : null,
+          file_url: provider === "supabase_storage" ? playbackId || null : null,
+          playback_ready: Boolean((row as { playback_ready?: unknown }).playback_ready),
+          processing_status: String((row as { processing_status?: unknown }).processing_status ?? "unknown"),
+        };
+        const arr = mediaByLesson.get(lessonId) ?? [];
+        arr.push(asset);
+        mediaByLesson.set(lessonId, arr);
+      }
+    }
+
     // Fetch media assets linked to this journey for thumbnails
     const journeyCreatedBy = String((journey as { created_by?: unknown }).created_by ?? "");
     let assetsByMediaId = new Map<string, { playback_id: string | null; filename: string }>();
@@ -3981,6 +4012,7 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
       sort_order: number;
       progress_status: string;
       completed_at: string | null;
+      media: Array<Record<string, unknown>>;
     }>>();
     for (const lesson of lessons) {
       const progress = progressByLesson.get(String(lesson.id));
@@ -3992,6 +4024,7 @@ app.get("/api/coaching/journeys/:id", async (req, res) => {
         sort_order: lesson.sort_order,
         progress_status: progress?.status ?? "not_started",
         completed_at: progress?.completed_at ?? null,
+        media: mediaByLesson.get(String(lesson.id)) ?? [],
       });
       lessonsByMilestone.set(String(lesson.milestone_id), arr);
     }
@@ -5049,7 +5082,7 @@ app.get("/api/coaching/library/assets", async (req, res) => {
 
     let assetQuery = dataClient
       .from("coaching_media_assets")
-      .select("media_id,org_id,owner_user_id,journey_id,filename,content_type,created_at,updated_at,processing_status,playback_id,playback_ready")
+      .select("media_id,org_id,owner_user_id,journey_id,lesson_id,filename,content_type,created_at,updated_at,processing_status,playback_id,playback_ready")
       .not("processing_status", "eq", "deleted")
       .order("created_at", { ascending: false })
       .limit(500);
@@ -5076,6 +5109,79 @@ app.get("/api/coaching/library/assets", async (req, res) => {
           .filter(Boolean)
       )
     );
+    const linkedTaskIds = Array.from(
+      new Set(
+        (assetRows ?? [])
+          .map((row) => String((row as { lesson_id?: unknown }).lesson_id ?? ""))
+          .filter(Boolean)
+      )
+    );
+
+    // Resolve attachment context: task → milestone (UI "lesson") → journey
+    type AttachmentContext = {
+      task_id: string;
+      task_title: string;
+      milestone_id: string;
+      milestone_title: string;
+      journey_id: string;
+      journey_title: string;
+    };
+    const attachmentByTaskId = new Map<string, AttachmentContext>();
+    if (linkedTaskIds.length > 0) {
+      const { data: taskRows } = await dataClient
+        .from("lessons")
+        .select("id,title,milestone_id")
+        .in("id", linkedTaskIds);
+      const taskList = (taskRows ?? []) as Array<Record<string, unknown>>;
+      const milestoneIds = Array.from(
+        new Set(taskList.map((t) => String(t.milestone_id ?? "")).filter(Boolean))
+      );
+      let milestoneById = new Map<string, { title: string; journey_id: string }>();
+      if (milestoneIds.length > 0) {
+        const { data: msRows } = await dataClient
+          .from("milestones")
+          .select("id,title,journey_id")
+          .in("id", milestoneIds);
+        milestoneById = new Map(
+          (msRows ?? []).map((m) => [
+            String((m as Record<string, unknown>).id ?? ""),
+            {
+              title: String((m as Record<string, unknown>).title ?? ""),
+              journey_id: String((m as Record<string, unknown>).journey_id ?? ""),
+            },
+          ])
+        );
+      }
+      const attachmentJourneyIds = Array.from(
+        new Set(Array.from(milestoneById.values()).map((m) => m.journey_id).filter(Boolean))
+      );
+      let attachmentJourneyTitleById = new Map<string, string>();
+      if (attachmentJourneyIds.length > 0) {
+        const { data: jRows } = await dataClient
+          .from("journeys")
+          .select("id,title")
+          .in("id", attachmentJourneyIds);
+        attachmentJourneyTitleById = new Map(
+          (jRows ?? []).map((j) => [
+            String((j as Record<string, unknown>).id ?? ""),
+            String((j as Record<string, unknown>).title ?? ""),
+          ])
+        );
+      }
+      for (const t of taskList) {
+        const taskId = String(t.id ?? "");
+        const milestoneId = String(t.milestone_id ?? "");
+        const ms = milestoneById.get(milestoneId);
+        attachmentByTaskId.set(taskId, {
+          task_id: taskId,
+          task_title: String(t.title ?? "Untitled task"),
+          milestone_id: milestoneId,
+          milestone_title: ms?.title ?? "Untitled lesson",
+          journey_id: ms?.journey_id ?? "",
+          journey_title: (ms?.journey_id && attachmentJourneyTitleById.get(ms.journey_id)) || "Untitled journey",
+        });
+      }
+    }
 
     let journeyById = new Map<string, { team_id: string | null; title: string | null }>();
     if (journeyIds.length > 0) {
@@ -5147,6 +5253,8 @@ app.get("/api/coaching/library/assets", async (req, res) => {
         const ownership_scope = isMine ? "mine" : inTeamScope ? "team" : "global";
         const playbackId = String((row as { playback_id?: unknown }).playback_id ?? "").trim() || null;
         const playbackReady = Boolean((row as { playback_ready?: unknown }).playback_ready);
+        const linkedLessonId = String((row as { lesson_id?: unknown }).lesson_id ?? "") || null;
+        const attachment = linkedLessonId ? attachmentByTaskId.get(linkedLessonId) ?? null : null;
         return {
           id: mediaId,
           title: filename || `Asset ${mediaId.slice(0, 8)}`,
@@ -5161,6 +5269,8 @@ app.get("/api/coaching/library/assets", async (req, res) => {
           requested_scope: scope,
           source_journey_id: journeyId || null,
           source_journey_title: journeyScope?.title ?? null,
+          linked_lesson_id: linkedLessonId,
+          linked_attachment: attachment,
           content_type: contentType || null,
           processing_status: String((row as { processing_status?: unknown }).processing_status ?? "unknown"),
           playback_id: playbackId,
@@ -15065,6 +15175,9 @@ async function getCoachingAccessContext(
 }
 
 function canReadJourneyByTeam(access: CoachingAccessContext, teamId: string | null, orgId: string | null = null): boolean {
+  // Platform admins (admin / super_admin) can read any journey regardless of org tenancy.
+  // Writes still require the x-coach-elevated-edit header via canAuthorGlobal.
+  if (access.platformAdmin) return true;
   const orgAllowed = !access.tenancyEnabled || !orgId || access.allowedOrgIds.has(orgId);
   if (teamId && (access.leaderTeamIds.has(teamId) || access.memberTeamIds.has(teamId))) return true;
   if (!orgAllowed) return false;
@@ -16020,6 +16133,11 @@ const FORGE_SVG_DIR = path.resolve(__dirname, "../../app/assets/figma/kpi_icon_b
 app.get("/admin/portal", (_req, res) => {
   res.sendFile(path.resolve(__dirname, "../public/admin.html"));
 });
+app.get("/coach", (_req, res) => {
+  res.sendFile(path.resolve(__dirname, "../public/coach.html"));
+});
+// Serve admin static assets (projection engine bundle, etc.)
+app.use("/js", express.static(path.resolve(__dirname, "../public/js")));
 
 // ── Admin Coaching Overview ──
 app.get("/admin/coaching/journeys", async (req, res) => {
@@ -16067,6 +16185,22 @@ app.get("/admin/coaching/journeys", async (req, res) => {
       enrollmentsByJourney.get(jid)!.push(e);
     }
 
+    // Resolve creator display names + coach flag
+    const creatorIds = Array.from(new Set((journeys ?? []).map((j: any) => String(j.created_by ?? "")).filter(Boolean)));
+    const creatorById = new Map<string, { full_name: string; is_coach: boolean }>();
+    if (creatorIds.length > 0) {
+      const { data: creators } = await dataClient
+        .from("users")
+        .select("id,full_name,is_coach")
+        .in("id", creatorIds);
+      for (const c of creators ?? []) {
+        creatorById.set(String((c as any).id), {
+          full_name: String((c as any).full_name ?? ""),
+          is_coach: Boolean((c as any).is_coach),
+        });
+      }
+    }
+
     const enriched = (journeys ?? []).map((j: any) => {
       const jMilestones = milestonesByJourney.get(j.id) || [];
       let lessonCount = 0;
@@ -16074,8 +16208,11 @@ app.get("/admin/coaching/journeys", async (req, res) => {
         lessonCount += (lessonsByMilestone.get(m.id) || []).length;
       }
       const jEnrollments = enrollmentsByJourney.get(j.id) || [];
+      const creator = creatorById.get(String(j.created_by ?? ""));
       return {
         ...j,
+        creator_name: creator?.full_name || null,
+        creator_is_coach: creator?.is_coach || false,
         milestone_count: jMilestones.length,
         lesson_count: lessonCount,
         enrollment_count: jEnrollments.length,
@@ -16083,9 +16220,157 @@ app.get("/admin/coaching/journeys", async (req, res) => {
       };
     });
 
-    return res.json({ journeys: enriched });
+    // Also return list of coaches (for filter dropdown)
+    const { data: allCoaches } = await dataClient
+      .from("users")
+      .select("id,full_name")
+      .eq("is_coach", true)
+      .order("full_name", { ascending: true });
+
+    return res.json({
+      journeys: enriched,
+      coaches: (allCoaches ?? []).map((c: any) => ({ id: String(c.id), full_name: String(c.full_name ?? "") })),
+    });
   } catch (err) {
     console.error("Error in GET /admin/coaching/journeys", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/* ── GET /admin/coaching/journeys/:id ── Full detail bypassing scope checks (platform admin only) */
+app.get("/admin/coaching/journeys/:id", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(401).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    const platformAdmin = await isPlatformAdmin(auth.user.id);
+    if (!platformAdmin) return res.status(403).json({ error: "Admin only" });
+
+    const journeyId = req.params.id;
+    if (!journeyId) return res.status(422).json({ error: "journey id is required" });
+
+    const { data: journey, error: journeyError } = await dataClient
+      .from("journeys")
+      .select("id,title,description,team_id,org_id,created_by,is_active,status,created_at,updated_at")
+      .eq("id", journeyId)
+      .single();
+    if (journeyError || !journey) return res.status(404).json({ error: "Journey not found" });
+
+    const { data: milestones } = await dataClient
+      .from("milestones")
+      .select("id,journey_id,title,sort_order,release_strategy,release_date")
+      .eq("journey_id", journeyId)
+      .order("sort_order", { ascending: true });
+
+    const milestoneIds = (milestones ?? []).map((m: { id: unknown }) => String(m.id));
+    type LessonRow = { id: string; milestone_id: string; title: string; body: string | null; sort_order: number };
+    type LessonWithMedia = LessonRow & { media: Array<Record<string, unknown>> };
+    let lessons: LessonRow[] = [];
+    if (milestoneIds.length > 0) {
+      const { data: lessonRows } = await dataClient
+        .from("lessons")
+        .select("id,milestone_id,title,body,sort_order")
+        .eq("is_active", true)
+        .in("milestone_id", milestoneIds)
+        .order("sort_order", { ascending: true });
+      lessons = (lessonRows ?? []) as LessonRow[];
+    }
+
+    // Join coaching_media_assets by lesson_id so the admin tree can render thumbnails
+    const lessonIds = lessons.map((l) => String(l.id));
+    const mediaByLesson = new Map<string, Array<Record<string, unknown>>>();
+    if (lessonIds.length > 0) {
+      const { data: mediaRows } = await dataClient
+        .from("coaching_media_assets")
+        .select("media_id,lesson_id,filename,content_type,provider,playback_id,playback_ready,processing_status")
+        .in("lesson_id", lessonIds)
+        .not("processing_status", "eq", "deleted");
+      for (const row of mediaRows ?? []) {
+        const lessonId = String((row as { lesson_id?: unknown }).lesson_id ?? "");
+        if (!lessonId) continue;
+        const contentType = String((row as { content_type?: unknown }).content_type ?? "").toLowerCase();
+        const provider = String((row as { provider?: unknown }).provider ?? "mux");
+        const playbackId = String((row as { playback_id?: unknown }).playback_id ?? "");
+        const asset = {
+          media_id: String((row as { media_id?: unknown }).media_id ?? ""),
+          filename: String((row as { filename?: unknown }).filename ?? ""),
+          content_type: contentType,
+          category: contentType.startsWith("video/") ? "Video" : contentType.startsWith("image/") ? "Image" : "Resource",
+          provider,
+          playback_id: provider === "mux" ? playbackId || null : null,
+          file_url: provider === "supabase_storage" ? playbackId || null : null,
+          playback_ready: Boolean((row as { playback_ready?: unknown }).playback_ready),
+          processing_status: String((row as { processing_status?: unknown }).processing_status ?? "unknown"),
+        };
+        const arr = mediaByLesson.get(lessonId) ?? [];
+        arr.push(asset);
+        mediaByLesson.set(lessonId, arr);
+      }
+    }
+
+    const lessonsWithMedia: LessonWithMedia[] = lessons.map((l) => ({
+      ...l,
+      media: mediaByLesson.get(String(l.id)) ?? [],
+    }));
+
+    const lessonsByMilestone = new Map<string, LessonWithMedia[]>();
+    for (const lesson of lessonsWithMedia) {
+      const key = String(lesson.milestone_id);
+      const arr = lessonsByMilestone.get(key) ?? [];
+      arr.push(lesson);
+      lessonsByMilestone.set(key, arr);
+    }
+
+    return res.json({
+      journey,
+      milestones: (milestones ?? []).map((m: { id: unknown }) => ({
+        ...(m as Record<string, unknown>),
+        lessons: lessonsByMilestone.get(String(m.id)) ?? [],
+      })),
+    });
+  } catch (err) {
+    console.error("Error in GET /admin/coaching/journeys/:id", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/* ── GET /admin/coaching/journeys/:id/enrollments ── */
+app.get("/admin/coaching/journeys/:id/enrollments", async (req, res) => {
+  try {
+    const auth = await authenticateRequest(req.headers.authorization);
+    if (!auth.ok) return res.status(401).json({ error: auth.error });
+    if (!dataClient) return res.status(500).json({ error: "Supabase data client not configured" });
+    const platformAdmin = await isPlatformAdmin(auth.user.id);
+    if (!platformAdmin) return res.status(403).json({ error: "Admin only" });
+    const journeyId = req.params.id;
+    const { data: enrollments, error } = await dataClient
+      .from("journey_enrollments")
+      .select("id,journey_id,user_id,status,created_at")
+      .eq("journey_id", journeyId);
+    if (error) return res.status(500).json({ error: "Failed to fetch enrollments" });
+    // Resolve user display names
+    const userIds = (enrollments ?? []).map((e: { user_id: unknown }) => String(e.user_id));
+    let userMap = new Map<string, { email: string; display_name: string }>();
+    if (userIds.length > 0) {
+      const { data: users } = await dataClient
+        .from("users")
+        .select("id,email,display_name")
+        .in("id", userIds);
+      for (const u of users ?? []) {
+        userMap.set(String(u.id), { email: String((u as { email?: unknown }).email ?? ""), display_name: String((u as { display_name?: unknown }).display_name ?? "") });
+      }
+    }
+    const enriched = (enrollments ?? []).map((e: { id: unknown; user_id: unknown; status: unknown; created_at: unknown }) => ({
+      id: e.id,
+      user_id: String(e.user_id),
+      status: String(e.status ?? "active"),
+      created_at: e.created_at,
+      email: userMap.get(String(e.user_id))?.email ?? "",
+      display_name: userMap.get(String(e.user_id))?.display_name ?? "",
+    }));
+    return res.json({ enrollments: enriched });
+  } catch (err) {
+    console.error("Error in GET /admin/coaching/journeys/:id/enrollments", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

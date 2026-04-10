@@ -251,6 +251,7 @@ import {
   PIPELINE_CHECKIN_SESSION_DISMISSED_DAYS,
   PIPELINE_CHECKIN_DISMISS_KEY_PREFIX,
   MAX_KPIS_PER_TYPE,
+  DEPRECATED_KPI_SLUGS,
   UUID_LIKE_RE,
   SELF_PROFILE_DRAWER_ID,
   dashboardAssets,
@@ -1484,9 +1485,14 @@ export default function KPIDashboardScreen({
   const allSelectableKpis = useMemo(
     () =>
       sortSelectableKpis(
-        (payload?.loggable_kpis ?? []).filter(
-          (kpi) => kpi.type === 'PC' || kpi.type === 'GP' || kpi.type === 'VP'
-        )
+        (payload?.loggable_kpis ?? []).filter((kpi) => {
+          if (kpi.type !== 'PC' && kpi.type !== 'GP' && kpi.type !== 'VP') return false;
+          // Drop retired KPIs that the backend still returns. Source of truth:
+          // DEPRECATED_KPI_SLUGS in ./kpi-dashboard/constants.ts.
+          const slug = String((kpi as { slug?: string }).slug ?? '').trim().toLowerCase();
+          if (slug && DEPRECATED_KPI_SLUGS.has(slug)) return false;
+          return true;
+        })
       ),
     [payload?.loggable_kpis]
   );
@@ -2780,6 +2786,62 @@ export default function KPIDashboardScreen({
     });
   };
 
+  /**
+   * Reorder the selected (managed) KPIs within a single type. The picker's
+   * draggable "Selected" row calls this with the new left→right order for
+   * that type. We preserve positions of other types' selected KPIs and also
+   * propagate the new order into favoriteKpiIds so the main log grid's
+   * priority ranking respects the drag order.
+   */
+  const reorderManagedKpiType = useCallback(
+    (type: 'PC' | 'GP' | 'VP', newTypeOrder: string[]) => {
+      setManagedKpiIds((prev) => {
+        const kpiById = new Map(allSelectableKpis.map((row) => [row.id, row]));
+        // Walk prev, each type-matching slot gets the next ID from newTypeOrder.
+        let typeCursor = 0;
+        const next = prev.map((id) => {
+          const kpi = kpiById.get(id);
+          if (kpi?.type === type) {
+            const nextId = newTypeOrder[typeCursor] ?? id;
+            typeCursor += 1;
+            return nextId;
+          }
+          return id;
+        });
+        // Deduplicate just in case caller produced a stale ID.
+        const seen = new Set<string>();
+        const deduped = next.filter((id) => {
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+
+        setFavoriteKpiIds((prevFav) => {
+          // Replace the type slice inside favoriteKpiIds with the newTypeOrder
+          // (but only those IDs that are already in prevFav — drag shouldn't
+          // promote non-favorites into favorites; they'll simply be
+          // unfavorited but still managed, same as before).
+          const favTypeOrder = newTypeOrder.filter((id) => prevFav.includes(id));
+          let favCursor = 0;
+          const nextFav = prevFav.map((id) => {
+            const kpi = kpiById.get(id);
+            if (kpi?.type === type) {
+              const nextId = favTypeOrder[favCursor] ?? id;
+              favCursor += 1;
+              return nextId;
+            }
+            return id;
+          });
+          void saveKpiPreferences(deduped, nextFav);
+          return nextFav;
+        });
+
+        return deduped;
+      });
+    },
+    [allSelectableKpis]
+  );
+
   const openAddNewDrawer = () => {
     setDrawerFilter(homePanel);
     setAddDrawerVisible(true);
@@ -3043,22 +3105,24 @@ export default function KPIDashboardScreen({
   const vpBoostActive = false;
 
   const drawerCatalogKpis = useMemo(() => {
+    // NOTE: This list is NOT filtered by drawerFilter — KpiAddDrawer handles
+    // its own filtering + sectioning so it can show multiple type groups in
+    // PRIORITY mode. Keep it sorted-by-type so the drawer's per-type grouping
+    // preserves the canonical order.
     const metric = (kpi: DashboardPayload['loggable_kpis'][number]) => {
       if (kpi.type === 'PC') return Number(kpi.pc_weight ?? 0) || 0;
       if (kpi.type === 'GP') return Number(kpi.gp_value ?? 0) || 0;
       if (kpi.type === 'VP') return Number(kpi.vp_value ?? 0) || 0;
       return 0;
     };
-    const ordered = [...allSelectableKpis].sort((a, b) => {
+    return [...allSelectableKpis].sort((a, b) => {
       const orderedDelta = compareKpisForSelectionOrder(a, b);
       if (orderedDelta !== 0) return orderedDelta;
       const metricDelta = metric(a) - metric(b);
       if (Math.abs(metricDelta) > 0.000001) return metricDelta;
       return 0;
     });
-    if (drawerFilter === 'Quick') return ordered;
-    return ordered.filter((kpi) => kpi.type === drawerFilter);
-  }, [allSelectableKpis, drawerFilter]);
+  }, [allSelectableKpis]);
 
   const logOtherCatalogKpis = useMemo(() => {
     if (logOtherFilter === 'All') return allSelectableKpis;
@@ -8317,15 +8381,17 @@ export default function KPIDashboardScreen({
         setDrawerFilter={setDrawerFilter}
         drawerCatalogKpis={drawerCatalogKpis}
         managedKpiIdSet={managedKpiIdSet}
+        managedKpiIdOrder={managedKpiIds}
         favoriteKpiIds={favoriteKpiIds}
         customKpiById={customKpiById}
         selectedCountsByType={selectedCountsByType}
+        todayCountById={todayCountById}
         gpUnlocked={gpUnlocked}
         vpUnlocked={vpUnlocked}
         canCreateCustomKpis={canCreateCustomKpis}
-        formatDrawerKpiMeta={formatDrawerKpiMeta}
         toggleManagedKpi={toggleManagedKpi}
         toggleFavoriteKpi={toggleFavoriteKpi}
+        reorderManagedKpiType={reorderManagedKpiType}
         openCreateCustomKpiModal={openCreateCustomKpiModal}
         openEditCustomKpiModal={openEditCustomKpiModal}
       />

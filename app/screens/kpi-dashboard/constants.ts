@@ -16,8 +16,18 @@ export const KPI_TYPE_SORT_ORDER: Record<'PC' | 'GP' | 'VP', number> = {
   GP: 1,
   VP: 2,
 };
-export const PC_PRIORITY_SLUG_ORDER = [
+/**
+ * Canonical KPI slugs that the client should treat as deleted even if the
+ * backend catalog still returns them. Use this when a KPI has been retired
+ * from the product but a proper backend deactivation migration hasn't run
+ * yet — filter it out of `allSelectableKpis` at the source so it disappears
+ * from every consumer (picker, challenges, logs, reports).
+ */
+export const DEPRECATED_KPI_SLUGS: ReadonlySet<string> = new Set([
   'listing_taken',
+]);
+
+export const PC_PRIORITY_SLUG_ORDER = [
   'buyer_contract_signed',
   'new_client_logged',
   'appointment_set_buyer',

@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Compass KPI — Admin</title>
 <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="/js/projection-engine.js"></script>
 <style>
   :root {
     --bg: #0D0F14; --surface: #1A1D26; --surface2: #22252f; --border: rgba(255,255,255,0.06);
@@ -221,11 +223,17 @@
   .release-badge.scheduled { background: rgba(33,88,213,0.15); color: var(--gp); }
 
   .tree-lessons { padding: 6px 0 2px 24px; }
-  .tree-lesson { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 6px; margin-bottom: 2px; cursor: pointer; transition: background 0.1s; }
+  .tree-lesson { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 6px; margin-bottom: 3px; cursor: pointer; transition: background 0.1s; min-height: 52px; }
   .tree-lesson:hover { background: rgba(255,255,255,0.03); }
   .tree-lesson.selected { background: rgba(201,168,76,0.08); }
   .tree-lesson .lesson-icon { font-size: 14px; color: var(--gp); }
-  .tree-lesson .lesson-title { font-size: 12px; flex: 1; }
+  .tree-lesson .lesson-thumb { width: 64px; height: 40px; border-radius: 4px; object-fit: cover; background: var(--bg); flex-shrink: 0; border: 1px solid rgba(255,255,255,0.06); }
+  .tree-lesson .lesson-thumb.placeholder { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 18px; }
+  .tree-lesson .lesson-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .tree-lesson .lesson-title { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tree-lesson .lesson-media-meta { font-size: 10px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tree-lesson .lesson-media-meta.muted { opacity: 0.6; }
+  .tree-lesson .lesson-media-meta i { font-size: 11px; }
   .tree-lesson .lesson-actions { display: none; gap: 4px; }
   .tree-lesson:hover .lesson-actions { display: flex; }
   .tree-lesson .task-count { font-size: 10px; color: var(--muted); }
@@ -277,7 +285,8 @@
   .media-card { border-radius: 8px; border: 1px solid var(--border); overflow: hidden; cursor: pointer; transition: all 0.15s; background: var(--bg); }
   .media-card:hover { border-color: rgba(255,255,255,0.15); }
   .media-card.selected { border-color: var(--accent); }
-  .media-card .media-thumb { width: 100%; aspect-ratio: 16/9; background: var(--surface2); display: flex; align-items: center; justify-content: center; }
+  .media-card .media-thumb { width: 100%; aspect-ratio: 16/9; background: var(--surface2); display: flex; align-items: center; justify-content: center; object-fit: cover; }
+  img.media-thumb { display: block; object-fit: cover; }
   .media-card .media-thumb i { font-size: 24px; color: var(--muted); }
   .media-card .media-info { padding: 6px 8px; }
   .media-card .media-name { font-size: 10px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -566,36 +575,173 @@
 
       <!-- ════ Panel: Projection Lab ════ -->
       <div class="panel" id="panel-projection-lab" style="display:none;">
-        <div class="table-toolbar">
-          <span style="font-size:12px;font-weight:600;color:var(--text);">PC Algorithm Parameters</span>
-          <span style="font-size:11px;color:var(--muted);margin-left:8px;">How each KPI contributes to projected GCI</span>
-          <span style="margin-left:auto;font-size:11px;color:var(--muted);" id="projLabInfo"></span>
+        <div class="table-toolbar" id="projLabToolbar">
+          <button class="filter-pill active" onclick="setProjLabView(this,'scenarios')">Scenario Builder</button>
+          <button class="filter-pill" onclick="setProjLabView(this,'params')">PC Parameters</button>
+          <button class="filter-pill" onclick="setProjLabView(this,'decay')">Decay Visualizer</button>
+          <button class="filter-pill" onclick="setProjLabView(this,'golden')">Baselines</button>
+          <span style="margin-left:auto;font-size:11px;color:var(--muted);" id="projLabInfo">Engine v1.0.0-lab</span>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 340px;height:100%;">
-          <div class="table-wrap" id="projLabTableWrap" style="overflow:auto;"></div>
-          <div class="editor-panel" id="projLabSidebar">
-            <h3>Algorithm Reference</h3>
-            <div style="font-size:12px;color:var(--muted);line-height:1.6;">
-              <p style="margin-bottom:10px;"><b style="color:var(--text);">Formula per KPI event:</b></p>
-              <code style="display:block;background:var(--bg);padding:10px;border-radius:8px;font-size:11px;line-height:1.5;margin-bottom:12px;border:1px solid var(--border);">
-initialPC = avg_price &times; commission_rate &times; (pc_weight / 100)<br><br>
-Phase 1: DELAY (0 &rarr; delay_days)<br>
-&nbsp;&nbsp;value = $0<br><br>
-Phase 2: HOLD (delay &rarr; delay + hold)<br>
-&nbsp;&nbsp;value = initialPC (full)<br><br>
-Phase 3: DECAY (hold_end &rarr; + decay_days)<br>
-&nbsp;&nbsp;value = initialPC &times; (1 - elapsed/decay)<br><br>
-Phase 4: EXPIRED<br>
-&nbsp;&nbsp;value = $0
-              </code>
-              <p style="margin-bottom:8px;"><b style="color:var(--text);">TTC (Time to Close)</b> = delay + hold days. Represents when this activity typically converts to a closing.</p>
-              <p style="margin-bottom:8px;"><b style="color:var(--text);">PC Weight</b> = what fraction of a deal this activity represents. A "Listing Taken" (7.0) is worth 280x more than a "Phone Call" (0.025).</p>
-              <p style="margin-bottom:8px;"><b style="color:var(--text);">Decay</b> is linear. Value drops to $0 over decay_days after the hold period ends.</p>
-              <div style="margin-top:16px;padding:12px;background:rgba(201,168,76,0.06);border:1px solid var(--gold-dim);border-radius:8px;">
-                <p style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:6px;">Full Simulation</p>
-                <p style="font-size:11px;color:var(--muted);">The full Projection Lab with scenario builder, decay curve visualizer, A/B testing, and 12-month projection charts is coming soon. The existing simulation engine (2500+ lines) will be ported from the native app.</p>
+        <!-- Sub: Scenario Builder -->
+        <div id="projLab-scenarios" style="display:flex;height:calc(100% - 41px);overflow:hidden;">
+          <div style="width:300px;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;background:rgba(26,29,38,0.5);">
+            <div style="padding:14px;border-bottom:1px solid var(--border);">
+              <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">Agent Profile</div>
+              <select id="projProfileSelect" style="width:100%;background:var(--bg);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:7px 10px;color:var(--text);font-size:12px;outline:none;" onchange="onProfileSelect()"><option value="">Select a profile...</option></select>
+              <div id="projProfileDesc" style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.3;min-height:26px;"></div>
+            </div>
+            <div style="padding:14px;border-bottom:1px solid var(--border);">
+              <div class="field-row"><div class="edit-field"><label>Avg Price</label><input type="number" id="projAvgPrice" value="425000" step="25000"></div><div class="edit-field"><label>Commission</label><input type="number" id="projCommRate" value="0.03" step="0.005" min="0" max="0.1"></div></div>
+              <div class="field-row" style="margin-top:4px;"><div class="edit-field"><label>Seed</label><input type="number" id="projSeed" value="42"></div><div class="edit-field"><label>Calibration</label><input type="number" id="projCalibration" value="1.0" step="0.05" min="0.5" max="1.5"></div></div>
+            </div>
+            <div style="padding:14px;border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                <div style="font-size:10px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:0.5px;">Reference Agents</div>
+                <button onclick="setAllReferenceAgents(true)" title="Show all" style="margin-left:auto;padding:2px 6px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:9px;cursor:pointer;">All</button>
+                <button onclick="setAllReferenceAgents(false)" title="Hide all" style="padding:2px 6px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:9px;cursor:pointer;">None</button>
+              </div>
+              <div id="projReferenceAgentsList" style="display:flex;flex-direction:column;gap:3px;"></div>
+            </div>
+            <div style="padding:14px;border-bottom:1px solid var(--border);">
+              <div style="font-size:10px;font-weight:700;color:var(--text);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Chart Layers</div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-bottom:3px;cursor:pointer;"><input type="checkbox" id="projToggleDecay" checked onchange="onToggleChange()"> Decay projection</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-bottom:3px;cursor:pointer;"><input type="checkbox" id="projToggleCadence" checked onchange="onToggleChange()"> Cadence projection</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-bottom:3px;cursor:pointer;"><input type="checkbox" id="projToggleActual" onchange="onToggleChange()"> Actual baseline</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-bottom:3px;cursor:pointer;"><input type="checkbox" id="projToggleBaselines" checked onchange="onToggleChange()"> Baselines</label>
+            </div>
+            <div style="padding:14px;flex:1;overflow-y:auto;">
+              <div style="font-size:10px;font-weight:700;color:var(--text);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Workbench Status</div>
+              <div id="projWorkbenchStatus" style="font-size:11px;color:var(--muted);line-height:1.5;">No runs yet.</div>
+            </div>
+            <div style="padding:10px 14px;border-top:1px solid var(--border);">
+              <button onclick="runProjection()" style="width:100%;padding:9px;border-radius:8px;border:none;background:var(--pc);color:#fff;font-weight:700;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;gap:6px;" id="projRunBtn"><i class="ph ph-play"></i> Run Simulation</button>
+              <div style="display:flex;gap:6px;margin-top:6px;">
+                <button onclick="openCompareView()" style="flex:1;padding:5px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:10px;font-weight:600;cursor:pointer;" id="projCompareBtn" disabled>Compare A/B</button>
+                <button onclick="clearAllRuns()" style="flex:1;padding:5px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:10px;font-weight:600;cursor:pointer;">Clear All</button>
               </div>
             </div>
+          </div>
+          <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;" id="projWorkbenchArea">
+            <div style="padding:14px 20px 10px;border-bottom:1px solid var(--border);background:rgba(26,29,38,0.3);">
+              <div style="display:flex;align-items:flex-start;gap:10px;">
+                <div style="flex-shrink:0;width:28px;height:28px;border-radius:8px;background:rgba(47,159,86,0.12);display:flex;align-items:center;justify-content:center;border:1px solid rgba(47,159,86,0.3);"><i class="ph ph-flask" style="font-size:15px;color:var(--pc);"></i></div>
+                <div style="flex:1;">
+                  <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px;">Scenario Builder <span style="color:var(--muted);font-weight:500;">&mdash; Algorithm Vetting Workbench</span></div>
+                  <div style="font-size:11px;color:var(--muted);line-height:1.4;">Two-stage workflow: <b style="color:var(--text);">(1)</b> calibrate reference-agent baselines until they feel believable and lock them. <b style="color:var(--text);">(2)</b> run custom KPI scenarios against those locked baselines to test hypotheses. Locked baselines persist in browser storage.</div>
+                </div>
+              </div>
+            </div>
+            <div id="projWorkflowStepper" style="padding:10px 20px;border-bottom:1px solid var(--border);background:rgba(26,29,38,0.15);"></div>
+            <div id="projChartContainer" style="padding:14px 20px;background:var(--surface);border-bottom:1px solid var(--border);">
+              <div style="display:flex;align-items:center;margin-bottom:8px;">
+                <div style="font-size:11px;font-weight:700;">12-Month Projection &mdash; All Active Runs</div>
+                <div id="projChartMeta" style="margin-left:auto;font-size:10px;color:var(--muted);"></div>
+              </div>
+              <div style="position:relative;height:300px;width:100%;"><canvas id="projChart"></canvas></div>
+            </div>
+            <div id="projRunsLegend" style="padding:10px 20px;border-bottom:1px solid var(--border);background:rgba(26,29,38,0.2);min-height:54px;">
+              <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Active Runs</div>
+              <div id="projRunsLegendList" style="display:flex;flex-wrap:wrap;gap:6px;"><div style="font-size:11px;color:var(--muted);font-style:italic;">Auto-seeding 7 reference profiles&hellip;</div></div>
+            </div>
+            <div style="flex:1;overflow-y:auto;" id="projResultsArea">
+              <div style="display:flex;align-items:center;justify-content:center;height:200px;color:var(--muted);font-size:13px;"><div style="text-align:center;"><i class="ph ph-chart-line" style="font-size:40px;opacity:0.3;display:block;margin-bottom:8px;"></i>Click a run above to focus its details</div></div>
+            </div>
+          </div>
+          <!-- Custom Scenario Builder Modal -->
+          <div id="projCustomScenarioModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;width:100%;max-width:980px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,0.6);">
+              <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0;">
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(201,168,76,0.15);display:flex;align-items:center;justify-content:center;border:1px solid rgba(201,168,76,0.35);"><i class="ph ph-sliders" style="font-size:16px;color:var(--accent);"></i></div>
+                <div style="flex:1;">
+                  <div style="font-size:14px;font-weight:700;color:var(--text);">Custom Scenario Builder</div>
+                  <div style="font-size:11px;color:var(--muted);">Pick your own KPIs and monthly volumes &mdash; runs against locked baselines</div>
+                </div>
+                <button onclick="closeCustomScenarioBuilder()" style="background:transparent;border:1px solid var(--border);color:var(--muted);width:28px;height:28px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="ph ph-x"></i></button>
+              </div>
+              <div style="flex:1;overflow-y:auto;padding:18px 20px;" id="projCustomScenarioBody"></div>
+              <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-shrink:0;background:rgba(26,29,38,0.35);">
+                <div id="projCustomScenarioPreview" style="flex:1;font-size:11px;color:var(--muted);"></div>
+                <button onclick="closeCustomScenarioBuilder()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;">Cancel</button>
+                <button onclick="buildAndRunCustomScenario()" id="projCustomBuildBtn" style="padding:8px 18px;border-radius:8px;border:none;background:var(--pc);color:#fff;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;"><i class="ph ph-play"></i> Build &amp; Run</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Sub: PC Parameters -->
+        <div id="projLab-params" style="display:none;height:calc(100% - 41px);flex-direction:column;">
+          <div style="padding:14px 20px 10px;border-bottom:1px solid var(--border);background:rgba(26,29,38,0.3);flex-shrink:0;">
+            <div style="display:flex;align-items:flex-start;gap:10px;">
+              <div style="flex-shrink:0;width:28px;height:28px;border-radius:8px;background:rgba(74,158,194,0.12);display:flex;align-items:center;justify-content:center;border:1px solid rgba(74,158,194,0.3);"><i class="ph ph-table" style="font-size:15px;color:#4a9ec2;"></i></div>
+              <div style="flex:1;">
+                <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px;">PC Parameters <span style="color:var(--muted);font-weight:500;">&mdash; Live Tuning Reference</span></div>
+                <div style="font-size:11px;color:var(--muted);line-height:1.4;">Every active PC KPI with its current production tuning values (delay, hold, decay, weight). Use this to eyeball the algorithm inputs that drive your scenarios. Click any row to jump to the KPI Designer for that KPI.</div>
+              </div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 320px;flex:1;min-height:0;">
+            <div class="table-wrap" id="projLabTableWrap" style="overflow:auto;"></div>
+            <div class="editor-panel">
+              <h3>Algorithm Reference</h3>
+              <div style="font-size:12px;color:var(--muted);line-height:1.6;">
+                <code style="display:block;background:var(--bg);padding:10px;border-radius:8px;font-size:11px;line-height:1.5;margin-bottom:12px;border:1px solid var(--border);">initialPC = avg_price &times; comm_rate &times; (weight/100)<br>DELAY &rarr; $0 | HOLD &rarr; full | DECAY &rarr; linear | EXPIRED &rarr; $0</code>
+                <p style="margin-bottom:8px;"><b style="color:var(--text);">TTC</b> = delay + hold days.</p>
+                <p style="margin-bottom:8px;"><b style="color:var(--text);">PC Weight</b> = fraction of a deal.</p>
+                <p><b style="color:var(--text);">Decay</b> is linear to $0.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Sub: Decay Visualizer -->
+        <div id="projLab-decay" style="display:none;height:calc(100% - 41px);overflow-y:auto;">
+          <div style="padding:14px 20px 10px;border-bottom:1px solid var(--border);background:rgba(26,29,38,0.3);">
+            <div style="display:flex;align-items:flex-start;gap:10px;">
+              <div style="flex-shrink:0;width:28px;height:28px;border-radius:8px;background:rgba(201,168,76,0.12);display:flex;align-items:center;justify-content:center;border:1px solid rgba(201,168,76,0.3);"><i class="ph ph-wave-sine" style="font-size:15px;color:var(--accent);"></i></div>
+              <div style="flex:1;">
+                <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px;">Decay Visualizer <span style="color:var(--muted);font-weight:500;">&mdash; Single-KPI Lifecycle Sandbox</span></div>
+                <div style="font-size:11px;color:var(--muted);line-height:1.4;">Drag delay/hold/decay sliders to see the dollar-over-time shape of a single event from one KPI. Useful for building intuition on individual timing values. The lifecycle comparison grid at the bottom shows every active PC KPI side-by-side.</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:24px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+            <div style="font-size:13px;font-weight:700;">KPI:</div>
+            <select id="decayKpiSelect" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;padding:4px 8px;outline:none;" onchange="renderDecayViz()"></select>
+            <div style="margin-left:auto;font-size:11px;color:var(--muted);" id="decayInfo"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 280px;gap:24px;">
+            <div style="position:relative;height:320px;width:100%;background:var(--surface);border-radius:12px;border:1px solid var(--border);padding:12px;box-sizing:border-box;"><canvas id="decayCanvas"></canvas></div>
+            <div>
+              <div class="edit-field"><label>Delay Days</label><input type="range" id="decayDelayInput" min="0" max="180" value="30" oninput="renderDecayViz()"><span id="decayDelayVal" style="font-size:11px;color:var(--muted);font-family:monospace;">30d</span></div>
+              <div class="edit-field"><label>Hold Days</label><input type="range" id="decayHoldInput" min="0" max="180" value="30" oninput="renderDecayViz()"><span id="decayHoldVal" style="font-size:11px;color:var(--muted);font-family:monospace;">30d</span></div>
+              <div class="edit-field"><label>Decay Days</label><input type="range" id="decayDecayInput" min="1" max="365" value="180" oninput="renderDecayViz()"><span id="decayDecayVal" style="font-size:11px;color:var(--muted);font-family:monospace;">180d</span></div>
+              <div class="edit-field" style="margin-top:8px;"><label>Avg Price</label><input type="number" id="decayPrice" value="425000" step="25000" onchange="renderDecayViz()"></div>
+              <div class="edit-field"><label>Commission</label><input type="number" id="decayComm" value="0.03" step="0.005" onchange="renderDecayViz()"></div>
+              <div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);" id="decayImpactBox"></div>
+            </div>
+          </div>
+          <div style="margin-top:24px;"><div style="font-size:12px;font-weight:700;margin-bottom:8px;">All PC KPIs — Lifecycle Comparison</div><div id="decayAllKpis"></div></div>
+          </div>
+        </div>
+        <!-- Sub: Baselines -->
+        <div id="projLab-golden" style="display:none;height:calc(100% - 41px);overflow-y:auto;">
+          <div style="padding:14px 20px 10px;border-bottom:1px solid var(--border);background:rgba(26,29,38,0.3);">
+            <div style="display:flex;align-items:flex-start;gap:10px;">
+              <div style="flex-shrink:0;width:28px;height:28px;border-radius:8px;background:rgba(217,68,68,0.12);display:flex;align-items:center;justify-content:center;border:1px solid rgba(217,68,68,0.3);"><i class="ph ph-lock-key" style="font-size:15px;color:#d14a7a;"></i></div>
+              <div style="flex:1;">
+                <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px;">Baselines <span style="color:var(--muted);font-weight:500;">&mdash; Locked Reference Runs</span></div>
+                <div style="font-size:11px;color:var(--muted);line-height:1.4;">Baselines are frozen snapshots of expected algorithm output for each reference profile. They overlay on the Scenario Builder chart as dashed reference lines so every experimental run is measured against them at a glance. Also used as a regression guard after algorithm changes.</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:24px;">
+          <div id="baselinesControls" style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+            <button onclick="lockAllProfilesAsBaselines()" style="padding:6px 14px;border-radius:6px;border:none;background:var(--pc);color:#fff;font-weight:700;font-size:11px;cursor:pointer;"><i class="ph ph-lock-key"></i> Lock All 7 Profiles as Baselines</button>
+            <button onclick="runGoldenSuite()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-weight:600;font-size:11px;cursor:pointer;"><i class="ph ph-play"></i> Run Regression Check</button>
+            <button onclick="clearAllBaselines()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-weight:600;font-size:11px;cursor:pointer;">Clear All</button>
+            <span style="margin-left:auto;font-size:11px;color:var(--muted);" id="goldenInfo"></span>
+          </div>
+          <div id="baselinesGrid"></div>
+          <div id="goldenResults" style="margin-top:16px;"></div>
           </div>
         </div>
       </div>
@@ -607,6 +753,7 @@ Phase 4: EXPIRED<br>
           <button class="filter-pill" onclick="setCoachingFilter(this,'active')">Active</button>
           <button class="filter-pill" onclick="setCoachingFilter(this,'draft')">Draft</button>
           <button class="filter-pill" onclick="setCoachingFilter(this,'has_lessons')">Has Lessons</button>
+          <select id="coachingOwnerSelect" onchange="setCoachingOwnerFilter(this.value)" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;padding:4px 8px;outline:none;margin-left:8px;"><option value="all">All Owners</option></select>
           <span id="coachingCount" style="margin-left:auto;font-size:11px;color:var(--muted);"></span>
           <div class="coaching-toolbar-actions">
             <button class="toolbar-btn" onclick="toggleMediaPanel()"><i class="ph ph-image-square"></i> Media</button>
@@ -683,7 +830,7 @@ const PANEL_META = {
   'kpi-designer': { title: 'KPI Designer', status: 'LIVE', info: 'Connected to Supabase — changes save directly to database' },
   'users': { title: 'User Management', status: 'LIVE', info: 'Roles, tiers, and account status' },
   'challenges': { title: 'Challenge Templates', status: 'LIVE', info: 'Template CRUD with phase/KPI goal viewer' },
-  'projection-lab': { title: 'Projection Lab', status: 'LIVE', info: 'PC algorithm parameter overview + per-event $ calculation' },
+  'projection-lab': { title: 'Projection Lab', status: 'LIVE', info: 'Full simulation engine — scenarios, projections, decay curves, golden tests' },
   'coaching': { title: 'Coaching Portal', status: 'LIVE', info: 'Journeys, milestones, lessons, and enrollments' },
   'migration': { title: 'Migration Log', status: 'DONE', info: 'Completed 2026-04-08' },
 };
@@ -1491,18 +1638,1453 @@ async function deactivateChallengeTemplate() {
 }
 
 // ══════════════════════════════════════════════════════
-// Projection Lab Panel
+// Projection Lab — Multi-Run Algorithm Vetting Workbench
 // ══════════════════════════════════════════════════════
-function renderProjLab() {
+const PL = window.ProjectionLab || {};
+const RUN_COLORS = ['#2f9f56','#4a9ec2','#C9A84C','#d14a7a','#9b59b6','#e67e22','#16a085','#2980b9','#c0392b'];
+const BASELINES_LS_KEY = 'projLab.baselines.v1';
+
+let projLabView = 'scenarios';
+let projRuns = [];                    // {id, label, color, visible, createdAt, scenario, run, profile, profileId, kpiMonthlyVolumeOverrides?}
+let projBaselines = [];               // localStorage-backed
+let projChart = null;
+let projLabInitialized = false;
+let projFocusedRunId = null;
+let projEditingRunId = null;
+let projChartToggles = { decay: true, cadence: true, actual: false, baselines: true };
+let projAutoSeeded = false;
+let customScenarioState = {
+  open: false,
+  startingProfileId: '',
+  avgPrice: 425000,
+  commissionRate: 0.03,
+  seed: 42,
+  timeSpanMonths: 6,
+  name: '',
+  selectedKpis: {}, // kpi_id -> monthly volume (number)
+  showAllKpis: false,
+};
+
+function projNextRunId() {
+  return 'run-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 10000).toString(36);
+}
+
+function projNextColor() {
+  const used = new Set(projRuns.map(r => r.color));
+  for (const c of RUN_COLORS) if (!used.has(c)) return c;
+  return RUN_COLORS[projRuns.length % RUN_COLORS.length];
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function fmtK(v) { return (v || 0) >= 1000 ? (v/1000).toFixed(1) + 'k' : (v || 0).toFixed(0); }
+function fmtDollar(v) { return '$' + (v || 0).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0}); }
+function fmtMonth(iso) { const d = new Date(iso); return d.toLocaleDateString('en-US', {month:'short', year:'2-digit', timeZone:'UTC'}); }
+
+function loadBaselinesFromStorage() {
+  try {
+    const raw = localStorage.getItem(BASELINES_LS_KEY);
+    projBaselines = raw ? (JSON.parse(raw) || []) : [];
+  } catch (e) { projBaselines = []; }
+}
+
+function saveBaselinesToStorage() {
+  try { localStorage.setItem(BASELINES_LS_KEY, JSON.stringify(projBaselines)); } catch (e) {}
+}
+
+function initProjLab() {
+  if (projLabInitialized) return;
+  projLabInitialized = true;
+  loadBaselinesFromStorage();
+  const sel = document.getElementById('projProfileSelect');
+  if (sel && sel.options.length <= 1) {
+    PL.SCENARIO_PROFILES.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.agentName + ' — ' + p.name;
+      sel.appendChild(opt);
+    });
+  }
+  if (!projAutoSeeded) {
+    projAutoSeeded = true;
+    autoSeedReferenceRuns();
+  }
+  renderWorkbench();
+}
+
+function autoSeedReferenceRuns() {
+  const seed = 42;
+  const catalogKpis = (typeof kpis !== 'undefined' ? kpis : []).filter(k => k.is_active);
+  for (const profile of PL.SCENARIO_PROFILES) {
+    try {
+      const scenario = PL.generateScenarioFromProfile({
+        profile, adminUser: USER_EMAIL || 'admin', seed, catalogKpis,
+      });
+      const run = PL.executeRun({ scenario, adminUser: USER_EMAIL || 'admin' });
+      projRuns.push({
+        id: projNextRunId(),
+        label: profile.agentName,
+        color: projNextColor(),
+        visible: true,
+        createdAt: Date.now(),
+        scenario, run, profile, profileId: profile.id,
+      });
+    } catch (e) {
+      console.warn('Auto-seed failed for', profile.id, e);
+    }
+  }
+  if (projRuns.length && !projFocusedRunId) projFocusedRunId = projRuns[0].id;
+}
+
+function setProjLabView(el, view) {
+  projLabView = view;
+  document.querySelectorAll('#projLabToolbar .filter-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  ['scenarios','params','decay','golden'].forEach(v => {
+    const d = document.getElementById('projLab-' + v);
+    if (!d) return;
+    if (v !== view) { d.style.display = 'none'; return; }
+    if (v === 'scenarios') d.style.display = 'flex';
+    else if (v === 'params') d.style.display = 'flex';
+    else d.style.display = 'block';
+  });
+  if (view === 'params') renderProjLabParams();
+  if (view === 'decay') { initDecayViz(); renderDecayViz(); }
+  if (view === 'golden') renderBaselinesPanel();
+  if (view === 'scenarios') renderWorkbench();
+}
+
+function onProfileSelect() {
+  const sel = document.getElementById('projProfileSelect');
+  const profile = PL.SCENARIO_PROFILES.find(p => p.id === sel.value);
+  const desc = document.getElementById('projProfileDesc');
+  if (profile) {
+    desc.textContent = profile.description;
+    const mid = (n) => Math.round((n[0] + n[1]) / 2);
+    document.getElementById('projAvgPrice').value = mid(profile.avgPriceRange);
+    document.getElementById('projCommRate').value = ((profile.commissionRange[0] + profile.commissionRange[1]) / 2).toFixed(4);
+  } else {
+    desc.textContent = '';
+  }
+}
+
+function runProjection() {
+  const profileId = document.getElementById('projProfileSelect').value;
+  if (!profileId) { showToast('Select an agent profile first'); return; }
+  const profile = PL.SCENARIO_PROFILES.find(p => p.id === profileId);
+  if (!profile) return;
+
+  const seed = parseInt(document.getElementById('projSeed').value) || 42;
+  const calibration = parseFloat(document.getElementById('projCalibration').value) || 1.0;
+  const avgPrice = parseFloat(document.getElementById('projAvgPrice').value) || 425000;
+  const commRate = parseFloat(document.getElementById('projCommRate').value) || 0.03;
+
+  const modProfile = { ...profile, avgPriceRange: [avgPrice, avgPrice], commissionRange: [commRate, commRate] };
+
+  const scenario = PL.generateScenarioFromProfile({
+    profile: modProfile,
+    adminUser: USER_EMAIL || 'admin',
+    seed,
+    catalogKpis: kpis.filter(k => k.is_active),
+  });
+
+  const run = PL.executeRun({
+    scenario,
+    adminUser: USER_EMAIL || 'admin',
+    calibrationMultiplier: calibration,
+  });
+
+  const newRun = {
+    id: projNextRunId(),
+    label: profile.agentName + ' (s' + seed + ')',
+    color: projNextColor(),
+    visible: true,
+    createdAt: Date.now(),
+    scenario, run, profile: modProfile, profileId,
+  };
+  projRuns.unshift(newRun);
+  projFocusedRunId = newRun.id;
+  if (projRuns.length > 12) projRuns.pop();
+
+  renderWorkbench();
+  showToast('Simulation complete — ' + profile.agentName);
+}
+
+function clearAllRuns() {
+  if (projRuns.length === 0) { showToast('No runs to clear'); return; }
+  if (!confirm('Clear all ' + projRuns.length + ' runs from the workbench?')) return;
+  projRuns = [];
+  projFocusedRunId = null;
+  renderWorkbench();
+}
+
+function onToggleChange() {
+  projChartToggles.decay = document.getElementById('projToggleDecay').checked;
+  projChartToggles.cadence = document.getElementById('projToggleCadence').checked;
+  projChartToggles.actual = document.getElementById('projToggleActual').checked;
+  projChartToggles.baselines = document.getElementById('projToggleBaselines').checked;
+  renderMultiRunChart();
+}
+
+function toggleRunVisibility(id) {
+  const r = projRuns.find(x => x.id === id);
+  if (!r) return;
+  r.visible = !r.visible;
+  renderRunsLegend();
+  renderMultiRunChart();
+  const compareBtn = document.getElementById('projCompareBtn');
+  if (compareBtn) compareBtn.disabled = projRuns.filter(x => x.visible).length < 2;
+}
+
+function deleteRun(id) {
+  projRuns = projRuns.filter(x => x.id !== id);
+  if (projFocusedRunId === id) projFocusedRunId = projRuns.length ? projRuns[0].id : null;
+  renderWorkbench();
+}
+
+function focusRun(id) {
+  projFocusedRunId = id;
+  // Clicking a run should break out of compare/detail/editor views and focus that run
+  if (typeof projCompareState !== 'undefined') projCompareState.active = false;
+  if (typeof projDetailState !== 'undefined') projDetailState.runId = null;
+  projEditingRunId = null;
+  renderRunsLegend();
+  renderFocusedRunDetail();
+  renderMultiRunChart();
+}
+
+// ── Workbench Rendering ──────────────────────────────
+function renderWorkbench() {
+  renderWorkflowStepper();
+  renderRunsLegend();
+  renderWorkbenchStatus();
+  renderReferenceAgentsPicker();
+  renderMultiRunChart();
+  renderFocusedRunDetail();
+  const compareBtn = document.getElementById('projCompareBtn');
+  if (compareBtn) compareBtn.disabled = projRuns.filter(r => r.visible).length < 2;
+}
+
+// ── Reference Agents Picker ──────────────────────────
+function renderReferenceAgentsPicker() {
+  const el = document.getElementById('projReferenceAgentsList');
+  if (!el || !PL.SCENARIO_PROFILES) return;
+  let html = '';
+  for (const profile of PL.SCENARIO_PROFILES) {
+    const run = projRuns.find(r => r.profileId === profile.id && !/\s✎$/.test(r.label));
+    const loaded = !!run;
+    const visible = loaded && run.visible;
+    const color = run ? run.color : '#666';
+    const pc = run ? fmtDollar(run.run.pc_at_eval_date) : '—';
+    html += '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;padding:3px 4px;border-radius:4px;" title="' + escapeHtml(profile.name) + '">';
+    html += '<input type="checkbox"' + (visible ? ' checked' : '') + ' onchange="toggleReferenceAgent(\'' + profile.id + '\')">';
+    html += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + color + ';flex-shrink:0;opacity:' + (loaded ? '1' : '0.3') + ';"></span>';
+    html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + (visible ? 'var(--text)' : 'var(--muted)') + ';">' + escapeHtml(profile.agentName) + '</span>';
+    html += '<span style="font-size:9px;color:var(--muted);font-family:monospace;">' + pc + '</span>';
+    html += '</label>';
+  }
+  el.innerHTML = html;
+}
+
+function toggleReferenceAgent(profileId) {
+  const existing = projRuns.find(r => r.profileId === profileId && !/\s✎$/.test(r.label));
+  if (existing) {
+    // Toggle visibility of already-loaded reference run
+    existing.visible = !existing.visible;
+  } else {
+    // Re-seed this profile (was previously removed)
+    const profile = PL.SCENARIO_PROFILES.find(p => p.id === profileId);
+    if (!profile) return;
+    try {
+      const catalogKpis = (typeof kpis !== 'undefined' ? kpis : []).filter(k => k.is_active);
+      const scenario = PL.generateScenarioFromProfile({
+        profile, adminUser: USER_EMAIL || 'admin', seed: 42, catalogKpis,
+      });
+      const run = PL.executeRun({ scenario, adminUser: USER_EMAIL || 'admin' });
+      projRuns.push({
+        id: projNextRunId(),
+        label: profile.agentName,
+        color: projNextColor(),
+        visible: true,
+        createdAt: Date.now(),
+        scenario, run, profile, profileId: profile.id,
+      });
+      if (!projFocusedRunId) projFocusedRunId = projRuns[projRuns.length - 1].id;
+    } catch (e) {
+      showToast('Failed to load ' + profile.agentName + ': ' + e.message);
+      return;
+    }
+  }
+  renderWorkbench();
+}
+
+function setAllReferenceAgents(visible) {
+  if (visible) {
+    // Show all — seed any missing reference runs and make existing ones visible
+    const catalogKpis = (typeof kpis !== 'undefined' ? kpis : []).filter(k => k.is_active);
+    for (const profile of PL.SCENARIO_PROFILES) {
+      const existing = projRuns.find(r => r.profileId === profile.id && !/\s✎$/.test(r.label));
+      if (existing) {
+        existing.visible = true;
+      } else {
+        try {
+          const scenario = PL.generateScenarioFromProfile({
+            profile, adminUser: USER_EMAIL || 'admin', seed: 42, catalogKpis,
+          });
+          const run = PL.executeRun({ scenario, adminUser: USER_EMAIL || 'admin' });
+          projRuns.push({
+            id: projNextRunId(),
+            label: profile.agentName,
+            color: projNextColor(),
+            visible: true,
+            createdAt: Date.now(),
+            scenario, run, profile, profileId: profile.id,
+          });
+        } catch (e) { console.warn('seed failed', profile.id, e); }
+      }
+    }
+    if (!projFocusedRunId && projRuns.length) projFocusedRunId = projRuns[0].id;
+  } else {
+    // Hide all reference agents (leave any user-edited ✎ runs visible)
+    for (const r of projRuns) {
+      if (/\s✎$/.test(r.label)) continue;
+      if (PL.SCENARIO_PROFILES.find(p => p.id === r.profileId)) {
+        r.visible = false;
+      }
+    }
+  }
+  renderWorkbench();
+}
+
+function renderWorkbenchStatus() {
+  const el = document.getElementById('projWorkbenchStatus');
+  if (!el) return;
+  const visible = projRuns.filter(r => r.visible).length;
+  const baselineCount = projBaselines.length;
+  if (projRuns.length === 0) {
+    el.innerHTML = '<div style="font-style:italic;">No runs yet. Pick a profile and hit Run Simulation.</div>';
+    return;
+  }
+  el.innerHTML =
+    '<div><b style="color:var(--text);">' + projRuns.length + '</b> run' + (projRuns.length === 1 ? '' : 's') + ' loaded</div>' +
+    '<div><b style="color:var(--text);">' + visible + '</b> visible on chart</div>' +
+    '<div><b style="color:var(--text);">' + baselineCount + '</b> baseline' + (baselineCount === 1 ? '' : 's') + ' locked</div>';
+}
+
+// ── Workflow Stepper ─────────────────────────────────
+function renderWorkflowStepper() {
+  const el = document.getElementById('projWorkflowStepper');
+  if (!el) return;
+  const totalProfiles = (PL.SCENARIO_PROFILES || []).length;
+  const lockedCount = (projBaselines || []).length;
+  const customCount = projRuns.filter(r => r.isCustom).length;
+  const stage1Done = lockedCount >= totalProfiles && totalProfiles > 0;
+  const step1Bg = stage1Done ? 'rgba(47,159,86,0.10)' : 'rgba(201,168,76,0.10)';
+  const step1Border = stage1Done ? 'rgba(47,159,86,0.35)' : 'rgba(201,168,76,0.35)';
+  const step1Ic = stage1Done ? '<i class="ph ph-check-circle-fill" style="color:var(--pc);"></i>' : '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--accent);color:#1a1a1a;font-size:10px;font-weight:800;">1</span>';
+  const step2Ic = stage1Done ? '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--pc);color:#fff;font-size:10px;font-weight:800;">2</span>' : '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--border);color:var(--muted);font-size:10px;font-weight:800;">2</span>';
+  const step2Opacity = stage1Done ? '1' : '0.55';
+
+  let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
+  // Step 1
+  html += '<div style="padding:10px 12px;border:1px solid ' + step1Border + ';border-radius:10px;background:' + step1Bg + ';display:flex;align-items:center;gap:10px;">';
+  html += '<div style="flex-shrink:0;">' + step1Ic + '</div>';
+  html += '<div style="flex:1;min-width:0;">';
+  html += '<div style="font-size:11px;font-weight:700;color:var(--text);">Step 1 &middot; Calibrate Baselines</div>';
+  html += '<div style="font-size:10px;color:var(--muted);line-height:1.3;">Tune the 7 reference agents until projections look believable, then lock them. <b style="color:' + (stage1Done ? 'var(--pc)' : 'var(--accent)') + ';">' + lockedCount + '/' + totalProfiles + ' locked</b></div>';
+  html += '</div>';
+  html += '<button onclick="gotoBaselinesTab()" style="padding:6px 10px;border-radius:6px;border:1px solid ' + step1Border + ';background:transparent;color:var(--text);font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;">' + (stage1Done ? 'Review' : 'Review & Lock') + '</button>';
+  html += '</div>';
+  // Step 2
+  html += '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:rgba(47,159,86,0.05);display:flex;align-items:center;gap:10px;opacity:' + step2Opacity + ';">';
+  html += '<div style="flex-shrink:0;">' + step2Ic + '</div>';
+  html += '<div style="flex:1;min-width:0;">';
+  html += '<div style="font-size:11px;font-weight:700;color:var(--text);">Step 2 &middot; Run Experiments</div>';
+  html += '<div style="font-size:10px;color:var(--muted);line-height:1.3;">Build custom KPI mixes and see how they project vs locked baselines. <b style="color:var(--pc);">' + customCount + ' custom run' + (customCount === 1 ? '' : 's') + '</b></div>';
+  html += '</div>';
+  const newBtnDisabled = !stage1Done;
+  const newBtnTitle = newBtnDisabled ? 'Lock all 7 baselines first' : 'Open custom scenario builder';
+  html += '<button onclick="openCustomScenarioBuilder()"' + (newBtnDisabled ? ' disabled' : '') + ' title="' + newBtnTitle + '" style="padding:6px 12px;border-radius:6px;border:none;background:' + (newBtnDisabled ? 'var(--border)' : 'var(--pc)') + ';color:#fff;font-size:10px;font-weight:700;cursor:' + (newBtnDisabled ? 'not-allowed' : 'pointer') + ';white-space:nowrap;display:flex;align-items:center;gap:4px;"><i class="ph ph-plus"></i> New Custom Scenario</button>';
+  html += '</div>';
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function gotoBaselinesTab() {
+  // The "Baselines" pill internally uses view='golden'
+  const pills = document.querySelectorAll('#projLabToolbar .filter-pill');
+  for (const p of pills) {
+    if ((p.textContent || '').trim() === 'Baselines') { p.click(); return; }
+  }
+}
+
+// ── Custom Scenario Builder Modal ────────────────────
+function openCustomScenarioBuilder() {
+  const lockedCount = (projBaselines || []).length;
+  const totalProfiles = (PL.SCENARIO_PROFILES || []).length;
+  if (lockedCount < totalProfiles) {
+    showToast('Lock all ' + totalProfiles + ' baselines before running custom scenarios');
+    return;
+  }
+  customScenarioState.open = true;
+  // Seed defaults if first open
+  if (!customScenarioState.name) {
+    customScenarioState.name = 'Custom Scenario ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  }
+  if (Object.keys(customScenarioState.selectedKpis).length === 0) {
+    // Pre-select first 3 PC-weighted KPIs at 5/mo each
+    const pcKpis = (typeof kpis !== 'undefined' ? kpis : []).filter(k => k.is_active && (k.pc_weight || 0) > 0);
+    for (const k of pcKpis.slice(0, 3)) {
+      customScenarioState.selectedKpis[k.id] = 5;
+    }
+  }
+  const modal = document.getElementById('projCustomScenarioModal');
+  if (modal) modal.style.display = 'flex';
+  renderCustomScenarioModal();
+}
+
+function closeCustomScenarioBuilder() {
+  customScenarioState.open = false;
+  const modal = document.getElementById('projCustomScenarioModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function renderCustomScenarioModal() {
+  const body = document.getElementById('projCustomScenarioBody');
+  if (!body) return;
+  const catalogKpis = (typeof kpis !== 'undefined' ? kpis : []).filter(k => k.is_active);
+  const filteredKpis = customScenarioState.showAllKpis
+    ? catalogKpis
+    : catalogKpis.filter(k => (k.pc_weight || 0) > 0);
+  const selectedCount = Object.values(customScenarioState.selectedKpis).filter(v => v > 0).length;
+  const totalEventsPerMonth = Object.values(customScenarioState.selectedKpis).reduce((a, b) => a + (b || 0), 0);
+
+  let html = '';
+  // Top inputs row
+  html += '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">';
+  html += '<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:3px;">Scenario Name</div><input type="text" id="customScenarioName" value="' + escapeHtml(customScenarioState.name) + '" oninput="customScenarioState.name = this.value" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 9px;font-size:12px;outline:none;"></div>';
+  html += '<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:3px;">Avg Price</div><input type="number" step="10000" value="' + customScenarioState.avgPrice + '" oninput="customScenarioState.avgPrice = parseFloat(this.value)||0; updateCustomScenarioPreview()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 9px;font-size:12px;outline:none;"></div>';
+  html += '<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:3px;">Comm Rate</div><input type="number" step="0.005" value="' + customScenarioState.commissionRate + '" oninput="customScenarioState.commissionRate = parseFloat(this.value)||0; updateCustomScenarioPreview()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 9px;font-size:12px;outline:none;"></div>';
+  html += '<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:3px;">Time Span (mo)</div><input type="number" step="1" min="1" max="24" value="' + customScenarioState.timeSpanMonths + '" oninput="customScenarioState.timeSpanMonths = parseInt(this.value)||6; updateCustomScenarioPreview()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 9px;font-size:12px;outline:none;"></div>';
+  html += '<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:3px;">Seed</div><input type="number" step="1" value="' + customScenarioState.seed + '" oninput="customScenarioState.seed = parseInt(this.value)||42" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 9px;font-size:12px;outline:none;"></div>';
+  html += '</div>';
+
+  // Profile prefill + KPI toolbar
+  html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">';
+  html += '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Prefill from template:</div>';
+  html += '<select onchange="onCustomProfilePrefill(this.value)" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-size:11px;outline:none;">';
+  html += '<option value="">-- Choose template --</option>';
+  for (const p of (PL.SCENARIO_PROFILES || [])) {
+    html += '<option value="' + p.id + '">' + escapeHtml(p.agentName) + ' — ' + escapeHtml(p.name) + '</option>';
+  }
+  html += '</select>';
+  html += '<div style="flex:1;"></div>';
+  html += '<label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);cursor:pointer;"><input type="checkbox"' + (customScenarioState.showAllKpis ? ' checked' : '') + ' onchange="customScenarioState.showAllKpis = this.checked; renderCustomScenarioModal()"> Show non-PC KPIs</label>';
+  html += '<button onclick="clearCustomKpiSelection()" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:10px;font-weight:600;cursor:pointer;">Clear All</button>';
+  html += '</div>';
+
+  // KPI list
+  html += '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">KPI Catalog <span style="color:var(--pc);">(' + selectedCount + ' selected &middot; ' + totalEventsPerMonth.toFixed(1) + ' events/mo)</span></div>';
+  html += '<div style="border:1px solid var(--border);border-radius:8px;max-height:340px;overflow-y:auto;">';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+  html += '<thead style="position:sticky;top:0;background:var(--bg);z-index:1;"><tr>';
+  html += '<th style="padding:8px;text-align:left;font-size:9px;color:var(--muted);text-transform:uppercase;font-weight:700;width:32px;border-bottom:1px solid var(--border);"></th>';
+  html += '<th style="padding:8px;text-align:left;font-size:9px;color:var(--muted);text-transform:uppercase;font-weight:700;border-bottom:1px solid var(--border);">KPI</th>';
+  html += '<th style="padding:8px;text-align:right;font-size:9px;color:var(--muted);text-transform:uppercase;font-weight:700;border-bottom:1px solid var(--border);">PC Wt</th>';
+  html += '<th style="padding:8px;text-align:right;font-size:9px;color:var(--muted);text-transform:uppercase;font-weight:700;border-bottom:1px solid var(--border);">Delay / Hold / Decay</th>';
+  html += '<th style="padding:8px;text-align:right;font-size:9px;color:var(--muted);text-transform:uppercase;font-weight:700;width:110px;border-bottom:1px solid var(--border);">Events / Month</th>';
+  html += '</tr></thead><tbody>';
+  for (const k of filteredKpis) {
+    const sel = (customScenarioState.selectedKpis[k.id] || 0) > 0;
+    const vol = customScenarioState.selectedKpis[k.id] || '';
+    const rowBg = sel ? 'rgba(47,159,86,0.06)' : 'transparent';
+    html += '<tr style="background:' + rowBg + ';border-bottom:1px solid rgba(255,255,255,0.04);">';
+    html += '<td style="padding:7px 8px;"><input type="checkbox"' + (sel ? ' checked' : '') + ' onchange="onCustomKpiToggle(\'' + k.id + '\', this.checked)"></td>';
+    html += '<td style="padding:7px 8px;color:var(--text);">' + escapeHtml(k.name) + '</td>';
+    html += '<td style="padding:7px 8px;text-align:right;color:var(--muted);font-family:monospace;">' + (k.pc_weight || 0) + '%</td>';
+    html += '<td style="padding:7px 8px;text-align:right;color:var(--muted);font-family:monospace;font-size:10px;">' + (k.delay_days ?? '—') + ' / ' + (k.hold_days ?? '—') + ' / ' + (k.decay_days ?? '—') + '</td>';
+    html += '<td style="padding:5px 8px;text-align:right;"><input type="number" step="0.5" min="0" value="' + vol + '" placeholder="0" oninput="onCustomKpiVolumeChange(\'' + k.id + '\', this.value)" style="width:90px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:11px;outline:none;text-align:right;"></td>';
+    html += '</tr>';
+  }
+  if (filteredKpis.length === 0) {
+    html += '<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--muted);font-style:italic;">No KPIs match the filter.</td></tr>';
+  }
+  html += '</tbody></table>';
+  html += '</div>';
+
+  body.innerHTML = html;
+  updateCustomScenarioPreview();
+}
+
+function onCustomProfilePrefill(profileId) {
+  if (!profileId) return;
+  const profile = (PL.SCENARIO_PROFILES || []).find(p => p.id === profileId);
+  if (!profile) return;
+  const catalogKpis = (typeof kpis !== 'undefined' ? kpis : []).filter(k => k.is_active);
+  // Match by name — profile lists PC KPI names
+  const newSelection = {};
+  const pcNames = profile.kpiNames || [];
+  // Use midpoint of eventsPerKpiRange
+  const range = profile.eventsPerKpiRange || [3, 8];
+  const defaultVol = Math.round((range[0] + range[1]) / 2);
+  for (const name of pcNames) {
+    const k = catalogKpis.find(x => x.name === name);
+    if (k) newSelection[k.id] = defaultVol;
+  }
+  customScenarioState.selectedKpis = newSelection;
+  // Pull avg price/commission from profile ranges
+  if (profile.avgPriceRange) {
+    customScenarioState.avgPrice = Math.round((profile.avgPriceRange[0] + profile.avgPriceRange[1]) / 2);
+  }
+  if (profile.commissionRange) {
+    customScenarioState.commissionRate = (profile.commissionRange[0] + profile.commissionRange[1]) / 2;
+  }
+  customScenarioState.name = profile.agentName + ' (custom)';
+  renderCustomScenarioModal();
+}
+
+function onCustomKpiToggle(kpiId, checked) {
+  if (checked) {
+    if (!customScenarioState.selectedKpis[kpiId]) {
+      customScenarioState.selectedKpis[kpiId] = 5;
+    }
+  } else {
+    delete customScenarioState.selectedKpis[kpiId];
+  }
+  renderCustomScenarioModal();
+}
+
+function onCustomKpiVolumeChange(kpiId, value) {
+  const v = parseFloat(value);
+  if (!value || isNaN(v) || v <= 0) {
+    delete customScenarioState.selectedKpis[kpiId];
+  } else {
+    customScenarioState.selectedKpis[kpiId] = v;
+  }
+  updateCustomScenarioPreview();
+}
+
+function clearCustomKpiSelection() {
+  customScenarioState.selectedKpis = {};
+  renderCustomScenarioModal();
+}
+
+function updateCustomScenarioPreview() {
+  const el = document.getElementById('projCustomScenarioPreview');
+  if (!el) return;
+  const selectedIds = Object.keys(customScenarioState.selectedKpis).filter(k => customScenarioState.selectedKpis[k] > 0);
+  const count = selectedIds.length;
+  if (count === 0) {
+    el.innerHTML = '<span style="color:var(--muted);font-style:italic;">Select at least one KPI to enable Build &amp; Run</span>';
+    const btn = document.getElementById('projCustomBuildBtn');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.cursor = 'not-allowed'; }
+    return;
+  }
+  // Rough preview: sum initial_pc * events/month for all selected
+  const catalogKpis = (typeof kpis !== 'undefined' ? kpis : []).filter(k => k.is_active);
+  let roughMonthlyPc = 0;
+  for (const id of selectedIds) {
+    const k = catalogKpis.find(x => x.id === id);
+    if (!k) continue;
+    const monthly = customScenarioState.selectedKpis[id];
+    const initialPc = customScenarioState.avgPrice * customScenarioState.commissionRate * ((k.pc_weight || 0) / 100);
+    roughMonthlyPc += initialPc * monthly;
+  }
+  const annualized = roughMonthlyPc * 12;
+  el.innerHTML = '<b style="color:var(--text);">' + count + '</b> KPI' + (count === 1 ? '' : 's') + ' &middot; rough annualized GCI: <b style="color:var(--pc);">' + fmtDollar(annualized) + '</b> <span style="color:var(--muted);">(pre-decay estimate, actual depends on timing)</span>';
+  const btn = document.getElementById('projCustomBuildBtn');
+  if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+}
+
+function buildAndRunCustomScenario() {
+  const selectedIds = Object.keys(customScenarioState.selectedKpis).filter(k => customScenarioState.selectedKpis[k] > 0);
+  if (selectedIds.length === 0) { showToast('Select at least one KPI'); return; }
+  const catalogKpis = (typeof kpis !== 'undefined' ? kpis : []).filter(k => k.is_active);
+
+  try {
+    // Build LabKpiDefinition[] from admin KPI rows
+    const kpiDefinitions = [];
+    const volumesByLabId = {};
+    for (const id of selectedIds) {
+      const row = catalogKpis.find(x => x.id === id);
+      if (!row) continue;
+      const labDef = PL.adminKpiToLabDef(row);
+      // Use the admin row ID as the lab KPI ID so it's stable / mappable
+      const labKpiId = 'custom-' + row.id;
+      kpiDefinitions.push({ ...labDef, kpi_id: labKpiId });
+      volumesByLabId[labKpiId] = customScenarioState.selectedKpis[id];
+    }
+    if (kpiDefinitions.length === 0) { showToast('No valid KPIs selected'); return; }
+
+    const userProfile = {
+      user_id: 'custom-user-' + Date.now().toString(36),
+      display_name: 'Custom Agent',
+      average_price_point: customScenarioState.avgPrice,
+      commission_rate: customScenarioState.commissionRate,
+    };
+
+    const timeSpanMonths = customScenarioState.timeSpanMonths;
+
+    // Generate log stream from per-KPI monthly volumes
+    const logStream = PL.rebuildLogStreamFromVolumes({
+      kpiMonthlyVolume: volumesByLabId,
+      kpiDefinitions,
+      userProfile,
+      timeSpanMonths,
+    });
+
+    const scenario = {
+      scenario_id: 'custom-scenario-' + Date.now().toString(36),
+      seed: customScenarioState.seed,
+      name: customScenarioState.name || 'Custom Scenario',
+      description: 'Custom KPI mix — ' + kpiDefinitions.length + ' KPIs, ' + timeSpanMonths + 'mo span',
+      created_by_admin: USER_EMAIL || 'admin',
+      created_at: new Date().toISOString(),
+      algorithm_version: PL.ALGORITHM_VERSION || '1.0.0-lab',
+      user_profile: userProfile,
+      kpi_definitions: kpiDefinitions,
+      log_stream: logStream,
+      actual_closings: [],
+      is_golden: false,
+      tags: ['custom'],
+      volume_input: {
+        profile_id: 'custom',
+        volume_specs: kpiDefinitions.map(k => ({ kpi_name: k.name, events_per_month: volumesByLabId[k.kpi_id] })),
+        time_span_months: timeSpanMonths,
+        include_actuals: false,
+      },
+      kpi_monthly_volume: volumesByLabId,
+    };
+
+    const run = PL.executeRun({ scenario, adminUser: USER_EMAIL || 'admin' });
+
+    const newRun = {
+      id: projNextRunId(),
+      label: (customScenarioState.name || 'Custom') + ' ★',
+      color: projNextColor(),
+      visible: true,
+      createdAt: Date.now(),
+      scenario,
+      run,
+      profile: null,
+      profileId: 'custom',
+      isCustom: true,
+    };
+    projRuns.unshift(newRun);
+    projFocusedRunId = newRun.id;
+    if (projRuns.length > 20) projRuns.pop();
+
+    closeCustomScenarioBuilder();
+    renderWorkbench();
+    showToast('Custom scenario built — ' + logStream.length + ' events, PC now ' + fmtDollar(run.pc_at_eval_date));
+  } catch (e) {
+    console.error('buildAndRunCustomScenario', e);
+    showToast('Build failed: ' + e.message);
+  }
+}
+
+function renderRunsLegend() {
+  const el = document.getElementById('projRunsLegendList');
+  if (!el) return;
+  if (projRuns.length === 0) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--muted);font-style:italic;">No runs loaded. Use the sidebar to add one.</div>';
+    return;
+  }
+  let html = '';
+  for (const r of projRuns) {
+    const isFocused = r.id === projFocusedRunId;
+    const dim = r.visible ? '1' : '0.45';
+    const bg = isFocused ? r.color + '22' : 'rgba(255,255,255,0.02)';
+    const border = isFocused ? r.color : 'var(--border)';
+    html += '<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;border:1px solid ' + border + ';background:' + bg + ';opacity:' + dim + ';font-size:11px;cursor:pointer;" onclick="focusRun(\'' + r.id + '\')">';
+    html += '<span onclick="event.stopPropagation();toggleRunVisibility(\'' + r.id + '\')" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + r.color + ';border:1px solid ' + r.color + ';cursor:pointer;" title="Toggle visibility"></span>';
+    html += '<span style="font-weight:600;color:var(--text);">' + escapeHtml(r.label) + '</span>';
+    html += '<span style="color:var(--muted);">$' + fmtK(r.run.pc_at_eval_date) + '</span>';
+    html += '<span onclick="event.stopPropagation();deleteRun(\'' + r.id + '\')" style="margin-left:2px;color:var(--muted);cursor:pointer;font-weight:700;padding:0 2px;" title="Remove run">×</span>';
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function renderFocusedRunDetail() {
+  const el = document.getElementById('projResultsArea');
+  if (!el) return;
+  // Dispatch to compare view if active
+  if (typeof projCompareState !== 'undefined' && projCompareState.active) {
+    renderCompareView();
+    return;
+  }
+  // Dispatch to run-detail view if active
+  if (typeof projDetailState !== 'undefined' && projDetailState.runId) {
+    const dr = projRuns.find(x => x.id === projDetailState.runId);
+    if (dr) { renderRunDetailView(); return; }
+    projDetailState.runId = null;
+  }
+  const r = projRuns.find(x => x.id === projFocusedRunId);
+  if (!r) {
+    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:200px;color:var(--muted);font-size:13px;"><div style="text-align:center;"><i class="ph ph-chart-line" style="font-size:40px;opacity:0.3;display:block;margin-bottom:8px;"></i>Click a run above to focus its details</div></div>';
+    return;
+  }
+  if (projEditingRunId === r.id) {
+    renderScenarioEditor(r);
+  } else {
+    renderResults(r.run, r.scenario, r);
+  }
+}
+
+// ── Scenario Editor (per-KPI volumes) ────────────────
+function computeVolumesFromScenario(scenario) {
+  if (scenario.kpi_monthly_volume && Object.keys(scenario.kpi_monthly_volume).length) {
+    return { ...scenario.kpi_monthly_volume };
+  }
+  if (!scenario.log_stream || !scenario.log_stream.length) return {};
+  const counts = {};
+  for (const log of scenario.log_stream) {
+    counts[log.kpi_id] = (counts[log.kpi_id] || 0) + 1;
+  }
+  const dates = scenario.log_stream.map(l => new Date(l.event_date_iso).getTime());
+  const spanMs = Math.max(...dates) - Math.min(...dates);
+  const spanMonths = Math.max(1, spanMs / (1000 * 60 * 60 * 24 * 30.44));
+  const out = {};
+  for (const [kpiId, count] of Object.entries(counts)) {
+    out[kpiId] = count / spanMonths;
+  }
+  return out;
+}
+
+function openScenarioEditor(runId) {
+  projEditingRunId = runId;
+  projFocusedRunId = runId;
+  renderFocusedRunDetail();
+}
+
+function closeScenarioEditor() {
+  projEditingRunId = null;
+  renderFocusedRunDetail();
+}
+
+function renderScenarioEditor(r) {
+  const el = document.getElementById('projResultsArea');
+  const volumes = computeVolumesFromScenario(r.scenario);
+  const kpiDefs = (r.scenario.kpi_definitions || []).slice();
+  // Only show PC-weighted KPIs (ones that generate projected commission)
+  const pcDefs = kpiDefs.filter(k => (k.weight_percent || 0) > 0).sort((a, b) => (b.weight_percent || 0) - (a.weight_percent || 0));
+  const otherDefs = kpiDefs.filter(k => (k.weight_percent || 0) === 0);
+
+  let html = '<div style="padding:16px 20px 20px;">';
+  html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">';
+  html += '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + r.color + ';"></span>';
+  html += '<i class="ph ph-pencil-simple" style="font-size:16px;color:var(--accent);"></i>';
+  html += '<div style="font-size:14px;font-weight:700;color:var(--text);">Edit Per-KPI Volumes — ' + escapeHtml(r.label) + '</div>';
+  html += '<button onclick="closeScenarioEditor()" style="margin-left:auto;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:10px;cursor:pointer;font-weight:600;">× Cancel</button>';
+  html += '<button onclick="applyScenarioEdits(\'' + r.id + '\')" style="padding:5px 14px;border-radius:6px;border:none;background:var(--pc);color:#fff;font-weight:700;font-size:10px;cursor:pointer;"><i class="ph ph-play"></i> Apply &amp; Rerun</button>';
+  html += '</div>';
+  html += '<div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.4;">Adjust monthly event count per KPI. Events are distributed evenly across the scenario time span. Changes re-run the projection in place (original run is replaced, not copied).</div>';
+
+  // User profile overrides
+  const up = r.scenario.user_profile || {};
+  html += '<div style="display:flex;gap:12px;padding:10px 14px;background:var(--surface);border-radius:10px;border:1px solid var(--border);margin-bottom:10px;align-items:center;font-size:11px;">';
+  html += '<div style="font-weight:700;color:var(--text);">User Profile:</div>';
+  html += '<div><span style="color:var(--muted);">Avg Price</span> <b>$' + (up.average_price_point || 0).toLocaleString() + '</b></div>';
+  html += '<div><span style="color:var(--muted);">Commission</span> <b>' + ((up.commission_rate || 0) * 100).toFixed(2) + '%</b></div>';
+  html += '<div style="margin-left:auto;"><span style="color:var(--muted);">Time Span</span> <b>' + getTimeSpanMonths(r.scenario) + ' mo</b></div>';
+  html += '</div>';
+
+  // PC KPIs grid
+  html += '<div style="padding:14px;background:var(--surface);border-radius:10px;border:1px solid var(--border);margin-bottom:10px;">';
+  html += '<div style="font-size:11px;font-weight:700;margin-bottom:10px;color:var(--text);">PC-Weighted KPIs <span style="color:var(--muted);font-weight:500;">(' + pcDefs.length + ')</span></div>';
+  if (pcDefs.length === 0) {
+    html += '<div style="color:var(--muted);font-size:11px;font-style:italic;">No PC-weighted KPIs in this scenario.</div>';
+  } else {
+    html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px 24px;">';
+    for (const k of pcDefs) {
+      const currentVol = (volumes[k.kpi_id] || 0).toFixed(2);
+      const perEvent = (up.average_price_point || 0) * (up.commission_rate || 0) * ((k.weight_percent || 0) / 100);
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.02);">';
+      html += '<div style="flex:1;min-width:0;">';
+      html += '<div style="font-size:11px;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(k.name) + '</div>';
+      html += '<div style="font-size:9px;color:var(--muted);">w: ' + (k.weight_percent || 0).toFixed(3) + ' • $' + fmtK(perEvent) + '/evt</div>';
+      html += '</div>';
+      html += '<input type="number" step="0.1" min="0" max="100" value="' + currentVol + '" data-kpi-id="' + k.kpi_id + '" oninput="onVolumeInputChange()" style="width:60px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--text);font-size:11px;text-align:right;outline:none;" class="projVolInput">';
+      html += '<span style="font-size:9px;color:var(--muted);">/mo</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // GP/VP KPIs (no volume editing, but listed for context)
+  if (otherDefs.length) {
+    html += '<div style="padding:10px 14px;background:rgba(26,29,38,0.4);border-radius:10px;border:1px solid var(--border);font-size:10px;color:var(--muted);">';
+    html += '<b>Context KPIs (not editable):</b> ' + otherDefs.map(k => escapeHtml(k.name)).join(', ');
+    html += '</div>';
+  }
+
+  // Live preview total
+  html += '<div style="margin-top:12px;padding:12px 14px;background:rgba(47,159,86,0.06);border:1px solid rgba(47,159,86,0.3);border-radius:10px;display:flex;justify-content:space-between;align-items:center;">';
+  html += '<div style="font-size:11px;font-weight:700;color:var(--text);">Projected 12mo GCI (live)</div>';
+  html += '<div id="projVolumePreview" style="font-size:16px;font-weight:800;color:var(--pc);font-family:monospace;">$—</div>';
+  html += '</div>';
+
+  html += '</div>';
+  el.innerHTML = html;
+  // Trigger initial preview
+  onVolumeInputChange();
+}
+
+function getTimeSpanMonths(scenario) {
+  if (scenario.volume_input && scenario.volume_input.time_span_months) return scenario.volume_input.time_span_months;
+  if (!scenario.log_stream || scenario.log_stream.length < 2) return 12;
+  const dates = scenario.log_stream.map(l => new Date(l.event_date_iso).getTime());
+  const spanMs = Math.max(...dates) - Math.min(...dates);
+  return Math.max(1, Math.round(spanMs / (1000 * 60 * 60 * 24 * 30.44)));
+}
+
+function onVolumeInputChange() {
+  const r = projRuns.find(x => x.id === projEditingRunId);
+  if (!r) return;
+  const inputs = document.querySelectorAll('.projVolInput');
+  const up = r.scenario.user_profile || {};
+  const kpiDefs = r.scenario.kpi_definitions || [];
+  const kpiMap = new Map(kpiDefs.map(k => [k.kpi_id, k]));
+  let totalPerMonth = 0;
+  inputs.forEach(inp => {
+    const kpi = kpiMap.get(inp.dataset.kpiId);
+    if (!kpi) return;
+    const vol = parseFloat(inp.value) || 0;
+    const perEvent = (up.average_price_point || 0) * (up.commission_rate || 0) * ((kpi.weight_percent || 0) / 100);
+    totalPerMonth += vol * perEvent;
+  });
+  const preview = document.getElementById('projVolumePreview');
+  if (preview) preview.textContent = fmtDollar(totalPerMonth * 12);
+}
+
+function applyScenarioEdits(runId) {
+  const r = projRuns.find(x => x.id === runId);
+  if (!r) return;
+  const inputs = document.querySelectorAll('.projVolInput');
+  const newVolumes = {};
+  inputs.forEach(inp => {
+    const kpiId = inp.dataset.kpiId;
+    const val = parseFloat(inp.value) || 0;
+    if (val > 0) newVolumes[kpiId] = val;
+  });
+
+  const kpiDefs = r.scenario.kpi_definitions;
+  const userProfile = r.scenario.user_profile;
+  const timeSpanMonths = getTimeSpanMonths(r.scenario);
+
+  try {
+    const newLogStream = PL.rebuildLogStreamFromVolumes({
+      kpiMonthlyVolume: newVolumes,
+      kpiDefinitions: kpiDefs,
+      userProfile,
+      timeSpanMonths,
+    });
+    const newScenario = { ...r.scenario, log_stream: newLogStream, kpi_monthly_volume: newVolumes };
+    const newRun = PL.executeRun({
+      scenario: newScenario,
+      adminUser: USER_EMAIL || 'admin',
+      calibrationMultiplier: r.run.calibration_multiplier,
+    });
+    r.scenario = newScenario;
+    r.run = newRun;
+    if (!/\s✎$/.test(r.label)) r.label = r.label + ' ✎';
+    projEditingRunId = null;
+    renderWorkbench();
+    showToast('Scenario updated — ' + newLogStream.length + ' events generated');
+  } catch (e) {
+    showToast('Rebuild failed: ' + e.message);
+    console.error('applyScenarioEdits', e);
+  }
+}
+
+function renderResults(run, scenario, runMeta) {
+  const el = document.getElementById('projResultsArea');
+  const conf = run.confidence;
+  const bandColor = conf.band === 'green' ? 'var(--green)' : conf.band === 'yellow' ? 'var(--accent)' : 'var(--red)';
+
+  let html = '<div style="padding:16px 20px 20px;">';
+  // Run header
+  html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+  html += '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + (runMeta ? runMeta.color : 'var(--pc)') + ';"></span>';
+  html += '<div style="font-size:14px;font-weight:700;color:var(--text);">' + escapeHtml(runMeta ? runMeta.label : scenario.name) + '</div>';
+  html += '<div style="font-size:10px;color:var(--muted);">Seed: ' + scenario.seed + ' • ' + (scenario.kpi_definitions ? scenario.kpi_definitions.length : 0) + ' KPIs • ' + (scenario.log_stream ? scenario.log_stream.length : 0) + ' events</div>';
+  if (runMeta) {
+    html += '<button onclick="openScenarioEditor(\'' + runMeta.id + '\')" style="margin-left:auto;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--accent);font-size:10px;cursor:pointer;font-weight:600;" title="Edit per-KPI monthly volumes and re-run"><i class="ph ph-pencil-simple"></i> Edit Volumes</button>';
+    html += '<button onclick="openRunDetail(\'' + runMeta.id + '\')" style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:10px;cursor:pointer;font-weight:600;" title="Event-level diagnostics"><i class="ph ph-list-magnifying-glass"></i> Event Details</button>';
+  }
+  html += '</div>';
+  // Summary cards
+  html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px;">';
+  html += '<div style="padding:12px;background:var(--surface);border-radius:10px;border:1px solid var(--border);text-align:center;"><div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;">PC Now</div><div style="font-size:20px;font-weight:800;color:var(--pc);">' + fmtDollar(run.pc_at_eval_date) + '</div></div>';
+  html += '<div style="padding:12px;background:var(--surface);border-radius:10px;border:1px solid var(--border);text-align:center;"><div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;">30-Day</div><div style="font-size:20px;font-weight:800;color:var(--text);">' + fmtDollar(run.pc_30d) + '</div></div>';
+  html += '<div style="padding:12px;background:var(--surface);border-radius:10px;border:1px solid var(--border);text-align:center;"><div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;">90-Day</div><div style="font-size:20px;font-weight:800;color:var(--text);">' + fmtDollar(run.pc_90d) + '</div></div>';
+  html += '<div style="padding:12px;background:var(--surface);border-radius:10px;border:1px solid var(--border);text-align:center;"><div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;">180-Day</div><div style="font-size:20px;font-weight:800;color:var(--text);">' + fmtDollar(run.pc_180d) + '</div></div>';
+  html += '<div style="padding:12px;background:var(--surface);border-radius:10px;border:1px solid ' + bandColor + '33;text-align:center;"><div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;">Confidence</div><div style="font-size:20px;font-weight:800;color:' + bandColor + ';">' + conf.composite.toFixed(0) + '</div><div style="font-size:9px;color:' + bandColor + ';font-weight:600;text-transform:uppercase;">' + conf.band + '</div></div>';
+  html += '</div>';
+
+  // Confidence + GP/VP + Calibration side-by-side
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
+  html += '<div style="background:var(--surface);border-radius:10px;border:1px solid var(--border);padding:14px;"><div style="font-size:11px;font-weight:700;margin-bottom:8px;">Confidence Breakdown</div>';
+  html += confBar('Historical Accuracy', conf.historicalAccuracy, 0.35);
+  html += confBar('Pipeline Health', conf.pipelineHealth, 0.50);
+  html += confBar('Inactivity', conf.inactivity, 0.15);
+  html += '</div>';
+
+  const gv = run.gp_vp;
+  html += '<div style="background:var(--surface);border-radius:10px;border:1px solid var(--border);padding:14px;">';
+  html += '<div style="font-size:11px;font-weight:700;margin-bottom:8px;">GP/VP &amp; Tier Bump</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;">';
+  html += '<div>GP: <b style="color:var(--gp);">' + gv.gp_current.toFixed(0) + '</b> <span style="color:var(--muted);">(T' + gv.gp_tier + ')</span></div>';
+  html += '<div>VP: <b style="color:var(--vp);">' + gv.vp_current.toFixed(0) + '</b> <span style="color:var(--muted);">(T' + gv.vp_tier + ')</span></div>';
+  html += '</div>';
+  html += '<div style="font-size:11px;margin-top:6px;">Bump: <b style="color:var(--accent);">+' + (gv.total_bump_percent * 100).toFixed(1) + '%</b></div>';
+  html += '<div style="font-size:10px;color:var(--muted);margin-top:2px;">Raw: ' + fmtDollar(run.raw_pc_at_eval) + ' &rarr; Bumped: ' + fmtDollar(run.bump_applied_pc_at_eval) + '</div>';
+  html += '</div>';
+
+  let cal;
+  try { cal = PL.computeCalibrationMetrics(scenario, run); } catch (e) { cal = { error_ratio: 0, adjusted_multiplier: run.calibration_multiplier }; }
+  html += '<div style="background:var(--surface);border-radius:10px;border:1px solid var(--border);padding:14px;">';
+  html += '<div style="font-size:11px;font-weight:700;margin-bottom:8px;">Calibration</div>';
+  html += '<div style="font-size:11px;">Multiplier: <b>' + run.calibration_multiplier.toFixed(2) + '</b></div>';
+  html += '<div style="font-size:11px;">Error ratio: <b>' + cal.error_ratio.toFixed(3) + '</b></div>';
+  html += '<div style="font-size:11px;">Suggested: <b style="color:var(--accent);">' + cal.adjusted_multiplier.toFixed(4) + '</b></div>';
+  html += '</div>';
+  html += '</div>';
+
+  // Per-KPI contribution table
+  try {
+    const perKpi = PL.computePerKpiSeries(scenario, new Date(), gv.total_bump_percent);
+    const pcKpis = perKpi.filter(k => k.total > 0).sort((a, b) => b.total - a.total);
+    if (pcKpis.length) {
+      html += '<div style="margin-top:16px;"><div style="font-size:11px;font-weight:700;margin-bottom:6px;">Per-KPI Contribution (12mo total)</div>';
+      html += '<table class="kpi-table"><thead><tr><th>KPI</th><th style="text-align:right;">12mo Total</th><th style="text-align:left;padding-left:12px;">Share</th></tr></thead><tbody>';
+      const totalAll = pcKpis.reduce((s, k) => s + k.total, 0);
+      for (const k of pcKpis) {
+        const pct = totalAll > 0 ? (k.total / totalAll * 100).toFixed(1) : '0';
+        html += '<tr><td style="font-weight:600;">' + escapeHtml(k.kpi_name) + '</td>';
+        html += '<td class="num" style="color:var(--pc);">' + fmtDollar(k.total) + '</td>';
+        html += '<td style="padding-left:12px;"><div style="display:flex;align-items:center;gap:6px;"><div style="width:' + Math.min(pct, 100) + 'px;height:8px;background:var(--pc);border-radius:3px;"></div><span style="font-size:10px;color:var(--muted);">' + pct + '%</span></div></td></tr>';
+      }
+      html += '</tbody></table></div>';
+    }
+  } catch (e) { console.warn('computePerKpiSeries failed', e); }
+
+  // Event phase breakdown
+  const phases = { before_payoff: 0, hold: 0, decay: 0, expired: 0 };
+  for (const ev of run.event_contributions) {
+    phases[ev.phase_at_eval] = (phases[ev.phase_at_eval] || 0) + 1;
+  }
+  html += '<div style="margin-top:16px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">';
+  html += '<div style="padding:10px;background:var(--surface);border-radius:8px;border:1px solid var(--border);text-align:center;"><div style="font-size:18px;font-weight:800;color:var(--muted);">' + phases.before_payoff + '</div><div style="font-size:9px;color:var(--muted);font-weight:600;">DELAY</div></div>';
+  html += '<div style="padding:10px;background:var(--surface);border-radius:8px;border:1px solid var(--border);text-align:center;"><div style="font-size:18px;font-weight:800;color:var(--pc);">' + phases.hold + '</div><div style="font-size:9px;color:var(--pc);font-weight:600;">HOLD</div></div>';
+  html += '<div style="padding:10px;background:var(--surface);border-radius:8px;border:1px solid var(--border);text-align:center;"><div style="font-size:18px;font-weight:800;color:var(--accent);">' + phases.decay + '</div><div style="font-size:9px;color:var(--accent);font-weight:600;">DECAY</div></div>';
+  html += '<div style="padding:10px;background:var(--surface);border-radius:8px;border:1px solid var(--border);text-align:center;"><div style="font-size:18px;font-weight:800;color:var(--red);">' + phases.expired + '</div><div style="font-size:9px;color:var(--red);font-weight:600;">EXPIRED</div></div>';
+  html += '</div>';
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function confBar(label, score, weight) {
+  const pct = Math.min(100, Math.max(0, score));
+  const color = pct >= 75 ? 'var(--green)' : pct >= 50 ? 'var(--accent)' : 'var(--red)';
+  return `<div style="margin-bottom:6px;">
+    <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px;">
+      <span style="color:var(--muted);">${label} <span style="opacity:0.5;">(${(weight*100).toFixed(0)}%)</span></span>
+      <span style="font-weight:700;color:${color};">${score.toFixed(0)}</span>
+    </div>
+    <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;">
+      <div style="height:100%;width:${pct}%;background:${color};border-radius:2px;"></div>
+    </div>
+  </div>`;
+}
+
+function renderMultiRunChart() {
+  const canvas = document.getElementById('projChart');
+  if (!canvas) return;
+  if (projChart) { projChart.destroy(); projChart = null; }
+  const meta = document.getElementById('projChartMeta');
+
+  const visibleRuns = projRuns.filter(r => r.visible);
+  const showBaselines = projChartToggles.baselines && projBaselines.length > 0;
+
+  if (visibleRuns.length === 0 && !showBaselines) {
+    if (meta) meta.textContent = '';
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+
+  // Use first visible run (or first baseline) as the label source
+  let labelSource = null;
+  if (visibleRuns.length) labelSource = visibleRuns[0].run.future_projected_12m;
+  else if (projBaselines.length && projBaselines[0].snapshot) labelSource = projBaselines[0].snapshot.future_projected_12m;
+  const labels = (labelSource || []).map(p => fmtMonth(p.month_start));
+
+  const datasets = [];
+  for (const r of visibleRuns) {
+    if (projChartToggles.decay && r.run.future_projected_12m) {
+      datasets.push({
+        label: r.label,
+        data: r.run.future_projected_12m.map(p => p.value),
+        borderColor: r.color,
+        backgroundColor: r.color + '22',
+        borderWidth: r.id === projFocusedRunId ? 3 : 2,
+        tension: 0.3,
+        fill: false,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+      });
+    }
+    if (projChartToggles.cadence && r.run.cadence_projected_12m && r.run.cadence_projected_12m.length) {
+      datasets.push({
+        label: r.label + ' · cadence',
+        data: r.run.cadence_projected_12m.map(p => p.value),
+        borderColor: r.color,
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        borderDash: [4, 3],
+        tension: 0.3,
+        fill: false,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+      });
+    }
+    if (projChartToggles.actual && r.run.past_actual_6m && r.run.past_actual_6m.length) {
+      datasets.push({
+        label: r.label + ' · actual',
+        data: r.run.past_actual_6m.map(p => p.value),
+        borderColor: r.color,
+        backgroundColor: r.color + '44',
+        borderWidth: 2,
+        borderDash: [2, 2],
+        tension: 0,
+        fill: false,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+      });
+    }
+  }
+  if (showBaselines) {
+    for (const b of projBaselines) {
+      if (!b.snapshot || !b.snapshot.future_projected_12m) continue;
+      datasets.push({
+        label: 'BASELINE · ' + b.label,
+        data: b.snapshot.future_projected_12m.map(p => p.value),
+        borderColor: b.color,
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        borderDash: [8, 4],
+        tension: 0.3,
+        fill: false,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+      });
+    }
+  }
+
+  if (meta) meta.textContent = datasets.length + ' series • ' + visibleRuns.length + ' runs • ' + (showBaselines ? projBaselines.length : 0) + ' baselines';
+
+  projChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'nearest', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { color: '#7B8099', font: { size: 9 }, boxWidth: 10, padding: 6 } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => ctx.dataset.label + ': $' + (ctx.parsed.y || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }),
+          },
+        },
+      },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#7B8099', font: { size: 10 } } },
+        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#7B8099', font: { size: 10 }, callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v) } },
+      },
+    },
+  });
+}
+
+// ── Compare A/B ──────────────────────────────────────
+let projCompareState = { aId: null, bId: null, active: false };
+
+function openCompareView() {
+  const visible = projRuns.filter(r => r.visible);
+  if (visible.length < 2) { showToast('Need at least 2 visible runs to compare'); return; }
+  projCompareState.active = true;
+  // Seed with first 2 visible runs if not already set, or validate current selection
+  const visibleIds = new Set(visible.map(r => r.id));
+  if (!projCompareState.aId || !visibleIds.has(projCompareState.aId)) projCompareState.aId = visible[0].id;
+  if (!projCompareState.bId || !visibleIds.has(projCompareState.bId) || projCompareState.bId === projCompareState.aId) {
+    projCompareState.bId = visible.find(r => r.id !== projCompareState.aId)?.id || visible[1].id;
+  }
+  renderCompareView();
+}
+
+function closeCompareView() {
+  projCompareState.active = false;
+  renderFocusedRunDetail();
+}
+
+function setComparePick(side, runId) {
+  if (side === 'a') projCompareState.aId = runId;
+  else if (side === 'b') projCompareState.bId = runId;
+  renderCompareView();
+}
+
+function swapComparePicks() {
+  const tmp = projCompareState.aId;
+  projCompareState.aId = projCompareState.bId;
+  projCompareState.bId = tmp;
+  renderCompareView();
+}
+
+function renderCompareView() {
+  const el = document.getElementById('projResultsArea');
+  if (!el) return;
+  const a = projRuns.find(r => r.id === projCompareState.aId);
+  const b = projRuns.find(r => r.id === projCompareState.bId);
+  if (!a || !b) { closeCompareView(); return; }
+  const comp = PL.compareRuns(a.run, b.run);
+
+  // Picker options = all visible runs (and the current picks even if hidden)
+  const optionRuns = projRuns.filter(r => r.visible || r.id === projCompareState.aId || r.id === projCompareState.bId);
+
+  let html = '<div style="padding:16px 20px 20px;">';
+  html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+  html += '<i class="ph ph-arrows-left-right" style="font-size:16px;color:var(--accent);"></i>';
+  html += '<div style="font-size:14px;font-weight:700;">Run Comparison — B vs A (delta = B − A)</div>';
+  html += '<button onclick="closeCompareView()" style="margin-left:auto;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:10px;cursor:pointer;">× Close</button>';
+  html += '</div>';
+
+  // A/B picker row
+  const pickerSelect = (side, currentId) => {
+    let s = '<select onchange="setComparePick(\'' + side + '\', this.value)" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:11px;outline:none;cursor:pointer;min-width:160px;">';
+    for (const r of optionRuns) {
+      s += '<option value="' + r.id + '"' + (r.id === currentId ? ' selected' : '') + '>' + escapeHtml(r.label) + ' · ' + fmtDollar(r.run.pc_at_eval_date) + '</option>';
+    }
+    s += '</select>';
+    return s;
+  };
+  html += '<div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;font-size:11px;">';
+  html += '<div style="display:flex;align-items:center;gap:6px;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + a.color + ';"></span><b style="color:var(--muted);">A:</b>' + pickerSelect('a', a.id) + '</div>';
+  html += '<button onclick="swapComparePicks()" title="Swap A/B" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;"><i class="ph ph-arrows-left-right"></i></button>';
+  html += '<div style="display:flex;align-items:center;gap:6px;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + b.color + ';"></span><b style="color:var(--muted);">B:</b>' + pickerSelect('b', b.id) + '</div>';
+  html += '</div>';
+
+  // Top drivers (highlighted at top since they're the punchline)
+  if (comp.top_drivers && comp.top_drivers.length) {
+    html += '<div style="margin-bottom:14px;padding:12px;background:var(--surface);border-radius:10px;border:1px solid var(--border);">';
+    html += '<div style="font-size:11px;font-weight:700;margin-bottom:8px;color:var(--text);"><i class="ph ph-lightning" style="color:var(--accent);"></i> Top Drivers (largest % deltas)</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;">';
+    for (const d of comp.top_drivers) {
+      const color = d.delta > 0 ? 'var(--green)' : d.delta < 0 ? 'var(--red)' : 'var(--muted)';
+      const sign = d.delta > 0 ? '+' : '';
+      const magnitude = Math.min(100, Math.abs(d.delta_percent));
+      html += '<div style="padding:8px 10px;background:rgba(255,255,255,0.02);border-radius:6px;border:1px solid var(--border);">';
+      html += '<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:3px;">' + d.field.replace(/_/g, ' ') + '</div>';
+      html += '<div style="font-size:13px;font-weight:800;color:' + color + ';">' + sign + d.delta_percent.toFixed(1) + '%</div>';
+      html += '<div style="height:3px;background:rgba(255,255,255,0.06);border-radius:2px;margin-top:4px;"><div style="height:100%;width:' + magnitude + '%;background:' + color + ';border-radius:2px;"></div></div>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
+
+  // Full deltas table
+  html += '<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;">';
+  html += '<table class="kpi-table" style="margin:0;"><thead><tr><th>Metric</th><th style="text-align:right;">A</th><th style="text-align:right;">B</th><th style="text-align:right;">Δ</th><th style="text-align:right;">%</th></tr></thead><tbody>';
+  const fmtField = (field, val) => {
+    if (field.includes('confidence') || field.includes('percent') || field.includes('bump')) {
+      return (val || 0).toFixed(2);
+    }
+    return fmtDollar(val);
+  };
+  for (const d of comp.summary_deltas) {
+    const color = d.delta > 0 ? 'var(--green)' : d.delta < 0 ? 'var(--red)' : 'var(--muted)';
+    const sign = d.delta > 0 ? '+' : '';
+    html += '<tr><td style="font-weight:600;">' + d.field.replace(/_/g, ' ') + '</td>';
+    html += '<td class="num">' + fmtField(d.field, d.run_a_value) + '</td>';
+    html += '<td class="num">' + fmtField(d.field, d.run_b_value) + '</td>';
+    html += '<td class="num" style="color:' + color + ';font-weight:700;">' + sign + fmtField(d.field, d.delta) + '</td>';
+    html += '<td class="num" style="color:' + color + ';">' + sign + d.delta_percent.toFixed(1) + '%</td></tr>';
+  }
+  html += '</tbody></table></div>';
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+// Override renderFocusedRunDetail dispatch for compare view
+function _projCheckCompareDispatch() {
+  return projCompareState && projCompareState.active;
+}
+
+// ── Phase 5: Run Detail View (event-level diagnostics) ──
+let projDetailState = { runId: null, sort: 'value_desc', filter: 'all', kpiFilter: '' };
+
+function openRunDetail(runId) {
+  projDetailState.runId = runId;
+  projFocusedRunId = runId;
+  projEditingRunId = null;
+  renderRunDetailView();
+}
+
+function closeRunDetail() {
+  projDetailState.runId = null;
+  renderFocusedRunDetail();
+}
+
+function setDetailSort(sort) { projDetailState.sort = sort; renderRunDetailView(); }
+function setDetailFilter(filter) { projDetailState.filter = filter; renderRunDetailView(); }
+function setDetailKpiFilter(val) { projDetailState.kpiFilter = val; renderRunDetailView(); }
+
+function renderRunDetailView() {
+  const el = document.getElementById('projResultsArea');
+  const r = projRuns.find(x => x.id === projDetailState.runId);
+  if (!r) { el.innerHTML = '<div style="padding:20px;color:var(--muted);">Run not found.</div>'; return; }
+  const run = r.run;
+  const scenario = r.scenario;
+
+  // Filter + sort events
+  let events = (run.event_contributions || []).slice();
+  const kpiQ = (projDetailState.kpiFilter || '').toLowerCase().trim();
+  if (projDetailState.filter !== 'all') events = events.filter(e => e.phase_at_eval === projDetailState.filter);
+  if (kpiQ) events = events.filter(e => (e.kpi_name || '').toLowerCase().includes(kpiQ));
+
+  const sortFns = {
+    value_desc: (a, b) => b.current_value - a.current_value,
+    value_asc: (a, b) => a.current_value - b.current_value,
+    date_desc: (a, b) => b.event_date_iso.localeCompare(a.event_date_iso),
+    date_asc: (a, b) => a.event_date_iso.localeCompare(b.event_date_iso),
+    initial_desc: (a, b) => b.initial_pc - a.initial_pc,
+    kpi: (a, b) => (a.kpi_name || '').localeCompare(b.kpi_name || ''),
+  };
+  events.sort(sortFns[projDetailState.sort] || sortFns.value_desc);
+
+  // Phase counts for filter pills
+  const phaseCounts = { all: run.event_contributions.length, before_payoff: 0, hold: 0, decay: 0, expired: 0 };
+  for (const e of run.event_contributions) phaseCounts[e.phase_at_eval] = (phaseCounts[e.phase_at_eval] || 0) + 1;
+
+  const phaseColor = (p) => p === 'hold' ? 'var(--pc)' : p === 'decay' ? 'var(--accent)' : p === 'expired' ? 'var(--red)' : 'var(--muted)';
+  const phaseLabel = (p) => p === 'before_payoff' ? 'DELAY' : (p || '').toUpperCase();
+
+  let html = '<div style="padding:16px 20px 20px;">';
+  html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+  html += '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + r.color + ';"></span>';
+  html += '<i class="ph ph-list-magnifying-glass" style="font-size:16px;color:var(--accent);"></i>';
+  html += '<div style="font-size:14px;font-weight:700;color:var(--text);">Event Diagnostics — ' + escapeHtml(r.label) + '</div>';
+  html += '<div style="font-size:10px;color:var(--muted);">' + run.event_contributions.length + ' total events • Eval ' + fmtMonth(run.eval_date_iso) + '</div>';
+  html += '<button onclick="closeRunDetail()" style="margin-left:auto;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:10px;cursor:pointer;font-weight:600;">× Close</button>';
+  html += '</div>';
+
+  // Phase filter pills
+  html += '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">';
+  const phases = [['all','All'],['before_payoff','Delay'],['hold','Hold'],['decay','Decay'],['expired','Expired']];
+  for (const [key, label] of phases) {
+    const active = projDetailState.filter === key;
+    const color = key === 'all' ? 'var(--accent)' : phaseColor(key);
+    html += '<button onclick="setDetailFilter(\'' + key + '\')" style="padding:4px 10px;border-radius:6px;border:1px solid ' + (active ? color : 'var(--border)') + ';background:' + (active ? color + '22' : 'transparent') + ';color:' + (active ? color : 'var(--muted)') + ';font-size:10px;font-weight:700;cursor:pointer;text-transform:uppercase;">' + label + ' (' + (phaseCounts[key] || 0) + ')</button>';
+  }
+  html += '</div>';
+
+  // KPI search + sort
+  html += '<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">';
+  html += '<input type="text" placeholder="Filter by KPI name…" value="' + escapeHtml(projDetailState.kpiFilter) + '" oninput="setDetailKpiFilter(this.value)" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:11px;outline:none;">';
+  html += '<select onchange="setDetailSort(this.value)" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:11px;outline:none;cursor:pointer;">';
+  const sorts = [['value_desc','Current $ ↓'],['value_asc','Current $ ↑'],['initial_desc','Initial $ ↓'],['date_desc','Date ↓'],['date_asc','Date ↑'],['kpi','KPI Name']];
+  for (const [val, label] of sorts) {
+    html += '<option value="' + val + '"' + (projDetailState.sort === val ? ' selected' : '') + '>' + label + '</option>';
+  }
+  html += '</select>';
+  html += '</div>';
+
+  // Event table
+  if (events.length === 0) {
+    html += '<div style="padding:30px;text-align:center;color:var(--muted);background:var(--surface);border-radius:10px;border:1px solid var(--border);font-size:12px;">No events match current filters.</div>';
+  } else {
+    html += '<div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;">';
+    html += '<table class="kpi-table" style="margin:0;"><thead style="position:sticky;top:0;background:var(--surface);z-index:1;"><tr>';
+    html += '<th>Phase</th><th>KPI</th><th>Event Date</th><th style="text-align:right;">Initial $</th><th style="text-align:right;">Current $</th><th style="text-align:right;">Decay Remaining</th>';
+    html += '</tr></thead><tbody>';
+    for (const ev of events) {
+      const col = phaseColor(ev.phase_at_eval);
+      const evDate = new Date(ev.event_date_iso);
+      const decayDate = new Date(ev.full_decay_iso);
+      const now = new Date(run.eval_date_iso);
+      const decayRemainMs = decayDate - now;
+      const decayRemainDays = Math.max(0, Math.round(decayRemainMs / (1000 * 60 * 60 * 24)));
+      const decayRemainLabel = ev.phase_at_eval === 'expired' ? '—' : decayRemainDays + 'd';
+      html += '<tr>';
+      html += '<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;background:' + col + '22;color:' + col + ';font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;">' + phaseLabel(ev.phase_at_eval) + '</span></td>';
+      html += '<td style="font-weight:600;">' + escapeHtml(ev.kpi_name) + '</td>';
+      html += '<td style="font-size:10px;color:var(--muted);font-family:monospace;">' + evDate.toISOString().slice(0,10) + '</td>';
+      html += '<td class="num" style="color:var(--muted);">' + fmtDollar(ev.initial_pc) + '</td>';
+      html += '<td class="num" style="color:' + col + ';font-weight:700;">' + fmtDollar(ev.current_value) + '</td>';
+      html += '<td class="num" style="color:var(--muted);font-size:10px;">' + decayRemainLabel + '</td>';
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+
+    // Summary footer
+    const shownTotal = events.reduce((s, e) => s + e.current_value, 0);
+    const shownInitial = events.reduce((s, e) => s + e.initial_pc, 0);
+    html += '<div style="margin-top:10px;padding:10px 14px;background:var(--surface);border-radius:10px;border:1px solid var(--border);display:flex;gap:18px;font-size:11px;">';
+    html += '<div><span style="color:var(--muted);">Shown:</span> <b style="color:var(--text);">' + events.length + '</b> events</div>';
+    html += '<div><span style="color:var(--muted);">Initial Total:</span> <b style="color:var(--text);">' + fmtDollar(shownInitial) + '</b></div>';
+    html += '<div><span style="color:var(--muted);">Current Total:</span> <b style="color:var(--pc);">' + fmtDollar(shownTotal) + '</b></div>';
+    html += '<div style="margin-left:auto;"><span style="color:var(--muted);">Retention:</span> <b style="color:var(--accent);">' + (shownInitial > 0 ? (shownTotal / shownInitial * 100).toFixed(1) : '0') + '%</b></div>';
+    html += '</div>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+// ── Baselines ────────────────────────────────────────
+function lockAllProfilesAsBaselines() {
+  if (!confirm('Lock all 7 reference profiles as baselines at seed 12345?\nExisting baselines for these profiles will be replaced.')) return;
+  const seed = 12345;
+  const catalogKpis = kpis.filter(k => k.is_active);
+  let added = 0;
+  for (const profile of PL.SCENARIO_PROFILES) {
+    try {
+      const scenario = PL.generateScenarioFromProfile({
+        profile, adminUser: USER_EMAIL || 'admin', seed, catalogKpis,
+      });
+      const run = PL.executeRun({ scenario, adminUser: USER_EMAIL || 'admin' });
+      try {
+        const snapshot = PL.captureGoldenSnapshot(run, 5);
+        PL.registerGoldenScenario(scenario, snapshot);
+      } catch (e) {}
+      projBaselines = projBaselines.filter(b => b.profileId !== profile.id);
+      projBaselines.push({
+        id: 'baseline-' + profile.id,
+        profileId: profile.id,
+        label: profile.agentName,
+        color: RUN_COLORS[projBaselines.length % RUN_COLORS.length],
+        lockedAt: new Date().toISOString(),
+        algorithmVersion: run.algorithm_version || '1.0.0',
+        scenarioName: scenario.name,
+        seed,
+        snapshot: {
+          pc_30d: run.pc_30d,
+          pc_90d: run.pc_90d,
+          pc_180d: run.pc_180d,
+          pc_at_eval_date: run.pc_at_eval_date,
+          future_projected_12m: run.future_projected_12m,
+        },
+      });
+      added++;
+    } catch (e) {
+      console.warn('Failed to lock baseline for', profile.id, e);
+    }
+  }
+  saveBaselinesToStorage();
+  showToast('Locked ' + added + ' baselines');
+  renderBaselinesPanel();
+  renderWorkbench();
+}
+
+function clearAllBaselines() {
+  if (projBaselines.length === 0) { showToast('No baselines to clear'); return; }
+  if (!confirm('Clear all ' + projBaselines.length + ' baselines?')) return;
+  projBaselines = [];
+  saveBaselinesToStorage();
+  renderBaselinesPanel();
+  renderWorkbench();
+}
+
+function renderBaselinesPanel() {
+  const grid = document.getElementById('baselinesGrid');
+  const info = document.getElementById('goldenInfo');
+  const results = document.getElementById('goldenResults');
+  if (info) info.textContent = projBaselines.length + ' baseline' + (projBaselines.length === 1 ? '' : 's') + ' locked';
+  if (grid) {
+    if (projBaselines.length === 0) {
+      grid.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;background:var(--surface);border-radius:12px;border:1px dashed var(--border);">No baselines locked yet. Click <b>Lock All 7 Profiles as Baselines</b> above to seed reference runs, then experiment against them in the Scenario Builder.</div>';
+    } else {
+      let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
+      for (const b of projBaselines) {
+        html += '<div style="padding:14px;background:var(--surface);border-radius:10px;border:1px solid var(--border);border-left:4px solid ' + b.color + ';">';
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">';
+        html += '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + b.color + ';"></span>';
+        html += '<div style="font-size:12px;font-weight:700;color:var(--text);">' + escapeHtml(b.label) + '</div>';
+        html += '</div>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:10px;margin-bottom:8px;">';
+        html += '<div><div style="color:var(--muted);font-weight:700;">30D</div><div style="color:var(--pc);font-weight:700;">' + fmtDollar(b.snapshot.pc_30d) + '</div></div>';
+        html += '<div><div style="color:var(--muted);font-weight:700;">90D</div><div style="color:var(--pc);font-weight:700;">' + fmtDollar(b.snapshot.pc_90d) + '</div></div>';
+        html += '<div><div style="color:var(--muted);font-weight:700;">180D</div><div style="color:var(--pc);font-weight:700;">' + fmtDollar(b.snapshot.pc_180d) + '</div></div>';
+        html += '</div>';
+        html += '<div style="font-size:9px;color:var(--muted);">Algo v' + b.algorithmVersion + ' • Seed ' + (b.seed || '?') + '</div>';
+        html += '<div style="font-size:9px;color:var(--muted);">Locked ' + new Date(b.lockedAt).toLocaleString() + '</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+      grid.innerHTML = html;
+    }
+  }
+  if (results) results.innerHTML = '';
+}
+
+function runGoldenSuite() {
+  if (projBaselines.length === 0) {
+    showToast('No baselines registered. Click "Lock All 7 Profiles" first.');
+    return;
+  }
+  // Re-register golden scenarios from our stored baselines so the engine can run regression
+  const catalogKpis = kpis.filter(k => k.is_active);
+  for (const b of projBaselines) {
+    const profile = PL.SCENARIO_PROFILES.find(p => p.id === b.profileId);
+    if (!profile) continue;
+    try {
+      const scenario = PL.generateScenarioFromProfile({
+        profile, adminUser: USER_EMAIL || 'admin', seed: b.seed || 12345, catalogKpis,
+      });
+      const snapshot = { pc_30d: b.snapshot.pc_30d, pc_90d: b.snapshot.pc_90d, pc_180d: b.snapshot.pc_180d, tolerance_percent: 5 };
+      PL.registerGoldenScenario(scenario, snapshot);
+    } catch (e) { console.warn('reregister failed', e); }
+  }
+  const report = PL.runRegressionSuite(USER_EMAIL || 'admin');
+  renderGoldenReport(report);
+}
+
+function renderGoldenReport(report) {
+  const el = document.getElementById('goldenResults');
+  if (!el) return;
+  let html = '<div style="margin-top:16px;padding:14px;background:var(--surface);border-radius:10px;border:1px solid var(--border);">';
+  html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">';
+  html += '<div style="padding:8px 14px;background:' + (report.failed === 0 ? 'rgba(47,159,86,0.1)' : 'rgba(217,68,68,0.1)') + ';border-radius:8px;border:1px solid ' + (report.failed === 0 ? 'var(--green)' : 'var(--red)') + '33;">';
+  html += '<span style="font-size:16px;font-weight:800;color:' + (report.failed === 0 ? 'var(--green)' : 'var(--red)') + ';">' + (report.failed === 0 ? 'ALL PASS' : report.failed + ' FAILED') + '</span>';
+  html += '<span style="font-size:11px;color:var(--muted);margin-left:8px;">' + report.passed + '/' + report.total_scenarios + ' scenarios</span>';
+  html += '</div></div>';
+  html += '<table class="kpi-table"><thead><tr><th></th><th>Scenario</th><th style="text-align:right;">PC 30d</th><th style="text-align:right;">PC 90d</th><th style="text-align:right;">PC 180d</th><th style="text-align:right;">30d Δ</th><th style="text-align:right;">90d Δ</th><th style="text-align:right;">180d Δ</th></tr></thead><tbody>';
+  for (const r of report.results) {
+    const icon = r.passed ? '<i class="ph ph-check-circle" style="color:var(--green);"></i>' : '<i class="ph ph-x-circle" style="color:var(--red);"></i>';
+    const dColor = (v) => Math.abs(v) <= 5 ? 'var(--green)' : Math.abs(v) <= 10 ? 'var(--accent)' : 'var(--red)';
+    html += '<tr><td>' + icon + '</td><td style="font-weight:600;">' + escapeHtml(r.scenario_name) + '</td>';
+    html += '<td class="num">' + fmtDollar(r.actual.pc_30d) + '</td>';
+    html += '<td class="num">' + fmtDollar(r.actual.pc_90d) + '</td>';
+    html += '<td class="num">' + fmtDollar(r.actual.pc_180d) + '</td>';
+    html += '<td class="num" style="color:' + dColor(r.deltas.pc_30d_pct) + ';">' + (r.deltas.pc_30d_pct > 0 ? '+' : '') + r.deltas.pc_30d_pct.toFixed(1) + '%</td>';
+    html += '<td class="num" style="color:' + dColor(r.deltas.pc_90d_pct) + ';">' + (r.deltas.pc_90d_pct > 0 ? '+' : '') + r.deltas.pc_90d_pct.toFixed(1) + '%</td>';
+    html += '<td class="num" style="color:' + dColor(r.deltas.pc_180d_pct) + ';">' + (r.deltas.pc_180d_pct > 0 ? '+' : '') + r.deltas.pc_180d_pct.toFixed(1) + '%</td></tr>';
+  }
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+// ── PC Parameters Table (original) ───────────────────
+function renderProjLabParams() {
   const el = document.getElementById('projLabTableWrap');
   if (!el) return;
   const pcKpis = kpis.filter(k => k.type === 'PC').sort((a, b) => (b.pc_weight || 0) - (a.pc_weight || 0));
-  document.getElementById('projLabInfo').textContent = pcKpis.length + ' PC KPIs sorted by weight (highest first)';
-
-  // Example user profile for illustration
-  const avgPrice = 425000;
-  const commRate = 0.03;
-
+  const avgPrice = 425000, commRate = 0.03;
   let html = `<table class="kpi-table"><thead><tr>
     <th></th><th>KPI Name</th><th style="text-align:right;">PC Weight</th>
     <th style="text-align:right;">Delay</th><th style="text-align:right;">Hold</th>
@@ -1510,63 +3092,202 @@ function renderProjLab() {
     <th style="text-align:right;">$ per Event</th>
     <th style="text-align:left;padding-left:12px;">Timeline</th>
   </tr></thead><tbody>`;
-
   for (const kpi of pcKpis) {
-    const w = kpi.pc_weight || 0;
-    const d = kpi.delay_days || 0;
-    const h = kpi.hold_days || 0;
-    const dc = kpi.decay_days || 0;
-    const ttc = d + h;
-    const totalDays = d + h + dc;
+    const w = kpi.pc_weight || 0, d = kpi.delay_days || 0, h = kpi.hold_days || 0, dc = kpi.decay_days || 0;
+    const ttc = d + h, totalDays = d + h + dc;
     const perEvent = avgPrice * commRate * (w / 100);
-
-    // Timeline bar: delay (gray) + hold (green) + decay (fade)
     const maxDays = 400;
-    const delayPct = Math.min((d / maxDays) * 100, 40);
-    const holdPct = Math.min((h / maxDays) * 100, 40);
-    const decayPct = Math.min((dc / maxDays) * 100, 50);
+    const delayPct = Math.min((d / maxDays) * 100, 40), holdPct = Math.min((h / maxDays) * 100, 40), decayPct = Math.min((dc / maxDays) * 100, 50);
     const iconName = kpi.icon_name || 'circle';
-
     html += `<tr onclick="selectKpi('${kpi.id}');setDesignerView('cards');" style="cursor:pointer;">
       <td><i class="ph ph-${iconName}" style="font-size:16px;color:var(--pc);"></i></td>
       <td style="font-weight:600;color:var(--pc);">${kpi.name || ''}</td>
       <td class="num" style="font-weight:700;">${w.toFixed(4)}</td>
-      <td class="num">${d}d</td>
-      <td class="num">${h}d</td>
-      <td class="num">${dc}d</td>
+      <td class="num">${d}d</td><td class="num">${h}d</td><td class="num">${dc}d</td>
       <td class="num"><b>${ttc}d</b></td>
       <td class="num" style="color:var(--pc);font-weight:600;">$${perEvent >= 1000 ? (perEvent/1000).toFixed(1) + 'k' : perEvent.toFixed(0)}</td>
       <td style="padding-left:12px;">
         <div style="display:flex;height:12px;border-radius:3px;overflow:hidden;width:200px;background:rgba(255,255,255,0.03);">
-          <div style="width:${delayPct}%;background:rgba(255,255,255,0.08);" title="Delay: ${d}d ($0)"></div>
-          <div style="width:${holdPct}%;background:var(--pc);" title="Hold: ${h}d (full value)"></div>
-          <div style="width:${decayPct}%;background:linear-gradient(90deg, var(--pc), transparent);" title="Decay: ${dc}d (linear to $0)"></div>
+          <div style="width:${delayPct}%;background:rgba(255,255,255,0.08);" title="Delay: ${d}d"></div>
+          <div style="width:${holdPct}%;background:var(--pc);" title="Hold: ${h}d"></div>
+          <div style="width:${decayPct}%;background:linear-gradient(90deg, var(--pc), transparent);" title="Decay: ${dc}d"></div>
         </div>
-        <div style="font-size:9px;color:var(--muted);margin-top:1px;">${totalDays}d total lifecycle</div>
-      </td>
-    </tr>`;
+        <div style="font-size:9px;color:var(--muted);margin-top:1px;">${totalDays}d lifecycle</div>
+      </td></tr>`;
   }
   html += '</tbody></table>';
   el.innerHTML = html;
+}
+
+// Keep old name for backwards compat with switchPanel
+function renderProjLab() { initProjLab(); if (projLabView === 'params') renderProjLabParams(); }
+
+// ── Decay Curve Visualizer ───────────────────────────
+let decayChart = null;
+function initDecayViz() {
+  const sel = document.getElementById('decayKpiSelect');
+  if (sel.options.length > 1) return;
+  const pcKpis = kpis.filter(k => k.type === 'PC' && k.is_active).sort((a,b) => (b.pc_weight||0) - (a.pc_weight||0));
+  pcKpis.forEach(k => {
+    const opt = document.createElement('option');
+    opt.value = k.id;
+    opt.textContent = k.name;
+    opt.dataset.delay = k.delay_days || 0;
+    opt.dataset.hold = k.hold_days || 0;
+    opt.dataset.decay = k.decay_days || 180;
+    opt.dataset.weight = k.pc_weight || 0;
+    sel.appendChild(opt);
+  });
+  if (pcKpis.length > 0) {
+    sel.value = pcKpis[0].id;
+    loadDecayKpiParams();
+  }
+}
+
+function loadDecayKpiParams() {
+  const sel = document.getElementById('decayKpiSelect');
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.dataset.delay) return;
+  document.getElementById('decayDelayInput').value = opt.dataset.delay;
+  document.getElementById('decayHoldInput').value = opt.dataset.hold;
+  document.getElementById('decayDecayInput').value = opt.dataset.decay;
+}
+
+function renderDecayViz() {
+  loadDecayKpiParams();
+  const delay = parseInt(document.getElementById('decayDelayInput').value) || 0;
+  const hold = parseInt(document.getElementById('decayHoldInput').value) || 0;
+  const decay = parseInt(document.getElementById('decayDecayInput').value) || 180;
+  const avgPrice = parseFloat(document.getElementById('decayPrice').value) || 425000;
+  const comm = parseFloat(document.getElementById('decayComm').value) || 0.03;
+
+  document.getElementById('decayDelayVal').textContent = delay + 'd';
+  document.getElementById('decayHoldVal').textContent = hold + 'd';
+  document.getElementById('decayDecayVal').textContent = decay + 'd';
+
+  const sel = document.getElementById('decayKpiSelect');
+  const opt = sel.options[sel.selectedIndex];
+  const weight = parseFloat(opt?.dataset?.weight) || 0.1;
+  const initialPc = avgPrice * comm * (weight / 100);
+  const totalDays = delay + hold + decay;
+
+  document.getElementById('decayInfo').textContent = `Weight: ${weight} | initialPC: $${initialPc.toFixed(2)} | Total: ${totalDays}d`;
+
+  // Build data points
+  const labels = [], values = [], colors = [];
+  for (let d = 0; d <= totalDays + 10; d += 1) {
+    labels.push(d);
+    let val = 0;
+    if (d < delay) { val = 0; colors.push('rgba(255,255,255,0.08)'); }
+    else if (d < delay + hold) { val = initialPc; colors.push('rgba(47,159,86,0.8)'); }
+    else if (d < totalDays) { val = initialPc * (1 - (d - delay - hold) / decay); colors.push('rgba(201,168,76,0.6)'); }
+    else { val = 0; colors.push('rgba(217,68,68,0.3)'); }
+    values.push(Math.max(0, val));
+  }
+
+  // Impact summary
+  document.getElementById('decayImpactBox').innerHTML = `
+    <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Impact Summary</div>
+    <div style="font-size:11px;margin-bottom:3px;">Initial PC: <b style="color:var(--pc);">$${initialPc.toFixed(2)}</b></div>
+    <div style="font-size:11px;margin-bottom:3px;">Peak value window: <b>${delay}d &mdash; ${delay+hold}d</b></div>
+    <div style="font-size:11px;margin-bottom:3px;">Fully expired at: <b>${totalDays}d</b></div>
+    <div style="font-size:11px;">Lifetime value: <b style="color:var(--accent);">$${(initialPc * hold + initialPc * decay / 2).toFixed(2)}</b> (area under curve)</div>`;
+
+  // Chart
+  const canvas = document.getElementById('decayCanvas');
+  if (decayChart) { decayChart.destroy(); decayChart = null; }
+  decayChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: labels.filter((_,i) => i % 5 === 0 || i === labels.length - 1),
+      datasets: [{
+        data: values.filter((_,i) => i % 5 === 0 || i === labels.length - 1),
+        borderColor: '#2f9f56',
+        backgroundColor: 'rgba(47,159,86,0.15)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.1,
+        pointRadius: 0,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { title: { display: true, text: 'Days', color: '#7B8099', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#7B8099', font: { size: 9 } } },
+        y: { title: { display: true, text: '$ Value', color: '#7B8099', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#7B8099', font: { size: 9 }, callback: v => '$' + v.toFixed(2) } },
+      },
+    },
+  });
+
+  // All KPIs comparison
+  renderDecayAllKpis(avgPrice, comm);
+}
+
+function renderDecayAllKpis(avgPrice, comm) {
+  const pcKpis = kpis.filter(k => k.type === 'PC' && k.is_active).sort((a,b) => (b.pc_weight||0) - (a.pc_weight||0));
+  const maxDays = 420;
+  let html = '';
+  for (const kpi of pcKpis) {
+    const w = kpi.pc_weight || 0, d = kpi.delay_days || 0, h = kpi.hold_days || 0, dc = kpi.decay_days || 180;
+    const total = d + h + dc;
+    const perEvent = avgPrice * comm * (w / 100);
+    const dPct = (d/maxDays*100).toFixed(1), hPct = (h/maxDays*100).toFixed(1), dcPct = (dc/maxDays*100).toFixed(1);
+    html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:3px;">
+      <div style="width:140px;font-size:10px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${kpi.name}">${kpi.name}</div>
+      <div style="flex:1;height:10px;background:rgba(255,255,255,0.03);border-radius:3px;display:flex;overflow:hidden;">
+        <div style="width:${dPct}%;background:rgba(255,255,255,0.08);" title="Delay: ${d}d"></div>
+        <div style="width:${hPct}%;background:var(--pc);" title="Hold: ${h}d"></div>
+        <div style="width:${dcPct}%;background:linear-gradient(90deg, var(--pc), transparent);" title="Decay: ${dc}d"></div>
+      </div>
+      <div style="width:45px;font-size:9px;color:var(--muted);text-align:right;">${total}d</div>
+      <div style="width:55px;font-size:9px;color:var(--pc);text-align:right;font-weight:600;">$${perEvent >= 100 ? perEvent.toFixed(0) : perEvent.toFixed(2)}</div>
+    </div>`;
+  }
+  document.getElementById('decayAllKpis').innerHTML = html;
 }
 
 // ══════════════════════════════════════════════════════
 // Panel data loading on switch
 // ══════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════
-// Coaching Panel
+// Coaching Panel — Full Admin
 // ══════════════════════════════════════════════════════
 let journeys = [];
+let coaches = []; // [{id, full_name}]
 let selectedJourneyId = null;
+let journeyDetail = null; // full detail from /admin/coaching/journeys/:id
 let coachingFilter = 'all';
+let coachingOwnerFilter = 'all'; // 'all' | 'coaches' | user_id
+let expandedMilestones = {}; // milestoneId -> true
+let coachingDetailTab = 'tree'; // 'tree' | 'enrollments'
+let mediaAssets = [];
+let mediaAssetsById = {}; // media_id -> asset (includes mux_gs_welcome etc.)
+let mediaAssetsLoaded = false;
+let mediaPanelOpen = false;
+let enrollmentRequests = [];
+let linkingLessonContext = null; // { journeyId, milestoneId, lessonId } while picking asset
 
+// ── Coaching API helper (adds elevated header) ──
+async function coachFetch(path, opts = {}) {
+  return apiFetch(path, {
+    ...opts,
+    headers: {
+      ...opts.headers,
+      'x-coach-elevated-edit': 'true',
+    },
+  });
+}
+
+// ── Load journey list ──
 async function loadCoaching() {
   try {
     const resp = await apiFetch('/admin/coaching/journeys');
     if (!resp) return;
     const data = await resp.json();
     journeys = data.journeys || data || [];
-    renderCoaching();
+    coaches = data.coaches || [];
+    renderCoachingTable();
   } catch (e) { showToast('Failed to load journeys: ' + e.message); }
 }
 
@@ -1574,10 +3295,10 @@ function setCoachingFilter(el, filter) {
   coachingFilter = filter;
   document.querySelectorAll('#coachingToolbar .filter-pill').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
-  renderCoaching();
+  renderCoachingTable();
 }
 
-function renderCoaching() {
+function renderCoachingTable() {
   const el = document.getElementById('coachingTableWrap');
   if (!el) return;
   let filtered = [...journeys];
@@ -1585,7 +3306,27 @@ function renderCoaching() {
   if (coachingFilter === 'draft') filtered = filtered.filter(j => j.status === 'draft' || !j.is_active);
   if (coachingFilter === 'has_lessons') filtered = filtered.filter(j => j.lesson_count > 0);
 
+  // Owner filter: 'all' | 'coaches' | user_id
+  if (coachingOwnerFilter === 'coaches') {
+    filtered = filtered.filter(j => j.creator_is_coach);
+  } else if (coachingOwnerFilter !== 'all') {
+    filtered = filtered.filter(j => j.created_by === coachingOwnerFilter);
+  }
+
   document.getElementById('coachingCount').textContent = filtered.length + ' of ' + journeys.length + ' journeys';
+
+  // Render owner filter dropdown (built once, updates on change)
+  const ownerSelect = document.getElementById('coachingOwnerSelect');
+  if (ownerSelect && ownerSelect.dataset.populated !== 'yes') {
+    let opts = '<option value="all">All Owners</option>';
+    opts += '<option value="coaches">Only Coaches</option>';
+    for (const c of coaches) {
+      opts += `<option value="${c.id}">${esc(c.full_name || c.id.slice(0,8))}</option>`;
+    }
+    ownerSelect.innerHTML = opts;
+    ownerSelect.value = coachingOwnerFilter;
+    ownerSelect.dataset.populated = 'yes';
+  }
 
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString() : '—';
   const statusBadge = (j) => {
@@ -1595,15 +3336,18 @@ function renderCoaching() {
   };
 
   let html = `<table class="kpi-table"><thead><tr>
-    <th>Title</th><th>Status</th><th style="text-align:right;">Milestones</th>
+    <th>Title</th><th>Owner</th><th>Status</th><th style="text-align:right;">Milestones</th>
     <th style="text-align:right;">Lessons</th><th style="text-align:right;">Enrolled</th>
     <th>Active</th><th>Created</th>
   </tr></thead><tbody>`;
   for (const j of filtered) {
     const sel = j.id === selectedJourneyId ? ' selected-row' : '';
     const activeColor = j.is_active ? 'var(--green)' : 'var(--red)';
+    const ownerLabel = j.creator_name || (j.created_by ? j.created_by.slice(0, 8) : '—');
+    const coachIcon = j.creator_is_coach ? '<i class="ph ph-graduation-cap" style="color:var(--accent);font-size:11px;" title="Coach"></i> ' : '';
     html += `<tr class="${sel}" onclick="selectJourney('${j.id}')">
-      <td style="font-weight:600;max-width:250px;overflow:hidden;text-overflow:ellipsis;">${j.title || ''}</td>
+      <td style="font-weight:600;max-width:230px;overflow:hidden;text-overflow:ellipsis;">${esc(j.title)}</td>
+      <td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;">${coachIcon}${esc(ownerLabel)}</td>
       <td>${statusBadge(j)}</td>
       <td class="num">${j.milestone_count || 0}</td>
       <td class="num">${j.lesson_count || 0}</td>
@@ -1613,45 +3357,105 @@ function renderCoaching() {
     </tr>`;
   }
   if (!filtered.length) {
-    html += '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">No journeys match this filter</td></tr>';
+    html += '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px;">No journeys match this filter</td></tr>';
   }
   html += '</tbody></table>';
   el.innerHTML = html;
 }
 
-function selectJourney(id) {
+function setCoachingOwnerFilter(value) {
+  coachingOwnerFilter = value;
+  renderCoachingTable();
+}
+
+function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ══════════════════════════════════════════════════════
+// Step 1: Journey Detail Drill-Down
+// ══════════════════════════════════════════════════════
+async function selectJourney(id) {
   selectedJourneyId = id;
-  const j = journeys.find(x => x.id === id);
-  if (!j) return;
+  journeyDetail = null;
+  journeyEnrollments = []; // reset for new journey
+  renderCoachingTable(); // highlight row
+
   document.getElementById('coachingDetailEmpty').style.display = 'none';
   const content = document.getElementById('coachingDetailContent');
   content.style.display = 'block';
+  content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Loading...</div>';
+
+  try {
+    // Use admin endpoint that bypasses coach scope checks (platform admin only)
+    const resp = await apiFetch('/admin/coaching/journeys/' + id);
+    if (!resp) return;
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      content.innerHTML = `<div style="color:var(--red);padding:20px;font-size:12px;">Failed to load journey (${resp.status}): ${esc(err.error || err.message || 'Unknown error')}</div>`;
+      journeyDetail = null;
+      return;
+    }
+    const data = await resp.json();
+    if (!data || !data.journey) {
+      content.innerHTML = '<div style="color:var(--red);padding:20px;font-size:12px;">Invalid response shape</div>';
+      return;
+    }
+    journeyDetail = data;
+    renderJourneyDetail();
+    // Load media library so lesson asset:<id> references resolve
+    if (!mediaAssetsLoaded) loadMediaAssets();
+    // Pre-load enrollments for the enrollments tab
+    loadJourneyEnrollments(id);
+  } catch (e) {
+    content.innerHTML = '<div style="color:var(--red);padding:20px;">Failed to load: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderJourneyDetail() {
+  const content = document.getElementById('coachingDetailContent');
+  if (!journeyDetail) return;
+  const j = journeyDetail.journey || journeyDetail;
+  const milestones = journeyDetail.milestones || [];
 
   let html = '';
-  html += `<div class="edit-field"><label>Title</label><input type="text" value="${(j.title || '').replace(/"/g, '&quot;')}" readonly style="opacity:0.8;"></div>`;
-  html += `<div class="edit-field"><label>Description</label><input type="text" value="${(j.description || '').replace(/"/g, '&quot;')}" readonly style="opacity:0.8;"></div>`;
-  html += `<div class="field-row">`;
-  html += `<div class="edit-field"><label>Status</label><input type="text" value="${j.status || 'active'}" readonly style="opacity:0.7;"></div>`;
-  html += `<div class="edit-field"><label>Active</label><input type="text" value="${j.is_active ? 'Yes' : 'No'}" readonly style="opacity:0.7;"></div>`;
-  html += `</div>`;
-  html += `<div class="field-row">`;
-  html += `<div class="edit-field"><label>Created</label><input type="text" value="${j.created_at ? new Date(j.created_at).toLocaleString() : '—'}" readonly style="opacity:0.6;font-size:11px;"></div>`;
+
+  // ── Editable header ──
+  html += `<div style="margin-bottom:12px;">`;
+  html += `<input class="inline-edit title" value="${esc(j.title)}" onblur="saveJourneyField('title',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
+  html += `<input class="inline-edit" value="${esc(j.description || '')}" placeholder="Add description..." style="color:var(--muted);font-size:12px;margin-top:2px;" onblur="saveJourneyField('description',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
   html += `</div>`;
 
-  // Stats summary
-  html += `<div style="display:flex;gap:12px;margin:12px 0;">`;
-  html += `<div style="flex:1;text-align:center;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
-    <div style="font-size:20px;font-weight:800;color:var(--accent);">${j.milestone_count || 0}</div>
-    <div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase;">Milestones</div></div>`;
-  html += `<div style="flex:1;text-align:center;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
-    <div style="font-size:20px;font-weight:800;color:var(--gp);">${j.lesson_count || 0}</div>
-    <div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase;">Lessons</div></div>`;
-  html += `<div style="flex:1;text-align:center;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
-    <div style="font-size:20px;font-weight:800;color:var(--pc);">${j.active_enrollments || 0}</div>
-    <div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase;">Enrolled</div></div>`;
+  // ── Status controls ──
+  html += `<div class="field-row" style="margin-bottom:12px;">`;
+  html += `<div class="edit-field"><label>Status</label><select onchange="saveJourneyField('status',this.value)" style="width:100%;background:var(--bg);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:7px 10px;color:var(--text);font-size:13px;">`;
+  for (const s of ['draft','active','hidden']) {
+    html += `<option value="${s}" ${(j.status||'draft')===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`;
+  }
+  html += `</select></div>`;
+  html += `<div class="edit-field"><label>Active</label>
+    <button class="btn ${j.is_active?'btn-gold':'btn-muted'}" style="width:100%;font-size:11px;" onclick="saveJourneyField('is_active',${!j.is_active})">${j.is_active?'Active ✓':'Inactive'}</button>
+  </div>`;
   html += `</div>`;
 
-  // IDs for reference
+  // ── Tabs: Tree / Enrollments ──
+  html += `<div class="detail-tabs">`;
+  html += `<button class="detail-tab ${coachingDetailTab==='tree'?'active':''}" onclick="coachingDetailTab='tree';renderJourneyDetail()">
+    <i class="ph ph-tree-structure"></i> Structure</button>`;
+  html += `<button class="detail-tab ${coachingDetailTab==='enrollments'?'active':''}" onclick="coachingDetailTab='enrollments';renderJourneyDetail()">
+    <i class="ph ph-users"></i> Enrollments</button>`;
+  html += `</div>`;
+
+  if (coachingDetailTab === 'tree') {
+    html += renderMilestoneTree(milestones, j.id);
+  } else {
+    html += renderEnrollmentsTab(j);
+  }
+
+  // ── Danger zone ──
+  html += `<div style="margin-top:24px;padding-top:12px;border-top:1px solid var(--border);">`;
+  html += `<button class="btn btn-danger" style="width:100%;font-size:11px;" onclick="deleteJourney('${j.id}')"><i class="ph ph-trash"></i> Delete Journey</button>`;
+  html += `</div>`;
+
+  // ── Reference IDs ──
   html += `<div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">`;
   html += `<div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Reference</div>`;
   html += `<div style="font-size:10px;color:var(--muted);font-family:monospace;">ID: ${j.id}</div>`;
@@ -1661,7 +3465,758 @@ function selectJourney(id) {
   html += `</div>`;
 
   content.innerHTML = html;
-  renderCoaching();
+}
+
+// ── Milestone → Lesson tree ──
+// API naming quirk: "lessons" CRUD = milestones table, "tasks" CRUD = lessons table
+function renderMilestoneTree(milestones, journeyId) {
+  let html = '<div class="coaching-section">';
+  html += '<div class="coaching-section-header"><h4><i class="ph ph-tree-structure"></i> Milestones</h4>';
+  html += `<span class="section-count">${milestones.length}</span>`;
+  html += `<button class="tree-add-btn" style="margin-left:auto;" onclick="addMilestone('${journeyId}')"><i class="ph ph-plus"></i> Add Milestone</button>`;
+  html += '</div>';
+
+  if (!milestones || !milestones.length) {
+    html += '<div style="text-align:center;color:var(--muted);padding:20px;font-size:12px;">No milestones yet. Add one above.</div>';
+    html += '</div>';
+    return html;
+  }
+
+  for (const ms of milestones) {
+    const isOpen = expandedMilestones[ms.id] !== false; // default open
+    const lessons = ms.lessons || [];
+    const strategy = ms.release_strategy || 'immediate';
+
+    html += `<div class="tree-milestone">`;
+    html += `<div class="tree-milestone-header" onclick="toggleMilestone('${ms.id}')">`;
+    html += `<span class="expand-icon ${isOpen?'open':''}"><i class="ph ph-caret-right"></i></span>`;
+    html += `<span class="ms-title" ondblclick="event.stopPropagation();startInlineEdit(this,'milestone','${journeyId}','${ms.id}')">${esc(ms.title)}</span>`;
+    html += `<span class="ms-meta">`;
+    html += `<span class="release-badge ${strategy}">${strategy}</span>`;
+    html += `<span>${lessons.length} lesson${lessons.length!==1?'s':''}</span>`;
+    html += `<button class="tree-icon-btn danger" title="Delete milestone" onclick="event.stopPropagation();deleteMilestone('${journeyId}','${ms.id}','${esc(ms.title)}')"><i class="ph ph-trash"></i></button>`;
+    html += `</span>`;
+    html += `</div>`; // header
+
+    if (isOpen) {
+      html += `<div class="tree-lessons">`;
+      for (const lesson of lessons) {
+        // Real linkage: coaching_media_assets.lesson_id → lesson.id (joined in admin endpoint)
+        const lessonMedia = Array.isArray(lesson.media) ? lesson.media : [];
+        const firstAsset = lessonMedia[0] || null;
+
+        html += `<div class="tree-lesson" onclick="event.stopPropagation()">`;
+
+        // Thumbnail column (video: Mux poster; image: inline; none: book icon)
+        if (firstAsset && firstAsset.playback_id && firstAsset.provider === 'mux') {
+          const thumbUrl = `https://image.mux.com/${firstAsset.playback_id}/thumbnail.jpg?width=80&height=48&fit_mode=smartcrop`;
+          html += `<img class="lesson-thumb" src="${thumbUrl}" alt="" onerror="this.style.display='none'">`;
+        } else if (firstAsset && firstAsset.file_url) {
+          const isImage = (firstAsset.content_type || '').startsWith('image');
+          if (isImage) {
+            html += `<img class="lesson-thumb" src="${esc(firstAsset.file_url)}" alt="" onerror="this.style.display='none'">`;
+          } else {
+            html += `<div class="lesson-thumb placeholder"><i class="ph ph-film-strip"></i></div>`;
+          }
+        } else {
+          html += `<div class="lesson-thumb placeholder"><i class="ph ph-book-open"></i></div>`;
+        }
+
+        html += `<div class="lesson-main">`;
+        html += `<span class="lesson-title" ondblclick="startInlineEdit(this,'lesson','${journeyId}','${ms.id}','${lesson.id}')">${esc(lesson.title)}</span>`;
+
+        // Media meta row
+        if (firstAsset) {
+          const ready = firstAsset.playback_ready;
+          const statusColor = ready ? 'var(--green)' : 'var(--accent)';
+          const statusLabel = ready ? 'ready' : (firstAsset.processing_status || 'processing');
+          const kindIcon = (firstAsset.category || '').toLowerCase() === 'video' ? 'ph-film-strip' : 'ph-image';
+          html += `<span class="lesson-media-meta"><i class="ph ${kindIcon}"></i>${esc(firstAsset.filename || firstAsset.media_id)} · <span style="color:${statusColor};">${statusLabel}</span>${lessonMedia.length > 1 ? ` · +${lessonMedia.length - 1} more` : ''}</span>`;
+        } else {
+          html += `<span class="lesson-media-meta muted"><i class="ph ph-link-break"></i> no media</span>`;
+        }
+        html += `</div>`; // lesson-main
+
+        if (lesson.progress_status && lesson.progress_status !== 'not_started') {
+          const pColor = lesson.progress_status === 'completed' ? 'var(--green)' : 'var(--accent)';
+          html += `<span style="font-size:9px;color:${pColor};font-weight:600;">${lesson.progress_status}</span>`;
+        }
+        html += `<div class="lesson-actions">`;
+        html += `<button class="tree-icon-btn" title="Link media" onclick="event.stopPropagation();openAssetPicker('${journeyId}','${ms.id}','${lesson.id}')"><i class="ph ph-link"></i></button>`;
+        html += `<button class="tree-icon-btn danger" title="Delete" onclick="event.stopPropagation();deleteLesson('${journeyId}','${ms.id}','${lesson.id}','${esc(lesson.title)}')"><i class="ph ph-trash"></i></button>`;
+        html += `</div>`;
+        html += `</div>`; // lesson
+      }
+      // Add lesson buttons (creates DB lesson via API "tasks" endpoint)
+      html += `<button class="tree-add-btn" onclick="addLesson('${journeyId}','${ms.id}')"><i class="ph ph-plus"></i> Add Lesson</button>`;
+      html += `<button class="tree-add-btn" onclick="addLessonWithMedia('${journeyId}','${ms.id}','${esc(ms.title)}')"><i class="ph ph-film-strip"></i> Add Lesson + Media</button>`;
+      html += `</div>`; // tree-lessons
+    }
+    html += `</div>`; // tree-milestone
+  }
+  html += '</div>'; // coaching-section
+  return html;
+}
+
+function toggleMilestone(id) {
+  expandedMilestones[id] = expandedMilestones[id] === false ? true : false;
+  renderJourneyDetail();
+}
+
+// ── Enrollments tab (loaded from admin endpoint) ──
+let journeyEnrollments = []; // populated async
+
+function renderEnrollmentsTab(journey) {
+  const j = journeyDetail.journey || journeyDetail;
+  const enrollments = journeyEnrollments;
+
+  let html = '<div class="coaching-section">';
+  html += '<div class="coaching-section-header"><h4><i class="ph ph-users"></i> Enrolled Users</h4>';
+  html += `<span class="section-count">${enrollments.length}</span>`;
+  html += `<button class="tree-add-btn" style="margin-left:auto;" onclick="showEnrollUserModal('${j.id}')"><i class="ph ph-user-plus"></i> Enroll</button>`;
+  html += '</div>';
+
+  if (!enrollments.length) {
+    html += '<div style="text-align:center;color:var(--muted);padding:20px;font-size:12px;">No enrollments yet</div>';
+  } else {
+    html += '<div class="enrollment-list">';
+    for (const e of enrollments) {
+      const initials = ((e.display_name || e.email || '??').substring(0,2)).toUpperCase();
+      const statusColor = e.status === 'active' ? 'var(--green)' : e.status === 'completed' ? 'var(--gp)' : 'var(--muted)';
+      html += `<div class="enrollment-item">`;
+      html += `<div class="enroll-avatar">${esc(initials)}</div>`;
+      html += `<span class="enroll-name">${esc(e.display_name || e.email || e.user_id)}</span>`;
+      html += `<span class="enroll-status" style="background:${statusColor}22;color:${statusColor};">${e.status || 'active'}</span>`;
+      html += `<button class="tree-icon-btn danger" title="Unenroll" onclick="unenrollUser('${j.id}','${e.user_id}')"><i class="ph ph-user-minus"></i></button>`;
+      html += `</div>`;
+    }
+    html += '</div>';
+  }
+
+  // Pending enrollment requests
+  html += `<div style="margin-top:16px;" id="enrollmentRequestsSection"></div>`;
+  html += '</div>';
+
+  // Load enrollments + requests async
+  setTimeout(() => {
+    loadJourneyEnrollments(j.id);
+    loadEnrollmentRequests(j.id);
+  }, 0);
+
+  return html;
+}
+
+async function loadJourneyEnrollments(journeyId) {
+  try {
+    const resp = await apiFetch('/admin/coaching/journeys/' + journeyId + '/enrollments');
+    if (!resp) return;
+    const data = await resp.json();
+    journeyEnrollments = data.enrollments || [];
+    // Re-render just the enrollment list portion
+    const listEl = document.querySelector('.enrollment-list');
+    const sectionEl = document.querySelector('.coaching-section .coaching-section-header .section-count');
+    if (sectionEl) sectionEl.textContent = journeyEnrollments.length;
+    // Full re-render of the enrollments tab
+    if (coachingDetailTab === 'enrollments') renderJourneyDetail();
+  } catch(e) { /* silent */ }
+}
+
+async function loadEnrollmentRequests(journeyId) {
+  try {
+    const resp = await coachFetch('/api/coaching/enrollment-requests');
+    if (!resp) return;
+    const data = await resp.json();
+    enrollmentRequests = (data.requests || data || []).filter(r => r.journey_id === journeyId && r.status === 'pending');
+    renderEnrollmentRequests();
+  } catch(e) { /* silent */ }
+}
+
+function renderEnrollmentRequests() {
+  const el = document.getElementById('enrollmentRequestsSection');
+  if (!el) return;
+  if (!enrollmentRequests.length) { el.innerHTML = ''; return; }
+
+  let html = '<div class="coaching-section-header"><h4><i class="ph ph-hourglass"></i> Pending Requests</h4>';
+  html += `<span class="section-count">${enrollmentRequests.length}</span></div>`;
+  for (const r of enrollmentRequests) {
+    html += `<div class="enrollment-item" style="background:rgba(201,168,76,0.04);">`;
+    html += `<div class="enroll-avatar" style="background:var(--gold-dim);color:var(--accent);">?</div>`;
+    html += `<span class="enroll-name">${esc(r.display_name || r.user_id)}</span>`;
+    html += `<button class="tree-icon-btn" title="Approve" onclick="approveEnrollment('${r.id}')" style="color:var(--green);"><i class="ph ph-check"></i></button>`;
+    html += `<button class="tree-icon-btn danger" title="Deny" onclick="denyEnrollment('${r.id}')"><i class="ph ph-x"></i></button>`;
+    html += `</div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════
+// Step 2: Journey CRUD
+// ══════════════════════════════════════════════════════
+function showCreateJourneyModal() {
+  showModal(`
+    <h3>New Journey</h3>
+    <div class="edit-field"><label>Title</label><input type="text" id="newJourneyTitle" placeholder="Journey title"></div>
+    <div class="edit-field"><label>Description</label><textarea id="newJourneyDesc" rows="3" placeholder="Optional description" style="width:100%;background:var(--bg);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:7px 10px;color:var(--text);font-size:13px;resize:vertical;"></textarea></div>
+    <div class="edit-field"><label>Status</label><select id="newJourneyStatus" style="width:100%;background:var(--bg);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:7px 10px;color:var(--text);font-size:13px;">
+      <option value="draft">Draft</option><option value="active">Active</option>
+    </select></div>
+    <div class="modal-actions">
+      <button class="btn btn-muted" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-gold" onclick="createJourney()">Create</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('newJourneyTitle').focus(), 100);
+}
+
+async function createJourney() {
+  const title = document.getElementById('newJourneyTitle').value.trim();
+  if (!title) { showToast('Title is required'); return; }
+  const description = document.getElementById('newJourneyDesc').value.trim();
+  const status = document.getElementById('newJourneyStatus').value;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys', {
+      method: 'POST',
+      body: JSON.stringify({ title, description, status }),
+    });
+    if (!resp) return;
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Failed'); }
+    const data = await resp.json();
+    closeModal();
+    showToast('Journey created');
+    await loadCoaching();
+    if (data.journey) selectJourney(data.journey.id);
+  } catch (e) { showToast('Create failed: ' + e.message); }
+}
+
+async function saveJourneyField(field, value) {
+  if (!selectedJourneyId) return;
+  try {
+    const body = {};
+    body[field] = value;
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+    if (!resp) return;
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Failed'); }
+    showToast('Saved');
+    // Refresh both list and detail via admin endpoint
+    await loadCoaching();
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Save failed: ' + e.message); }
+}
+
+async function deleteJourney(id) {
+  const j = journeys.find(x => x.id === id);
+  if (!confirm('Delete "' + (j?.title || 'this journey') + '"? This cannot be undone.')) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + id, { method: 'DELETE' });
+    if (!resp) return;
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Failed'); }
+    showToast('Journey deleted');
+    selectedJourneyId = null;
+    journeyDetail = null;
+    document.getElementById('coachingDetailContent').style.display = 'none';
+    document.getElementById('coachingDetailEmpty').style.display = 'block';
+    await loadCoaching();
+  } catch (e) { showToast('Delete failed: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════════════
+// Step 3: Lesson & Task Management
+// ══════════════════════════════════════════════════════
+// ── Milestone CRUD (API "lessons" endpoint = DB milestones) ──
+async function addMilestone(journeyId) {
+  const title = prompt('Milestone title:');
+  if (!title || !title.trim()) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + journeyId + '/lessons', {
+      method: 'POST',
+      body: JSON.stringify({ title: title.trim() }),
+    });
+    if (!resp) return;
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Failed'); }
+    showToast('Milestone added');
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Add milestone failed: ' + e.message); }
+}
+
+async function deleteMilestone(journeyId, milestoneId, title) {
+  if (!confirm('Delete milestone "' + title + '" and all its lessons?')) return;
+  try {
+    // API "lessons" DELETE = delete milestone
+    const resp = await coachFetch('/api/coaching/journeys/' + journeyId + '/lessons/' + milestoneId, {
+      method: 'DELETE',
+    });
+    if (!resp) return;
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Failed'); }
+    showToast('Milestone deleted');
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Delete failed: ' + e.message); }
+}
+
+// ── Lesson CRUD (API "tasks" endpoint = DB lessons) ──
+async function addLesson(journeyId, milestoneId, opts) {
+  const title = (opts && opts.title) || prompt('Lesson title:');
+  if (!title || !title.trim()) return null;
+  try {
+    const body = { title: title.trim() };
+    const resp = await coachFetch('/api/coaching/journeys/' + journeyId + '/lessons/' + milestoneId + '/tasks', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    if (!resp) return null;
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Failed'); }
+    const data = await resp.json();
+    const newLessonId = data.task?.id || null;
+
+    // If an asset was specified, link it via the media endpoint (not via body field)
+    if (newLessonId && opts && opts.assetId) {
+      const linkResp = await coachFetch('/api/coaching/lessons/' + newLessonId + '/media', {
+        method: 'POST',
+        body: JSON.stringify({ media_id: opts.assetId, action: 'link' }),
+      });
+      if (linkResp && !linkResp.ok) {
+        const e = await linkResp.json().catch(() => ({}));
+        showToast('Lesson created but media link failed: ' + (e.error || 'unknown'));
+      }
+    }
+
+    showToast('Lesson added');
+    await refreshJourneyDetail();
+    return newLessonId;
+  } catch (e) { showToast('Add lesson failed: ' + e.message); return null; }
+}
+
+// ── Asset thumbnail helper ──
+function assetThumbUrl(a) {
+  if (!a) return null;
+  // Library asset shape: playback_id (Mux) or file_url embedded as playback_id in some responses
+  if (a.playback_id && !String(a.playback_id).startsWith('http')) {
+    return `https://image.mux.com/${a.playback_id}/thumbnail.jpg?width=120&height=72&fit_mode=smartcrop`;
+  }
+  const url = a.file_url || a.playback_id;
+  if (url && (a.content_type || '').startsWith('image')) return url;
+  return null;
+}
+
+function assetCardHtml(a, onClick) {
+  const isVideo = (a.category || '').toLowerCase() === 'video' || (a.content_type || '').startsWith('video');
+  const icon = isVideo ? 'ph-film-strip' : 'ph-image';
+  const thumb = assetThumbUrl(a);
+  const ready = a.playback_ready;
+  const statusColor = ready ? 'var(--green)' : 'var(--accent)';
+  const statusLabel = ready ? 'ready' : (a.processing_status || 'processing');
+  const thumbBox = thumb
+    ? `<img src="${thumb}" style="width:64px;height:40px;object-fit:cover;border-radius:4px;flex-shrink:0;background:var(--bg);" onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex')">
+       <div style="display:none;width:64px;height:40px;background:var(--surface2);border-radius:4px;align-items:center;justify-content:center;flex-shrink:0;"><i class="ph ${icon}" style="font-size:18px;color:var(--muted);"></i></div>`
+    : `<div style="display:flex;width:64px;height:40px;background:var(--surface2);border-radius:4px;align-items:center;justify-content:center;flex-shrink:0;"><i class="ph ${icon}" style="font-size:18px;color:var(--muted);"></i></div>`;
+  return `<div class="media-card" style="display:flex;flex-direction:row;align-items:center;padding:8px;gap:10px;" onclick="${onClick}">
+    ${thumbBox}
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title || a.filename || a.id)}</div>
+      <div style="font-size:10px;color:${statusColor};">${isVideo ? 'Video' : 'Image'} · ${statusLabel}</div>
+    </div>
+  </div>`;
+}
+
+// ── Asset picker: link media to an existing lesson ──
+async function openAssetPicker(journeyId, milestoneId, lessonId) {
+  if (!mediaAssetsLoaded) {
+    showToast('Loading media library...');
+    await loadMediaAssets();
+  }
+  linkingLessonContext = { journeyId, milestoneId, lessonId };
+  const assetsList = mediaAssets.length
+    ? mediaAssets.map(a => assetCardHtml(a, `linkAssetToLesson('${a.id}')`)).join('')
+    : '<div style="text-align:center;color:var(--muted);padding:20px;font-size:12px;">No media assets in library</div>';
+
+  showModal(`
+    <h3>Link Media to Lesson</h3>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Click an asset to link it. Multiple assets can be attached to one lesson.</div>
+    <div style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">${assetsList}</div>
+    <div class="modal-actions">
+      <button class="btn btn-muted" onclick="unlinkAllAssetsFromLesson()">Unlink all</button>
+      <button class="btn btn-muted" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+
+async function linkAssetToLesson(assetId) {
+  if (!linkingLessonContext) return;
+  const { lessonId } = linkingLessonContext;
+  try {
+    const resp = await coachFetch('/api/coaching/lessons/' + lessonId + '/media', {
+      method: 'POST',
+      body: JSON.stringify({ media_id: assetId, action: 'link' }),
+    });
+    if (!resp) return;
+    if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error || e.message || 'Failed'); }
+    showToast('Media linked');
+    closeModal();
+    linkingLessonContext = null;
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Link failed: ' + e.message); }
+}
+
+async function unlinkAllAssetsFromLesson() {
+  if (!linkingLessonContext) return;
+  const { lessonId } = linkingLessonContext;
+  try {
+    // Look up the current media for this lesson from the loaded journeyDetail
+    const currentMedia = findLessonMedia(lessonId);
+    if (!currentMedia || !currentMedia.length) {
+      showToast('No media linked');
+      closeModal();
+      linkingLessonContext = null;
+      return;
+    }
+    for (const m of currentMedia) {
+      const resp = await coachFetch('/api/coaching/lessons/' + lessonId + '/media', {
+        method: 'POST',
+        body: JSON.stringify({ media_id: m.media_id, action: 'unlink' }),
+      });
+      if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    }
+    showToast('Media unlinked');
+    closeModal();
+    linkingLessonContext = null;
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Unlink failed: ' + e.message); }
+}
+
+function findLessonMedia(lessonId) {
+  if (!journeyDetail || !Array.isArray(journeyDetail.milestones)) return [];
+  for (const m of journeyDetail.milestones) {
+    for (const l of (m.lessons || [])) {
+      if (String(l.id) === String(lessonId)) return l.media || [];
+    }
+  }
+  return [];
+}
+
+// ── Create lesson with media in one step (for empty milestones) ──
+async function addLessonWithMedia(journeyId, milestoneId, milestoneTitle) {
+  if (!mediaAssetsLoaded) {
+    showToast('Loading media library...');
+    await loadMediaAssets();
+  }
+  // Try to find an asset whose filename matches the milestone title
+  const lowerTitle = (milestoneTitle || '').toLowerCase().replace(/[^a-z0-9]+/g,'');
+  const suggested = mediaAssets.find(a => {
+    const filename = (a.title || '').toLowerCase().replace(/[^a-z0-9]+/g,'');
+    return filename && lowerTitle && (filename.includes(lowerTitle) || lowerTitle.includes(filename.replace('mp4','')));
+  });
+
+  const assetsList = mediaAssets.length
+    ? mediaAssets.map(a => {
+        const isVideo = (a.category || '').toLowerCase().includes('video');
+        const icon = isVideo ? 'ph-film-strip' : 'ph-image';
+        const isSuggested = suggested && suggested.id === a.id;
+        return `<div class="media-card" style="display:flex;flex-direction:row;align-items:center;padding:8px;gap:10px;${isSuggested?'border-color:var(--accent);':''}" onclick="createLessonWithAsset('${journeyId}','${milestoneId}','${esc(milestoneTitle)}','${a.id}','${esc(a.title||a.id)}')">
+          <div style="width:40px;height:40px;background:var(--surface2);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="ph ${icon}" style="font-size:20px;color:var(--muted);"></i></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title || a.id)}${isSuggested?' <span style="color:var(--accent);font-size:9px;">← suggested</span>':''}</div>
+            <div style="font-size:10px;color:var(--muted);font-family:monospace;">${esc(a.id)}</div>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div style="text-align:center;color:var(--muted);padding:20px;font-size:12px;">No media assets in library</div>';
+
+  showModal(`
+    <h3>Add Lesson with Media</h3>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Milestone: <b>${esc(milestoneTitle)}</b></div>
+    <div style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">${assetsList}</div>
+    <div class="modal-actions">
+      <button class="btn btn-muted" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-gold" onclick="addLesson('${journeyId}','${milestoneId}');closeModal();">No Media</button>
+    </div>
+  `);
+}
+
+async function createLessonWithAsset(journeyId, milestoneId, milestoneTitle, assetId, assetTitle) {
+  closeModal();
+  await addLesson(journeyId, milestoneId, { title: assetTitle || milestoneTitle, assetId });
+}
+
+async function deleteLesson(journeyId, milestoneId, lessonId, title) {
+  if (!confirm('Delete lesson "' + title + '"?')) return;
+  try {
+    // API "tasks" DELETE = delete DB lesson
+    const resp = await coachFetch('/api/coaching/journeys/' + journeyId + '/lessons/' + milestoneId + '/tasks/' + lessonId, {
+      method: 'DELETE',
+    });
+    if (!resp) return;
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Failed'); }
+    showToast('Lesson deleted');
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Delete failed: ' + e.message); }
+}
+
+// ── Inline editing for milestone/lesson titles ──
+function startInlineEdit(el, type, journeyId, ...ids) {
+  const original = el.textContent;
+  el.contentEditable = true;
+  el.style.background = 'var(--bg)';
+  el.style.borderRadius = '4px';
+  el.style.padding = '1px 6px';
+  el.style.outline = '1px solid var(--accent)';
+  el.focus();
+
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+
+  const finish = async () => {
+    el.contentEditable = false;
+    el.style.background = '';
+    el.style.borderRadius = '';
+    el.style.padding = '';
+    el.style.outline = '';
+    const newVal = el.textContent.trim();
+    if (!newVal || newVal === original) { el.textContent = original; return; }
+
+    try {
+      let url, body;
+      if (type === 'milestone') {
+        // API "lessons" PATCH = rename milestone; also supports milestones endpoint
+        url = '/api/coaching/journeys/' + journeyId + '/milestones/' + ids[0];
+        body = { title: newVal };
+      } else if (type === 'lesson') {
+        // API "tasks" PATCH = rename DB lesson; ids[0]=milestoneId, ids[1]=lessonId
+        url = '/api/coaching/journeys/' + journeyId + '/lessons/' + ids[0] + '/tasks/' + ids[1];
+        body = { title: newVal };
+      }
+      const resp = await coachFetch(url, { method: 'PATCH', body: JSON.stringify(body) });
+      if (!resp || !resp.ok) throw new Error('Failed');
+      showToast('Renamed');
+      await refreshJourneyDetail();
+    } catch (e) {
+      el.textContent = original;
+      showToast('Rename failed: ' + e.message);
+    }
+  };
+
+  el.onblur = finish;
+  el.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } if (e.key === 'Escape') { el.textContent = original; el.blur(); } };
+}
+
+async function refreshJourneyDetail() {
+  if (!selectedJourneyId) return;
+  try {
+    const resp = await apiFetch('/admin/coaching/journeys/' + selectedJourneyId);
+    if (!resp || !resp.ok) return;
+    journeyDetail = await resp.json();
+    renderJourneyDetail();
+    await loadCoaching(); // refresh counts in table
+  } catch (e) { /* silent */ }
+}
+
+// ══════════════════════════════════════════════════════
+// Step 4: Media Library
+// ══════════════════════════════════════════════════════
+function toggleMediaPanel() {
+  mediaPanelOpen = !mediaPanelOpen;
+  const layout = document.getElementById('coachingLayout');
+  const panel = document.getElementById('coachingMediaPanel');
+  if (mediaPanelOpen) {
+    layout.classList.add('has-media');
+    panel.style.display = '';
+    loadMediaAssets();
+  } else {
+    layout.classList.remove('has-media');
+    panel.style.display = 'none';
+  }
+}
+
+async function loadMediaAssets() {
+  try {
+    const resp = await coachFetch('/api/coaching/library/assets');
+    if (!resp) return;
+    const data = await resp.json();
+    mediaAssets = data.assets || data || [];
+    mediaAssetsById = {};
+    for (const a of mediaAssets) { mediaAssetsById[a.id] = a; }
+    mediaAssetsLoaded = true;
+    renderMediaAssets();
+    // Re-render tree if showing, so lesson asset thumbnails appear
+    if (journeyDetail && coachingDetailTab === 'tree') renderJourneyDetail();
+  } catch (e) { showToast('Failed to load media: ' + e.message); }
+}
+
+function renderMediaAssets() {
+  const el = document.getElementById('mediaAssetsList');
+  if (!el) return;
+
+  if (!mediaAssets.length) {
+    el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;font-size:12px;">No media assets yet. Upload your first file above.</div>';
+    return;
+  }
+
+  let html = '<div class="media-grid">';
+  for (const a of mediaAssets) {
+    const isVideo = (a.content_type || '').startsWith('video') || (a.category || '').toLowerCase() === 'video';
+    const icon = isVideo ? 'ph-film-strip' : 'ph-image';
+    const statusColor = a.processing_status === 'ready' ? 'var(--green)' : a.processing_status === 'failed' ? 'var(--red)' : 'var(--accent)';
+    const statusText = a.processing_status || 'unknown';
+    const thumb = assetThumbUrl(a);
+
+    html += `<div class="media-card" onclick="selectMediaAsset('${a.id}')">`;
+    if (thumb) {
+      html += `<img class="media-thumb" src="${thumb}" alt="" onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex')">`;
+      html += `<div class="media-thumb" style="display:none;"><i class="ph ${icon}"></i></div>`;
+    } else {
+      html += `<div class="media-thumb"><i class="ph ${icon}"></i></div>`;
+    }
+    html += `<div class="media-info">`;
+    html += `<div class="media-name">${esc(a.filename || a.title || 'Untitled')}</div>`;
+    html += `<div class="media-status" style="color:${statusColor};">${statusText}</div>`;
+    html += `</div></div>`;
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function selectMediaAsset(id) {
+  // Toggle selection visual
+  document.querySelectorAll('.media-card').forEach(c => c.classList.remove('selected'));
+  event.currentTarget.classList.add('selected');
+}
+
+// Media upload
+(function setupMediaUpload() {
+  document.addEventListener('DOMContentLoaded', () => {
+    const zone = document.getElementById('mediaUploadZone');
+    const input = document.getElementById('mediaFileInput');
+    if (!zone || !input) return;
+
+    zone.onclick = () => input.click();
+    input.onchange = () => { if (input.files.length) uploadMediaFiles(input.files); input.value = ''; };
+
+    zone.ondragover = (e) => { e.preventDefault(); zone.classList.add('dragging'); };
+    zone.ondragleave = () => zone.classList.remove('dragging');
+    zone.ondrop = (e) => { e.preventDefault(); zone.classList.remove('dragging'); if (e.dataTransfer.files.length) uploadMediaFiles(e.dataTransfer.files); };
+  });
+})();
+
+async function uploadMediaFiles(files) {
+  for (const file of files) {
+    try {
+      showToast('Uploading ' + file.name + '...');
+      const isVideo = file.type.startsWith('video');
+
+      // 1. Get signed upload URL
+      const urlResp = await coachFetch('/api/coaching/media/upload-url', {
+        method: 'POST',
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: file.type,
+          category: isVideo ? 'video' : 'image',
+        }),
+      });
+      if (!urlResp || !urlResp.ok) { const e = await urlResp.json(); throw new Error(e.error || 'Failed to get upload URL'); }
+      const urlData = await urlResp.json();
+
+      // 2. Upload directly to storage provider
+      const uploadUrl = urlData.upload_url || urlData.url;
+      if (!uploadUrl) throw new Error('No upload URL returned');
+
+      const uploadResp = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+      if (!uploadResp.ok) throw new Error('Upload failed: ' + uploadResp.status);
+
+      showToast(file.name + ' uploaded' + (isVideo ? ' (processing...)' : ''));
+      await loadMediaAssets();
+    } catch (e) {
+      showToast('Upload failed: ' + e.message);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// Step 5: Enrollment Management
+// ══════════════════════════════════════════════════════
+function showEnrollUserModal(journeyId) {
+  showModal(`
+    <h3>Enroll User</h3>
+    <div class="edit-field"><label>User ID</label><input type="text" id="enrollUserId" placeholder="User UUID"></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:-4px;margin-bottom:12px;">Paste the user's UUID from the Users panel</div>
+    <div class="modal-actions">
+      <button class="btn btn-muted" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-gold" onclick="enrollUser('${journeyId}')">Enroll</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('enrollUserId').focus(), 100);
+}
+
+async function enrollUser(journeyId) {
+  const userId = document.getElementById('enrollUserId').value.trim();
+  if (!userId) { showToast('User ID is required'); return; }
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + journeyId + '/enroll', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId }),
+    });
+    if (!resp) return;
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Failed'); }
+    showToast('User enrolled');
+    closeModal();
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Enroll failed: ' + e.message); }
+}
+
+async function unenrollUser(journeyId, userId) {
+  if (!confirm('Remove this user from the journey?')) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + journeyId + '/unenroll', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId }),
+    });
+    if (!resp) return;
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Failed'); }
+    showToast('User unenrolled');
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Unenroll failed: ' + e.message); }
+}
+
+async function approveEnrollment(requestId) {
+  try {
+    const resp = await coachFetch('/api/coaching/enrollment-requests/' + requestId + '/approve', { method: 'POST' });
+    if (!resp) return;
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Failed'); }
+    showToast('Enrollment approved');
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Approve failed: ' + e.message); }
+}
+
+async function denyEnrollment(requestId) {
+  if (!confirm('Deny this enrollment request?')) return;
+  try {
+    const resp = await coachFetch('/api/coaching/enrollment-requests/' + requestId + '/deny', { method: 'POST' });
+    if (!resp) return;
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Failed'); }
+    showToast('Enrollment denied');
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Deny failed: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════════════
+// Modal helpers
+// ══════════════════════════════════════════════════════
+function showModal(html) {
+  const overlay = document.getElementById('modalOverlay');
+  overlay.innerHTML = '<div class="modal">' + html + '</div>';
+  overlay.style.display = 'flex';
+}
+
+function closeModal() {
+  const overlay = document.getElementById('modalOverlay');
+  overlay.style.display = 'none';
+  overlay.innerHTML = '';
 }
 
 // ══════════════════════════════════════════════════════
@@ -1674,7 +4229,7 @@ switchPanel = function(el) {
   // Lazy-load data for panels
   if (panel === 'users' && users.length === 0) loadUsers();
   if (panel === 'challenges' && challenges.length === 0) loadChallenges();
-  if (panel === 'projection-lab') renderProjLab();
+  if (panel === 'projection-lab') { initProjLab(); renderProjLab(); }
   if (panel === 'coaching' && journeys.length === 0) loadCoaching();
 };
 

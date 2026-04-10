@@ -32,9 +32,18 @@ export type KpiButtonCardProps = {
   disabled?: boolean;
   scale?: Animated.Value;
   index?: number; // for stagger (future idle animation)
+  onPress?: () => void;
+  onLongPress?: () => void;
+  /** Delay in ms before onLongPress fires. RN default is 500ms — the picker tray uses ~200ms for snappier drag activation. */
+  delayLongPress?: number;
   onPressIn?: (e: GestureResponderEvent) => void;
   onPressOut?: () => void;
   style?: StyleProp<ViewStyle>;
+  /** Optional overlays rendered inside the card frame (e.g. favorite badge, lock, full ribbon). */
+  overlay?: React.ReactNode;
+  /** Hide the name label below the card (used by grids that have their own label layout). */
+  hideName?: boolean;
+  nameColor?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -50,9 +59,15 @@ function KpiButtonCard({
   isRequired = false,
   disabled = false,
   scale,
+  onPress,
+  onLongPress,
+  delayLongPress,
   onPressIn,
   onPressOut,
   style,
+  overlay,
+  hideName = false,
+  nameColor,
 }: KpiButtonCardProps) {
   const accent = kpiTypeAccent(kpi.type as any);
   const hasLogged = todayCount > 0;
@@ -93,15 +108,23 @@ function KpiButtonCard({
             />
           </View>
         )}
+        {overlay}
       </View>
-      <Text style={styles.name} numberOfLines={2}>
-        {kpi.name}
-      </Text>
+      {!hideName && (
+        <Text
+          style={[styles.name, nameColor ? { color: nameColor } : null]}
+          numberOfLines={2}
+        >
+          {kpi.name}
+        </Text>
+      )}
     </View>
   );
 
+  const isInteractive = Boolean(onPress || onLongPress || onPressIn || onPressOut);
+
   // If interactive (has press handlers), wrap in Pressable + optional scale
-  if (onPressIn || onPressOut) {
+  if (isInteractive) {
     const body = scale ? (
       <Animated.View style={{ transform: [{ scale }] }}>{inner}</Animated.View>
     ) : (
@@ -109,9 +132,12 @@ function KpiButtonCard({
     );
     return (
       <Pressable
-        onPress={() => {}}
+        onPress={onPress ?? (() => {})}
+        onLongPress={onLongPress}
+        delayLongPress={delayLongPress}
         onPressIn={onPressIn}
         onPressOut={onPressOut}
+        disabled={disabled && !onPress && !onLongPress}
         style={styles.pressable}
       >
         {body}

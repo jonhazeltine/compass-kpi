@@ -1,0 +1,1635 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Compass · Coach Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" rel="stylesheet">
+<style>
+:root {
+  --bg: #0b0d12;
+  --surface: #12151c;
+  --surface2: #1a1d26;
+  --border: rgba(255,255,255,0.08);
+  --text: #e5e7eb;
+  --muted: #9ba3af;
+  --accent: #C9A84C;
+  --gp: #2158d5;
+  --green: #2f9f56;
+  --red: #d94444;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+button { font-family: inherit; font-size: inherit; color: inherit; }
+.btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+.btn:hover { border-color: rgba(255,255,255,0.18); }
+.btn-gold { background: var(--accent); color: #1a1410; border-color: var(--accent); font-weight: 600; }
+.btn-gold:hover { background: #d4b45a; border-color: #d4b45a; }
+.btn-muted { background: transparent; color: var(--muted); }
+.btn-danger { background: rgba(217,68,68,0.1); border-color: rgba(217,68,68,0.3); color: var(--red); }
+.btn-danger:hover { background: rgba(217,68,68,0.18); }
+input, select, textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  width: 100%;
+  outline: none;
+}
+input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+
+/* ── Auth gate ── */
+.auth-gate { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+.auth-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 36px 32px;
+  max-width: 400px;
+  width: 100%;
+}
+.auth-card h1 { margin: 0 0 6px 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+.auth-card .tagline { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+.auth-field { margin-bottom: 14px; }
+.auth-field label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.auth-error { color: var(--red); font-size: 12px; min-height: 18px; margin: 4px 0 10px 0; }
+.auth-crest { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.auth-crest .crest-mark { width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), #8b6e2e); display: flex; align-items: center; justify-content: center; color: #1a1410; font-weight: 700; font-size: 16px; }
+.auth-crest .crest-label { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+
+/* ── App shell ── */
+.shell { display: none; min-height: 100vh; }
+.shell.active { display: flex; flex-direction: column; }
+
+.topbar {
+  height: 56px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 20px;
+}
+.topbar .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.topbar .brand .crest-mark { width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), #8b6e2e); display: flex; align-items: center; justify-content: center; color: #1a1410; font-weight: 700; font-size: 13px; }
+.topbar .tabs { display: flex; gap: 2px; margin-left: 30px; }
+.topbar .tab {
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+  background: transparent;
+  border: none;
+}
+.topbar .tab:hover { color: var(--text); background: var(--surface2); }
+.topbar .tab.active { color: var(--text); background: var(--surface2); }
+.topbar .tab.active i { color: var(--accent); }
+.topbar .spacer { flex: 1; }
+.topbar .user-chip { display: flex; align-items: center; gap: 10px; padding: 6px 14px; background: var(--surface2); border-radius: 20px; font-size: 12px; color: var(--muted); }
+.topbar .user-chip .role-badge { background: rgba(201,168,76,0.15); color: var(--accent); padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+
+.panel { display: none; flex: 1; min-height: 0; }
+.panel.active { display: flex; }
+
+/* ── Journeys panel: master-detail ── */
+.panel-journeys { flex-direction: row; }
+.journey-list {
+  width: 380px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  background: var(--surface);
+}
+.journey-list-header {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 2;
+}
+.journey-list-header h2 { margin: 0; font-size: 14px; font-weight: 600; flex: 1; }
+.journey-list-header .count { font-size: 11px; color: var(--muted); padding: 2px 8px; background: var(--bg); border-radius: 10px; }
+.journey-row {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.journey-row:hover { background: rgba(255,255,255,0.02); }
+.journey-row.selected { background: rgba(201,168,76,0.06); border-left: 2px solid var(--accent); padding-left: 18px; }
+.journey-row .jr-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.journey-row .jr-meta { font-size: 11px; color: var(--muted); display: flex; gap: 8px; }
+.journey-row .status-badge { font-size: 9px; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.3px; }
+.journey-row .status-badge.active { background: rgba(47,159,86,0.15); color: var(--green); }
+.journey-row .status-badge.draft { background: rgba(201,168,76,0.15); color: var(--accent); }
+.journey-row .status-badge.hidden { background: rgba(255,255,255,0.06); color: var(--muted); }
+
+.journey-detail {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+}
+.journey-detail .placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+  gap: 16px;
+}
+.journey-detail .placeholder i { font-size: 48px; opacity: 0.4; }
+
+/* Editable title & description */
+.inline-edit {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 10px;
+  width: 100%;
+  color: var(--text);
+  font-family: inherit;
+}
+.inline-edit:hover, .inline-edit:focus { border-color: var(--border); background: var(--bg); }
+.inline-edit.title { font-size: 20px; font-weight: 700; padding: 8px 10px; }
+
+/* Milestone/lesson tree */
+.section { margin-top: 24px; }
+.section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.section-header h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.section-header .count { font-size: 10px; padding: 2px 8px; background: var(--surface2); border-radius: 10px; color: var(--muted); }
+
+.tree-ms {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.tree-ms-header {
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.tree-ms-header:hover { background: var(--surface2); }
+.tree-ms-header .expand { font-size: 12px; color: var(--muted); transition: transform 0.15s; }
+.tree-ms-header .expand.open { transform: rotate(90deg); }
+.tree-ms-header .ms-title { flex: 1; font-size: 13px; font-weight: 600; }
+.tree-ms-header .release-badge { font-size: 9px; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; font-weight: 600; }
+.tree-ms-header .release-badge.immediate { background: rgba(47,159,86,0.15); color: var(--green); }
+.tree-ms-header .release-badge.sequential { background: rgba(33,88,213,0.15); color: var(--gp); }
+.tree-ms-header .release-badge.scheduled { background: rgba(201,168,76,0.15); color: var(--accent); }
+.tree-ms-header .lesson-count { font-size: 10px; color: var(--muted); margin-right: 4px; }
+.tree-ms-body { padding: 6px 14px 12px 36px; border-top: 1px solid var(--border); display: none; }
+.tree-ms-body.open { display: block; }
+
+.tree-lesson {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  min-height: 54px;
+  transition: background 0.1s;
+}
+.tree-lesson:hover { background: rgba(255,255,255,0.02); }
+.tree-lesson .thumb {
+  width: 72px;
+  height: 44px;
+  border-radius: 5px;
+  object-fit: cover;
+  background: var(--bg);
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.tree-lesson .thumb.placeholder { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 18px; }
+.tree-lesson .main { flex: 1; min-width: 0; }
+.tree-lesson .title { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-lesson .meta { font-size: 10px; color: var(--muted); margin-top: 2px; display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-lesson .actions { display: none; gap: 4px; flex-shrink: 0; }
+.tree-lesson:hover .actions { display: flex; }
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 7px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+.icon-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.18); }
+.icon-btn.danger:hover { color: var(--red); border-color: rgba(217,68,68,0.3); }
+.tree-add {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  width: 100%;
+  text-align: center;
+}
+.tree-add:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Lesson header (release controls row) */
+.lesson-controls {
+  padding: 10px 14px 10px 36px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+.lesson-controls .ctrl-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+.seg-control {
+  display: inline-flex;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 2px;
+  gap: 2px;
+}
+.seg-control button {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+.seg-control button.active { background: var(--accent); color: #1a1410; font-weight: 600; }
+.seg-control button:hover:not(.active) { color: var(--text); }
+.date-input { width: 170px; padding: 5px 10px; font-size: 11px; }
+
+/* Inline-editable title inputs inside the tree */
+.tree-ms-header .ms-title-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  width: auto;
+}
+.tree-ms-header .ms-title-input:focus {
+  background: var(--bg);
+  border-color: var(--border);
+}
+.tree-ms-header .ms-actions { display: none; gap: 4px; margin-left: 4px; }
+.tree-ms-header:hover .ms-actions { display: flex; }
+.icon-btn[disabled] { opacity: 0.3; cursor: not-allowed; }
+
+.tree-lesson { flex-wrap: wrap; }
+.tree-lesson.open { background: rgba(255,255,255,0.03); }
+.tree-lesson .title-input {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  width: 100%;
+  min-width: 0;
+}
+.tree-lesson .title-input:focus {
+  background: var(--bg);
+  border-color: var(--border);
+}
+.tree-lesson .actions { display: flex; gap: 4px; opacity: 0.25; transition: opacity 0.15s; flex-shrink: 0; }
+.tree-lesson:hover .actions, .tree-lesson.open .actions { opacity: 1; }
+
+/* Task editor drawer */
+.task-drawer {
+  flex-basis: 100%;
+  margin: 8px 0 4px 84px;
+  padding: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.task-drawer .drawer-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  margin: 10px 0 6px 0;
+  display: block;
+}
+.task-drawer .drawer-label:first-child { margin-top: 0; }
+.task-drawer textarea {
+  min-height: 80px;
+  resize: vertical;
+  line-height: 1.5;
+  font-family: inherit;
+}
+.task-drawer .drawer-media-actions { margin-top: 10px; display: flex; gap: 6px; }
+
+.task-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.task-media-item {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.task-media-item .m-thumb {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  display: block;
+  background: var(--surface2);
+}
+.task-media-item .m-thumb.placeholder { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 22px; }
+.task-media-item .m-info { padding: 6px 8px; overflow: hidden; }
+.task-media-item .m-name { color: var(--text); font-size: 11px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-media-item .m-status { color: var(--muted); font-size: 10px; margin-top: 2px; }
+.task-media-item .m-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.75);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #fff;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.task-media-item .m-remove:hover { background: var(--red); }
+
+/* ── Media panel ── */
+.panel-media { padding: 24px 32px; flex-direction: column; }
+.media-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.media-header h2 { margin: 0; font-size: 18px; font-weight: 700; flex: 1; }
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: 24px;
+  transition: all 0.15s;
+  background: var(--surface);
+}
+.upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(201,168,76,0.04); }
+.upload-zone i { font-size: 36px; color: var(--muted); margin-bottom: 10px; }
+.upload-zone .upload-label { font-size: 14px; font-weight: 600; }
+.upload-zone .upload-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.media-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.media-card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-1px); }
+.media-card.selected { border-color: var(--accent); }
+.media-card.picker-card-interactive:hover { border-color: var(--accent); background: rgba(255,165,0,0.04); }
+.media-card .thumb {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  object-fit: cover;
+}
+.media-card img.thumb { display: block; }
+.media-card .thumb-fallback i { font-size: 32px; color: var(--muted); }
+.media-card .info { padding: 10px 12px; }
+.media-card .name { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-card .status { font-size: 10px; margin-top: 2px; }
+.media-card .status.ready { color: var(--green); }
+.media-card .status.processing { color: var(--accent); }
+.media-card .status.failed { color: var(--red); }
+
+/* ── Enrollments panel ── */
+.panel-enrollments { padding: 24px 32px; flex-direction: column; }
+.enroll-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.enroll-header h2 { margin: 0; font-size: 18px; font-weight: 700; flex: 1; }
+.enroll-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+.enroll-tab {
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 12px;
+}
+.enroll-tab.active { background: var(--accent); color: #1a1410; border-color: var(--accent); font-weight: 600; }
+.enroll-list { display: flex; flex-direction: column; gap: 8px; }
+.enroll-row {
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.enroll-row .user-name { font-size: 13px; font-weight: 600; flex: 1; }
+.enroll-row .journey-name { font-size: 11px; color: var(--muted); }
+
+/* ── Modal ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 100; }
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 560px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.modal h3 { margin: 0 0 14px 0; font-size: 16px; }
+.modal-actions { margin-top: 18px; display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  z-index: 200;
+}
+.toast.show { opacity: 1; }
+
+/* ── Access denied ── */
+.denied-card {
+  max-width: 460px;
+  margin: 120px auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 36px;
+  text-align: center;
+}
+.denied-card i { font-size: 48px; color: var(--red); margin-bottom: 12px; }
+.denied-card h2 { margin: 0 0 8px 0; font-size: 18px; }
+.denied-card p { color: var(--muted); font-size: 13px; margin: 0 0 18px 0; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════ Auth gate -->
+<div class="auth-gate" id="authGate">
+  <div class="auth-card">
+    <div class="auth-crest">
+      <div class="crest-mark">C</div>
+      <div class="crest-label">Compass · Coach Portal</div>
+    </div>
+    <h1>Welcome back</h1>
+    <div class="tagline">Sign in with your coach credentials</div>
+    <div class="auth-field">
+      <label>Email</label>
+      <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="auth-field">
+      <label>Password</label>
+      <input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="auth-error" id="loginError"></div>
+    <button class="btn btn-gold" style="width:100%;justify-content:center;padding:11px;" onclick="doLogin()">Sign in</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ Access denied -->
+<div id="deniedView" style="display:none;">
+  <div class="denied-card">
+    <i class="ph ph-lock-key"></i>
+    <h2>Coach access required</h2>
+    <p>This portal is for coaches. Your account doesn't have coach access yet — contact your administrator to request it.</p>
+    <button class="btn btn-muted" onclick="doLogout()">Sign out</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ App shell -->
+<div class="shell" id="shell">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="crest-mark">C</div>
+      Compass Coach
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="journeys" onclick="switchTab('journeys')"><i class="ph ph-tree-structure"></i> Journeys</button>
+      <button class="tab" data-tab="media" onclick="switchTab('media')"><i class="ph ph-image-square"></i> Media Library</button>
+      <button class="tab" data-tab="enrollments" onclick="switchTab('enrollments')"><i class="ph ph-users"></i> Enrollments</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="user-chip">
+      <span id="userEmail">—</span>
+      <span class="role-badge" id="roleBadge">coach</span>
+    </div>
+    <button class="btn btn-muted" onclick="doLogout()"><i class="ph ph-sign-out"></i> Sign out</button>
+  </div>
+
+  <!-- Journeys panel -->
+  <div class="panel panel-journeys active" id="panelJourneys">
+    <div class="journey-list">
+      <div class="journey-list-header">
+        <h2>My Journeys</h2>
+        <span class="count" id="journeyCount">0</span>
+        <button class="btn btn-gold" style="padding:5px 10px;font-size:11px;" onclick="createJourney()"><i class="ph ph-plus"></i> New</button>
+      </div>
+      <div id="journeyListBody"></div>
+    </div>
+    <div class="journey-detail" id="journeyDetail">
+      <div class="placeholder">
+        <i class="ph ph-tree-structure"></i>
+        <div>Select a journey on the left to edit it</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Media Library panel -->
+  <div class="panel panel-media" id="panelMedia">
+    <div class="media-header">
+      <h2>Media Library</h2>
+      <span class="count" id="mediaCount" style="font-size:11px;color:var(--muted);padding:3px 10px;background:var(--surface2);border-radius:12px;">0 assets</span>
+    </div>
+    <div class="upload-zone" id="uploadZone">
+      <i class="ph ph-cloud-arrow-up"></i>
+      <div class="upload-label">Click or drag files here to upload</div>
+      <div class="upload-hint">Videos go to Mux, images to storage. Uploads happen directly — no backend proxy.</div>
+      <input type="file" id="uploadInput" multiple accept="video/*,image/*" style="display:none;">
+    </div>
+    <div class="media-grid" id="mediaGrid"></div>
+  </div>
+
+  <!-- Enrollments panel -->
+  <div class="panel panel-enrollments" id="panelEnrollments">
+    <div class="enroll-header">
+      <h2>Enrollments</h2>
+    </div>
+    <div class="enroll-tabs">
+      <button class="enroll-tab active" data-etab="active" onclick="switchEnrollTab('active')">Active</button>
+      <button class="enroll-tab" data-etab="pending" onclick="switchEnrollTab('pending')">Pending Requests</button>
+    </div>
+    <div class="enroll-list" id="enrollList"></div>
+  </div>
+
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// Core state
+// ══════════════════════════════════════════════════════
+const API = window.location.origin;
+let TOKEN = null;
+let USER_EMAIL = '';
+let ACCESS_CTX = null; // {role, effective_roles, can_author_journeys, ...}
+let activeTab = 'journeys';
+
+let journeys = [];
+let selectedJourneyId = null;
+let journeyDetail = null;
+let expandedLessons = {}; // { [lessonId]: false } — default open
+let expandedTasks = {};   // { [taskId]: true } — default closed
+
+let mediaAssets = [];
+let mediaAssetsById = {};
+
+let enrollmentsView = 'active';
+let activeEnrollments = [];
+let pendingRequests = [];
+
+// ══════════════════════════════════════════════════════
+// Auth
+// ══════════════════════════════════════════════════════
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if (!email || !password) { errEl.textContent = 'Email and password are required'; return; }
+  try {
+    const cfg = await (await fetch(API + '/api/config')).json();
+    const resp = await fetch(cfg.supabaseUrl + '/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': cfg.supabaseAnonKey },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.access_token) { errEl.textContent = data.error_description || 'Login failed'; return; }
+    TOKEN = data.access_token;
+    USER_EMAIL = email;
+    sessionStorage.setItem('compass_coach_token', TOKEN);
+    sessionStorage.setItem('compass_coach_email', email);
+    await gateAndMount();
+  } catch (e) { errEl.textContent = 'Network error: ' + e.message; }
+}
+
+function doLogout() {
+  sessionStorage.removeItem('compass_coach_token');
+  sessionStorage.removeItem('compass_coach_email');
+  TOKEN = null;
+  location.reload();
+}
+
+// Check if the logged-in user has coach access; if so mount the shell
+async function gateAndMount() {
+  try {
+    // Call the library endpoint to probe access_context. Coach + super_admin + team_leader all allowed.
+    const resp = await coachFetch('/api/coaching/library/assets');
+    if (!resp) return;
+    if (resp.status === 401 || resp.status === 403) {
+      showDenied();
+      return;
+    }
+    const data = await resp.json();
+    ACCESS_CTX = data.access_context || {};
+    const canAuthor = ACCESS_CTX.can_author_journeys || ACCESS_CTX.can_global_view;
+    if (!canAuthor && ACCESS_CTX.role !== 'coach' && ACCESS_CTX.role !== 'admin' && ACCESS_CTX.role !== 'super_admin') {
+      showDenied();
+      return;
+    }
+    // Prime media cache from the response
+    mediaAssets = data.assets || [];
+    mediaAssetsById = {};
+    for (const a of mediaAssets) mediaAssetsById[a.id] = a;
+    // Show the shell
+    document.getElementById('authGate').style.display = 'none';
+    document.getElementById('deniedView').style.display = 'none';
+    document.getElementById('shell').classList.add('active');
+    document.getElementById('userEmail').textContent = USER_EMAIL || 'coach';
+    document.getElementById('roleBadge').textContent = ACCESS_CTX.role || 'coach';
+    await loadJourneys();
+  } catch (e) {
+    showToast('Startup failed: ' + e.message);
+  }
+}
+
+function showDenied() {
+  document.getElementById('authGate').style.display = 'none';
+  document.getElementById('shell').classList.remove('active');
+  document.getElementById('deniedView').style.display = '';
+}
+
+// Restore session on page load
+(function () {
+  const saved = sessionStorage.getItem('compass_coach_token');
+  const email = sessionStorage.getItem('compass_coach_email');
+  if (saved) { TOKEN = saved; USER_EMAIL = email || ''; gateAndMount(); }
+})();
+
+// All API calls go through this helper. For super_admin / admin users we auto-send
+// x-coach-elevated-edit: true so they can edit journeys across scopes — same as the
+// RN CoachPortalScreen's elevatedEdit toggle. Regular coaches don't get this header.
+async function coachFetch(path, opts = {}) {
+  const role = ACCESS_CTX?.role || '';
+  const elevated = role === 'super_admin' || role === 'admin';
+  const headers = {
+    ...opts.headers,
+    'Authorization': 'Bearer ' + TOKEN,
+    'Content-Type': 'application/json',
+  };
+  if (elevated) headers['x-coach-elevated-edit'] = 'true';
+  const resp = await fetch(API + path, { ...opts, headers });
+  if (resp.status === 401) { doLogout(); return null; }
+  return resp;
+}
+
+// ══════════════════════════════════════════════════════
+// Utilities
+// ══════════════════════════════════════════════════════
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+function showModal(html) {
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  document.getElementById('modalContent').innerHTML = '';
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+  if (tab === 'media') renderMediaGrid();
+  if (tab === 'enrollments') loadEnrollments();
+}
+
+// Mux/Supabase thumbnail helper (same logic as admin.html)
+function assetThumbUrl(a) {
+  if (!a) return null;
+  if (a.playback_id && !String(a.playback_id).startsWith('http')) {
+    return `https://image.mux.com/${a.playback_id}/thumbnail.jpg?width=240&height=135&fit_mode=smartcrop`;
+  }
+  const url = a.file_url || a.playback_id;
+  if (url && (a.content_type || '').startsWith('image')) return url;
+  return null;
+}
+
+// ══════════════════════════════════════════════════════
+// Journeys: list + detail
+// ══════════════════════════════════════════════════════
+async function loadJourneys() {
+  try {
+    const resp = await coachFetch('/api/coaching/journeys?scope=my');
+    if (!resp || !resp.ok) return;
+    const data = await resp.json();
+    journeys = data.journeys || [];
+    document.getElementById('journeyCount').textContent = journeys.length;
+    renderJourneyList();
+  } catch (e) { showToast('Failed to load journeys: ' + e.message); }
+}
+
+function renderJourneyList() {
+  const el = document.getElementById('journeyListBody');
+  if (!journeys.length) {
+    el.innerHTML = '<div style="padding:30px 20px;text-align:center;color:var(--muted);font-size:12px;">No journeys yet. Click <b>New</b> to create one.</div>';
+    return;
+  }
+  el.innerHTML = journeys.map(j => {
+    const status = j.status || 'active';
+    const lessonCount = j.milestones_count || j.milestone_count || 0;
+    return `<div class="journey-row ${selectedJourneyId === j.id ? 'selected' : ''}" onclick="selectJourney('${j.id}')">
+      <div class="jr-title">${esc(j.title)}</div>
+      <div class="jr-meta">
+        <span class="status-badge ${status}">${status}</span>
+        <span>${lessonCount} lesson${lessonCount !== 1 ? 's' : ''}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function selectJourney(id) {
+  selectedJourneyId = id;
+  journeyDetail = null;
+  renderJourneyList();
+  const detail = document.getElementById('journeyDetail');
+  detail.innerHTML = '<div class="placeholder"><i class="ph ph-spinner-gap" style="animation:spin 1s linear infinite;"></i><div>Loading...</div></div>';
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + id);
+    if (!resp) return;
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      detail.innerHTML = `<div class="placeholder"><i class="ph ph-warning"></i><div>Failed to load: ${esc(err.error || 'Unknown error')}</div></div>`;
+      return;
+    }
+    journeyDetail = await resp.json();
+    renderJourneyDetail();
+  } catch (e) {
+    detail.innerHTML = `<div class="placeholder"><i class="ph ph-warning"></i><div>${esc(e.message)}</div></div>`;
+  }
+}
+
+// ──────────────────────────────────────────────────────
+// Terminology map (IMPORTANT):
+//   UI "Lesson"  = URL segment /lessons  = DB table `milestones`  (container; holds release strategy)
+//   UI "Task"    = URL segment /tasks    = DB table `lessons`     (content; title + body + media)
+// The API GET response still uses DB names: journeyDetail.milestones[].lessons[].media[]
+// ──────────────────────────────────────────────────────
+function renderJourneyDetail() {
+  const el = document.getElementById('journeyDetail');
+  if (!journeyDetail) return;
+  const j = journeyDetail.journey || journeyDetail;
+  const lessons = journeyDetail.milestones || []; // API "milestones" = UI "lessons"
+
+  let html = '';
+  html += `<input class="inline-edit title" value="${esc(j.title || '')}" onblur="saveJourneyField('title',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
+  html += `<input class="inline-edit" value="${esc(j.description || '')}" placeholder="Add description..." style="color:var(--muted);font-size:13px;margin-top:4px;" onblur="saveJourneyField('description',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
+
+  // Status
+  html += `<div style="display:flex;gap:12px;margin-top:16px;">`;
+  html += `<div style="flex:1;max-width:220px;"><label style="display:block;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:5px;">Status</label>`;
+  html += `<select onchange="saveJourneyField('status',this.value)">`;
+  for (const s of ['draft', 'active', 'hidden']) {
+    html += `<option value="${s}" ${(j.status || 'draft') === s ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`;
+  }
+  html += `</select></div>`;
+  html += `</div>`;
+
+  // Lessons (DB: milestones) with tasks (DB: lessons)
+  html += `<div class="section">`;
+  html += `<div class="section-header"><h3>Lessons</h3><span class="count">${lessons.length}</span>`;
+  html += `<button class="btn btn-muted" style="margin-left:auto;padding:4px 10px;font-size:11px;" onclick="addLesson()"><i class="ph ph-plus"></i> Add Lesson</button></div>`;
+
+  if (!lessons.length) {
+    html += `<div style="text-align:center;color:var(--muted);padding:24px;font-size:12px;border:1px dashed var(--border);border-radius:10px;">No lessons yet. Click <b>Add Lesson</b> to create one.</div>`;
+  } else {
+    for (let li = 0; li < lessons.length; li += 1) {
+      const lesson = lessons[li];
+      const isOpen = expandedLessons[lesson.id] !== false;
+      const tasks = lesson.lessons || []; // API "lessons" nested under milestone = UI "tasks"
+      const strategy = lesson.release_strategy || 'immediate';
+      const releaseDate = lesson.release_date || '';
+
+      html += `<div class="tree-ms">`;
+      html += `<div class="tree-ms-header" onclick="toggleLesson('${lesson.id}', event)">`;
+      html += `<i class="ph ph-caret-right expand ${isOpen ? 'open' : ''}"></i>`;
+      html += `<input class="ms-title-input" value="${esc(lesson.title)}" onblur="renameLesson('${lesson.id}', this.value)" onkeydown="if(event.key==='Enter')this.blur()" onclick="event.stopPropagation()">`;
+      html += `<span class="release-badge ${strategy}">${strategy}</span>`;
+      html += `<span class="lesson-count">${tasks.length} task${tasks.length !== 1 ? 's' : ''}</span>`;
+      html += `<div class="ms-actions" onclick="event.stopPropagation()">`;
+      html += `<button class="icon-btn" title="Move up" ${li === 0 ? 'disabled' : ''} onclick="moveLesson('${lesson.id}',-1)"><i class="ph ph-arrow-up"></i></button>`;
+      html += `<button class="icon-btn" title="Move down" ${li === lessons.length - 1 ? 'disabled' : ''} onclick="moveLesson('${lesson.id}',1)"><i class="ph ph-arrow-down"></i></button>`;
+      html += `<button class="icon-btn danger" title="Delete lesson" onclick="deleteLesson('${lesson.id}')"><i class="ph ph-trash"></i></button>`;
+      html += `</div>`;
+      html += `</div>`;
+
+      if (isOpen) {
+        // Release strategy row (lesson-level gating)
+        html += `<div class="lesson-controls">`;
+        html += `<span class="ctrl-label">Release:</span>`;
+        html += `<div class="seg-control">`;
+        for (const s of ['immediate', 'sequential', 'scheduled']) {
+          html += `<button class="${strategy === s ? 'active' : ''}" onclick="updateLessonRelease('${lesson.id}','${s}')">${s}</button>`;
+        }
+        html += `</div>`;
+        if (strategy === 'scheduled') {
+          const dateVal = releaseDate ? String(releaseDate).slice(0, 10) : '';
+          html += `<input type="date" class="date-input" value="${dateVal}" onchange="updateLessonReleaseDate('${lesson.id}', this.value)">`;
+        } else if (strategy === 'sequential') {
+          html += `<span style="font-size:10px;color:var(--muted);">Unlocks as prior lesson is completed</span>`;
+        } else {
+          html += `<span style="font-size:10px;color:var(--muted);">Available immediately on enrollment</span>`;
+        }
+        html += `</div>`;
+
+        // Tasks body
+        html += `<div class="tree-ms-body open">`;
+        for (let ti = 0; ti < tasks.length; ti += 1) {
+          const task = tasks[ti];
+          const media = Array.isArray(task.media) ? task.media : [];
+          const first = media[0] || null;
+          const isTaskOpen = !!expandedTasks[task.id];
+
+          html += `<div class="tree-lesson${isTaskOpen ? ' open' : ''}">`;
+
+          // Thumb
+          if (first && first.playback_id && first.provider === 'mux') {
+            const thumbUrl = `https://image.mux.com/${first.playback_id}/thumbnail.jpg?width=144&height=88&fit_mode=smartcrop`;
+            html += `<img class="thumb" src="${thumbUrl}" alt="" onerror="this.style.display='none'">`;
+          } else if (first && first.file_url && (first.content_type || '').startsWith('image')) {
+            html += `<img class="thumb" src="${esc(first.file_url)}" alt="">`;
+          } else if (first) {
+            html += `<div class="thumb placeholder"><i class="ph ph-film-strip"></i></div>`;
+          } else {
+            html += `<div class="thumb placeholder"><i class="ph ph-book-open"></i></div>`;
+          }
+
+          // Title + meta
+          html += `<div class="main" style="display:flex;flex-direction:column;min-width:0;flex:1;">`;
+          html += `<input class="title-input" value="${esc(task.title)}" onblur="renameTask('${lesson.id}','${task.id}', this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
+          if (first) {
+            const ready = first.playback_ready;
+            const statusColor = ready ? 'var(--green)' : 'var(--accent)';
+            const statusLabel = ready ? 'ready' : (first.processing_status || 'processing');
+            const kindIcon = (first.category || '').toLowerCase() === 'video' ? 'ph-film-strip' : 'ph-image';
+            html += `<div class="meta" style="padding:0 8px;"><i class="ph ${kindIcon}"></i>${esc(first.filename || first.media_id || '')} · <span style="color:${statusColor};">${statusLabel}</span>${media.length > 1 ? ` · +${media.length - 1} more` : ''}</div>`;
+          } else {
+            html += `<div class="meta" style="padding:0 8px;"><i class="ph ph-link-break"></i> no media</div>`;
+          }
+          html += `</div>`;
+
+          // Actions (reorder, edit, delete)
+          html += `<div class="actions">`;
+          html += `<button class="icon-btn" title="Move up" ${ti === 0 ? 'disabled' : ''} onclick="moveTask('${lesson.id}','${task.id}',-1)"><i class="ph ph-arrow-up"></i></button>`;
+          html += `<button class="icon-btn" title="Move down" ${ti === tasks.length - 1 ? 'disabled' : ''} onclick="moveTask('${lesson.id}','${task.id}',1)"><i class="ph ph-arrow-down"></i></button>`;
+          html += `<button class="icon-btn" title="${isTaskOpen ? 'Collapse' : 'Edit'}" onclick="toggleTaskDrawer('${task.id}')"><i class="ph ${isTaskOpen ? 'ph-caret-up' : 'ph-pencil-simple'}"></i></button>`;
+          html += `<button class="icon-btn danger" title="Delete task" onclick="deleteTask('${lesson.id}','${task.id}')"><i class="ph ph-trash"></i></button>`;
+          html += `</div>`;
+
+          // Drawer: body textarea + media grid + attach button
+          if (isTaskOpen) {
+            html += `<div class="task-drawer">`;
+            html += `<label class="drawer-label">Task body</label>`;
+            html += `<textarea placeholder="Write the task content here..." onblur="updateTaskBody('${lesson.id}','${task.id}', this.value)">${esc(task.body || '')}</textarea>`;
+            html += `<label class="drawer-label">Media (${media.length})</label>`;
+            if (!media.length) {
+              html += `<div style="padding:14px;text-align:center;color:var(--muted);font-size:11px;border:1px dashed var(--border);border-radius:7px;">No media attached yet.</div>`;
+            } else {
+              html += `<div class="task-media-grid">`;
+              for (const m of media) {
+                html += `<div class="task-media-item">`;
+                if (m.playback_id && m.provider === 'mux') {
+                  html += `<img class="m-thumb" src="https://image.mux.com/${m.playback_id}/thumbnail.jpg?width=300&height=170&fit_mode=smartcrop" alt="" onerror="this.style.display='none'">`;
+                } else if (m.file_url && (m.content_type || '').startsWith('image')) {
+                  html += `<img class="m-thumb" src="${esc(m.file_url)}" alt="">`;
+                } else {
+                  const icon = (m.category || '').toLowerCase() === 'video' ? 'ph-film-strip' : 'ph-image';
+                  html += `<div class="m-thumb placeholder"><i class="ph ${icon}"></i></div>`;
+                }
+                const mediaId = m.media_id || m.id;
+                html += `<button class="m-remove" title="Remove" onclick="unlinkMedia('${task.id}','${mediaId}')"><i class="ph ph-x"></i></button>`;
+                html += `<div class="m-info"><div class="m-name">${esc(m.filename || m.title || mediaId || 'Unnamed')}</div>`;
+                html += `<div class="m-status">${m.playback_ready ? 'ready' : (m.processing_status || 'processing')}</div></div>`;
+                html += `</div>`;
+              }
+              html += `</div>`;
+            }
+            html += `<div class="drawer-media-actions">`;
+            html += `<button class="btn btn-muted" onclick="openAssetPicker('${lesson.id}','${task.id}')"><i class="ph ph-plus"></i> Attach Media</button>`;
+            html += `</div>`;
+            html += `</div>`;
+          }
+
+          html += `</div>`; // tree-lesson
+        }
+        html += `<button class="tree-add" onclick="addTask('${lesson.id}')"><i class="ph ph-plus"></i> Add Task</button>`;
+        html += `</div>`; // tree-ms-body
+      }
+      html += `</div>`; // tree-ms
+    }
+  }
+  html += `</div>`; // section
+
+  // Danger zone
+  html += `<div style="margin-top:28px;padding-top:16px;border-top:1px solid var(--border);">`;
+  html += `<button class="btn btn-danger" onclick="deleteJourney()"><i class="ph ph-trash"></i> Delete Journey</button>`;
+  html += `</div>`;
+
+  el.innerHTML = html;
+}
+
+function toggleLesson(id, e) {
+  // Don't toggle if the click hit an input or button (inline rename, reorder, delete)
+  if (e && e.target && (e.target.closest('input') || e.target.closest('button'))) return;
+  expandedLessons[id] = expandedLessons[id] === false ? true : false;
+  renderJourneyDetail();
+}
+
+function toggleTaskDrawer(taskId) {
+  expandedTasks[taskId] = !expandedTasks[taskId];
+  renderJourneyDetail();
+}
+
+async function refreshJourneyDetail() {
+  if (!selectedJourneyId) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId);
+    if (!resp || !resp.ok) return;
+    journeyDetail = await resp.json();
+    renderJourneyDetail();
+    await loadJourneys();
+  } catch (e) { /* silent */ }
+}
+
+// ── Journey CRUD ──
+async function createJourney() {
+  const title = prompt('Journey title:');
+  if (!title || !title.trim()) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys', {
+      method: 'POST',
+      body: JSON.stringify({ title: title.trim(), status: 'draft' }),
+    });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    const data = await resp.json();
+    showToast('Journey created');
+    await loadJourneys();
+    if (data.journey?.id) selectJourney(data.journey.id);
+  } catch (e) { showToast('Create failed: ' + e.message); }
+}
+
+async function saveJourneyField(field, value) {
+  if (!selectedJourneyId) return;
+  try {
+    const body = {};
+    body[field] = value;
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Saved');
+    if (field === 'title' || field === 'status') await loadJourneys();
+  } catch (e) { showToast('Save failed: ' + e.message); }
+}
+
+async function deleteJourney() {
+  if (!selectedJourneyId || !journeyDetail) return;
+  const j = journeyDetail.journey || journeyDetail;
+  if (!confirm('Delete journey "' + j.title + '"? This cannot be undone.')) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId, { method: 'DELETE' });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Journey deleted');
+    selectedJourneyId = null;
+    journeyDetail = null;
+    document.getElementById('journeyDetail').innerHTML = '<div class="placeholder"><i class="ph ph-tree-structure"></i><div>Select a journey on the left to edit it</div></div>';
+    await loadJourneys();
+  } catch (e) { showToast('Delete failed: ' + e.message); }
+}
+
+// ── Lesson CRUD (URL path "lessons" = DB milestones) ──
+async function addLesson() {
+  if (!selectedJourneyId) return;
+  const title = prompt('Lesson title:');
+  if (!title || !title.trim()) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId + '/lessons', {
+      method: 'POST',
+      body: JSON.stringify({ title: title.trim() }),
+    });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Lesson added');
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Add lesson failed: ' + e.message); }
+}
+
+async function renameLesson(lessonId, newTitle) {
+  const trimmed = String(newTitle || '').trim();
+  const current = (journeyDetail?.milestones || []).find(l => l.id === lessonId);
+  if (!trimmed) { await refreshJourneyDetail(); return; }
+  if (current && current.title === trimmed) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId + '/lessons/' + lessonId, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: trimmed }),
+    });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Lesson renamed');
+    if (current) current.title = trimmed;
+  } catch (e) { showToast('Rename failed: ' + e.message); await refreshJourneyDetail(); }
+}
+
+async function deleteLesson(lessonId) {
+  const current = (journeyDetail?.milestones || []).find(l => l.id === lessonId);
+  const title = current?.title || 'lesson';
+  if (!confirm('Delete lesson "' + title + '" and all its tasks?')) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId + '/lessons/' + lessonId, { method: 'DELETE' });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Lesson deleted');
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Delete failed: ' + e.message); }
+}
+
+async function moveLesson(lessonId, direction) {
+  const lessons = (journeyDetail?.milestones || []).slice();
+  const idx = lessons.findIndex(l => l.id === lessonId);
+  if (idx < 0) return;
+  const target = idx + direction;
+  if (target < 0 || target >= lessons.length) return;
+  [lessons[idx], lessons[target]] = [lessons[target], lessons[idx]];
+  const lesson_ids = lessons.map(l => l.id);
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId + '/lessons/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ lesson_ids }),
+    });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Reordered');
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Reorder failed: ' + e.message); }
+}
+
+// Release strategy + date use the /milestones/:id route (not /lessons/:id)
+// Optimistic update: patch local state + re-render immediately, fire network in background.
+async function updateLessonRelease(lessonId, strategy) {
+  const lesson = (journeyDetail?.milestones || []).find(l => l.id === lessonId);
+  if (!lesson) return;
+  if (lesson.release_strategy === strategy) return;
+  const prevStrategy = lesson.release_strategy;
+  lesson.release_strategy = strategy;
+  renderJourneyDetail();
+  showToast('Release: ' + strategy);
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId + '/milestones/' + lessonId, {
+      method: 'PATCH',
+      body: JSON.stringify({ release_strategy: strategy }),
+    });
+    if (!resp || !resp.ok) {
+      const e = resp ? await resp.json().catch(() => ({})) : {};
+      throw new Error(e.error || 'Failed');
+    }
+  } catch (e) {
+    lesson.release_strategy = prevStrategy;
+    renderJourneyDetail();
+    showToast('Update failed: ' + e.message);
+  }
+}
+
+async function updateLessonReleaseDate(lessonId, value) {
+  const lesson = (journeyDetail?.milestones || []).find(l => l.id === lessonId);
+  if (!lesson) return;
+  const prevDate = lesson.release_date;
+  lesson.release_date = value || null;
+  // No re-render needed — the input already reflects the new value
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId + '/milestones/' + lessonId, {
+      method: 'PATCH',
+      body: JSON.stringify({ release_date: value || null }),
+    });
+    if (!resp || !resp.ok) {
+      const e = resp ? await resp.json().catch(() => ({})) : {};
+      throw new Error(e.error || 'Failed');
+    }
+    showToast('Release date updated');
+  } catch (e) {
+    lesson.release_date = prevDate;
+    renderJourneyDetail();
+    showToast('Update failed: ' + e.message);
+  }
+}
+
+// ── Task CRUD (URL path "tasks" = DB lessons) ──
+async function addTask(lessonId) {
+  const title = prompt('Task title:');
+  if (!title || !title.trim()) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId + '/lessons/' + lessonId + '/tasks', {
+      method: 'POST',
+      body: JSON.stringify({ title: title.trim() }),
+    });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Task added');
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Add task failed: ' + e.message); }
+}
+
+async function renameTask(lessonId, taskId, newTitle) {
+  const trimmed = String(newTitle || '').trim();
+  const lesson = (journeyDetail?.milestones || []).find(l => l.id === lessonId);
+  const task = lesson?.lessons?.find(t => t.id === taskId);
+  if (!trimmed) { await refreshJourneyDetail(); return; }
+  if (task && task.title === trimmed) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId + '/lessons/' + lessonId + '/tasks/' + taskId, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: trimmed }),
+    });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Task renamed');
+    if (task) task.title = trimmed;
+  } catch (e) { showToast('Rename failed: ' + e.message); await refreshJourneyDetail(); }
+}
+
+async function updateTaskBody(lessonId, taskId, body) {
+  const lesson = (journeyDetail?.milestones || []).find(l => l.id === lessonId);
+  const task = lesson?.lessons?.find(t => t.id === taskId);
+  if (task && (task.body || '') === body) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId + '/lessons/' + lessonId + '/tasks/' + taskId, {
+      method: 'PATCH',
+      body: JSON.stringify({ body }),
+    });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Body saved');
+    if (task) task.body = body;
+  } catch (e) { showToast('Save failed: ' + e.message); }
+}
+
+async function deleteTask(lessonId, taskId) {
+  const lesson = (journeyDetail?.milestones || []).find(l => l.id === lessonId);
+  const task = lesson?.lessons?.find(t => t.id === taskId);
+  const title = task?.title || 'task';
+  if (!confirm('Delete task "' + title + '"?')) return;
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId + '/lessons/' + lessonId + '/tasks/' + taskId, { method: 'DELETE' });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Task deleted');
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Delete failed: ' + e.message); }
+}
+
+async function moveTask(lessonId, taskId, direction) {
+  const lesson = (journeyDetail?.milestones || []).find(l => l.id === lessonId);
+  if (!lesson) return;
+  const tasks = (lesson.lessons || []).slice();
+  const idx = tasks.findIndex(t => t.id === taskId);
+  if (idx < 0) return;
+  const target = idx + direction;
+  if (target < 0 || target >= tasks.length) return;
+  [tasks[idx], tasks[target]] = [tasks[target], tasks[idx]];
+  const task_ids = tasks.map(t => t.id);
+  try {
+    const resp = await coachFetch('/api/coaching/journeys/' + selectedJourneyId + '/lessons/' + lessonId + '/tasks/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ task_ids }),
+    });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Reordered');
+    await refreshJourneyDetail();
+  } catch (e) { showToast('Reorder failed: ' + e.message); }
+}
+
+// ── Media attach / detach ──
+// Media hangs off DB lessons (= UI tasks). Endpoint: POST /api/coaching/lessons/:id/media
+let linkingContext = null;
+let pickerSearchTerm = '';
+
+function pickerAttachmentFallback(a) {
+  // When backend didn't return a linked_attachment but the linked task is in the currently-open journey,
+  // we can still resolve the task name from journeyDetail. Returns a partial attachment object or null.
+  if (!a?.linked_lesson_id) return null;
+  if (a.linked_attachment) return a.linked_attachment;
+  if (journeyDetail && Array.isArray(journeyDetail.milestones)) {
+    for (const ms of journeyDetail.milestones) {
+      for (const t of (ms.lessons || [])) {
+        if (t.id === a.linked_lesson_id) {
+          return {
+            task_id: t.id,
+            task_title: t.title || 'Untitled task',
+            milestone_id: ms.id,
+            milestone_title: ms.title || 'Untitled lesson',
+            journey_id: journeyDetail.journey?.id || journeyDetail.id || '',
+            journey_title: journeyDetail.journey?.title || journeyDetail.title || 'This journey',
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function renderPickerList(taskId) {
+  const term = pickerSearchTerm.trim().toLowerCase();
+  const filtered = mediaAssets.filter(a => {
+    if (!term) return true;
+    const hay = [
+      a.title, a.filename, a.id, a.category,
+      a.linked_attachment?.task_title, a.linked_attachment?.milestone_title, a.linked_attachment?.journey_title,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(term);
+  });
+
+  if (!filtered.length) {
+    return term
+      ? `<div style="text-align:center;color:var(--muted);padding:30px 20px;font-size:12px;">No assets match "${esc(term)}".</div>`
+      : '<div style="text-align:center;color:var(--muted);padding:30px 20px;font-size:12px;">No media assets. Upload some in the Media Library tab.</div>';
+  }
+
+  return filtered.map(a => {
+    const thumb = assetThumbUrl(a);
+    const isVideo = (a.category || '').toLowerCase() === 'video';
+    const icon = isVideo ? 'ph-film-strip' : 'ph-image';
+    const ready = a.playback_ready;
+    const statusColor = ready ? 'var(--green)' : 'var(--accent)';
+    const statusLabel = ready ? 'ready' : (a.processing_status || 'processing');
+    const linkedTo = a.linked_lesson_id || null;
+    const linkedHere = linkedTo && linkedTo === taskId;
+    const linkedElsewhere = linkedTo && linkedTo !== taskId;
+    const attachment = pickerAttachmentFallback(a);
+
+    let statusBadge;
+    if (linkedHere) {
+      statusBadge = `<div style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--green);background:rgba(74,222,128,0.1);padding:4px 10px;border-radius:12px;border:1px solid rgba(74,222,128,0.3);">
+        <i class="ph ph-check-circle"></i> Attached to this task
+      </div>`;
+    } else if (linkedElsewhere) {
+      const journeyLabel = attachment?.journey_title || 'Unknown journey';
+      const lessonLabel = attachment?.milestone_title || 'Unknown lesson';
+      const taskLabel = attachment?.task_title || 'Unknown task';
+      statusBadge = `<div style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--accent);background:rgba(255,165,0,0.1);padding:4px 10px;border-radius:12px;border:1px solid rgba(255,165,0,0.3);">
+          <i class="ph ph-link-break"></i> In use — clicking will move it
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.4;">
+          <i class="ph ph-folder-open" style="font-size:11px;vertical-align:-1px;"></i> ${esc(journeyLabel)}
+          <span style="color:var(--border);"> › </span>${esc(lessonLabel)}
+          <span style="color:var(--border);"> › </span><strong style="color:var(--text);">${esc(taskLabel)}</strong>
+        </div>`;
+    } else {
+      statusBadge = `<div style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);background:var(--surface2);padding:4px 10px;border-radius:12px;border:1px solid var(--border);">
+        <i class="ph ph-circle-dashed"></i> Unassigned
+      </div>`;
+    }
+
+    const thumbBox = thumb
+      ? `<img src="${thumb}" style="width:160px;height:90px;object-fit:cover;border-radius:6px;flex-shrink:0;background:var(--bg);" onerror="this.onerror=null;this.outerHTML='<div style=&quot;display:flex;width:160px;height:90px;background:var(--surface2);border-radius:6px;align-items:center;justify-content:center;flex-shrink:0;&quot;><i class=&quot;ph ${icon}&quot; style=&quot;font-size:28px;color:var(--muted);&quot;></i></div>'">`
+      : `<div style="display:flex;width:160px;height:90px;background:var(--surface2);border-radius:6px;align-items:center;justify-content:center;flex-shrink:0;"><i class="ph ${icon}" style="font-size:28px;color:var(--muted);"></i></div>`;
+
+    const disabled = linkedHere;
+    const opacity = disabled ? '0.55' : '1';
+    const cursor = disabled ? 'default' : 'pointer';
+    const clickHandler = disabled ? '' : `onclick="linkAsset('${a.id}')"`;
+    const hoverClass = disabled ? '' : 'picker-card-interactive';
+
+    return `<div class="media-card ${hoverClass}" style="display:flex;flex-direction:row;align-items:stretch;padding:14px;gap:16px;opacity:${opacity};cursor:${cursor};min-height:120px;" ${clickHandler}>
+      ${thumbBox}
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;justify-content:center;">
+        <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.title || a.filename || a.id)}</div>
+        <div style="font-size:11px;color:var(--muted);display:flex;gap:8px;align-items:center;">
+          <span><i class="ph ${icon}"></i> ${isVideo ? 'Video' : (a.category || 'Asset')}</span>
+          <span style="color:var(--border);">·</span>
+          <span style="color:${statusColor};">${statusLabel}</span>
+        </div>
+        <div style="margin-top:2px;">${statusBadge}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updatePickerList() {
+  const container = document.getElementById('pickerListContainer');
+  if (!container || !linkingContext) return;
+  container.innerHTML = renderPickerList(linkingContext.taskId);
+}
+
+function onPickerSearchInput(ev) {
+  pickerSearchTerm = ev.target.value || '';
+  updatePickerList();
+}
+
+async function openAssetPicker(lessonId, taskId) {
+  // Always refresh so linked_lesson_id + linked_attachment are up-to-date
+  await loadMediaAssets();
+  linkingContext = { lessonId, taskId };
+  pickerSearchTerm = '';
+
+  showModal(`
+    <h3 style="margin:0 0 4px 0;">Attach Media to Task</h3>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Click an asset to attach it. Each asset can only live on one task at a time.</div>
+    <div style="position:relative;margin-bottom:10px;">
+      <i class="ph ph-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;pointer-events:none;"></i>
+      <input id="pickerSearchInput" type="text" placeholder="Search assets, lessons, or journeys…" autocomplete="off"
+        oninput="onPickerSearchInput(event)"
+        style="width:100%;box-sizing:border-box;padding:9px 12px 9px 32px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;">
+    </div>
+    <div id="pickerListContainer" style="max-height:520px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px;">
+      ${renderPickerList(taskId)}
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-muted" onclick="closeModal()">Close</button>
+    </div>
+  `);
+  // Autofocus search
+  setTimeout(() => { const el = document.getElementById('pickerSearchInput'); if (el) el.focus(); }, 50);
+}
+
+async function linkAsset(assetId) {
+  if (!linkingContext) return;
+  const { taskId } = linkingContext;
+  const asset = mediaAssetsById[assetId];
+  const linkedElsewhere = asset && asset.linked_lesson_id && asset.linked_lesson_id !== taskId;
+  if (linkedElsewhere) {
+    // Find current task name for confirm prompt
+    let currentTaskName = 'another task';
+    if (journeyDetail && Array.isArray(journeyDetail.milestones)) {
+      for (const ms of journeyDetail.milestones) {
+        for (const t of (ms.lessons || [])) {
+          if (t.id === asset.linked_lesson_id) currentTaskName = t.title || 'Untitled task';
+        }
+      }
+    }
+    if (!confirm(`"${asset.title || assetId}" is currently attached to "${currentTaskName}". Move it to this task?`)) return;
+  }
+  try {
+    const resp = await coachFetch('/api/coaching/lessons/' + taskId + '/media', {
+      method: 'POST',
+      body: JSON.stringify({ media_id: assetId, action: 'link' }),
+    });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast(linkedElsewhere ? 'Media moved' : 'Media attached');
+    closeModal();
+    linkingContext = null;
+    await refreshJourneyDetail();
+    await loadMediaAssets();
+  } catch (e) { showToast('Attach failed: ' + e.message); }
+}
+
+async function unlinkMedia(taskId, mediaId) {
+  if (!confirm('Remove this media from the task? The asset will return to the library.')) return;
+  try {
+    const resp = await coachFetch('/api/coaching/lessons/' + taskId + '/media', {
+      method: 'POST',
+      body: JSON.stringify({ media_id: mediaId, action: 'unlink' }),
+    });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Media removed');
+    await refreshJourneyDetail();
+    await loadMediaAssets();
+  } catch (e) { showToast('Remove failed: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════════════
+// Media Library
+// ══════════════════════════════════════════════════════
+async function loadMediaAssets() {
+  try {
+    const resp = await coachFetch('/api/coaching/library/assets');
+    if (!resp || !resp.ok) return;
+    const data = await resp.json();
+    mediaAssets = data.assets || [];
+    mediaAssetsById = {};
+    for (const a of mediaAssets) mediaAssetsById[a.id] = a;
+    renderMediaGrid();
+  } catch (e) { showToast('Failed to load media: ' + e.message); }
+}
+
+function renderMediaGrid() {
+  document.getElementById('mediaCount').textContent = `${mediaAssets.length} asset${mediaAssets.length !== 1 ? 's' : ''}`;
+  const el = document.getElementById('mediaGrid');
+  if (!mediaAssets.length) {
+    el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:40px;font-size:13px;">No media yet. Upload your first file above.</div>';
+    return;
+  }
+  el.innerHTML = mediaAssets.map(a => {
+    const isVideo = (a.category || '').toLowerCase() === 'video' || (a.content_type || '').startsWith('video');
+    const icon = isVideo ? 'ph-film-strip' : 'ph-image';
+    const thumb = assetThumbUrl(a);
+    const statusClass = a.processing_status === 'ready' ? 'ready' : a.processing_status === 'failed' ? 'failed' : 'processing';
+    return `<div class="media-card">
+      ${thumb
+        ? `<img class="thumb" src="${thumb}" alt="" onerror="this.parentElement.querySelector('.thumb-fallback').style.display='flex';this.style.display='none'">
+           <div class="thumb thumb-fallback" style="display:none;"><i class="ph ${icon}"></i></div>`
+        : `<div class="thumb"><i class="ph ${icon}"></i></div>`}
+      <div class="info">
+        <div class="name">${esc(a.title || a.filename || 'Untitled')}</div>
+        <div class="status ${statusClass}">${isVideo ? 'Video' : 'Image'} · ${a.processing_status || 'unknown'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Upload handling
+(function setupUpload() {
+  document.addEventListener('DOMContentLoaded', () => {
+    const zone = document.getElementById('uploadZone');
+    const input = document.getElementById('uploadInput');
+    if (!zone || !input) return;
+    zone.onclick = () => input.click();
+    input.onchange = () => { if (input.files.length) uploadFiles(input.files); input.value = ''; };
+    zone.ondragover = (e) => { e.preventDefault(); zone.classList.add('drag'); };
+    zone.ondragleave = () => zone.classList.remove('drag');
+    zone.ondrop = (e) => { e.preventDefault(); zone.classList.remove('drag'); if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files); };
+  });
+})();
+
+async function uploadFiles(files) {
+  for (const file of files) {
+    try {
+      showToast('Uploading ' + file.name + '...');
+      const isVideo = file.type.startsWith('video');
+      const urlResp = await coachFetch('/api/coaching/media/upload-url', {
+        method: 'POST',
+        body: JSON.stringify({ filename: file.name, content_type: file.type, category: isVideo ? 'video' : 'image' }),
+      });
+      if (!urlResp || !urlResp.ok) { const e = urlResp ? await urlResp.json().catch(() => ({})) : {}; throw new Error(e.error || 'No upload URL'); }
+      const urlData = await urlResp.json();
+      const uploadUrl = urlData.upload_url || urlData.url;
+      if (!uploadUrl) throw new Error('No upload URL returned');
+      const uploadResp = await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+      if (!uploadResp.ok) throw new Error('Upload failed: ' + uploadResp.status);
+      showToast(file.name + ' uploaded' + (isVideo ? ' (processing...)' : ''));
+      await loadMediaAssets();
+    } catch (e) {
+      showToast('Upload failed: ' + e.message);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// Enrollments
+// ══════════════════════════════════════════════════════
+function switchEnrollTab(tab) {
+  enrollmentsView = tab;
+  document.querySelectorAll('.enroll-tab').forEach(t => t.classList.toggle('active', t.dataset.etab === tab));
+  renderEnrollList();
+}
+
+async function loadEnrollments() {
+  try {
+    // Active: walk my journeys and pull their enrollments
+    const pendingResp = await coachFetch('/api/coaching/enrollment-requests');
+    if (pendingResp && pendingResp.ok) {
+      const pd = await pendingResp.json();
+      pendingRequests = pd.requests || pd || [];
+    }
+    renderEnrollList();
+  } catch (e) { showToast('Failed to load enrollments: ' + e.message); }
+}
+
+function renderEnrollList() {
+  const el = document.getElementById('enrollList');
+  if (enrollmentsView === 'pending') {
+    if (!pendingRequests.length) {
+      el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:30px;font-size:13px;">No pending enrollment requests.</div>';
+      return;
+    }
+    el.innerHTML = pendingRequests.map(r => `
+      <div class="enroll-row">
+        <div style="width:40px;height:40px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;"><i class="ph ph-user" style="color:var(--muted);"></i></div>
+        <div style="flex:1;">
+          <div class="user-name">${esc(r.user_name || r.user_id || 'Unknown user')}</div>
+          <div class="journey-name">${esc(r.journey_title || r.journey_id || '')}</div>
+        </div>
+        <button class="btn btn-gold" style="padding:6px 12px;font-size:11px;" onclick="approveRequest('${r.id}')"><i class="ph ph-check"></i> Approve</button>
+        <button class="btn btn-muted" style="padding:6px 12px;font-size:11px;" onclick="denyRequest('${r.id}')"><i class="ph ph-x"></i> Deny</button>
+      </div>
+    `).join('');
+  } else {
+    el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:30px;font-size:13px;">Active enrollment view — select a journey from the Journeys tab to manage its enrolled users.</div>';
+  }
+}
+
+async function approveRequest(id) {
+  try {
+    const resp = await coachFetch('/api/coaching/enrollment-requests/' + id + '/approve', { method: 'POST' });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Approved');
+    await loadEnrollments();
+  } catch (e) { showToast('Approve failed: ' + e.message); }
+}
+
+async function denyRequest(id) {
+  try {
+    const resp = await coachFetch('/api/coaching/enrollment-requests/' + id + '/deny', { method: 'POST' });
+    if (!resp || !resp.ok) { const e = resp ? await resp.json().catch(() => ({})) : {}; throw new Error(e.error || 'Failed'); }
+    showToast('Denied');
+    await loadEnrollments();
+  } catch (e) { showToast('Deny failed: ' + e.message); }
+}
+</script>
+</body>
+</html>

@@ -175,17 +175,20 @@ const DEV_LAN_FALLBACK_IP = '192.168.86.32';
 
 const resolveApiUrl = (): string => {
   let raw = String(extra.apiUrl ?? process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000');
+  // NOTE: Constants.isDevice is undefined in newer Expo SDKs on physical devices, so we
+  // must check for explicit false (simulator) rather than falsy (which also catches undefined).
+  const isSimulator = Constants.isDevice === false;
   // Sim shortcut: if the tunnel URL is stale/unreachable on simulator, fall back to localhost
-  if (Platform.OS === 'ios' && !Constants.isDevice && raw.includes('trycloudflare.com')) {
+  if (Platform.OS === 'ios' && isSimulator && raw.includes('trycloudflare.com')) {
     raw = 'http://localhost:4000';
   }
   const usesLocalhost =
     raw.includes('://localhost:') || raw.includes('://127.0.0.1:') || raw.startsWith('http://localhost') || raw.startsWith('http://127.0.0.1');
   if (!usesLocalhost) return raw;
   // Web browsers and iOS *simulator* can reach host services on localhost directly.
-  // Physical iOS devices (Constants.isDevice === true) cannot — rewrite to LAN IP just like Android.
+  // Physical iOS devices cannot — rewrite to LAN IP just like Android.
   if (Platform.OS === 'web') return raw;
-  if (Platform.OS === 'ios' && !Constants.isDevice) return raw;
+  if (Platform.OS === 'ios' && isSimulator) return raw;
   const expoHost = getExpoHostIp();
   // If the Expo host looks like a tunnel hostname (not a numeric IP), ignore it and use the LAN fallback.
   const looksLikeIp = expoHost != null && /^\d+\.\d+\.\d+\.\d+$/.test(expoHost);
