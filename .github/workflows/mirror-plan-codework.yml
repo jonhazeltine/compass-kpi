@@ -86,8 +86,7 @@ jobs:
         with:
           prompt: ${{ inputs.prompt }}
           allowed_bots: "*"
-        env:
-          ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
+          anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
 
       - name: Push branch
         if: success()
