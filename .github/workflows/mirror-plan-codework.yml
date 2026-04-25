@@ -1,24 +1,19 @@
-# mirror-plan-codework.yml.template
+# mirror-plan-codework.yml
 #
-# Reusable GitHub Actions workflow that Mirror commits into linked
-# target repos as `.github/workflows/mirror-plan-codework.yml` via the
-# setup-PR mechanism (see docs/operations/github-app-setup.md).
-#
-# This file ships in Mirror's repo as a `.template` so it's not picked
-# up as one of Mirror's own workflows. The setup-PR mechanism reads it
-# and commits it (rename: drop `.template`) into the target repo.
+# Reusable GitHub Actions workflow Mirror dispatches into each linked
+# target repo. Triggered by start-plan-code-work edge function via the
+# Mirror GitHub App.
 #
 # Inputs:
 #   plan_id     — Mirror plan UUID, written into the PR description so
 #                 the github-pr-webhook can correlate.
 #   prompt      — the plan's "Claude builds" task list, plain text.
-#   branch_name — mirror/plan/<slug>-<short-id>
+#   branch_name — mirror/plan/<slug>
 #
-# Concurrency: serialized per-repo so two simultaneous dispatches don't
-# branch from the same main and create merge conflicts.
-#
-# Always-callback: the final step uses `if: always()` so the
-# github-pr-webhook gets notified on success, failure, or cancellation.
+# ANTHROPIC_API_KEY: fetched at runtime from Mirror's secrets broker
+# using the workflow's GitHub OIDC token. Keeps the key out of every
+# repo's Action secrets — set it once in Mirror's Supabase, works
+# across every linked repo automatically.
 
 name: Mirror — Plan Code Work
 
@@ -45,9 +40,10 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      id-token: write   # required to mint a GitHub OIDC token
 
     steps:
-      - name: Checkout main
+      - name: Checkout default branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -58,14 +54,39 @@ jobs:
           git config user.name  "Mirror Bot"
           git checkout -b "${{ inputs.branch_name }}"
 
+      - name: Fetch ANTHROPIC_API_KEY from Mirror
+        id: mirror-secrets
+        env:
+          BROKER_URL: https://rioktqjdcwrnmvcmyoti.functions.supabase.co/mirror-secrets-broker
+        run: |
+          set -euo pipefail
+          OIDC_TOKEN=$(curl -fsSL \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=mirror-app" | jq -r .value)
+          if [ -z "$OIDC_TOKEN" ] || [ "$OIDC_TOKEN" = "null" ]; then
+            echo "::error::Failed to mint GitHub OIDC token"
+            exit 1
+          fi
+          RESPONSE=$(curl -fsSL -X POST "$BROKER_URL" \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          KEY=$(echo "$RESPONSE" | jq -r '.ANTHROPIC_API_KEY // empty')
+          if [ -z "$KEY" ]; then
+            echo "::error::Mirror broker did not return ANTHROPIC_API_KEY. Response: $RESPONSE"
+            exit 1
+          fi
+          # Mask in logs and export to env for the next step.
+          echo "::add-mask::$KEY"
+          echo "ANTHROPIC_API_KEY=$KEY" >> "$GITHUB_ENV"
+
       - name: Run Claude Code
         # See https://github.com/anthropics/claude-code-action
         uses: anthropics/claude-code-action@v1
         with:
           prompt: ${{ inputs.prompt }}
-          # Mirror does not provide a model override; default ships.
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
 
       - name: Push branch
         if: success()
@@ -81,25 +102,6 @@ jobs:
             --draft \
             --title "Mirror plan ${{ inputs.plan_id }}: $(echo "${{ inputs.prompt }}" | head -1 | head -c 60)" \
             --body "$(printf 'mirror-plan-id: %s\n\nThis PR was opened automatically by the Mirror Plans Code Work workflow. The locked plan and Claude/User split live in Mirror.\n' "${{ inputs.plan_id }}")" \
-            --base main \
+            --base "${{ github.event.repository.default_branch }}" \
             --head "${{ inputs.branch_name }}" \
           || echo "PR creation failed (may already exist)"
-
-      - name: Notify Mirror webhook
-        if: always()
-        env:
-          # Mirror sets MIRROR_WEBHOOK_URL via the org/repo workflow secret if
-          # using a centralized webhook, otherwise the App's webhook fires
-          # automatically on workflow_run / pull_request events.
-          MIRROR_WEBHOOK_URL: ${{ secrets.MIRROR_WEBHOOK_URL }}
-        run: |
-          if [ -n "$MIRROR_WEBHOOK_URL" ]; then
-            curl -fsS -X POST "$MIRROR_WEBHOOK_URL" \
-              -H "Content-Type: application/json" \
-              -d "$(printf '{"event":"workflow_complete","plan_id":"%s","status":"%s","branch":"%s","run_id":"%s"}' \
-                "${{ inputs.plan_id }}" \
-                "${{ job.status }}" \
-                "${{ inputs.branch_name }}" \
-                "${{ github.run_id }}")" \
-              || echo "(webhook callback failed — non-fatal; App webhook will catch the PR event)"
-          fi
