@@ -87,6 +87,17 @@ jobs:
           prompt: ${{ inputs.prompt }}
           allowed_bots: "*"
           anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+          claude_args: "--allowedTools Edit,Read,Write,Bash --max-turns 30"
+
+      - name: Commit any unstaged changes from Claude
+        if: success()
+        run: |
+          git config user.email "mirror-bot@users.noreply.github.com"
+          git config user.name  "Mirror Bot"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "Mirror plan: code work output"
+          fi
 
       - name: Push branch
         if: success()
