@@ -85,6 +85,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           prompt: ${{ inputs.prompt }}
+          allowed_bots: "*"
         env:
           ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
 
