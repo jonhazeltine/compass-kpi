@@ -1,0 +1,105 @@
+# mirror-plan-codework.yml.template
+#
+# Reusable GitHub Actions workflow that Mirror commits into linked
+# target repos as `.github/workflows/mirror-plan-codework.yml` via the
+# setup-PR mechanism (see docs/operations/github-app-setup.md).
+#
+# This file ships in Mirror's repo as a `.template` so it's not picked
+# up as one of Mirror's own workflows. The setup-PR mechanism reads it
+# and commits it (rename: drop `.template`) into the target repo.
+#
+# Inputs:
+#   plan_id     — Mirror plan UUID, written into the PR description so
+#                 the github-pr-webhook can correlate.
+#   prompt      — the plan's "Claude builds" task list, plain text.
+#   branch_name — mirror/plan/<slug>-<short-id>
+#
+# Concurrency: serialized per-repo so two simultaneous dispatches don't
+# branch from the same main and create merge conflicts.
+#
+# Always-callback: the final step uses `if: always()` so the
+# github-pr-webhook gets notified on success, failure, or cancellation.
+
+name: Mirror — Plan Code Work
+
+on:
+  workflow_dispatch:
+    inputs:
+      plan_id:
+        description: "Mirror plan UUID"
+        required: true
+      prompt:
+        description: "What Claude should build (from the plan's claude_tasks)"
+        required: true
+      branch_name:
+        description: "Branch to push commits to (mirror/plan/<slug>)"
+        required: true
+
+concurrency:
+  group: mirror-codework-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create branch
+        run: |
+          git config user.email "mirror-bot@users.noreply.github.com"
+          git config user.name  "Mirror Bot"
+          git checkout -b "${{ inputs.branch_name }}"
+
+      - name: Run Claude Code
+        # See https://github.com/anthropics/claude-code-action
+        uses: anthropics/claude-code-action@v1
+        with:
+          prompt: ${{ inputs.prompt }}
+          # Mirror does not provide a model override; default ships.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Push branch
+        if: success()
+        run: |
+          git push -u origin "${{ inputs.branch_name }}"
+
+      - name: Open draft PR
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr create \
+            --draft \
+            --title "Mirror plan ${{ inputs.plan_id }}: $(echo "${{ inputs.prompt }}" | head -1 | head -c 60)" \
+            --body "$(printf 'mirror-plan-id: %s\n\nThis PR was opened automatically by the Mirror Plans Code Work workflow. The locked plan and Claude/User split live in Mirror.\n' "${{ inputs.plan_id }}")" \
+            --base main \
+            --head "${{ inputs.branch_name }}" \
+          || echo "PR creation failed (may already exist)"
+
+      - name: Notify Mirror webhook
+        if: always()
+        env:
+          # Mirror sets MIRROR_WEBHOOK_URL via the org/repo workflow secret if
+          # using a centralized webhook, otherwise the App's webhook fires
+          # automatically on workflow_run / pull_request events.
+          MIRROR_WEBHOOK_URL: ${{ secrets.MIRROR_WEBHOOK_URL }}
+        run: |
+          if [ -n "$MIRROR_WEBHOOK_URL" ]; then
+            curl -fsS -X POST "$MIRROR_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "$(printf '{"event":"workflow_complete","plan_id":"%s","status":"%s","branch":"%s","run_id":"%s"}' \
+                "${{ inputs.plan_id }}" \
+                "${{ job.status }}" \
+                "${{ inputs.branch_name }}" \
+                "${{ github.run_id }}")" \
+              || echo "(webhook callback failed — non-fatal; App webhook will catch the PR event)"
+          fi
